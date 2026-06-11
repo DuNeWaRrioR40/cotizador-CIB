@@ -4,7 +4,7 @@
   const CONFIG = {
     // --- Google ---
     // Pega aquí el "ID de cliente" del cliente OAuth tipo WEB (lo creas en Google Cloud).
-    GOOGLE_CLIENT_ID: "PEGA_AQUI_TU_CLIENT_ID_WEB.apps.googleusercontent.com",
+    GOOGLE_CLIENT_ID: "844999785397-fncjlgv5l9eqhp9f1mv98t6gcdo4l9nc.apps.googleusercontent.com",
     SHEET_ID: "1oB2Mbc3pgMMOGkWMXj2nTNEQox28sQcBkDYthDB9WU4",
     SCOPES: "https://www.googleapis.com/auth/spreadsheets.readonly",
 
