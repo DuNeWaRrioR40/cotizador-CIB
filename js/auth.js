@@ -15,7 +15,14 @@
   }
 
   function scopeCompleto() {
-    return "openid email " + CFG.SCOPES;
+    return "https://www.googleapis.com/auth/userinfo.email " + CFG.SCOPES;
+  }
+
+  function tieneScopeSheets(resp) {
+    if (global.google && google.accounts.oauth2 && google.accounts.oauth2.hasGrantedAllScopes) {
+      return google.accounts.oauth2.hasGrantedAllScopes(resp, CFG.SCOPES);
+    }
+    return (resp.scope || "").split(" ").indexOf(CFG.SCOPES) >= 0;
   }
 
   async function emailDe(token) {
@@ -64,10 +71,14 @@
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CFG.GOOGLE_CLIENT_ID,
         scope: scopeCompleto(),
-        prompt: "select_account",
-        hint: CFG.DOMINIO_PERMITIDO ? undefined : undefined,
+        prompt: "consent",
         callback: async (resp) => {
           if (resp.error) return reject(new Error("No se completó el inicio de sesión."));
+          if (!tieneScopeSheets(resp)) {
+            return reject(new Error(
+              "Falta permitir el acceso a Google Sheets. Inicia sesión de nuevo y " +
+              "marca/permite la casilla “Ver todas tus hojas de cálculo de Google Sheets”."));
+          }
           try {
             const email = await emailDe(resp.access_token);
             if (!correoAutorizado(email)) {
