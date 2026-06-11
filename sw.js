@@ -1,6 +1,7 @@
-/* Service worker: cachea la app (shell) para que cargue rápido y offline.
+/* Service worker: estrategia "red primero" para que las actualizaciones (por ejemplo
+   config.js) se reflejen apenas estén en línea, y caché solo como respaldo offline.
    Las llamadas a Google/Sheets/pdf-lib pasan directo a la red. */
-const CACHE = "cibsa-cotizador-v1";
+const CACHE = "cibsa-cotizador-v2";
 const ASSETS = [
   "./", "./index.html", "./styles.css",
   "./js/config.js", "./js/logos.js", "./js/calc.js", "./js/auth.js",
@@ -20,12 +21,14 @@ self.addEventListener("activate", (e) => {
 });
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (url.origin !== location.origin || e.request.method !== "GET") return;  // solo mismo origen
+  if (url.origin !== location.origin || e.request.method !== "GET") return;
   e.respondWith(
-    caches.match(e.request).then((r) => r || fetch(e.request).then((resp) => {
-      const copy = resp.clone();
-      caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
-      return resp;
-    }).catch(() => r))
+    fetch(e.request)
+      .then((resp) => {
+        const copy = resp.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+        return resp;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
