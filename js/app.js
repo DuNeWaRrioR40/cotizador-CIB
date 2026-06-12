@@ -66,8 +66,8 @@
 
   // ---------- Helpers de lectura ----------
   function num(id, def) {
-    const v = parseFloat(String($(id).value).replace(",", "."));
-    return isNaN(v) ? def : v;
+    const r = window.CalcCIBSA.evalExpr($(id).value);
+    return (r == null || isNaN(r)) ? def : r;
   }
   function telaActual() {
     return state.telas.find((t) => t.nombre === $("f_tela").value) || null;
@@ -100,14 +100,14 @@
     const c = $("ojDyn"); c.innerHTML = "";
     if (state.ojMode === "total") {
       c.innerHTML = `<label class="field"><span>Cantidad total</span>
-        <input id="oj_total_in" type="number" inputmode="numeric" step="1" value="${state.ojTotal}" /></label>`;
+        <input id="oj_total_in" type="text" inputmode="numeric" step="1" value="${state.ojTotal}" /></label>`;
       $("oj_total_in").addEventListener("input", (e) => { state.ojTotal = e.target.value; recompute(); });
       return;
     }
     if (state.ojSubstate === "count") {
       const wrap = document.createElement("div");
       wrap.innerHTML = `<div class="oj-row">
-        <input id="oj_aristas_in" type="number" inputmode="numeric" step="1" value="${state.ojAristasN}" />
+        <input id="oj_aristas_in" type="text" inputmode="numeric" step="1" value="${state.ojAristasN}" />
         <button id="oj_confirm" class="btn-accent" type="button">Confirmar</button>
         <span class="muted small">Número de aristas (máx. 6)</span></div>`;
       c.appendChild(wrap);
@@ -123,7 +123,7 @@
     state.ojAristas.forEach((val, i) => {
       const cell = document.createElement("div"); cell.className = "oj-cell";
       cell.innerHTML = `<span class="x" data-i="${i}">✕</span><label>Arista ${i + 1}</label>
-        <input type="number" inputmode="numeric" step="1" value="${val}" data-i="${i}" />`;
+        <input type="text" inputmode="numeric" step="1" value="${val}" data-i="${i}" />`;
       grid.appendChild(cell);
     });
     c.appendChild(grid);
@@ -157,9 +157,16 @@
   }
 
   // ---------- Comparación de costuras ----------
-  ["f_largo", "f_ancho", "f_descuento", "f_ojvalor"].forEach((id) =>
+  ["f_largo", "f_ancho", "f_cantidad", "f_descuento", "f_ojvalor"].forEach((id) =>
     $(id).addEventListener("input", recompute));
   $("f_tela").addEventListener("change", recompute);
+
+  // Calculadora: al salir del campo, evalúa la expresión y muestra el resultado.
+  ["f_largo", "f_ancho", "f_cantidad", "f_ojvalor", "f_descuento", "f_dias"].forEach((id) =>
+    $(id).addEventListener("blur", () => {
+      const r = window.CalcCIBSA.evalExpr($(id).value);
+      if (r != null && !isNaN(r)) { $(id).value = window.CalcCIBSA.fmtNum(r); recompute(); }
+    }));
 
   function recompute() {
     telaInfo();
@@ -174,6 +181,7 @@
       state.orientaciones = window.CalcCIBSA.calcularOrientaciones({
         largo, ancho, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo,
         nOjetillos: nOjetillos(), valorOjetillo: num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT),
+        cantidad: Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1),
         descuentoPct: num("f_descuento", 0),
       });
     } catch (e) { return; }
@@ -196,7 +204,7 @@
   // ---------- Limpiar ----------
   $("btnLimpiar").addEventListener("click", () => {
     ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo"].forEach((id) => ($(id).value = ""));
-    $("f_ojvalor").value = "450"; $("f_dias").value = "3"; $("f_descuento").value = "0"; $("f_version").value = "01";
+    $("f_cantidad").value = "1"; $("f_ojvalor").value = "450"; $("f_dias").value = "3"; $("f_descuento").value = "0"; $("f_version").value = "01";
     state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
     document.querySelector('input[name="ojmode"][value="total"]').checked = true;
     state.orientacionSel = "mayor"; $("resultHolder").innerHTML = ""; $("formStatus").textContent = "";

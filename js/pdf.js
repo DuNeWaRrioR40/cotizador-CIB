@@ -159,10 +159,11 @@
     }
 
     const detTela = [[datos.tela.nombre, true]].concat((datos.tela.ficha || []).map((s) => [s, false]));
-    itemRow("1", detTela, money(c.material), money(c.material));
-    const ojTxt = datos.ojetillosDetalle || `${c.nOjetillos} ojetillos en total.`;
-    itemRow(String(c.nOjetillos), [["Ojetillos", true], [ojTxt, false]],
-      `${money(c.valorOjetillo)} c/u`, money(c.ojetillosValor));
+    itemRow(String(c.cantidad), detTela, money(c.material), money(c.materialTotal));
+    const ojBase = datos.ojetillosDetalle || `${c.nOjetillos} ojetillos en total.`;
+    const ojTxt = ojBase + (c.cantidad > 1 ? ` (por unidad; ${c.cantidad} unidades).` : "");
+    itemRow(String(c.nOjetillosTotal), [["Ojetillos", true], [ojTxt, false]],
+      `${money(c.valorOjetillo)} c/u`, money(c.ojetillosValorTotal));
 
     // Filas de totales
     function totalRow(label, value, fill) {
