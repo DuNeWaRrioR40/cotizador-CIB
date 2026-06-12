@@ -55,23 +55,25 @@
     <label class="field"><span>E-mail</span><input id="f_email" type="email" autocomplete="off" /></label>
 
     <h2 class="section">Producto</h2>
-    <label class="field"><span>Largo (m)</span><input id="f_largo" type="number" inputmode="decimal" step="any" /></label>
-    <label class="field"><span>Ancho (m)</span><input id="f_ancho" type="number" inputmode="decimal" step="any" /></label>
+    <label class="field"><span>Largo (m)</span><input id="f_largo" type="text" inputmode="text" autocomplete="off" /></label>
+    <label class="field"><span>Ancho (m)</span><input id="f_ancho" type="text" inputmode="text" autocomplete="off" /></label>
+    <label class="field"><span>Cantidad (unidades)</span><input id="f_cantidad" type="text" inputmode="numeric" autocomplete="off" value="1" /></label>
+    <p class="muted small">Puedes escribir operaciones, por ejemplo <b>240/100</b> o <b>2,4*2</b>; al salir del campo se calcula el resultado.</p>
     <label class="field"><span>Tela</span><select id="f_tela"></select></label>
     <p id="telaInfo" class="muted small"></p>
     <label class="field"><span>Título del producto</span><input id="f_titulo" type="text" placeholder="Automático: Carpa rectangular largo×ancho m" /></label>
 
-    <h2 class="section">Ojetillos</h2>
+    <h2 class="section">Ojetillos por carpa (1ú)</h2>
     <div class="radios">
       <label><input type="radio" name="ojmode" value="total" checked /> Total ojetillos</label>
       <label><input type="radio" name="ojmode" value="arista" /> Por arista</label>
     </div>
     <div id="ojDyn"></div>
-    <label class="field"><span>Valor ojetillo ($ neto)</span><input id="f_ojvalor" type="number" inputmode="numeric" step="any" value="450" /></label>
+    <label class="field"><span>Valor ojetillo ($ neto)</span><input id="f_ojvalor" type="text" inputmode="text" autocomplete="off" value="450" /></label>
 
     <h2 class="section">Condiciones</h2>
-    <label class="field"><span>Días de entrega (hábiles)</span><input id="f_dias" type="number" inputmode="numeric" step="1" value="3" /></label>
-    <label class="field"><span>Descuento (%)</span><input id="f_descuento" type="number" inputmode="decimal" step="any" value="0" /></label>
+    <label class="field"><span>Días de entrega (hábiles)</span><input id="f_dias" type="text" inputmode="numeric" autocomplete="off" value="3" /></label>
+    <label class="field"><span>Descuento (%)</span><input id="f_descuento" type="text" inputmode="text" autocomplete="off" value="0" /></label>
     <label class="field"><span>Versión</span><input id="f_version" type="text" value="01" /></label>
 
     <h2 class="section">Orientación de costuras</h2>
