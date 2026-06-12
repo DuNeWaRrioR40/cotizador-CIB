@@ -17,10 +17,13 @@
     COL_FICHA: "SPECS",
 
     // --- Tabla de vendedores (referenciada en RANGO con este ID) ---
+    // El nombre que se muestra se compone de NOMBRE + APELLIDO PATERNO + APELLIDO MATERNO
+    // (los apellidos en blanco se omiten). Se muestran solo los teléfonos no vacíos.
     ID_TABLA_VENDEDORES: "Vendedores",
-    COL_VENDEDOR_NOMBRE: "VENDEDOR",
+    COL_VENDEDOR_NOMBRE: "NOMBRE",
+    COL_VENDEDOR_APELLIDOS: ["APELLIDO PATERNO", "APELLIDO MATERNO"],
     COL_VENDEDOR_EMAIL: "EMAIL",
-    COL_VENDEDOR_FONOS: ["FONO 1", "FONO 2"],
+    COL_VENDEDOR_FONOS: ["TELEFONO 1", "TELEFONO 2", "TELEFONO 3"],
 
     // --- Control de acceso ---
     DOMINIO_PERMITIDO: "cibsa.cl",

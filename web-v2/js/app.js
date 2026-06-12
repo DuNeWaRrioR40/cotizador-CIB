@@ -102,7 +102,8 @@
     }
     // Vendedores (desde RANGO → tabla "Vendedores"; si no existe, usa el de config)
     let vendedores = [];
-    try { vendedores = await window.SheetsCIBSA.cargarVendedores(token); } catch (e) { vendedores = []; }
+    try { vendedores = await window.SheetsCIBSA.cargarVendedores(token); }
+    catch (e) { console.warn("CIBSA: no se pudieron cargar los vendedores —", e && e.message ? e.message : e); vendedores = []; }
     if (!vendedores || vendedores.length === 0) {
       vendedores = [{ nombre: CFG.VENDEDOR.nombre, email: CFG.VENDEDOR.email || "", fonos: [CFG.VENDEDOR.fono].filter(Boolean) }];
     }
