@@ -212,7 +212,13 @@
     const f = datos.fecha;
     t2(`${e.ciudad}, ${f.getDate()} de ${MESES[f.getMonth()]} de ${f.getFullYear()}`, M, y2, { size: 11, color: BLACK() }); y2 -= 16;
     t2("Vendedor:", M, y2, { f: bold, size: 11, color: BLACK() }); y2 -= 14;
-    [CFG.VENDEDOR.nombre, CFG.VENDEDOR.fono, e.casa_matriz].forEach((l) => { t2(l, M, y2, { size: 11, color: BLACK() }); y2 -= 14; });
+    const vend = datos.vendedor ||
+      { nombre: CFG.VENDEDOR.nombre, email: CFG.VENDEDOR.email || "", fonos: [CFG.VENDEDOR.fono].filter(Boolean) };
+    const vendLineas = [vend.nombre]
+      .concat(vend.email ? [vend.email] : [])
+      .concat((vend.fonos || []).filter(Boolean))
+      .concat([e.casa_matriz]);
+    vendLineas.forEach((l) => { t2(l, M, y2, { size: 11, color: BLACK() }); y2 -= 14; });
 
     const bytes = await doc.save();
     return { bytes, filename: nombreArchivo(datos) + ".pdf" };
@@ -322,6 +328,18 @@
     page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: right - M, height: notaLines.length * 13 + 6, color: YELLOW() });
     let ny = y - 12;
     notaLines.forEach((ln) => { txt(page, ln, M + 4, ny, { f: bold, color: BLACK() }); ny -= 13; });
+    y = ny - 16;
+
+    // Línea de contacto del vendedor al pie (sin reponer la página de condiciones)
+    if (datos.vendedor) {
+      const v = datos.vendedor;
+      const partes = [v.nombre]
+        .concat(v.email ? [v.email] : [])
+        .concat((v.fonos || []).filter(Boolean));
+      txt(page, "Vendedor: ", M, y, { f: bold, size: 11 });
+      txt(page, partes.join("  ·  "), M + bold.widthOfTextAtSize("Vendedor: ", 11), y, { size: 11 });
+      y -= 16;
+    }
 
     // El documento preliminar es de una sola página: no incluye la página de
     // Condiciones Generales ni datos de empresa (no son necesarios para un estimado).

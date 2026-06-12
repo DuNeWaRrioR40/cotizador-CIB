@@ -16,6 +16,12 @@
     COL_ANCHO_ROLLO: "FORMATO ROLLO (M)",
     COL_FICHA: "SPECS",
 
+    // --- Tabla de vendedores (referenciada en RANGO con este ID) ---
+    ID_TABLA_VENDEDORES: "Vendedores",
+    COL_VENDEDOR_NOMBRE: "VENDEDOR",
+    COL_VENDEDOR_EMAIL: "EMAIL",
+    COL_VENDEDOR_FONOS: ["FONO 1", "FONO 2"],
+
     // --- Control de acceso ---
     DOMINIO_PERMITIDO: "cibsa.cl",
     CORREOS_PERMITIDOS: ["contacto@cibsa.cl"],

@@ -57,6 +57,8 @@
     </div>
     <p id="modePreliminarHint" class="muted small hidden">Modo preliminar: valores netos por <b>1 unidad</b>, sin datos del cliente, sin descuentos y sin IVA.</p>
 
+    <label class="field" id="vendedorField"><span>Vendedor</span><select id="f_vendedor"></select></label>
+
     <h2 class="section formal-only">Datos del cliente</h2>
     <label class="field formal-only"><span>Nombre</span><input id="f_nombre" type="text" autocomplete="off" /></label>
     <label class="field formal-only"><span>Apellido</span><input id="f_apellido" type="text" autocomplete="off" /></label>
@@ -163,8 +165,14 @@
         getToken: function () { return "demo-token"; },
         sesionGuardada: function () { return true; },
       };
+      var VENDEDORES_DEMO = [
+        { nombre: "Daniel Ventura", email: "contacto@cibsa.cl", fonos: ["(+569) 4019 6779"] },
+        { nombre: "María Pérez", email: "ventas@cibsa.cl", fonos: ["(+569) 8123 4567", "(+562) 2987 6543"] },
+        { nombre: "Jorge Soto", email: "jsoto@cibsa.cl", fonos: [] },
+      ];
       g.SheetsCIBSA = {
         cargarTelas: function () { return Promise.resolve(TELAS_DEMO.map(function (t) { return Object.assign({}, t); })); },
+        cargarVendedores: function () { return Promise.resolve(VENDEDORES_DEMO.map(function (v) { return Object.assign({}, v); })); },
         parseNumero: function (x) { return x; },
       };
     })(window);

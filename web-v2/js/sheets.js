@@ -102,5 +102,34 @@
     return telas;
   }
 
-  global.SheetsCIBSA = { cargarTelas, parseNumero };
+  async function cargarVendedores(token) {
+    const punteros = await leerRango(token);
+    const ptr = punteros.find((p) => p.id.toLowerCase() === CFG.ID_TABLA_VENDEDORES.toLowerCase());
+    if (!ptr) return [];   // aún no se ha creado la tabla de vendedores en RANGO: no romper
+
+    const { encabezados, registros } = await leerTabla(token, ptr.hoja, ptr.rango);
+    const iNom = buscarColumna(encabezados, CFG.COL_VENDEDOR_NOMBRE);
+    const iEmail = buscarColumna(encabezados, CFG.COL_VENDEDOR_EMAIL);
+    const idxFonos = (CFG.COL_VENDEDOR_FONOS || [])
+      .map((c) => buscarColumna(encabezados, c)).filter((i) => i !== -1);
+    if (iNom === -1) {
+      throw new Error("La tabla de vendedores no tiene la columna '" + CFG.COL_VENDEDOR_NOMBRE +
+        "'. Encabezados: " + encabezados.join(" | "));
+    }
+    const cNom = encabezados[iNom];
+    const cEmail = iEmail !== -1 ? encabezados[iEmail] : null;
+    const cFonos = idxFonos.map((i) => encabezados[i]);
+
+    const vendedores = [];
+    for (const r of registros) {
+      const nombre = (r[cNom] || "").trim();
+      if (!nombre) continue;
+      const email = cEmail ? (r[cEmail] || "").trim() : "";
+      const fonos = cFonos.map((c) => (r[c] || "").trim()).filter(Boolean);
+      vendedores.push({ nombre, email, fonos });
+    }
+    return vendedores;
+  }
+
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);

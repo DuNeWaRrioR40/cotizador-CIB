@@ -8,7 +8,7 @@
     telas: [], orientaciones: null, orientacionSel: "mayor",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
     ojAristas: [], ojError: "", ultimoPdf: null, progTimer: null, progVal: 0,
-    docMode: "formal", prelim: [],
+    docMode: "formal", prelim: [], vendedores: [],
   };
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
@@ -100,9 +100,30 @@
         multi.appendChild(lab);
       });
     }
+    // Vendedores (desde RANGO → tabla "Vendedores"; si no existe, usa el de config)
+    let vendedores = [];
+    try { vendedores = await window.SheetsCIBSA.cargarVendedores(token); } catch (e) { vendedores = []; }
+    if (!vendedores || vendedores.length === 0) {
+      vendedores = [{ nombre: CFG.VENDEDOR.nombre, email: CFG.VENDEDOR.email || "", fonos: [CFG.VENDEDOR.fono].filter(Boolean) }];
+    }
+    state.vendedores = vendedores;
+    const vsel = $("f_vendedor");
+    if (vsel) {
+      vsel.innerHTML = "";
+      vendedores.forEach((v) => {
+        const o = document.createElement("option");
+        o.value = v.nombre; o.textContent = v.nombre; vsel.appendChild(o);
+      });
+    }
     mostrarForm();
     renderOjetillos();
     recompute();
+  }
+
+  function vendedorSel() {
+    const sel = $("f_vendedor");
+    const v = sel ? state.vendedores.find((x) => x.nombre === sel.value) : null;
+    return v || state.vendedores[0] || null;
   }
 
   // ---------- Helpers de lectura ----------
@@ -360,6 +381,7 @@
       ojetillosDetalle: ojDetalle(),
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
       descuentoLabel: desc > 0 ? `Descuento ${desc}% (pago contado)` : null,
+      vendedor: vendedorSel(),
     };
 
     abrirProgreso();
@@ -388,6 +410,7 @@
       largo, ancho,
       ojetillosDetalle: ojDetalle(),
       orientacionTxt: orientacionTxt(),
+      vendedor: vendedorSel(),
       items: state.prelim.map((p) => ({ tela: p.tela, calc: p.res })),
     };
 
