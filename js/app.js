@@ -86,14 +86,18 @@
       renderOjetillos(); recompute();
     }));
 
+  function ojInt(v) {
+    const r = window.CalcCIBSA.evalExpr(v);   // acepta expresiones aritméticas y coma
+    return (r == null || isNaN(r)) ? 0 : Math.max(0, Math.round(r));
+  }
   function nOjetillos() {
-    if (state.ojMode === "total") return Math.max(0, parseInt(state.ojTotal, 10) || 0);
-    return state.ojAristas.reduce((s, v) => s + (parseInt(v, 10) || 0), 0);
+    if (state.ojMode === "total") return ojInt(state.ojTotal);
+    return state.ojAristas.reduce((s, v) => s + ojInt(v), 0);
   }
   function ojDetalle() {
     const n = nOjetillos();
     if (state.ojMode === "total") return `${n} ojetillos en total.`;
-    return `${n} ojetillos en total (por arista: ${state.ojAristas.map((v) => parseInt(v, 10) || 0).join(", ")}).`;
+    return `${n} ojetillos en total (por arista: ${state.ojAristas.map(ojInt).join(", ")}).`;
   }
 
   function renderOjetillos() {
@@ -102,6 +106,10 @@
       c.innerHTML = `<label class="field"><span>Cantidad total</span>
         <input id="oj_total_in" type="text" inputmode="numeric" step="1" value="${state.ojTotal}" /></label>`;
       $("oj_total_in").addEventListener("input", (e) => { state.ojTotal = e.target.value; recompute(); });
+      $("oj_total_in").addEventListener("blur", (e) => {
+        const r = window.CalcCIBSA.evalExpr(e.target.value);
+        if (r != null && !isNaN(r)) { state.ojTotal = String(Math.max(0, Math.round(r))); e.target.value = state.ojTotal; recompute(); }
+      });
       return;
     }
     if (state.ojSubstate === "count") {
@@ -115,6 +123,10 @@
         const e = document.createElement("div"); e.className = "oj-err"; e.textContent = state.ojError; c.appendChild(e);
       }
       $("oj_aristas_in").addEventListener("input", (e) => { state.ojAristasN = e.target.value; });
+      $("oj_aristas_in").addEventListener("blur", (e) => {
+        const r = window.CalcCIBSA.evalExpr(e.target.value);
+        if (r != null && !isNaN(r)) { state.ojAristasN = String(Math.max(0, Math.round(r))); e.target.value = state.ojAristasN; }
+      });
       $("oj_confirm").addEventListener("click", confirmarAristas);
       return;
     }
@@ -127,8 +139,17 @@
       grid.appendChild(cell);
     });
     c.appendChild(grid);
-    grid.querySelectorAll("input").forEach((inp) =>
-      inp.addEventListener("input", (e) => { state.ojAristas[+e.target.dataset.i] = e.target.value; actualizarTotalOj(); recompute(); }));
+    grid.querySelectorAll("input").forEach((inp) => {
+      inp.addEventListener("input", (e) => { state.ojAristas[+e.target.dataset.i] = e.target.value; actualizarTotalOj(); recompute(); });
+      inp.addEventListener("blur", (e) => {
+        const r = window.CalcCIBSA.evalExpr(e.target.value);
+        if (r != null && !isNaN(r)) {
+          const i = +e.target.dataset.i;
+          state.ojAristas[i] = String(Math.max(0, Math.round(r)));
+          e.target.value = state.ojAristas[i]; actualizarTotalOj(); recompute();
+        }
+      });
+    });
     grid.querySelectorAll(".x").forEach((x) =>
       x.addEventListener("click", (e) => quitarArista(+e.target.dataset.i)));
     const bar = document.createElement("div"); bar.className = "oj-row"; bar.style.marginTop = "8px";
@@ -141,7 +162,8 @@
     const l = $("oj_total_lbl"); if (l) l.textContent = "Total ojetillos: " + nOjetillos();
   }
   function confirmarAristas() {
-    const n = parseInt(state.ojAristasN, 10);
+    const r = window.CalcCIBSA.evalExpr(state.ojAristasN);
+    const n = (r == null || isNaN(r)) ? NaN : Math.round(r);
     if (isNaN(n) || n < 1) { state.ojError = "Ingresa un número de aristas entre 1 y 6."; renderOjetillos(); return; }
     if (n > 6) { state.ojError = "Excedió el número máximo de aristas."; renderOjetillos(); return; }
     state.ojError = "";
