@@ -76,37 +76,123 @@
 
   // Dibuja el sketch del producto (contorno, ojetillos, ventanas) a escala dentro de
   // una caja { x, top, w, h } (top = borde superior en coordenadas PDF).
-  function dibujarSketchPDF(page, spec, box, font) {
+  function dibujarSketchPDF(page, spec, box, font, opts) {
+    opts = opts || {};
     if (!spec || !global.SketchCIBSA) return;
-    const sk = global.SketchCIBSA.construirSketch(spec);
+    const SK = global.SketchCIBSA;
+    const sk = SK.construirSketch(spec);
     if (!(sk.ancho > 0) || !(sk.largo > 0)) return;
-    const pad = 24;
-    const availW = box.w - 2 * pad, availH = box.h - 2 * pad;
+    const conCotas = opts.cotas !== false;
+    const mTL = conCotas ? SK.margenCotas(sk) : 24, mBR = 18;
+    const availW = box.w - mTL - mBR, availH = box.h - mTL - mBR;
     if (availW <= 0 || availH <= 0) return;
     const scale = Math.min(availW / sk.ancho, availH / sk.largo);
     const wpx = sk.ancho * scale, hpx = sk.largo * scale;
-    const x0 = box.x + (box.w - wpx) / 2;
-    const topRect = box.top - (box.h - hpx) / 2;
+    const totalW = wpx + mTL + mBR, totalH = hpx + mTL + mBR;
+    const x0 = box.x + (box.w - totalW) / 2 + mTL;
+    const topRect = box.top - (box.h - totalH) / 2 - mTL;
     const px = (sx) => x0 + sx * scale;
     const py = (sy) => topRect - sy * scale;
     const GRAY = PDFLib.rgb(0.12, 0.12, 0.12);
     const ACC = BLUE();
-    const DIM = PDFLib.rgb(0.42, 0.42, 0.42);
+    const RED = PDFLib.rgb(0.82, 0.23, 0.18);
+    const TICK = 3, EXTGAP = 3;
+    // Ventanas (rectangulares o circulares)
     sk.ventanas.forEach((v) => {
-      page.drawRectangle({
-        x: px(v.x), y: py(v.y + v.h), width: v.w * scale, height: v.h * scale,
-        borderColor: ACC, borderWidth: 0.9, borderDashArray: [3, 2],
-      });
+      if (v.circ) {
+        page.drawEllipse({ x: px(v.x + v.w / 2), y: py(v.y + v.h / 2), xScale: Math.min(v.w, v.h) / 2 * scale, yScale: Math.min(v.w, v.h) / 2 * scale, borderColor: ACC, borderWidth: 0.9, borderDashArray: [3, 2] });
+      } else {
+        page.drawRectangle({ x: px(v.x), y: py(v.y + v.h), width: v.w * scale, height: v.h * scale, borderColor: ACC, borderWidth: 0.9, borderDashArray: [3, 2] });
+      }
     });
+    // Contorno
     page.drawRectangle({ x: x0, y: topRect - hpx, width: wpx, height: hpx, borderColor: GRAY, borderWidth: 1.3 });
+    // Bolsillos (banda con doblez + costura + Ø)
+    const TEAL = PDFLib.rgb(0.12, 0.62, 0.54);
+    const bandW = Math.max(8, Math.min(18, Math.min(wpx, hpx) * 0.12)), stitch = 3;
+    (sk.bolsillos || []).forEach((bo) => {
+      const horiz = (bo.arista === "sup" || bo.arista === "inf");
+      // En coords PDF: top del paño = topRect (y mayor), base = topRect - hpx.
+      let rx, ry, rw, rh; // rect (esquina inferior-izq para drawRectangle)
+      if (bo.arista === "sup") { rx = x0; ry = topRect - bandW; rw = wpx; rh = bandW; }
+      else if (bo.arista === "inf") { rx = x0; ry = topRect - hpx; rw = wpx; rh = bandW; }
+      else if (bo.arista === "izq") { rx = x0; ry = topRect - hpx; rw = bandW; rh = hpx; }
+      else { rx = x0 + wpx - bandW; ry = topRect - hpx; rw = bandW; rh = hpx; }
+      page.drawRectangle({ x: rx, y: ry, width: rw, height: rh, borderColor: TEAL, borderWidth: 0.8, color: TEAL, opacity: 0.12, borderOpacity: 1 });
+      // línea de doblez (lado interior de la banda)
+      let a, b, d, e;
+      if (bo.arista === "sup") { a = rx; b = ry; d = rx + rw; e = ry; }
+      else if (bo.arista === "inf") { a = rx; b = ry + rh; d = rx + rw; e = ry + rh; }
+      else if (bo.arista === "izq") { a = rx + rw; b = ry; d = rx + rw; e = ry + rh; }
+      else { a = rx; b = ry; d = rx; e = ry + rh; }
+      page.drawLine({ start: { x: a, y: b }, end: { x: d, y: e }, thickness: 0.8, color: TEAL });
+      const len = horiz ? rw : rh, n = Math.max(2, Math.round(len / 12));
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        if (horiz) { const sx = a + (d - a) * t; page.drawLine({ start: { x: sx, y: b - stitch }, end: { x: sx, y: b + stitch }, thickness: 0.5, color: TEAL }); }
+        else { const sy = b + (e - b) * t; page.drawLine({ start: { x: a - stitch, y: sy }, end: { x: a + stitch, y: sy }, thickness: 0.5, color: TEAL }); }
+      }
+      const lbl = "Bolsillo " + String.fromCharCode(216) + SK.fmt(bo.diam) + "m";
+      const cxp = rx + rw / 2, cyp = ry + rh / 2;
+      if (horiz) page.drawText(lbl, { x: cxp - font.widthOfTextAtSize(lbl, 7) / 2, y: cyp - 2.5, size: 7, font: font, color: TEAL });
+      else page.drawText(lbl, { x: cxp - 2.5, y: cyp - font.widthOfTextAtSize(lbl, 7) / 2, size: 7, font: font, color: TEAL, rotate: PDFLib.degrees(90) });
+    });
+    // Ojetillos
     const r = Math.max(1.6, Math.min(3.4, scale * 0.03));
     sk.ojetillos.forEach((p) => {
       page.drawCircle({ x: px(p.x), y: py(p.y), size: r, borderColor: ACC, borderWidth: 1, color: WHITE() });
     });
-    const fmt = (n) => (Math.round(n * 1000) / 1000).toString().replace(".", ",") + " m";
-    const la = fmt(sk.ancho), ll = fmt(sk.largo);
-    page.drawText(la, { x: x0 + wpx / 2 - font.widthOfTextAtSize(la, 9) / 2, y: topRect + 6, size: 9, font: font, color: DIM });
-    page.drawText(ll, { x: x0 - 8, y: topRect - hpx / 2 - font.widthOfTextAtSize(ll, 9) / 2, size: 9, font: font, color: DIM, rotate: PDFLib.degrees(90) });
+    // Cortes / calados: líneas de corte (lados existentes) + tijeras + ojetillos del corte
+    const PURPLE = PDFLib.rgb(0.557, 0.267, 0.678);
+    const tijeraPDF = (tx, ty) => {
+      const tp = SK.tijeraPrims(tx, ty, 8);
+      tp.circles.forEach((cc) => page.drawCircle({ x: cc.x, y: cc.y, size: cc.r, borderColor: PURPLE, borderWidth: 0.5 }));
+      tp.lines.forEach((ln) => page.drawLine({ start: { x: ln.x1, y: ln.y1 }, end: { x: ln.x2, y: ln.y2 }, thickness: 0.5, color: PURPLE }));
+    };
+    (sk.cortes || []).forEach((c) => {
+      (c.hatch || []).forEach((sg) => {
+        page.drawLine({ start: { x: px(sg.a.x), y: py(sg.a.y) }, end: { x: px(sg.b.x), y: py(sg.b.y) }, thickness: 0.35, color: PURPLE, opacity: 0.32 });
+      });
+      (c.segments || []).forEach((sg) => {
+        const a = px(sg.a.x), b = py(sg.a.y), d = px(sg.b.x), e = py(sg.b.y);
+        page.drawLine({ start: { x: a, y: b }, end: { x: d, y: e }, thickness: 1, color: PURPLE, dashArray: [5, 3] });
+        if (!c.tijeras) SK.tijerasEn(a, b, d, e).forEach((t) => tijeraPDF(t.x, t.y));
+      });
+      if (c.tijeras) c.tijeras.forEach((t) => tijeraPDF(px(t.x), py(t.y)));
+      (c.ojetillos || []).forEach((p) => page.drawCircle({ x: px(p.x), y: py(p.y), size: r, borderColor: PURPLE, borderWidth: 1, color: WHITE() }));
+      if (c.rotated && c.pivote) {
+        const cx = px(c.pivote.x), cy = py(c.pivote.y);
+        page.drawCircle({ x: cx, y: cy, size: 2.6, borderColor: PURPLE, borderWidth: 0.7 });
+        page.drawLine({ start: { x: cx - 5, y: cy }, end: { x: cx + 5, y: cy }, thickness: 0.6, color: PURPLE });
+        page.drawLine({ start: { x: cx, y: cy - 5 }, end: { x: cx, y: cy + 5 }, thickness: 0.6, color: PURPLE });
+      }
+      if (c.rotated && c.segments && c.segments.length) {
+        const sg = c.segments[0], mx = px((sg.a.x + sg.b.x) / 2), my = py((sg.a.y + sg.b.y) / 2);
+        page.drawText(SK.fmt(c.angulo) + "°", { x: mx + 4, y: my + 3, size: 8, font: font, color: PURPLE });
+      }
+    });
+    // Cotas (rojo): mayor = paño base; menor = padding / ventanas
+    if (conCotas) {
+      const ln = (x1, y1, x2, y2, w) => page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: w, color: RED });
+      SK.cotasDe(sk).forEach((c) => {
+        const off = SK.offsetCota(c);
+        const lbl = SK.fmt(c.value) + "m";
+        if (c.axis === "h") {
+          const dimY = topRect + off, xa = px(c.a), xb = px(c.b);
+          ln(xa, topRect, xa, dimY + EXTGAP, 0.4); ln(xb, topRect, xb, dimY + EXTGAP, 0.4);
+          ln(xa, dimY, xb, dimY, 0.6);
+          ln(xa, dimY - TICK, xa, dimY + TICK, 0.6); ln(xb, dimY - TICK, xb, dimY + TICK, 0.6);
+          page.drawText(lbl, { x: (xa + xb) / 2 - font.widthOfTextAtSize(lbl, 7.5) / 2, y: dimY + 2, size: 7.5, font: font, color: RED });
+        } else {
+          const dimX = x0 - off, ya = py(c.a), yb = py(c.b);
+          ln(x0, ya, dimX - EXTGAP, ya, 0.4); ln(x0, yb, dimX - EXTGAP, yb, 0.4);
+          ln(dimX, ya, dimX, yb, 0.6);
+          ln(dimX - TICK, ya, dimX + TICK, ya, 0.6); ln(dimX - TICK, yb, dimX + TICK, yb, 0.6);
+          const my = (ya + yb) / 2;
+          page.drawText(lbl, { x: dimX - 4, y: my - font.widthOfTextAtSize(lbl, 7.5) / 2, size: 7.5, font: font, color: RED, rotate: PDFLib.degrees(90) });
+        }
+      });
+    }
   }
 
   async function generarCotizacion(datos) {
@@ -646,8 +732,71 @@
     return { bytes, filename: nombreArchivo(datos) + ".pdf" };
   }
 
+  // ---------- Dibujo del producto (PDF descargable de 1 hoja) ----------
+  // datos: { filenameBase, etiquetaArchivo, titulo, tela, color, largo, ancho, ojetillos,
+  //          unidades, observaciones:[], materiales:[{nombre,cant}], sketch }
+  async function generarSketchPDF(datos) {
+    const { PDFDocument, StandardFonts } = PDFLib;
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
+    const kam = await doc.embedPng(b64ToBytes(LOGOS.kamanchaca));
+    const W = 612, H = 792, M = 50;
+    const page = doc.addPage([W, H]);
+    const txt = (s, x, y, o) => page.drawText(san(s), { x, y, size: (o && o.size) || 11, font: (o && o.f) || font, color: (o && o.color) || BLUE() });
+    const fmtN = (n) => (Math.round((+n) * 1000) / 1000).toString();
+
+    let y = dibujarEncabezado(page, cibsa, kam, W, M, H - 40);
+    tituloCentrado(page, "DIBUJO DEL PRODUCTO", W, y, bold, 15, BLUE()); y -= 15;
+    tituloCentrado(page, "(plano referencial para taller)", W, y, font, 10, BLUE()); y -= 22;
+    if (datos.titulo) { txt(`"${datos.titulo}"`, M, y, { f: bold, size: 12 }); y -= 18; }
+
+    // Bloque de detalle (arriba-izquierda)
+    const color = (datos.color && String(datos.color).trim()) ? datos.color : "N/A";
+    const campos = [
+      ["Tipo de Tela", datos.tela || "N/A"],
+      ["Color", color],
+      ["Dimensiones", fmtN(datos.largo) + "m x " + fmtN(datos.ancho) + "m"],
+      ["Ojetillos", String(datos.ojetillos || 0)],
+      ["Cantidad de Unidades", String(datos.unidades || 1)],
+    ];
+    campos.forEach(([k, v]) => {
+      txt(k + ": ", M, y, { f: bold });
+      txt(v, M + bold.widthOfTextAtSize(k + ": ", 11), y, { color: BLACK() });
+      y -= 15;
+    });
+    txt("Observaciones: ", M, y, { f: bold });
+    let oy = y - 14;
+    const obs = (datos.observaciones && datos.observaciones.length) ? datos.observaciones : ["Sin observaciones."];
+    obs.forEach((par) => {
+      wrap("- " + par, font, 9.5, W - 2 * M).forEach((ln, i) => { txt(i === 0 ? ln : "  " + ln, M, oy, { size: 9.5, color: BLACK() }); oy -= 12; });
+    });
+    const detalleBottom = oy - 8;
+
+    // Lista de materiales (abajo)
+    const mats = datos.materiales || [];
+    const matLineH = 12.5, bottomM = 52;
+    const matBlockH = 18 + Math.max(1, mats.length) * matLineH + 4;
+    let my = bottomM + matBlockH - 12;
+    txt("Ojetillos & Materiales (resumen por unidad):", M, my, { f: bold, size: 11 }); my -= 16;
+    if (mats.length) mats.forEach((m) => { txt("- " + m.nombre + ": " + m.cant, M, my, { size: 10, color: BLACK() }); my -= matLineH; });
+    else txt("- Sin materiales adicionales.", M, my, { size: 10, color: BLACK() });
+    const notaCotas = "Cotas en metros.";
+    txt(notaCotas, W - M - font.widthOfTextAtSize(notaCotas, 8), bottomM + matBlockH + 4, { size: 8, color: PDFLib.rgb(0.82, 0.23, 0.18) });
+
+    // Sketch entre el detalle y la lista de materiales
+    const boxTop = detalleBottom, boxBottom = bottomM + matBlockH + 16;
+    dibujarSketchPDF(page, datos.sketch, { x: M, top: boxTop, w: W - 2 * M, h: boxTop - boxBottom }, font, { cotas: true });
+
+    const bytes = await doc.save();
+    const base = datos.filenameBase || "Dibujo";
+    const etq = datos.etiquetaArchivo ? "_" + String(datos.etiquetaArchivo).replace(/\s+/g, "") : "";
+    return { bytes, filename: base + etq + "_dibujo.pdf" };
+  }
+
   global.PDFCotizacion = {
-    generarCotizacion, generarPreliminar, generarCotizacionCompuesta,
+    generarCotizacion, generarPreliminar, generarCotizacionCompuesta, generarSketchPDF,
     nombreArchivo, nombreArchivoPreliminar, money,
   };
 })(typeof window !== "undefined" ? window : globalThis);

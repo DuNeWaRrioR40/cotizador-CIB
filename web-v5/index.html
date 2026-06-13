@@ -92,6 +92,7 @@
     <div id="wTelaUnica">
       <label class="field"><span>Tela</span><select id="f_tela"></select></label>
       <p id="telaInfo" class="muted small"></p>
+      <label class="field"><span>Color (opcional)</span><input id="f_color" type="text" autocomplete="off" placeholder="N/A · solo para el plano de taller" /></label>
     </div>
 
     <!-- Tela múltiple (preliminar) -->
@@ -143,6 +144,13 @@
       <div id="bordeDyn"></div>
     </div>
 
+    <!-- Cortes / Calados (uniforme) -->
+    <div id="wCortesUnif">
+      <h2 class="section">Cortes / Calados</h2>
+      <p class="muted small">Huecos o calados de diseño. Costo $0 y sin consumo de material; van solo al dibujo de taller.</p>
+      <div id="cortesUnif"></div>
+    </div>
+
     <!-- Complementos (uniforme) -->
     <div id="wComplementosUnif">
       <h2 class="section">Complementos</h2>
@@ -173,8 +181,9 @@
     <!-- Vista del producto (uniforme) -->
     <div id="wSketchUnif">
       <h2 class="section">Vista del producto</h2>
-      <p class="muted small">Dibujo a escala: contorno y ojetillos (referencial).</p>
+      <p class="muted small">Dibujo a escala: contorno, ojetillos y cotas (referencial).</p>
       <div id="sketchUnif" class="sketch"></div>
+      <button id="btnDescargarSketch" class="btn-outline" type="button">Descargar dibujo (PDF)</button>
     </div>
 
     <!-- Orientación de uniones (preliminar) -->
@@ -211,6 +220,10 @@
         <div class="links">
           <a id="lnkAbrir" href="#">Abrir / Descargar</a>
           <a id="lnkCompartir" href="#" class="hidden">Compartir</a>
+          <a id="lnkWhatsapp" href="#" class="wa-btn">
+            <svg viewBox="0 0 32 32" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M16 3C9.4 3 4 8.3 4 14.9c0 2.4.7 4.6 1.9 6.5L4 29l7.9-1.8c1.8 1 3.9 1.6 6.1 1.6 6.6 0 12-5.3 12-11.9C30 8.3 24.6 3 18 3h-2zm0 2.2h2c5.4 0 9.8 4.3 9.8 9.7s-4.4 9.7-9.8 9.7c-2 0-3.8-.6-5.4-1.5l-.4-.2-4.1.9.9-3.9-.3-.4a9.5 9.5 0 0 1-1.6-5.3c0-5.4 4.4-9.7 9.8-9.7zm-3.5 4.6c-.2 0-.5 0-.7.4-.3.4-1 .9-1 2.3s1 2.7 1.2 2.9c.1.2 2 3.2 4.9 4.3 2.4 1 2.9.8 3.5.7.5 0 1.6-.6 1.8-1.3.2-.6.2-1.2.2-1.3-.1-.1-.3-.2-.6-.3-.3-.2-1.6-.8-1.9-.9-.3-.1-.4-.1-.6.1-.2.3-.7.9-.8 1-.1.2-.3.2-.5.1-.3-.1-1.1-.4-2.1-1.3-.8-.7-1.3-1.5-1.4-1.8-.2-.3 0-.4.1-.5l.4-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.1-.6-1.5-.8-2-.2-.5-.4-.4-.6-.4h-.5z"/></svg>
+            WhatsApp
+          </a>
         </div>
         <p id="autoCierreMsg" class="muted small">Esta ventana se cerrará sola en <span id="autoCierreSeg">6</span> s.</p>
         <div class="modal-actions">

@@ -169,6 +169,26 @@ button:active { transform: scale(0.98); }
 .sketch-svg .oje { fill: var(--surface); stroke: var(--accent); stroke-width: 1.2; }
 .sketch-svg .win { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; }
 .sketch-svg .dim { fill: var(--muted); font-size: 9px; font-family: inherit; }
+.sketch-svg .cota { stroke: #d23b2e; stroke-width: 0.7; fill: none; }
+.sketch-svg .cota-ext { stroke: #d23b2e; stroke-width: 0.5; fill: none; }
+.sketch-svg .cota-tick { stroke: #d23b2e; stroke-width: 0.7; }
+.sketch-svg .cota-lbl { fill: #d23b2e; font-size: 7.5px; font-family: inherit; }
+.sketch-svg .cut { stroke: #8e44ad; stroke-width: 1.1; fill: none; stroke-dasharray: 6 3; }
+.sketch-svg .scissor { stroke: #8e44ad; stroke-width: 0.7; fill: none; }
+.sketch-svg .cut-oje { fill: var(--surface); stroke: #8e44ad; stroke-width: 1.1; }
+.sketch-svg .cut-lbl { fill: #8e44ad; font-size: 8px; font-family: inherit; }
+.sketch-svg .cut-hatch { stroke: #8e44ad; stroke-width: 0.4; opacity: 0.32; }
+.sketch-svg .cut-piv { stroke: #8e44ad; stroke-width: 0.8; fill: none; }
+.sketch-svg .pocket { fill: #1f9d8a; fill-opacity: 0.12; stroke: #1f9d8a; stroke-width: 0.8; }
+.sketch-svg .pocket-line { stroke: #1f9d8a; stroke-width: 0.9; }
+.sketch-svg .pocket-stitch { stroke: #1f9d8a; stroke-width: 0.6; }
+.sketch-svg .pocket-lbl { fill: #0f7d6c; font-size: 7px; font-family: inherit; }
+.cut-card { border: 1px dashed #8e44ad; }
+.slider-row { display: flex; gap: 8px; align-items: center; }
+.slider-row input[type="range"] { flex: 1; width: auto; accent-color: #8e44ad; }
+.slider-row .slider-num { flex: 0 0 auto; width: 62px; }
+.wa-btn { display: inline-flex; align-items: center; gap: 6px; background: #25D366; color: #fff !important; padding: 6px 12px; border-radius: 8px; text-decoration: none; font-weight: 600; }
+.wa-btn svg { display: block; }
 
 /* Avisos (prorrata / paño marginal) */
 .aviso { border-radius: 10px; padding: 10px; margin: 8px 0; font-size: 13px; }

@@ -9,7 +9,7 @@
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
     ojAristas: [], ojError: "", ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [],
-    piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [],
+    piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     // v4: bordes y unión (uniforme)
     bordeModo: "uniforme", bordeValor: "0.045",
     bordes: {
@@ -52,6 +52,7 @@
     show("wValorOj", uni || p || comp);
     show("wBordes", uni);
     show("wComplementosUnif", uni);
+    show("wCortesUnif", uni);
     show("wCondiciones", f);
     show("wObservaciones", f);
     show("wOrientFormal", uni);
@@ -339,6 +340,7 @@
     container.appendChild(add);
   }
   function renderComplementosUnif() { const cu = $("compUnif"); if (cu) renderComplementos(cu, state.complementosUnif, recompute); }
+  function renderCortesUnif() { const cc = $("cortesUnif"); if (cc) renderCortes(cc, { cortes: state.cortesUnif, baseLargo: () => num("f_largo", null), baseAncho: () => num("f_ancho", null), onChange: recompute }); }
 
   // ---------- Paños inscritos (ventanas) ----------
   let inscritoSeq = 0;
@@ -348,6 +350,7 @@
     const cpB = (b) => ({ sup: Object.assign({}, b.sup), inf: Object.assign({}, b.inf), izq: Object.assign({}, b.izq), der: Object.assign({}, b.der) });
     return {
       id: "ins" + inscritoSeq,
+      forma: base ? base.forma : "rect",
       telaNombre: base ? base.telaNombre : ((state.telas[0] && state.telas[0].nombre) || ""),
       largo: base ? base.largo : "", ancho: base ? base.ancho : "",
       padSup: base ? base.padSup : "0.1", padInf: base ? base.padInf : "0.1",
@@ -393,7 +396,8 @@
   function inscritosLineasPDF(pz) {
     return (pz.inscritos || []).map((ins) => {
       const r = calcInscrito(pz, ins); if (!r || !r.o) return null;
-      return `Ventana en ${r.tela.nombre} ${r.winLargo}×${r.winAncho} m — ${money(r.o.subtotalLote / r.N)}/u`;
+      const dim = ins.forma === "circ" ? `circular Ø${r.winAncho} m` : `${r.winLargo}×${r.winAncho} m`;
+      return `Ventana en ${r.tela.nombre} ${dim} — ${money(r.o.subtotalLote / r.N)}/u`;
     }).filter(Boolean);
   }
   // Centra la ventana en el paño base: padding = (base − ventana)/2 por eje.
@@ -445,15 +449,29 @@
         const del = document.createElement("button"); del.type = "button"; del.className = "pz-btn del"; del.textContent = "✕";
         del.addEventListener("click", () => { pz.inscritos.splice(idx, 1); pintar(); actualizarSuper(); onChange(); });
         head.appendChild(tt); head.appendChild(del); card.appendChild(head);
-        // Dimensiones propias + tela + orientación. Al cambiar dimensiones, se re-centra.
+        // Forma + dimensiones. Al cambiar dimensiones, se re-centra.
+        const fsel = document.createElement("label"); fsel.className = "field full"; fsel.innerHTML = "<span>Forma</span>";
+        const fopt = document.createElement("select");
+        [["rect", "Rectángulo"], ["circ", "Círculo"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; fopt.appendChild(o); });
+        fopt.value = ins.forma || "rect"; fopt.addEventListener("change", (e) => { ins.forma = e.target.value; if (ins.forma === "circ") ins.ancho = ins.largo; centrarInscrito(pz, ins); pintar(); actualizarSuper(); onChange(); });
+        fsel.appendChild(fopt); card.appendChild(fsel);
         const grid = document.createElement("div"); grid.className = "pieza-grid";
-        [["largo", "Largo ventana (m)"], ["ancho", "Ancho ventana (m)"]].forEach(([k, lab]) => {
-          const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
-          const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = ins[k] || "";
-          inp.addEventListener("input", (e) => { ins[k] = e.target.value; centrarInscrito(pz, ins); setPad(); refresh(); actualizarSuper(); onChange(); });
-          inp.addEventListener("blur", (e) => { const rr = window.CalcCIBSA.evalExpr(e.target.value); if (rr != null && !isNaN(rr)) { ins[k] = window.CalcCIBSA.fmtNum(rr); e.target.value = ins[k]; centrarInscrito(pz, ins); setPad(); refresh(); actualizarSuper(); onChange(); } });
+        if ((ins.forma || "rect") === "circ") {
+          const l = document.createElement("label"); l.className = "field full"; l.innerHTML = "<span>Diámetro (m)</span>";
+          const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = ins.largo || "";
+          const setD = (val) => { ins.largo = val; ins.ancho = val; centrarInscrito(pz, ins); setPad(); refresh(); actualizarSuper(); onChange(); };
+          inp.addEventListener("input", (e) => setD(e.target.value));
+          inp.addEventListener("blur", (e) => { const rr = window.CalcCIBSA.evalExpr(e.target.value); if (rr != null && !isNaN(rr)) { const v = window.CalcCIBSA.fmtNum(rr); e.target.value = v; setD(v); } });
           l.appendChild(inp); grid.appendChild(l);
-        });
+        } else {
+          [["largo", "Largo ventana (m)"], ["ancho", "Ancho ventana (m)"]].forEach(([k, lab]) => {
+            const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
+            const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = ins[k] || "";
+            inp.addEventListener("input", (e) => { ins[k] = e.target.value; centrarInscrito(pz, ins); setPad(); refresh(); actualizarSuper(); onChange(); });
+            inp.addEventListener("blur", (e) => { const rr = window.CalcCIBSA.evalExpr(e.target.value); if (rr != null && !isNaN(rr)) { ins[k] = window.CalcCIBSA.fmtNum(rr); e.target.value = ins[k]; centrarInscrito(pz, ins); setPad(); refresh(); actualizarSuper(); onChange(); } });
+            l.appendChild(inp); grid.appendChild(l);
+          });
+        }
         const lt = document.createElement("label"); lt.className = "field full"; lt.innerHTML = "<span>Tela de la ventana</span>";
         const selT = document.createElement("select"); state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre + (t.proveedor ? "  —  " + t.proveedor : ""); selT.appendChild(o); });
         selT.value = ins.telaNombre || ((state.telas[0] && state.telas[0].nombre) || ""); ins.telaNombre = selT.value;
@@ -515,6 +533,225 @@
     add.addEventListener("click", () => { const ins = nuevaInscrito(); centrarInscrito(pz, ins); pz.inscritos.push(ins); pintar(); actualizarSuper(); onChange(); });
     container.appendChild(add);
   }
+
+  // ---------- Cortes / Calados (costo $0, solo diseño; no entran al cálculo ni a la cotización) ----------
+  let corteSeq = 0;
+  function nuevaCorte(base) {
+    corteSeq += 1;
+    return {
+      id: "cut" + corteSeq,
+      forma: base ? base.forma : "rect", ojCirc: base ? base.ojCirc : "0",
+      largo: base ? base.largo : "", ancho: base ? base.ancho : "",
+      padSup: base ? base.padSup : "0.1", padInf: base ? base.padInf : "0.1",
+      padIzq: base ? base.padIzq : "0.1", padDer: base ? base.padDer : "0.1",
+      lados: base ? Object.assign({}, base.lados) : { sup: true, inf: true, izq: true, der: true },
+      angulo: base ? base.angulo : "0", pivX: base ? base.pivX : "0.5", pivY: base ? base.pivY : "0.5",
+      oj: base ? Object.assign({}, base.oj) : { sup: "0", inf: "0", izq: "0", der: "0" },
+      complementos: base ? (base.complementos || []).map((c) => Object.assign({}, c, { cantAristas: (c.cantAristas || []).slice() })) : [],
+    };
+  }
+  function centrarCorte(baseL, baseA, c) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const cL = ev(c.largo), cA = ev(c.ancho);
+    // El círculo (corte) puede exceder el paño: se permite padding negativo para mantener el centro.
+    const clamp = (c.forma === "circ") ? (n) => n : (n) => Math.max(0, n);
+    if (baseL != null && cL != null) { const m = String(clamp(Math.round((baseL - cL) / 2 * 1000) / 1000)); c.padSup = m; c.padInf = m; }
+    if (baseA != null && cA != null) { const m = String(clamp(Math.round((baseA - cA) / 2 * 1000) / 1000)); c.padIzq = m; c.padDer = m; }
+  }
+  function rectCorte(c) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const w = ev(c.ancho), h = ev(c.largo); if (w == null || h == null || w <= 0 || h <= 0) return null;
+    const x = ev(c.padIzq), y = ev(c.padSup);
+    const num01 = (v, d) => { const r = window.CalcCIBSA.evalExpr(v); return (r == null || isNaN(r)) ? d : Math.max(0, Math.min(1, r)); };
+    const L = c.lados || {};
+    return {
+      x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h,
+      circ: c.forma === "circ", ojCirc: ojIntPz(c.ojCirc),
+      oj: { sup: ojIntPz(c.oj.sup), inf: ojIntPz(c.oj.inf), izq: ojIntPz(c.oj.izq), der: ojIntPz(c.oj.der) },
+      lados: { sup: L.sup !== false, inf: L.inf !== false, izq: L.izq !== false, der: L.der !== false },
+      angulo: window.CalcCIBSA.evalExpr(c.angulo) || 0, pivX: num01(c.pivX, 0.5), pivY: num01(c.pivY, 0.5),
+    };
+  }
+  function cortesSpec(list) { return (list || []).map(rectCorte).filter(Boolean); }
+  function cortesTotalOj(list) { return (list || []).reduce((s, c) => s + (c.forma === "circ" ? ojIntPz(c.ojCirc) : (ojIntPz(c.oj.sup) + ojIntPz(c.oj.inf) + ojIntPz(c.oj.izq) + ojIntPz(c.oj.der))), 0); }
+  function obsCortes(list) {
+    const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
+    const nm = { sup: "sup", inf: "inf", izq: "izq", der: "der" };
+    return (list || []).map((c) => {
+      const w = ev(c.ancho), h = ev(c.largo); if (!(w > 0 && h > 0)) return null;
+      if (c.forma === "circ") {
+        const ojc = ojIntPz(c.ojCirc);
+        let t = "Calado circular Ø" + f(w) + " m (centro: padding izq " + f(ev(c.padIzq) || 0) + " / sup " + f(ev(c.padSup) || 0) + " m)";
+        if (ojc > 0) t += ", ojetillos " + ojc + " (alrededor)";
+        return t;
+      }
+      const oj = c.oj || {}, L = c.lados || {};
+      const activos = ["sup", "inf", "izq", "der"].filter((k) => L[k] !== false);
+      const ojs = ojIntPz(oj.sup) + ojIntPz(oj.inf) + ojIntPz(oj.izq) + ojIntPz(oj.der);
+      const ang = ev(c.angulo) || 0;
+      const tipo = activos.length === 1 ? "Corte recto" : "Corte/calado";
+      let t = tipo + " " + f(h) + "x" + f(w) + " m (padding izq " + f(ev(c.padIzq) || 0) + " / sup " + f(ev(c.padSup) || 0) + " m)";
+      if (activos.length < 4) t += ", aristas: " + activos.map((k) => nm[k]).join("/");
+      if (Math.abs(ang) > 1e-6) t += ", ángulo " + f(ang) + "° (pivote " + f(ev(c.pivX) || 0.5) + "," + f(ev(c.pivY) || 0.5) + ")";
+      if (ojs > 0) t += ", ojetillos " + ojIntPz(oj.sup) + "/" + ojIntPz(oj.inf) + "/" + ojIntPz(oj.izq) + "/" + ojIntPz(oj.der) + " (sup/inf/izq/der)";
+      return t;
+    }).filter(Boolean);
+  }
+  function materialesCortes(list) {
+    const out = []; const totalOj = cortesTotalOj(list);
+    if (totalOj > 0) out.push({ nombre: "Ojetillos de cortes/calados", cant: String(totalOj) });
+    (list || []).forEach((c) => {
+      (c.complementos || []).forEach((cp) => {
+        const m = compMat(cp); if (!m) return;
+        const extra = [m.modelo, m.color].filter(Boolean).join(" ");
+        out.push({ nombre: "(corte) " + m.item + (extra ? " " + extra : ""), cant: compCant(cp) + " " + (m.unidad || "u") });
+      });
+    });
+    return out;
+  }
+
+  // Renderiza la sección de cortes. ctx: { cortes, baseLargo(), baseAncho(), onChange() }
+  function renderCortes(container, ctx) {
+    container.innerHTML = "";
+    const onChange = ctx.onChange;
+    const cab = document.createElement("p"); cab.className = "muted small";
+    cab.textContent = "Cortes / calados (costo $0, solo diseño) — por defecto centrados:";
+    container.appendChild(cab);
+    const rows = document.createElement("div"); container.appendChild(rows);
+    const opuesto = { padSup: "padInf", padInf: "padSup", padIzq: "padDer", padDer: "padIzq" };
+    function pintar() {
+      rows.innerHTML = "";
+      (ctx.cortes || []).forEach((c, idx) => {
+        const card = document.createElement("div"); card.className = "ins-card cut-card";
+        const padInputs = {};
+        const setPad = () => { ["padSup", "padInf", "padIzq", "padDer"].forEach((k) => { if (padInputs[k]) padInputs[k].value = c[k]; }); };
+        const head = document.createElement("div"); head.className = "ins-head";
+        const tt = document.createElement("span"); tt.className = "muted small"; tt.textContent = "✂ Corte/calado Nº" + (idx + 1);
+        const del = document.createElement("button"); del.type = "button"; del.className = "pz-btn del"; del.textContent = "✕";
+        del.addEventListener("click", () => { ctx.cortes.splice(idx, 1); pintar(); onChange(); });
+        head.appendChild(tt); head.appendChild(del); card.appendChild(head);
+        const esCirc = (c.forma || "rect") === "circ";
+        const fsel = document.createElement("label"); fsel.className = "field full"; fsel.innerHTML = "<span>Forma</span>";
+        const fopt = document.createElement("select");
+        [["rect", "Rectángulo"], ["circ", "Círculo"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; fopt.appendChild(o); });
+        fopt.value = c.forma || "rect"; fopt.addEventListener("change", (e) => { c.forma = e.target.value; if (c.forma === "circ") c.ancho = c.largo; centrarCorte(ctx.baseLargo(), ctx.baseAncho(), c); pintar(); onChange(); });
+        fsel.appendChild(fopt); card.appendChild(fsel);
+        const grid = document.createElement("div"); grid.className = "pieza-grid";
+        if (esCirc) {
+          const l = document.createElement("label"); l.className = "field full"; l.innerHTML = "<span>Diámetro (m)</span>";
+          const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = c.largo || "";
+          const setD = (val) => { c.largo = val; c.ancho = val; centrarCorte(ctx.baseLargo(), ctx.baseAncho(), c); setPad(); refresh(); onChange(); };
+          inp.addEventListener("input", (e) => setD(e.target.value));
+          inp.addEventListener("blur", (e) => { const rr = window.CalcCIBSA.evalExpr(e.target.value); if (rr != null && !isNaN(rr)) { const v = window.CalcCIBSA.fmtNum(rr); e.target.value = v; setD(v); } });
+          l.appendChild(inp); grid.appendChild(l);
+        } else {
+          [["largo", "Largo corte (m)"], ["ancho", "Ancho corte (m)"]].forEach(([k, lab]) => {
+            const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
+            const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = c[k] || "";
+            inp.addEventListener("input", (e) => { c[k] = e.target.value; centrarCorte(ctx.baseLargo(), ctx.baseAncho(), c); setPad(); refresh(); onChange(); });
+            inp.addEventListener("blur", (e) => { const rr = window.CalcCIBSA.evalExpr(e.target.value); if (rr != null && !isNaN(rr)) { c[k] = window.CalcCIBSA.fmtNum(rr); e.target.value = c[k]; centrarCorte(ctx.baseLargo(), ctx.baseAncho(), c); setPad(); refresh(); onChange(); } });
+            l.appendChild(inp); grid.appendChild(l);
+          });
+        }
+        card.appendChild(grid);
+        if (esCirc) { const nc = document.createElement("p"); nc.className = "muted small"; nc.textContent = "El círculo se centra en el paño base; el padding lo desplaza (N/S/E/O). Puede exceder el paño: solo se dibuja lo que queda dentro."; card.appendChild(nc); }
+        const pcap = document.createElement("p"); pcap.className = "muted small"; pcap.textContent = esCirc ? "Posición del centro — padding por punto cardinal (m)." : "Posición — margen desde cada arista (m). Si un margen es 0, ese lado coincide con el borde y el corte queda abierto ahí."; card.appendChild(pcap);
+        const pgrid = document.createElement("div"); pgrid.className = "pieza-grid";
+        const libreEje = (k) => { const ev = window.CalcCIBSA.evalExpr; if (k === "padSup" || k === "padInf") { const b = ctx.baseLargo(), w = ev(c.largo); return (b != null && w != null) ? b - w : null; } const b = ctx.baseAncho(), w = ev(c.ancho); return (b != null && w != null) ? b - w : null; };
+        const autoOp = (k) => { const libre = libreEje(k); if (libre == null) return; const este = window.CalcCIBSA.evalExpr(c[k]); if (este == null || isNaN(este)) return; const op = opuesto[k]; c[op] = String(Math.max(0, Math.round((libre - este) * 1000) / 1000)); if (padInputs[op]) padInputs[op].value = c[op]; };
+        [["padSup", "Superior"], ["padInf", "Inferior"], ["padIzq", "Izquierda"], ["padDer", "Derecha"]].forEach(([k, lab]) => {
+          const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
+          const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = c[k] || "0"; padInputs[k] = inp;
+          inp.addEventListener("input", (e) => { c[k] = e.target.value; autoOp(k); refresh(); onChange(); });
+          l.appendChild(inp); pgrid.appendChild(l);
+        });
+        card.appendChild(pgrid);
+        const acc = document.createElement("div"); acc.className = "pz-actions"; acc.style.marginTop = "6px";
+        const bC = document.createElement("button"); bC.type = "button"; bC.className = "pz-btn"; bC.textContent = "Centrar";
+        bC.addEventListener("click", () => { centrarCorte(ctx.baseLargo(), ctx.baseAncho(), c); setPad(); refresh(); onChange(); });
+        const bL = document.createElement("button"); bL.type = "button"; bL.className = "pz-btn"; bL.textContent = "Limpiar márgenes";
+        bL.addEventListener("click", () => { ["padSup", "padInf", "padIzq", "padDer"].forEach((k) => { c[k] = "0"; }); setPad(); refresh(); onChange(); });
+        acc.appendChild(bC); acc.appendChild(bL); card.appendChild(acc);
+        if (!esCirc) {
+        // Aristas a dibujar — apaga lados para lograr un corte recto (deja una sola = una línea).
+        const lcap = document.createElement("p"); lcap.className = "muted small"; lcap.textContent = "Aristas a dibujar (apaga lados para un corte recto; deja una sola = una línea):"; card.appendChild(lcap);
+        const lrow = document.createElement("div"); lrow.className = "radios";
+        [["sup", "Superior"], ["inf", "Inferior"], ["izq", "Izquierda"], ["der", "Derecha"]].forEach(([k, lab]) => {
+          const l = document.createElement("label"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = (c.lados ? c.lados[k] !== false : true);
+          cb.addEventListener("change", (e) => { if (!c.lados) c.lados = { sup: true, inf: true, izq: true, der: true }; c.lados[k] = e.target.checked; refresh(); onChange(); });
+          l.appendChild(cb); l.appendChild(document.createTextNode(" " + lab)); lrow.appendChild(l);
+        });
+        card.appendChild(lrow);
+        // Ángulo y pivote del corte.
+        const acap = document.createElement("p"); acap.className = "muted small"; acap.textContent = "Ángulo y pivote (arrastra las barras; pivote 0–1: 0,0 = esquina sup-izq · 0.5,0.5 = centro):"; card.appendChild(acap);
+        const agrid = document.createElement("div");
+        const sliderField = (key, lab, min, max, step, def, unit) => {
+          const wrap = document.createElement("div"); wrap.style.margin = "6px 0";
+          const cur = (c[key] != null && c[key] !== "") ? c[key] : def;
+          const sp = document.createElement("div"); sp.className = "muted small"; sp.textContent = lab + ": " + cur + (unit || "");
+          const row = document.createElement("div"); row.className = "slider-row";
+          const rng = document.createElement("input"); rng.type = "range"; rng.min = String(min); rng.max = String(max); rng.step = String(step); rng.value = String(cur);
+          const numi = document.createElement("input"); numi.type = "text"; numi.inputMode = "decimal"; numi.value = String(cur); numi.className = "slider-num";
+          const apply = (v) => { c[key] = String(v); sp.textContent = lab + ": " + v + (unit || ""); refresh(); onChange(); };
+          rng.addEventListener("input", (e) => { numi.value = e.target.value; apply(e.target.value); });
+          numi.addEventListener("input", (e) => { const v = e.target.value; if (v !== "" && !isNaN(parseFloat(v))) rng.value = v; apply(v); });
+          row.appendChild(rng); row.appendChild(numi); wrap.appendChild(sp); wrap.appendChild(row);
+          return wrap;
+        };
+        agrid.appendChild(sliderField("angulo", "Ángulo", -180, 180, 1, "0", "°"));
+        agrid.appendChild(sliderField("pivX", "Pivote X", 0, 1, 0.01, "0.5", ""));
+        agrid.appendChild(sliderField("pivY", "Pivote Y", 0, 1, 0.01, "0.5", ""));
+        card.appendChild(agrid);
+        const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos por arista del corte (solo van al dibujo de taller):"; card.appendChild(ocap);
+        const ogrid = document.createElement("div"); ogrid.className = "pieza-grid";
+        [["sup", "Superior"], ["inf", "Inferior"], ["izq", "Izquierda"], ["der", "Derecha"]].forEach(([k, lab]) => {
+          const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
+          const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "numeric"; inp.value = (c.oj && c.oj[k]) || "0";
+          inp.addEventListener("input", (e) => { c.oj[k] = e.target.value; refresh(); onChange(); });
+          l.appendChild(inp); ogrid.appendChild(l);
+        });
+        card.appendChild(ogrid);
+        } else {
+          const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos del corte (repartidos alrededor del círculo; solo al dibujo de taller):"; card.appendChild(ocap);
+          const ol = document.createElement("label"); ol.className = "field"; ol.innerHTML = "<span>Ojetillos (alrededor)</span>";
+          const oi = document.createElement("input"); oi.type = "text"; oi.inputMode = "numeric"; oi.value = c.ojCirc || "0";
+          oi.addEventListener("input", (e) => { c.ojCirc = e.target.value; refresh(); onChange(); });
+          ol.appendChild(oi); card.appendChild(ol);
+        }
+        const mcap = document.createElement("p"); mcap.className = "muted small"; mcap.textContent = "Materiales del corte (solo al dibujo de taller, no a la cotización):"; card.appendChild(mcap);
+        const mdiv = document.createElement("div"); card.appendChild(mdiv);
+        renderComplementos(mdiv, c.complementos, onChange);
+        const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
+        function refresh() {
+          const ev = window.CalcCIBSA.evalExpr, w = ev(c.ancho), h = ev(c.largo);
+          if (w == null || h == null || w <= 0 || h <= 0) { dims.textContent = esCirc ? "Completa el diámetro del corte." : "Completa largo y ancho del corte."; return; }
+          const r = rectCorte(c);
+          const baseA = ctx.baseAncho(), baseL = ctx.baseLargo();
+          const sk = window.SketchCIBSA.construirSketch({ ancho: baseA || 0, largo: baseL || 0, ojTotal: 0, cortes: [r] });
+          const cc = sk.cortes[0];
+          if (esCirc) {
+            const segN = cc ? cc.segments.length : 0;
+            let html = "Corte circular <b>Ø" + window.CalcCIBSA.fmtNum(w) + " m</b> · costo $0";
+            if (baseA != null && baseL != null && (w > baseA + 1e-9 || w > baseL + 1e-9)) html += " · <span style=\"color:#8e44ad\">excede el paño: se recorta a lo que queda dentro</span>";
+            if (segN === 0) html += " · <span style=\"color:#d8443a\">queda completamente fuera del paño</span>";
+            dims.innerHTML = html; return;
+          }
+          const segN = cc ? cc.segments.length : 0;
+          let html = "Corte <b>" + window.CalcCIBSA.fmtNum(h) + "×" + window.CalcCIBSA.fmtNum(w) + " m</b> · costo $0 · <span style=\"color:#8e44ad\">" + segN + " línea(s) de corte" + (segN === 1 ? " (corte recto)" : "") + "</span>";
+          if (cc && cc.rotated) html += " · ángulo " + window.CalcCIBSA.fmtNum(cc.angulo) + "°";
+          if (segN === 0) html += " · <span style=\"color:#d8443a\">sin líneas: activa al menos una arista con margen &gt; 0</span>";
+          dims.innerHTML = html;
+        }
+        refresh();
+        rows.appendChild(card);
+      });
+    }
+    pintar();
+    const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline"; add.textContent = "+ Corte / calado";
+    add.addEventListener("click", () => { const c = nuevaCorte(); centrarCorte(ctx.baseLargo(), ctx.baseAncho(), c); ctx.cortes.push(c); pintar(); onChange(); });
+    container.appendChild(add);
+  }
+
   // Líneas de complementos del uniforme como filas para el PDF (cantidad total = por unidad × N).
   function complementosUnifPDF(N) {
     return state.complementosUnif.map((c) => {
@@ -681,6 +918,11 @@
   // ---------- Recompute (dispatcher) + comparación de orientaciones (uniforme, v4) ----------
   ["f_largo", "f_ancho", "f_cantidad", "f_descuento", "f_ojvalor", "f_union", "f_altura"].forEach((id) =>
     $(id).addEventListener("input", recompute));
+  ["f_largo", "f_ancho"].forEach((id) => $(id).addEventListener("input", () => {
+    const bl = num("f_largo", null), ba = num("f_ancho", null);
+    (state.cortesUnif || []).forEach((c) => centrarCorte(bl, ba, c));
+    if (state.cortesUnif && state.cortesUnif.length) renderCortesUnif();
+  }));
   $("f_tela").addEventListener("change", recompute);
   ["f_largo", "f_ancho", "f_cantidad", "f_ojvalor", "f_descuento", "f_dias", "f_union", "f_altura"].forEach((id) =>
     $(id).addEventListener("blur", () => {
@@ -705,7 +947,7 @@
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA) {
-      sk.innerHTML = window.SketchCIBSA.sketchSVG({ ancho: ancho || 0, largo: largo || 0, ojTotal: nOjetillos(), ventanas: [] });
+      sk.innerHTML = window.SketchCIBSA.sketchSVG({ ancho: ancho || 0, largo: largo || 0, ojTotal: nOjetillos(), ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes) });
     }
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) {
       cont.innerHTML = '<p class="muted small">Ingresa largo, ancho y tela para ver los montos.</p>';
@@ -848,6 +1090,7 @@
       ojetillos: base ? base.ojetillos : "0",
       telaNombre: base ? base.telaNombre : ((state.telas[0] && state.telas[0].nombre) || ""),
       orient: base ? base.orient : "largo",
+      color: base ? base.color : "",
       usaAlto: base ? base.usaAlto : false, altura: base ? base.altura : "",
       ojMode: base ? base.ojMode : "total",
       ojAristasN: base ? base.ojAristasN : 4,
@@ -858,6 +1101,7 @@
       bordes: base ? copBordes(base.bordes) : defBordes(),
       complementos: base ? (base.complementos || []).map((c) => Object.assign({}, c, { cantAristas: (c.cantAristas || []).slice() })) : [],
       inscritos: base ? (base.inscritos || []).map((ins) => nuevaInscrito(ins)) : [],
+      cortes: base ? (base.cortes || []).map((c) => nuevaCorte(c)) : [],
     };
   }
   function addPieza(base) { state.piezas.push(nuevaPieza(base)); renderPiezas(); recomputeCompuesto(); }
@@ -932,10 +1176,102 @@
     const a = ev(pz.ancho), l = ev(pz.largo);
     const ventanas = (pz.inscritos || []).map((ins) => {
       const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
-      return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h } : null;
+      return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ" } : null;
     }).filter(Boolean);
-    return { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ojTotal: ojTotalPieza(pz), ventanas: ventanas };
+    return { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ojTotal: ojTotalPieza(pz), ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes) };
   }
+  // Bolsillos por arista (para el dibujo): solo en modo "por arista" y tipo bolsillo.
+  function bolsillosDe(bordeModo, bordes) {
+    if (bordeModo !== "arista" || !bordes) return [];
+    const out = [];
+    ["sup", "inf", "izq", "der"].forEach((k) => {
+      const b = bordes[k];
+      if (b && b.tipo === "bolsillo") { const d = window.CalcCIBSA.evalExpr(b.diam); out.push({ arista: k, diam: (d != null && !isNaN(d)) ? d : 0 }); }
+    });
+    return out;
+  }
+
+  // --- Datos para el dibujo descargable (observaciones y lista de materiales) ---
+  function obsComplementos(list) {
+    return (list || []).map((c) => {
+      const m = compMat(c); if (!m) return null;
+      const extra = [m.modelo, m.color].filter(Boolean).join(" ");
+      return "Accesorio: " + m.item + (extra ? " " + extra : "") + " (" + compCant(c) + " " + (m.unidad || "u") + ")";
+    }).filter(Boolean);
+  }
+  function obsVentanas(pz) {
+    const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
+    return (pz.inscritos || []).map((ins) => {
+      const w = ev(ins.ancho), h = ev(ins.largo); if (!(w > 0 && h > 0)) return null;
+      const pi = ev(ins.padIzq), ps = ev(ins.padSup);
+      const dim = ins.forma === "circ" ? ("circular Ø" + f(w)) : (f(w) + "x" + f(h));
+      return "Ventana inscrita " + dim + " m (padding izq " + f(pi || 0) + " / sup " + f(ps || 0) + " m)";
+    }).filter(Boolean);
+  }
+  function materialesResumen(ojetillos, complementos, inscritos) {
+    const out = [{ nombre: "Ojetillos", cant: String(ojetillos || 0) }];
+    (complementos || []).forEach((c) => {
+      const m = compMat(c); if (!m) return;
+      const extra = [m.modelo, m.color].filter(Boolean).join(" ");
+      out.push({ nombre: m.item + (extra ? " " + extra : ""), cant: compCant(c) + " " + (m.unidad || "u") });
+    });
+    const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
+    (inscritos || []).forEach((ins) => {
+      const w = ev(ins.ancho), h = ev(ins.largo);
+      if (w > 0 && h > 0) out.push({ nombre: "Ventana inscrita " + (ins.forma === "circ" ? "circular Ø" + f(w) : f(w) + "x" + f(h)) + " m", cant: "1" });
+    });
+    return out;
+  }
+  async function descargarSketch(datos) {
+    try {
+      const { bytes, filename } = await window.PDFCotizacion.generarSketchPDF(datos);
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      descargar(url, filename);
+    } catch (e) { alert("Error al generar el dibujo:\n" + (e.message || e)); }
+  }
+  function nombreBaseArchivo() {
+    const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
+    if (!nombre || !apellido) return "Dibujo";
+    return window.PDFCotizacion.nombreArchivo({ cliente: { nombre, apellido }, version: $("f_version").value.trim() || "01", fecha: new Date() });
+  }
+  async function descargarSketchUnif() {
+    const largo = num("f_largo", null), ancho = num("f_ancho", null);
+    if (largo == null || ancho == null || largo <= 0 || ancho <= 0) return alert("Ingresa largo y ancho para descargar el dibujo.");
+    const tela = telaActual();
+    const N = Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1);
+    await descargarSketch({
+      filenameBase: nombreBaseArchivo(),
+      titulo: $("f_titulo").value.trim() || ("Carpa " + (+largo) + "m x " + (+ancho) + "m"),
+      tela: tela ? tela.nombre : "N/A",
+      color: $("f_color").value.trim(),
+      largo: largo, ancho: ancho,
+      ojetillos: nOjetillos(), unidades: N,
+      observaciones: terminacionesTexto(state.orientUnif).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
+      materiales: materialesResumen(nOjetillos(), state.complementosUnif, []).concat(materialesCortes(state.cortesUnif)),
+      sketch: { ancho: ancho, largo: largo, ojTotal: nOjetillos(), ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes) },
+    });
+  }
+  async function descargarSketchPieza(pz) {
+    const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
+    const largo = ev(pz.largo), ancho = ev(pz.ancho);
+    if (!(largo > 0) || !(ancho > 0)) return alert("Esta pieza necesita largo y ancho para el dibujo.");
+    const tela = state.telas.find((t) => t.nombre === pz.telaNombre);
+    const N = Math.max(1, parseInt(ev(pz.cantidad) || 1, 10) || 1);
+    const etq = (pz.etiqueta || "").trim();
+    await descargarSketch({
+      filenameBase: nombreBaseArchivo(),
+      etiquetaArchivo: etq || null,
+      titulo: (etq ? etq + " — " : "Pieza ") + f(largo) + "m x " + f(ancho) + "m",
+      tela: tela ? tela.nombre : "N/A",
+      color: pz.color || "",
+      largo: largo, ancho: ancho,
+      ojetillos: ojTotalPieza(pz), unidades: N,
+      observaciones: terminacionesPieza(pz).concat(obsComplementos(pz.complementos)).concat(obsVentanas(pz)).concat(obsCortes(pz.cortes)),
+      materiales: materialesResumen(ojTotalPieza(pz), pz.complementos, pz.inscritos).concat(materialesCortes(pz.cortes)),
+      sketch: sketchPieza(pz),
+    });
+  }
+
   // Controles de ojetillos de una pieza (total / por arista).
   function renderPiezaOjetillos(container, pz) {
     container.innerHTML = "";
@@ -1012,6 +1348,7 @@
           <label class="field full"><span>Orientación de uniones</span><select class="pz-orient">
             <option value="largo">Uniones a lo largo</option>
             <option value="ancho">Uniones a lo ancho</option></select></label>
+          <label class="field full"><span>Color (opcional)</span><input class="pz-color" type="text" placeholder="N/A · solo para el plano de taller" /></label>
         </div>
         <label class="chk"><input class="pz-usaAlto" type="checkbox" /> <span>Volumétrico (agregar alto)</span></label>
         <label class="field pz-alto-field hidden"><span>Alto (m)</span><input class="pz-alto" type="text" inputmode="text" placeholder="se suma 2× alto al largo y al ancho" /></label>
@@ -1019,7 +1356,9 @@
         <div class="pz-borde"></div>
         <div class="pz-comp"></div>
         <div class="pz-ins"></div>
+        <div class="pz-cortes"></div>
         <div class="pz-sketch sketch"></div>
+        <div><button class="btn-outline pz-descargar" type="button">Descargar dibujo (PDF)</button></div>
         <div class="pieza-sub muted small"></div>`;
       list.appendChild(card);
       const q = (s) => card.querySelector(s);
@@ -1031,6 +1370,8 @@
       state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre + (t.proveedor ? "  —  " + t.proveedor : ""); tsel.appendChild(o); });
       if (pz.telaNombre) tsel.value = pz.telaNombre; else pz.telaNombre = tsel.value;
       q(".pz-orient").value = pz.orient || "largo";
+      q(".pz-color").value = pz.color || "";
+      q(".pz-color").addEventListener("input", (e) => { pz.color = e.target.value; });
       // Volumétrico (alto) por pieza
       q(".pz-usaAlto").checked = !!pz.usaAlto;
       q(".pz-alto").value = pz.altura || "";
@@ -1042,6 +1383,7 @@
       renderPiezaBordes(q(".pz-borde"), pz);
       renderComplementos(q(".pz-comp"), pz.complementos, recomputeCompuesto);
       renderInscritos(q(".pz-ins"), pz);
+      renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
 
       const bindNum = (sel, prop) => {
         q(sel).addEventListener("input", (e) => { pz[prop] = e.target.value; recomputeCompuesto(); });
@@ -1056,12 +1398,17 @@
       bindNum(".pz-cant", "cantidad");
       // Al cambiar las dimensiones del paño base, re-centra las ventanas inscritas.
       [".pz-largo", ".pz-ancho"].forEach((sel) => {
-        q(sel).addEventListener("input", () => { (pz.inscritos || []).forEach((ins) => centrarInscrito(pz, ins)); if (pz.inscritos && pz.inscritos.length) renderInscritos(q(".pz-ins"), pz); });
+        q(sel).addEventListener("input", () => {
+          (pz.inscritos || []).forEach((ins) => centrarInscrito(pz, ins)); if (pz.inscritos && pz.inscritos.length) renderInscritos(q(".pz-ins"), pz);
+          const bl = window.CalcCIBSA.evalExpr(pz.largo), ba = window.CalcCIBSA.evalExpr(pz.ancho);
+          (pz.cortes || []).forEach((c) => centrarCorte(bl, ba, c)); if (pz.cortes && pz.cortes.length) renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
+        });
       });
       q(".pz-tela").addEventListener("change", (e) => { pz.telaNombre = e.target.value; recomputeCompuesto(); });
       q(".pz-orient").addEventListener("change", (e) => { pz.orient = e.target.value; recomputeCompuesto(); });
       q(".dup").addEventListener("click", () => duplicarPieza(pz.id));
       q(".del").addEventListener("click", () => eliminarPieza(pz.id));
+      q(".pz-descargar").addEventListener("click", () => descargarSketchPieza(pz));
     });
   }
 
@@ -1196,12 +1543,13 @@
     state.prodMode = "uniforme"; state.piezas = []; state.compuesto = null;
     state.complementosUnif = [];
     const ru = document.querySelector('input[name="prodmode"][value="uniforme"]'); if (ru) ru.checked = true;
-    renderPiezas(); renderBordes(); renderComplementosUnif(); aplicarVis();
+    renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); aplicarVis();
     renderOjetillos(); recompute();
   });
 
   // ---------- Generar ----------
   $("btnGenerar").addEventListener("click", generar);
+  { const b = $("btnDescargarSketch"); if (b) b.addEventListener("click", descargarSketchUnif); }
 
   async function generar() {
     if (state.docMode === "preliminar") return generarPrelim();
@@ -1245,7 +1593,7 @@
       observaciones: $("f_observaciones").value.trim() || null,
       detalleExtra: terminacionesTexto(state.orientUnif),
       complementos: complementosUnifPDF(N),
-      sketch: { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [] },
+      sketch: { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes) },
     };
 
     abrirProgreso();
@@ -1421,6 +1769,20 @@
       };
     } else { comp.classList.add("hidden"); }
 
+    const wa = $("lnkWhatsapp");
+    if (wa) {
+      wa.onclick = async (e) => {
+        e.preventDefault();
+        const msg = "Hola, te comparto la cotización CIBSA: " + filename;
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try { await navigator.share({ files: [file], title: filename, text: msg }); } catch (err) {}
+        } else {
+          descargar(url, filename);
+          window.open("https://wa.me/?text=" + encodeURIComponent(msg + " (PDF descargado; adjúntalo aquí)"), "_blank");
+        }
+      };
+    }
+
     // Resultado persistente en el formulario
     $("resultHolder").innerHTML = `<span class="ok">✓ Generado:</span> <span class="muted small">${filename}</span> `;
     const a = document.createElement("a"); a.href = "#"; a.textContent = "Abrir / Descargar";
@@ -1445,6 +1807,7 @@
     aplicarTema(t);
     renderBordes();
     renderComplementosUnif();
+    renderCortesUnif();
     aplicarVis();
     const s = window.AuthCIBSA.sesionGuardada();
     if (s) { cargarTelas().catch(() => mostrarLogin()); } else { mostrarLogin(); }
