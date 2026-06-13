@@ -178,7 +178,10 @@
     const largo = parseFloat(opts.largo), ancho = parseFloat(opts.ancho);
     const rollo = parseFloat(opts.anchoRollo);
     const valorM2 = parseFloat(opts.valorM2);
-    const union = opts.union != null ? parseFloat(opts.union) : 0.045;
+    // Tope de seguridad: la unión (traslape) no puede ser ≥ al ancho del rollo (físicamente imposible).
+    const unionPedida = opts.union != null ? parseFloat(opts.union) : 0.045;
+    const unionInvalida = rollo > 0 && unionPedida >= rollo;
+    const union = unionInvalida ? Math.min(unionPedida, rollo * 0.9) : unionPedida;
     const N = Math.max(1, parseInt(opts.cantidad != null ? opts.cantidad : 1, 10) || 1);
     const d = opts.defaults || {};
     const a = (b) => allowanceArista(b, d);
@@ -206,7 +209,7 @@
     const barata = masEconomica === "ancho" ? oAncho : oLargo;
     return {
       largoFuente: r2(largoFuente), anchoNeto: r2(anchoNeto), N, nOjetillos: nOj,
-      valorOjetillo: valOj, union: union, oLargo, oAncho,
+      valorOjetillo: valOj, union: union, unionInvalida: unionInvalida, oLargo, oAncho,
       recomendacion: {
         masEconomica,
         ahorroOrientacion: r2(cara.subtotalLote - barata.subtotalLote),
