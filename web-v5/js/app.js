@@ -55,6 +55,7 @@
     show("wCondiciones", f);
     show("wObservaciones", f);
     show("wOrientFormal", uni);
+    show("wSketchUnif", uni);
     show("prelimOrientWrap", p);
     show("prelimPreview", p);
     show("modePreliminarHint", p);
@@ -702,6 +703,10 @@
     const avisos = $("avisosUnif"); if (avisos) avisos.innerHTML = "";
     const tela = telaActual();
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
+    const sk = $("sketchUnif");
+    if (sk && window.SketchCIBSA) {
+      sk.innerHTML = window.SketchCIBSA.sketchSVG({ ancho: ancho || 0, largo: largo || 0, ojTotal: nOjetillos(), ventanas: [] });
+    }
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) {
       cont.innerHTML = '<p class="muted small">Ingresa largo, ancho y tela para ver los montos.</p>';
       return;
@@ -921,6 +926,16 @@
     if (pz.ojMode === "arista") t += " (por arista: " + (pz.ojAristas || []).map(ojIntPz).join(", ") + ")";
     return t;
   }
+  // Spec del dibujo (sketch) de una pieza: dimensiones, ojetillos y ventanas inscritas.
+  function sketchPieza(pz) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const a = ev(pz.ancho), l = ev(pz.largo);
+    const ventanas = (pz.inscritos || []).map((ins) => {
+      const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
+      return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h } : null;
+    }).filter(Boolean);
+    return { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ojTotal: ojTotalPieza(pz), ventanas: ventanas };
+  }
   // Controles de ojetillos de una pieza (total / por arista).
   function renderPiezaOjetillos(container, pz) {
     container.innerHTML = "";
@@ -1004,6 +1019,7 @@
         <div class="pz-borde"></div>
         <div class="pz-comp"></div>
         <div class="pz-ins"></div>
+        <div class="pz-sketch sketch"></div>
         <div class="pieza-sub muted small"></div>`;
       list.appendChild(card);
       const q = (s) => card.querySelector(s);
@@ -1110,6 +1126,10 @@
     let subtotalGen = 0; const calcs = [];
     state.piezas.forEach((pz) => {
       const r = calcPieza(pz);
+      const sketchBox = list ? list.querySelector('[data-id="' + pz.id + '"] .pz-sketch') : null;
+      if (sketchBox && window.SketchCIBSA) {
+        sketchBox.innerHTML = window.SketchCIBSA.sketchSVG(sketchPieza(pz));
+      }
       const card = list ? list.querySelector('[data-id="' + pz.id + '"] .pieza-sub') : null;
       if (r) {
         const compUnit = compTotalUnit(pz.complementos);
@@ -1225,6 +1245,7 @@
       observaciones: $("f_observaciones").value.trim() || null,
       detalleExtra: terminacionesTexto(state.orientUnif),
       complementos: complementosUnifPDF(N),
+      sketch: { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [] },
     };
 
     abrirProgreso();
@@ -1291,6 +1312,7 @@
         terminaciones: terminacionesPieza(pz),
         complementosLineas: compLineasPDF(pz.complementos),
         inscritosLineas: inscritosLineasPDF(pz),
+        sketch: sketchPieza(pz),
         valorUnitario: r.o.valorUnitario + (r.compUnit || 0) + ((r.insTot || 0) / r.lote.N),
         valorTotal: r.piezaTotal != null ? r.piezaTotal : r.o.subtotalLote,
       })),

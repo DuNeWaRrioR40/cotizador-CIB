@@ -162,6 +162,14 @@ button:active { transform: scale(0.98); }
 .ins-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .ins-dims { margin: 6px 0; }
 
+/* Sketch del producto (vista a escala) */
+.sketch { margin: 8px 0 4px; display: flex; justify-content: center; }
+.sketch-svg { max-width: 360px; width: 100%; height: auto; }
+.sketch-svg .edge { fill: none; stroke: var(--text); stroke-width: 1.6; }
+.sketch-svg .oje { fill: var(--surface); stroke: var(--accent); stroke-width: 1.2; }
+.sketch-svg .win { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; }
+.sketch-svg .dim { fill: var(--muted); font-size: 9px; font-family: inherit; }
+
 /* Avisos (prorrata / paño marginal) */
 .aviso { border-radius: 10px; padding: 10px; margin: 8px 0; font-size: 13px; }
 .aviso.info { background: var(--sel); border: 1px solid var(--accent); }

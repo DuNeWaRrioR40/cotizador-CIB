@@ -61,6 +61,54 @@
     return lines;
   }
 
+  // Encabezado con logos (reutilizable). Devuelve la y debajo del bloque.
+  function dibujarEncabezado(page, cibsa, kam, W, M, yTop) {
+    const cW = 130, cH = cW * (cibsa.height / cibsa.width);
+    page.drawImage(cibsa, { x: M, y: yTop - cH + 14, width: cW, height: cH });
+    const kW = 64, kH = kW * (kam.height / kam.width);
+    page.drawImage(kam, { x: W - M - kW, y: yTop - kH + 6, width: kW, height: kH });
+    return yTop - 60;
+  }
+  function tituloCentrado(page, s, W, y, f, size, color) {
+    const w = f.widthOfTextAtSize(san(s), size);
+    page.drawText(san(s), { x: (W - w) / 2, y: y, size: size, font: f, color: color });
+  }
+
+  // Dibuja el sketch del producto (contorno, ojetillos, ventanas) a escala dentro de
+  // una caja { x, top, w, h } (top = borde superior en coordenadas PDF).
+  function dibujarSketchPDF(page, spec, box, font) {
+    if (!spec || !global.SketchCIBSA) return;
+    const sk = global.SketchCIBSA.construirSketch(spec);
+    if (!(sk.ancho > 0) || !(sk.largo > 0)) return;
+    const pad = 24;
+    const availW = box.w - 2 * pad, availH = box.h - 2 * pad;
+    if (availW <= 0 || availH <= 0) return;
+    const scale = Math.min(availW / sk.ancho, availH / sk.largo);
+    const wpx = sk.ancho * scale, hpx = sk.largo * scale;
+    const x0 = box.x + (box.w - wpx) / 2;
+    const topRect = box.top - (box.h - hpx) / 2;
+    const px = (sx) => x0 + sx * scale;
+    const py = (sy) => topRect - sy * scale;
+    const GRAY = PDFLib.rgb(0.12, 0.12, 0.12);
+    const ACC = BLUE();
+    const DIM = PDFLib.rgb(0.42, 0.42, 0.42);
+    sk.ventanas.forEach((v) => {
+      page.drawRectangle({
+        x: px(v.x), y: py(v.y + v.h), width: v.w * scale, height: v.h * scale,
+        borderColor: ACC, borderWidth: 0.9, borderDashArray: [3, 2],
+      });
+    });
+    page.drawRectangle({ x: x0, y: topRect - hpx, width: wpx, height: hpx, borderColor: GRAY, borderWidth: 1.3 });
+    const r = Math.max(1.6, Math.min(3.4, scale * 0.03));
+    sk.ojetillos.forEach((p) => {
+      page.drawCircle({ x: px(p.x), y: py(p.y), size: r, borderColor: ACC, borderWidth: 1, color: WHITE() });
+    });
+    const fmt = (n) => (Math.round(n * 1000) / 1000).toString().replace(".", ",") + " m";
+    const la = fmt(sk.ancho), ll = fmt(sk.largo);
+    page.drawText(la, { x: x0 + wpx / 2 - font.widthOfTextAtSize(la, 9) / 2, y: topRect + 6, size: 9, font: font, color: DIM });
+    page.drawText(ll, { x: x0 - 8, y: topRect - hpx / 2 - font.widthOfTextAtSize(ll, 9) / 2, size: 9, font: font, color: DIM, rotate: PDFLib.degrees(90) });
+  }
+
   async function generarCotizacion(datos) {
     const { PDFDocument, StandardFonts } = PDFLib;
     const doc = await PDFDocument.create();
@@ -214,6 +262,17 @@
       String(datos.observaciones).split(/\r?\n/).forEach((par) => {
         wrap(par || " ", font, 10.5, W - 2 * M).forEach((ln) => { txt(page, ln, M, oy, { size: 10.5, color: BLACK() }); oy -= 13; });
       });
+    }
+
+    // --- Página de vista del producto (sketch a escala) ---
+    if (datos.sketch && datos.sketch.ancho > 0 && datos.sketch.largo > 0) {
+      const ps = doc.addPage([W, H]);
+      let ysk = dibujarEncabezado(ps, cibsa, kam, W, M, H - 40);
+      tituloCentrado(ps, "VISTA DEL PRODUCTO", W, ysk, bold, 15, BLUE()); ysk -= 18;
+      tituloCentrado(ps, "(dibujo a escala · referencial)", W, ysk, font, 11, BLUE()); ysk -= 22;
+      const tit = datos.titulo || `Carpa ${(+datos.largo)}m x ${(+datos.ancho)}m`;
+      txt(ps, `"${tit}"`, M, ysk, { f: bold, size: 12 }); ysk -= 22;
+      dibujarSketchPDF(ps, datos.sketch, { x: M, top: ysk, w: W - 2 * M, h: ysk - 70 }, font);
     }
 
     // --- Página 2 ---
@@ -534,6 +593,28 @@
       if (oy - (obsLines.length * 13 + 16) < 60) { nuevaPagina(false); oy = y - 12; }
       txt("OBSERVACIONES:", M, oy, { f: bold }); oy -= 14;
       obsLines.forEach((ln) => { txt(ln, M, oy, { size: 10.5, color: BLACK() }); oy -= 13; });
+    }
+
+    // --- Páginas de vista de las piezas (sketch a escala, 2 por hoja) ---
+    const pzsSk = (datos.piezas || []).filter((p) => p.sketch && p.sketch.ancho > 0 && p.sketch.largo > 0);
+    if (pzsSk.length) {
+      const perPage = 2;
+      let ps = null, topZona = 0, bloqueH = 0;
+      pzsSk.forEach((p, i) => {
+        const slot = i % perPage;
+        if (slot === 0) {
+          ps = doc.addPage([W, H]);
+          let yh = dibujarEncabezado(ps, cibsa, kam, W, M, H - 40);
+          tituloCentrado(ps, "VISTA DE LAS PIEZAS", W, yh, bold, 15, BLUE()); yh -= 18;
+          tituloCentrado(ps, "(dibujos a escala · referencial)", W, yh, font, 11, BLUE()); yh -= 18;
+          topZona = yh;
+          bloqueH = (topZona - 55) / perPage;
+        }
+        const bTop = topZona - slot * bloqueH;
+        const etq = (p.etiqueta && p.etiqueta.trim()) ? p.etiqueta.trim() : ("Pieza " + (i + 1));
+        ps.drawText(san(etq + "  —  " + p.largo + " x " + p.ancho + " m"), { x: M, y: bTop - 4, size: 11, font: bold, color: BLUE() });
+        dibujarSketchPDF(ps, p.sketch, { x: M, top: bTop - 18, w: W - 2 * M, h: bloqueH - 30 }, font);
+      });
     }
 
     // --- Página final: condiciones + empresa + vendedor ---
