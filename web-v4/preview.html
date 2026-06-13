@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <title>Cotizador CIBSA — DEMO (v2)</title>
+  <meta name="theme-color" content="#185FA5" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* Aviso de demo */
+    #demoBanner { background: #FFEF4D; color: #1a1a1a; font-size: 13px; font-weight: 700;
+      text-align: center; padding: 8px 12px; border-radius: 8px; margin: 8px 0 14px; }
+    #demoBanner span { font-weight: 400; }
+  </style>
+</head>
+<body data-theme="A">
+  <!-- Encabezado -->
+  <header id="appHeader" class="hidden">
+    <div class="brand"><span class="logo-c">C</span><span class="brand-title">Cotizador CIBSA</span></div>
+    <div class="header-right">
+      <select id="themeSelect" aria-label="Tema">
+        <option value="A">Tema A · Claro</option>
+        <option value="B">Tema B · Oscuro</option>
+        <option value="C">Tema C · Tarjetas</option>
+      </select>
+      <span id="userEmail" class="user-email"></span>
+      <button id="btnLogout" class="btn-ghost" type="button">Salir</button>
+    </div>
+  </header>
+
+  <!-- Login (no se usa en demo) -->
+  <section id="loginView" class="view login hidden">
+    <div class="login-inner">
+      <span class="logo-c logo-big">C</span>
+      <h1>Cotizador CIBSA</h1>
+      <p class="muted">Carpas y lonas</p>
+      <button id="btnLogin" class="btn-accent btn-lg" type="button">Entrar (demo)</button>
+      <p id="loginStatus" class="status"></p>
+    </div>
+    <div class="theme-floating">
+      <select id="themeSelectLogin" aria-label="Tema">
+        <option value="A">Tema A · Claro</option>
+        <option value="B">Tema B · Oscuro</option>
+        <option value="C">Tema C · Tarjetas</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- Formulario -->
+  <main id="formView" class="view hidden">
+    <div id="demoBanner">MODO DEMO · v2 — telas de ejemplo (precios ficticios) <span>· úsalo solo para revisar el flujo y el PDF</span></div>
+
+    <!-- Selector de tipo de documento -->
+    <div id="modeSwitch" class="mode-switch">
+      <label class="mode-opt"><input type="radio" name="docmode" value="formal" checked /> <span><b>Cotización Formal</b><br /><small class="muted">Documento completo con datos del cliente, descuentos e IVA.</small></span></label>
+      <label class="mode-opt"><input type="radio" name="docmode" value="preliminar" /> <span><b>Valor preliminar (estimado)</b><br /><small class="muted">Aproximación rápida del valor en una o más telas recomendadas.</small></span></label>
+    </div>
+    <p id="modePreliminarHint" class="muted small hidden">Modo preliminar: valores netos por <b>1 unidad</b>, sin datos del cliente, sin descuentos y sin IVA.</p>
+
+    <label class="field" id="vendedorField"><span>Vendedor</span><select id="f_vendedor"></select></label>
+
+    <!-- Datos del cliente (formal) -->
+    <div id="wCliente">
+      <h2 class="section">Datos del cliente</h2>
+      <label class="field"><span>Nombre</span><input id="f_nombre" type="text" autocomplete="off" /></label>
+      <label class="field"><span>Apellido</span><input id="f_apellido" type="text" autocomplete="off" /></label>
+      <label class="field"><span>E-mail</span><input id="f_email" type="email" autocomplete="off" /></label>
+    </div>
+
+    <h2 class="section">Producto</h2>
+
+    <!-- Tipo de producto (solo formal) -->
+    <div id="wProdToggle" class="mode-switch">
+      <label class="mode-opt"><input type="radio" name="prodmode" value="uniforme" checked /> <span><b>Producto Uniforme</b><br /><small class="muted">Una sola pieza (carpa/lona).</small></span></label>
+      <label class="mode-opt"><input type="radio" name="prodmode" value="compuesto" /> <span><b>Producto Compuesto</b><br /><small class="muted">Varias piezas distintas en un mismo documento.</small></span></label>
+    </div>
+
+    <!-- Dimensiones (uniforme + preliminar) -->
+    <div id="wDimensiones">
+      <label class="field"><span>Largo (m)</span><input id="f_largo" type="text" inputmode="text" autocomplete="off" /></label>
+      <label class="field"><span>Ancho (m)</span><input id="f_ancho" type="text" inputmode="text" autocomplete="off" /></label>
+      <p class="muted small">Puedes escribir operaciones, por ejemplo <b>240/100</b> o <b>2,4*2</b>; al salir del campo se calcula el resultado.</p>
+    </div>
+
+    <!-- Cantidad (uniforme) -->
+    <div id="wCantidad">
+      <label class="field"><span>Cantidad (unidades)</span><input id="f_cantidad" type="text" inputmode="numeric" autocomplete="off" value="1" /></label>
+    </div>
+
+    <!-- Tela única (uniforme) -->
+    <div id="wTelaUnica">
+      <label class="field"><span>Tela</span><select id="f_tela"></select></label>
+      <p id="telaInfo" class="muted small"></p>
+    </div>
+
+    <!-- Tela múltiple (preliminar) -->
+    <div id="telaMultiWrap" class="hidden">
+      <h2 class="section">Telas recomendadas</h2>
+      <p class="muted small">Marca una o más telas. El documento mostrará un valor preliminar por cada una.</p>
+      <div id="telaMulti" class="tela-multi"></div>
+      <p id="telaMultiErr" class="oj-err hidden">Selecciona al menos una tela.</p>
+    </div>
+
+    <!-- Piezas (compuesto) -->
+    <div id="wPiezas" class="hidden">
+      <h2 class="section">Piezas del producto</h2>
+      <p class="muted small">Agrega cada pieza con su etiqueta, formato, tela, cantidad, ojetillos y orientación. Cada pieza tendrá su propia fila en la cotización.</p>
+      <div id="piezasList"></div>
+      <button id="btnAgregarPieza" class="btn-outline" type="button">+ Agregar pieza</button>
+      <p id="piezasErr" class="oj-err hidden"></p>
+      <div id="piezasResumen" class="cmp"></div>
+    </div>
+
+    <!-- Título del producto (formal: uniforme y compuesto) -->
+    <div id="wTitulo">
+      <label class="field"><span>Título del producto</span><input id="f_titulo" type="text" placeholder="Automático según el producto" /></label>
+    </div>
+
+    <!-- Ojetillos: conteo (uniforme + preliminar) -->
+    <div id="wOjetillos">
+      <h2 class="section">Ojetillos por carpa (1ú)</h2>
+      <div class="radios">
+        <label><input type="radio" name="ojmode" value="total" checked /> Total ojetillos</label>
+        <label><input type="radio" name="ojmode" value="arista" /> Por arista</label>
+      </div>
+      <div id="ojDyn"></div>
+    </div>
+
+    <!-- Valor ojetillo (uniforme + preliminar + compuesto) -->
+    <div id="wValorOj">
+      <label class="field"><span>Valor ojetillo ($ neto)</span><input id="f_ojvalor" type="text" inputmode="text" autocomplete="off" value="450" /></label>
+    </div>
+
+    <!-- Bordes y uniones (uniforme) -->
+    <div id="wBordes">
+      <h2 class="section">Bordes y uniones</h2>
+      <label class="field"><span>Unión entre paños (m)</span><input id="f_union" type="text" inputmode="text" autocomplete="off" value="0.045" /></label>
+      <div class="radios">
+        <label><input type="radio" name="bordemodo" value="uniforme" checked /> Mismo borde en todo el perímetro</label>
+        <label><input type="radio" name="bordemodo" value="arista" /> Personalizar por arista</label>
+      </div>
+      <div id="bordeDyn"></div>
+    </div>
+
+    <!-- Condiciones (formal) -->
+    <div id="wCondiciones">
+      <h2 class="section">Condiciones</h2>
+      <label class="field"><span>Días de entrega (hábiles)</span><input id="f_dias" type="text" inputmode="numeric" autocomplete="off" value="3" /></label>
+      <label class="field"><span>Descuento (%)</span><input id="f_descuento" type="text" inputmode="text" autocomplete="off" value="0" /></label>
+      <label class="field"><span>Versión</span><input id="f_version" type="text" value="01" /></label>
+    </div>
+
+    <!-- Observaciones (formal: uniforme y compuesto) -->
+    <div id="wObservaciones">
+      <label class="field"><span>Observaciones</span><textarea id="f_observaciones" rows="3" placeholder="Anotaciones importantes para el cliente. Ej: Ancho al borde derecho baja de 2,8 m a 1,5 m."></textarea></label>
+    </div>
+
+    <!-- Orientación de uniones (uniforme) -->
+    <div id="wOrientFormal">
+      <h2 class="section">Orientación de uniones</h2>
+      <p class="muted small">Elige la orientación de los paños. La app marca la más económica.</p>
+      <div id="cmpCards" class="cmp"></div>
+      <div id="avisosUnif"></div>
+    </div>
+
+    <!-- Orientación de uniones (preliminar) -->
+    <div id="prelimOrientWrap" class="hidden">
+      <h2 class="section">Orientación de uniones</h2>
+      <p class="muted small">Elige la orientación con la que se generará el documento. Por defecto, paralelas al lado más largo.</p>
+      <div id="prelimOrient" class="cmp"></div>
+    </div>
+
+    <!-- Vista previa de valores preliminares -->
+    <div id="prelimPreview" class="hidden">
+      <h2 class="section">Valores preliminares (netos · 1 unidad)</h2>
+      <div id="prelimCards" class="cmp"></div>
+    </div>
+
+    <div class="actions">
+      <button id="btnGenerar" class="btn-gen btn-lg" type="button">Generar cotización (PDF)</button>
+      <button id="btnLimpiar" class="btn-outline" type="button">Limpiar</button>
+    </div>
+    <div id="resultHolder" class="result"></div>
+    <p id="formStatus" class="status"></p>
+  </main>
+
+  <!-- Modal de progreso -->
+  <div id="progressModal" class="modal hidden">
+    <div class="modal-box">
+      <p id="progressMsg" class="section">Generando cotización…</p>
+      <div class="bar"><div id="progressFill" class="bar-fill"></div></div>
+      <p id="progressPct" class="pct">0%</p>
+      <div id="progressDone" class="done hidden">
+        <div class="check">✓</div>
+        <p class="done-text">Listo</p>
+        <p id="doneFile" class="muted small"></p>
+        <div class="links">
+          <a id="lnkAbrir" href="#">Abrir / Descargar</a>
+          <a id="lnkCompartir" href="#" class="hidden">Compartir</a>
+        </div>
+        <p id="autoCierreMsg" class="muted small">Esta ventana se cerrará sola en <span id="autoCierreSeg">6</span> s.</p>
+        <div class="modal-actions">
+          <button id="btnCerrarModal" class="btn-accent" type="button">Cerrar ventana</button>
+          <button id="btnNoCerrar" class="btn-outline" type="button">No cerrar ventana</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- pdf-lib desde CDN (igual que la app real) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/logos.js"></script>
+  <script src="js/calc.js"></script>
+
+  <!-- Stubs de DEMO: reemplazan auth.js y sheets.js (sin Google) -->
+  <script>
+    (function (g) {
+      // Telas de ejemplo (precios ficticios solo para la demo)
+      var TELAS_DEMO = [
+        { nombre: "PE Tarpaulin 200gr Verde/Gris", valorM2: 3500, anchoRollo: 2.05,
+          ficha: ["Gramaje 200 g/m²", "Polietileno laminado de alta densidad", "Tratamiento UV", "Color verde/gris", "Resistente a la intemperie"] },
+        { nombre: "PE Tarpaulin 300gr Azul/Blanco", valorM2: 5200, anchoRollo: 3.00,
+          ficha: ["Gramaje 300 g/m²", "Alta resistencia al desgarro", "Tratamiento UV reforzado", "Color azul/blanco", "Uso intensivo"] },
+        { nombre: "PE Tarpaulin 120gr Translúcido", valorM2: 2300, anchoRollo: 2.00,
+          ficha: ["Gramaje 120 g/m²", "Tela liviana translúcida", "Permite paso de luz", "Color natural"] },
+      ];
+      g.AuthCIBSA = {
+        iniciarSesion: function () { return Promise.resolve(); },
+        cerrarSesion: function () {},
+        getEmail: function () { return "demo@cibsa.cl"; },
+        getToken: function () { return "demo-token"; },
+        sesionGuardada: function () { return true; },
+      };
+      var VENDEDORES_DEMO = [
+        { nombre: "Daniel Ventura", email: "contacto@cibsa.cl", fonos: ["(+569) 4019 6779"] },
+        { nombre: "María Pérez", email: "ventas@cibsa.cl", fonos: ["(+569) 8123 4567", "(+562) 2987 6543"] },
+        { nombre: "Jorge Soto", email: "jsoto@cibsa.cl", fonos: [] },
+      ];
+      g.SheetsCIBSA = {
+        cargarTelas: function () { return Promise.resolve(TELAS_DEMO.map(function (t) { return Object.assign({}, t); })); },
+        cargarVendedores: function () { return Promise.resolve(VENDEDORES_DEMO.map(function (v) { return Object.assign({}, v); })); },
+        parseNumero: function (x) { return x; },
+      };
+    })(window);
+  </script>
+
+  <script src="js/pdf.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
