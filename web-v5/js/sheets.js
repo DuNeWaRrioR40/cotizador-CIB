@@ -2,12 +2,26 @@
 (function (global) {
   const CFG = global.CONFIG;
 
+  // Lector de números robusto: entiende coma o punto como decimal, con o sin separador
+  // de miles. Reglas: si hay ambos separadores, el ÚLTIMO es el decimal. Si hay uno solo,
+  // se trata como decimal salvo que tenga exactamente 3 dígitos detrás (grupo de miles).
   function parseNumero(txt) {
     if (txt == null) return null;
     let s = String(txt).trim();
     if (s === "") return null;
-    s = s.replace(/\$/g, "").replace(/\s/g, "");
-    s = s.replace(/\./g, "").replace(/,/g, ".");   // '.' miles, ',' decimal
+    s = s.replace(/\$/g, "").replace(/\s/g, "").replace(/%/g, "");
+    if (s === "") return null;
+    const tienePunto = s.indexOf(".") >= 0, tieneComa = s.indexOf(",") >= 0;
+    if (tienePunto && tieneComa) {
+      if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");  // coma decimal
+      else s = s.replace(/,/g, "");                                                              // punto decimal
+    } else if (tieneComa) {
+      const p = s.split(",");
+      s = (p.length === 2 && p[1].length !== 3) ? p[0] + "." + p[1] : s.replace(/,/g, "");
+    } else if (tienePunto) {
+      const p = s.split(".");
+      s = (p.length === 2 && p[1].length !== 3) ? p[0] + "." + p[1] : s.replace(/\./g, "");
+    }
     const n = parseFloat(s);
     return isNaN(n) ? null : n;
   }
@@ -56,9 +70,9 @@
     const encabezados = filas[0].map((h) => (h || "").trim());
     const registros = [];
     for (let i = 1; i < filas.length; i++) {
-      const f = filas[i];
-      const nombre = (f[0] || "").trim();
-      if (!nombre) continue;       // ignora filas sin nombre
+      const f = filas[i] || [];
+      // Ignora solo filas totalmente vacías (no depende de cuál sea la primera columna).
+      if (!f.some((c) => c != null && String(c).trim() !== "")) continue;
       const fila = {};
       encabezados.forEach((h, j) => { fila[h] = (f[j] != null ? String(f[j]).trim() : ""); });
       registros.push(fila);

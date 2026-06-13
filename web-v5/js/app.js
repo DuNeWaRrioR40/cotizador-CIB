@@ -367,14 +367,17 @@
     const o = ins.orient === "ancho" ? lote.oAncho : lote.oLargo;
     return { tela, winLargo, winAncho, lote, o, N };
   }
-  // ¿La ventana + sus paddings caben dentro del paño base? (solo para advertir, no bloquea)
+  // ¿La ventana + sus paddings caben dentro del paño base? (solo para advertir, no bloquea).
+  // Considera la ventana en cualquiera de las dos orientaciones (puede ir rotada).
   function inscritoCabe(pz, ins) {
     const bl = window.CalcCIBSA.evalExpr(pz.largo), ba = window.CalcCIBSA.evalExpr(pz.ancho);
     const wl = window.CalcCIBSA.evalExpr(ins.largo), wa = window.CalcCIBSA.evalExpr(ins.ancho);
     if (bl == null || ba == null || wl == null || wa == null) return true;
-    const cabeL = compNum(ins.padSup) + wl + compNum(ins.padInf) <= bl + 1e-6;
-    const cabeA = compNum(ins.padIzq) + wa + compNum(ins.padDer) <= ba + 1e-6;
-    return cabeL && cabeA;
+    const padV = compNum(ins.padSup) + compNum(ins.padInf);
+    const padH = compNum(ins.padIzq) + compNum(ins.padDer);
+    const fit1 = (wl + padV <= bl + 1e-6) && (wa + padH <= ba + 1e-6);
+    const fit2 = (wa + padV <= bl + 1e-6) && (wl + padH <= ba + 1e-6);
+    return fit1 || fit2;
   }
   function inscritosTotal(pz) {
     return (pz.inscritos || []).reduce((s, ins) => { const r = calcInscrito(pz, ins); return s + (r && r.o ? r.o.subtotalLote : 0); }, 0);
@@ -1027,6 +1030,7 @@
         subtotalGen += piezaTotal; calcs.push({ pz, r });
         if (card) {
           let s = `Subtotal: <b>${money(piezaTotal)}</b> · ${r.lote.N} u × (${r.largo}×${r.ancho} m) · ${r.o.panosUnit} paños/u`;
+          s += ` · <span class="muted">tela: rollo ${r.tela.anchoRollo} m · m² ${money(r.tela.valorM2)}</span>`;
           if (compUnit > 0) s += ` · +${(pz.complementos || []).length} complemento(s)`;
           if ((pz.inscritos || []).length) s += ` · +${pz.inscritos.length} ventana(s)`;
           if (r.o.prorrata) s += ` · prorrata −${money(r.o.ahorro)}`;
