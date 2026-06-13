@@ -678,14 +678,17 @@
     r.addEventListener("change", (e) => { state.bordeModo = e.target.value; renderBordes(); recompute(); }));
 
   // ---------- Recompute (dispatcher) + comparación de orientaciones (uniforme, v4) ----------
-  ["f_largo", "f_ancho", "f_cantidad", "f_descuento", "f_ojvalor", "f_union"].forEach((id) =>
+  ["f_largo", "f_ancho", "f_cantidad", "f_descuento", "f_ojvalor", "f_union", "f_altura"].forEach((id) =>
     $(id).addEventListener("input", recompute));
   $("f_tela").addEventListener("change", recompute);
-  ["f_largo", "f_ancho", "f_cantidad", "f_ojvalor", "f_descuento", "f_dias", "f_union"].forEach((id) =>
+  ["f_largo", "f_ancho", "f_cantidad", "f_ojvalor", "f_descuento", "f_dias", "f_union", "f_altura"].forEach((id) =>
     $(id).addEventListener("blur", () => {
       const r = window.CalcCIBSA.evalExpr($(id).value);
       if (r != null && !isNaN(r)) { $(id).value = window.CalcCIBSA.fmtNum(r); recompute(); }
     }));
+  // Producto volumétrico (alto) — uniforme
+  $("f_usaAlto").addEventListener("change", (e) => { $("wAltura").classList.toggle("hidden", !e.target.checked); recompute(); });
+  function alturaUnif() { return $("f_usaAlto").checked ? num("f_altura", 0) : 0; }
 
   function recompute() {
     if (state.docMode === "preliminar") { recomputePrelim(); return; }
@@ -708,7 +711,7 @@
       lote = window.CalcCIBSA.calcularLote({
         largo, ancho, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo,
         cantidad: Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1),
-        union: num("f_union", 0.045), defaults: BORDE_DEFAULTS, bordes: bordesActuales(),
+        union: num("f_union", 0.045), altura: alturaUnif(), defaults: BORDE_DEFAULTS, bordes: bordesActuales(),
         ojetillos: nOjetillos(), valorOjetillo: num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT),
       });
     } catch (e) { return; }
@@ -840,6 +843,7 @@
       ojetillos: base ? base.ojetillos : "0",
       telaNombre: base ? base.telaNombre : ((state.telas[0] && state.telas[0].nombre) || ""),
       orient: base ? base.orient : "largo",
+      usaAlto: base ? base.usaAlto : false, altura: base ? base.altura : "",
       ojMode: base ? base.ojMode : "total",
       ojAristasN: base ? base.ojAristasN : 4,
       ojAristas: base ? (base.ojAristas || []).slice() : [],
@@ -994,6 +998,8 @@
             <option value="largo">Uniones a lo largo</option>
             <option value="ancho">Uniones a lo ancho</option></select></label>
         </div>
+        <label class="chk"><input class="pz-usaAlto" type="checkbox" /> <span>Volumétrico (agregar alto)</span></label>
+        <label class="field pz-alto-field hidden"><span>Alto (m)</span><input class="pz-alto" type="text" inputmode="text" placeholder="se suma 2× alto al largo y al ancho" /></label>
         <div class="pz-oj-wrap"></div>
         <div class="pz-borde"></div>
         <div class="pz-comp"></div>
@@ -1009,6 +1015,13 @@
       state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre + (t.proveedor ? "  —  " + t.proveedor : ""); tsel.appendChild(o); });
       if (pz.telaNombre) tsel.value = pz.telaNombre; else pz.telaNombre = tsel.value;
       q(".pz-orient").value = pz.orient || "largo";
+      // Volumétrico (alto) por pieza
+      q(".pz-usaAlto").checked = !!pz.usaAlto;
+      q(".pz-alto").value = pz.altura || "";
+      q(".pz-alto-field").classList.toggle("hidden", !pz.usaAlto);
+      q(".pz-usaAlto").addEventListener("change", (e) => { pz.usaAlto = e.target.checked; q(".pz-alto-field").classList.toggle("hidden", !pz.usaAlto); recomputeCompuesto(); });
+      q(".pz-alto").addEventListener("input", (e) => { pz.altura = e.target.value; recomputeCompuesto(); });
+      q(".pz-alto").addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { pz.altura = window.CalcCIBSA.fmtNum(r); e.target.value = pz.altura; recomputeCompuesto(); } });
       renderPiezaOjetillos(q(".pz-oj-wrap"), pz);
       renderPiezaBordes(q(".pz-borde"), pz);
       renderComplementos(q(".pz-comp"), pz.complementos, recomputeCompuesto);
@@ -1053,6 +1066,7 @@
         largo, ancho, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo,
         cantidad: Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1),
         union: (u == null || isNaN(u)) ? 0.045 : u,
+        altura: pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0,
         defaults: BORDE_DEFAULTS, bordes: bordesDePieza(pz),
         ojetillos: ojTotalPieza(pz),
         valorOjetillo: num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT),
@@ -1069,7 +1083,10 @@
     return "borde";
   }
   function terminacionesPieza(pz) {
-    const out = ["Unión: " + (pz.union || "0.045") + " m."];
+    const out = [];
+    const alt = pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0;
+    if (alt > 0) out.push("Volumétrico: alto " + alt + " m (se sumó 2× alto al largo y ancho).");
+    out.push("Unión: " + (pz.union || "0.045") + " m.");
     if (pz.bordeModo === "arista") {
       const nm = { sup: "Sup", inf: "Inf", izq: "Izq", der: "Der" };
       out.push("Bordes: " + ["sup", "inf", "izq", "der"].map((k) => nm[k] + " " + descBordePz(pz.bordes[k])).join(" · ") + ".");
@@ -1145,6 +1162,7 @@
     ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_observaciones"].forEach((id) => ($(id).value = ""));
     $("f_cantidad").value = "1"; $("f_ojvalor").value = "450"; $("f_dias").value = "3"; $("f_descuento").value = "0"; $("f_version").value = "01";
     $("f_union").value = "0.045";
+    $("f_usaAlto").checked = false; $("f_altura").value = ""; $("wAltura").classList.add("hidden");
     state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
     document.querySelector('input[name="ojmode"][value="total"]').checked = true;
     state.orientacionSel = "mayor"; state.orientUnif = "largo"; $("resultHolder").innerHTML = ""; $("formStatus").textContent = "";
@@ -1229,6 +1247,8 @@
   }
   function terminacionesTexto(orientKey) {
     const out = [];
+    const alt = alturaUnif();
+    if (alt > 0) out.push("Volumétrico: alto " + alt + " m (se sumó 2× alto al largo y al ancho).");
     out.push(orientKey === "ancho" ? "Uniones a lo ancho." : "Uniones a lo largo.");
     out.push("Unión entre paños: " + $("f_union").value + " m.");
     if (state.bordeModo === "uniforme") {

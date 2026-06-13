@@ -66,6 +66,8 @@ body[data-theme="B"] .section { color: var(--text); }
 /* Campos */
 .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
 .field > span { font-size: 14px; color: var(--text); }
+.chk { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; font-size: 14px; cursor: pointer; }
+.chk input { width: auto; }
 input, select, textarea {
   font-size: 16px; /* evita zoom en iOS */ padding: 12px; border-radius: 10px;
   border: 1px solid var(--border); background: var(--field); color: var(--text);

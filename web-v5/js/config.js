@@ -73,7 +73,7 @@
       "Visitas a terreno y despachos se cobran por separado.",
       "La información respecto de las características de las telas se basa en test que otorgan promedios, " +
         "se asumen confiables pero no constituyen certificación técnica, salvo se indique lo contrario.",
-      "Las dimensiones indicadas en este estimado poseen un margen de error de +/- 3cm tanto en tela, como " +
+      "Las dimensiones indicadas en este estimado poseen un margen de error de +/- 4cm tanto en tela, como " +
         "en colocación de ojetillos, a menos que expresamente se indique lo contrario por el cliente.",
     ],
   };

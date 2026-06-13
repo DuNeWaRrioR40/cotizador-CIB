@@ -140,27 +140,35 @@
     });
     let yTop = y; y -= headH; hline(y);
 
-    // Filas de ítems
+    // Filas de ítems. Cada entrada de 'detail' = [texto, negrita, tamaño?]; "" o tamaño 0 = espaciador.
+    const lineH = (sz) => Math.round(sz + 2.5);
     function itemRow(cantidad, detail, vu, vt) {
       const lines = [];
-      detail.forEach(([s, b]) => wrap(s, b ? bold : font, 10.5, colW[1] - 2 * pad)
-        .forEach((ln) => lines.push([ln, b])));
-      const h = rowHeight(lines);
+      detail.forEach((d) => {
+        const s = d[0], b = !!d[1], size = d[2] != null ? d[2] : 10.5;
+        if (s === "" || size === 0) { lines.push({ ln: "", b: false, size: 0 }); return; }
+        wrap(s, b ? bold : font, size, colW[1] - 2 * pad).forEach((ln) => lines.push({ ln, b, size }));
+      });
+      let alto = 8; lines.forEach((L) => { alto += (L.size === 0 ? 6 : lineH(L.size)); });
+      const h = Math.max(22, alto);
       const cy = y - 14;
-      // cantidad centrada
       txt(page, String(cantidad), cols[0] + (colW[0] - font.widthOfTextAtSize(String(cantidad), 11)) / 2, cy, { color: BLACK() });
-      // detalle multilínea
       let dy = y - 13;
-      lines.forEach(([ln, b]) => { txt(page, ln, cols[1] + pad, dy, { f: b ? bold : font, size: 10.5, color: BLACK() }); dy -= 12; });
-      // valores centrados
+      lines.forEach((L) => {
+        if (L.size === 0) { dy -= 6; return; }
+        txt(page, L.ln, cols[1] + pad, dy, { f: L.b ? bold : font, size: L.size, color: BLACK() });
+        dy -= lineH(L.size);
+      });
       txt(page, vu, cols[2] + (colW[2] - font.widthOfTextAtSize(vu, 11)) / 2, cy, { color: BLACK() });
       txt(page, vt, cols[3] + (colW[3] - bold.widthOfTextAtSize(vt, 11)) / 2, cy, { f: bold, color: BLACK() });
       y -= h; hline(y);
     }
 
-    const detTela = [[datos.tela.nombre, true]]
-      .concat((datos.tela.ficha || []).map((s) => [s, false]))
-      .concat((datos.detalleExtra || []).map((s) => [s, false]));
+    const detTela = [[datos.tela.nombre, true]].concat((datos.tela.ficha || []).map((s) => [s, false]));
+    detTela.push(["", false, 0]);
+    detTela.push(["Diseño aprobado", true, 11.5]);
+    (datos.detalleExtra || []).forEach((s) => detTela.push([s, false]));
+    detTela.push(["Valores aproximados. La confección tiene un margen de error de aprox. ±4 cm.", false, 8.5]);
     itemRow(String(c.cantidad), detTela, money(c.material), money(c.materialTotal));
     const ojBase = datos.ojetillosDetalle || `${c.nOjetillos} ojetillos en total.`;
     const ojTxt = ojBase + (c.cantidad > 1 ? ` (por unidad; ${c.cantidad} unidades).` : "");
@@ -440,15 +448,25 @@
 
     drawHeader();
 
+    const lineH = (sz) => Math.round(sz + 2.5);
     function itemRow(cantidad, detail, vu, vt) {
       const lines = [];
-      detail.forEach(([s, b]) => wrap(s, b ? bold : font, 10.5, colW[1] - 2 * pad).forEach((ln) => lines.push([ln, b])));
-      const h = Math.max(22, 8 + lines.length * 12);
+      detail.forEach((d) => {
+        const s = d[0], b = !!d[1], size = d[2] != null ? d[2] : 10.5;
+        if (s === "" || size === 0) { lines.push({ ln: "", b: false, size: 0 }); return; }
+        wrap(s, b ? bold : font, size, colW[1] - 2 * pad).forEach((ln) => lines.push({ ln, b, size }));
+      });
+      let alto = 8; lines.forEach((L) => { alto += (L.size === 0 ? 6 : lineH(L.size)); });
+      const h = Math.max(22, alto);
       asegurar(h);
       const top = y, cy = y - 14;
       txt(String(cantidad), cols[0] + (colW[0] - font.widthOfTextAtSize(String(cantidad), 11)) / 2, cy, { color: BLACK() });
       let dy = y - 13;
-      lines.forEach(([ln, b]) => { txt(ln, cols[1] + pad, dy, { f: b ? bold : font, size: 10.5, color: BLACK() }); dy -= 12; });
+      lines.forEach((L) => {
+        if (L.size === 0) { dy -= 6; return; }
+        txt(L.ln, cols[1] + pad, dy, { f: L.b ? bold : font, size: L.size, color: BLACK() });
+        dy -= lineH(L.size);
+      });
       txt(vu, cols[2] + (colW[2] - font.widthOfTextAtSize(vu, 11)) / 2, cy, { color: BLACK() });
       txt(vt, cols[3] + (colW[3] - bold.widthOfTextAtSize(vt, 11)) / 2, cy, { f: bold, color: BLACK() });
       y -= h; hline(y); vsegs(top, y);
@@ -461,10 +479,13 @@
       const detail = [[etq || pz.tela.nombre, true]];
       if (etq) detail.push([pz.tela.nombre, false]);
       (pz.tela.ficha || []).forEach((s) => detail.push([s, false]));
+      detail.push(["", false, 0]);
+      detail.push(["Diseño aprobado", true, 11.5]);
       detail.push([`Formato ${pz.largo}×${pz.ancho} m · ${pz.ojetillosTxt || (pz.ojetillos + " ojetillos c/u")} · ${orientTxt}`, false]);
       (pz.terminaciones || []).forEach((s) => detail.push([s, false]));
       (pz.inscritosLineas || []).forEach((s) => detail.push([s, false]));
       (pz.complementosLineas || []).forEach((s) => detail.push([s, false]));
+      detail.push(["Valores aproximados. La confección tiene un margen de error de aprox. ±4 cm.", false, 8.5]);
       itemRow(String(pz.cantidad), detail, money(pz.valorUnitario), money(pz.valorTotal));
     });
 

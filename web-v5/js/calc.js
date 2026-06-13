@@ -186,9 +186,14 @@
     const d = opts.defaults || {};
     const a = (b) => allowanceArista(b, d);
     const bordes = opts.bordes || {};
+    // Volumétrico: el alto se suma 2× a cada dimensión del paño (paredes que bajan por ambos lados).
+    const alturaRaw = opts.altura != null ? parseFloat(opts.altura) : 0;
+    const altura = isNaN(alturaRaw) ? 0 : Math.max(0, alturaRaw);
+    const largoBase = largo + 2 * altura;
+    const anchoBase = ancho + 2 * altura;
     // Cabeceras (sup/inf) suman al largo; lados (izq/der) suman al ancho.
-    const largoFuente = largo + a(bordes.sup) + a(bordes.inf);
-    const anchoNeto = ancho + a(bordes.izq) + a(bordes.der);
+    const largoFuente = largoBase + a(bordes.sup) + a(bordes.inf);
+    const anchoNeto = anchoBase + a(bordes.izq) + a(bordes.der);
 
     const nOj = Math.max(0, parseInt(opts.ojetillos != null ? opts.ojetillos : 0, 10) || 0);
     const valOj = opts.valorOjetillo != null ? parseFloat(opts.valorOjetillo) : 450;
@@ -209,7 +214,7 @@
     const barata = masEconomica === "ancho" ? oAncho : oLargo;
     return {
       largoFuente: r2(largoFuente), anchoNeto: r2(anchoNeto), N, nOjetillos: nOj,
-      valorOjetillo: valOj, union: union, unionInvalida: unionInvalida, oLargo, oAncho,
+      valorOjetillo: valOj, union: union, unionInvalida: unionInvalida, altura: altura, oLargo, oAncho,
       recomendacion: {
         masEconomica,
         ahorroOrientacion: r2(cara.subtotalLote - barata.subtotalLote),
