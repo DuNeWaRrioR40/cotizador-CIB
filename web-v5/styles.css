@@ -194,6 +194,10 @@ button:active { transform: scale(0.98); }
 .slider-row .slider-num { flex: 0 0 auto; width: 62px; }
 .wa-btn { display: inline-flex; align-items: center; gap: 6px; background: #25D366; color: #fff !important; padding: 6px 12px; border-radius: 8px; text-decoration: none; font-weight: 600; }
 .wa-btn svg { display: block; }
+body.no-plano #wSketchUnif,
+body.no-plano #btnDescargarSketch,
+body.no-plano .pz-sketch,
+body.no-plano .pz-descargar { display: none !important; }
 
 /* Avisos (prorrata / paño marginal) */
 .aviso { border-radius: 10px; padding: 10px; margin: 8px 0; font-size: 13px; }

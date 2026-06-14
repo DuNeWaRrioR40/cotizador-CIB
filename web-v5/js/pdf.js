@@ -359,16 +359,7 @@
       });
     }
 
-    // --- Página de vista del producto (sketch a escala) ---
-    if (datos.sketch && datos.sketch.ancho > 0 && datos.sketch.largo > 0) {
-      const ps = doc.addPage([W, H]);
-      let ysk = dibujarEncabezado(ps, cibsa, kam, W, M, H - 40);
-      tituloCentrado(ps, "VISTA DEL PRODUCTO", W, ysk, bold, 15, BLUE()); ysk -= 18;
-      tituloCentrado(ps, "(dibujo a escala · referencial)", W, ysk, font, 11, BLUE()); ysk -= 22;
-      const tit = datos.titulo || `Carpa ${(+datos.largo)}m x ${(+datos.ancho)}m`;
-      txt(ps, `"${tit}"`, M, ysk, { f: bold, size: 12 }); ysk -= 22;
-      dibujarSketchPDF(ps, datos.sketch, { x: M, top: ysk, w: W - 2 * M, h: ysk - 70 }, font);
-    }
+    // (La representación gráfica / plano se entrega como archivo aparte, no va en la cotización.)
 
     // --- Página 2 ---
     const p2 = doc.addPage([W, H]);
@@ -690,27 +681,7 @@
       obsLines.forEach((ln) => { txt(ln, M, oy, { size: 10.5, color: BLACK() }); oy -= 13; });
     }
 
-    // --- Páginas de vista de las piezas (sketch a escala, 2 por hoja) ---
-    const pzsSk = (datos.piezas || []).filter((p) => p.sketch && p.sketch.ancho > 0 && p.sketch.largo > 0);
-    if (pzsSk.length) {
-      const perPage = 2;
-      let ps = null, topZona = 0, bloqueH = 0;
-      pzsSk.forEach((p, i) => {
-        const slot = i % perPage;
-        if (slot === 0) {
-          ps = doc.addPage([W, H]);
-          let yh = dibujarEncabezado(ps, cibsa, kam, W, M, H - 40);
-          tituloCentrado(ps, "VISTA DE LAS PIEZAS", W, yh, bold, 15, BLUE()); yh -= 18;
-          tituloCentrado(ps, "(dibujos a escala · referencial)", W, yh, font, 11, BLUE()); yh -= 18;
-          topZona = yh;
-          bloqueH = (topZona - 55) / perPage;
-        }
-        const bTop = topZona - slot * bloqueH;
-        const etq = (p.etiqueta && p.etiqueta.trim()) ? p.etiqueta.trim() : ("Pieza " + (i + 1));
-        ps.drawText(san(etq + "  —  " + p.largo + " x " + p.ancho + " m"), { x: M, y: bTop - 4, size: 11, font: bold, color: BLUE() });
-        dibujarSketchPDF(ps, p.sketch, { x: M, top: bTop - 18, w: W - 2 * M, h: bloqueH - 30 }, font);
-      });
-    }
+    // (La representación gráfica / plano de las piezas se entrega como archivo aparte, no va en la cotización.)
 
     // --- Página final: condiciones + empresa + vendedor ---
     const p2 = doc.addPage([W, H]);

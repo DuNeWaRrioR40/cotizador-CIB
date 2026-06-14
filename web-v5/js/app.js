@@ -48,6 +48,7 @@
     show("telaMultiWrap", p);
     show("wPiezas", comp);
     show("wTitulo", f);
+    show("wPlanoToggle", f);
     show("wOjetillos", uni || p);
     show("wValorOj", uni || p || comp);
     show("wBordes", uni);
@@ -990,7 +991,7 @@
     const tela = telaActual();
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
     const sk = $("sketchUnif");
-    if (sk && window.SketchCIBSA) {
+    if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
       sk.innerHTML = window.SketchCIBSA.sketchSVG({ ancho: ancho || 0, largo: largo || 0, ojTotal: nOjetillos(), ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes) });
     }
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) {
@@ -1518,7 +1519,7 @@
     state.piezas.forEach((pz) => {
       const r = calcPieza(pz);
       const sketchBox = list ? list.querySelector('[data-id="' + pz.id + '"] .pz-sketch') : null;
-      if (sketchBox && window.SketchCIBSA) {
+      if (sketchBox && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
         sketchBox.innerHTML = window.SketchCIBSA.sketchSVG(sketchPieza(pz));
       }
       const card = list ? list.querySelector('[data-id="' + pz.id + '"] .pieza-sub') : null;
@@ -1594,6 +1595,7 @@
   // ---------- Generar ----------
   $("btnGenerar").addEventListener("click", generar);
   { const b = $("btnDescargarSketch"); if (b) b.addEventListener("click", descargarSketchUnif); }
+  { const cb = $("f_usarPlano"); if (cb) cb.addEventListener("change", () => { document.body.classList.toggle("no-plano", !cb.checked); recompute(); }); }
 
   async function generar() {
     if (state.docMode === "preliminar") return generarPrelim();
