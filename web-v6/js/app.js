@@ -1862,6 +1862,7 @@
 
   // UI compartida de ojetillos por arista (distanciamiento + supresión + pareja). host tiene .ojParejo.
   function renderOjetillosArista(container, edges, host, getAncho, getLargo, getTotal, onChange, getCortes) {
+    container.innerHTML = ""; // evita apilar copias al repintar (toggle pareja / arista on-off)
     const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
     const repintar = () => renderOjetillosArista(container, edges, host, getAncho, getLargo, getTotal, onChange, getCortes);
     // Toggle distribución pareja (ideal)
