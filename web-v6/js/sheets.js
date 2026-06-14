@@ -210,5 +210,53 @@
     return mapa;
   }
 
-  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarWiki, parseNumero };
+  // --- Historial en la nube (hoja administrada por la app) ---
+  // Lee la hoja. Devuelve { existe, filas }. existe=false si la pestaña aún no se ha creado.
+  async function leerHistorialRaw(token, hoja) {
+    const rango = `'${hoja}'!A:G`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}/values/` +
+      `${encodeURIComponent(rango)}?valueRenderOption=UNFORMATTED_VALUE`;
+    const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+    if (r.status === 400) return { existe: false, filas: [] };   // la hoja no existe todavía
+    if (r.status === 401) throw new Error("La sesión expiró. Inicia sesión de nuevo.");
+    if (!r.ok) throw new Error("No se pudo leer el historial (código " + r.status + ").");
+    const data = await r.json();
+    return { existe: true, filas: data.values || [] };
+  }
+  async function crearHoja(token, hoja) {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}:batchUpdate`;
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title: hoja } } }] }),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      if (/already exists/i.test(t)) return;   // ya existe: no es error
+      throw new Error("No se pudo crear la hoja " + hoja + " (código " + r.status + ").");
+    }
+    return r.json();
+  }
+  async function anexarFilas(token, hoja, filas) {
+    if (!filas || !filas.length) return;
+    const rango = `'${hoja}'!A:G`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}/values/` +
+      `${encodeURIComponent(rango)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: filas }),
+    });
+    if (!r.ok) throw new Error("No se pudo escribir el historial (código " + r.status + ").");
+    return r.json();
+  }
+  // Crea la hoja + encabezados si falta, y anexa las filas dadas.
+  async function escribirHistorial(token, hoja, filas, encabezados) {
+    const info = await leerHistorialRaw(token, hoja);
+    if (!info.existe) { await crearHoja(token, hoja); await anexarFilas(token, hoja, [encabezados]); }
+    else if (!info.filas.length) { await anexarFilas(token, hoja, [encabezados]); }
+    await anexarFilas(token, hoja, filas);
+  }
+
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarWiki, leerHistorialRaw, escribirHistorial, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);

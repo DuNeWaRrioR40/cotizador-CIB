@@ -6,7 +6,8 @@
     // Pega aquí el "ID de cliente" del cliente OAuth tipo WEB (lo creas en Google Cloud).
     GOOGLE_CLIENT_ID: "844999785397-fncjlgv5l9eqhp9f1mv98t6gcdo4l9nc.apps.googleusercontent.com",
     SHEET_ID: "1oB2Mbc3pgMMOGkWMXj2nTNEQox28sQcBkDYthDB9WU4",
-    SCOPES: "https://www.googleapis.com/auth/spreadsheets.readonly",
+    // Lectura + escritura: necesario para sincronizar el historial a la hoja HISTORIAL.
+    SCOPES: "https://www.googleapis.com/auth/spreadsheets",
 
     // --- Hoja RANGO (punteros) ---
     RANGO_LECTURA: "RANGO!A2:C",
@@ -42,6 +43,10 @@
     // Hoja con dos columnas: A = Código del globo, B = Comentario aclaratorio.
     // Si un código tiene comentario, aparece dentro del globo de ayuda bajo el texto base.
     ID_TABLA_WIKI: "wiki",
+
+    // --- Historial en la nube ---
+    // La app crea y administra sola esta pestaña (append por cada cotización generada).
+    HOJA_HISTORIAL: "HISTORIAL",
 
     // --- Control de acceso ---
     DOMINIO_PERMITIDO: "cibsa.cl",

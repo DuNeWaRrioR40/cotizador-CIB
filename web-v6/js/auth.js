@@ -2,7 +2,7 @@
    Sin un token válido y autorizado, no se consulta el Sheet. */
 (function (global) {
   const CFG = global.CONFIG;
-  const KEY = "cibsa_sesion";
+  const KEY = "cibsa_sesion_v2"; // v2: fuerza re-login para consentir el permiso de escritura (historial en la nube)
   const MIN_SESION_MS = 3 * 60 * 60 * 1000;   // objetivo: la sesión vive al menos ~3 h
   const MARGEN_REFRESCO_MS = 5 * 60 * 1000;    // renovar 5 min antes de expirar
   let tokenClient = null;

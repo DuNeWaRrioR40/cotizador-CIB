@@ -79,7 +79,38 @@
     r.addEventListener("change", (e) => aplicarProd(e.target.value)));
 
   // ---------- Historial local de cotizaciones (localStorage, últimos 30 días) ----------
-  const HIST_KEY = "cibsa_hist_v1", HIST_DIAS = 30, HIST_MAX = 60;
+  const HIST_KEY = "cibsa_hist_v1", HIST_DIAS = 3650, HIST_MAX = 60; // 3650: con sincronización en la nube no se purga por tiempo
+  const HIST_HOJA = (CFG.HOJA_HISTORIAL || "HISTORIAL");
+  const HIST_ENC = ["Timestamp", "Nombre", "Apellido", "Tipo", "Version", "Fecha", "Datos(JSON)"];
+  function entryToRow(e) { return [e.ts, e.nombre || "", e.apellido || "", e.tipo || "", parseInt(e.version, 10) || 1, e.fecha || "", JSON.stringify(e.snap || null)]; }
+  function rowToEntry(r) {
+    const ts = parseInt(r && r[0], 10) || 0; if (!ts) return null; // descarta encabezado / filas inválidas
+    let snap = null; try { snap = r[6] ? JSON.parse(r[6]) : null; } catch (e) {}
+    const est = (snap && snap.estado) || {};
+    return { ts: ts, nombre: (r[1] || "").toString().trim(), apellido: (r[2] || "").toString().trim(), tipo: (r[3] || "").toString().trim(), version: parseInt(r[4], 10) || 1, fecha: (r[5] || "").toString().trim(), snap: snap, modo: est.docMode || "formal", prod: est.prodMode || "uniforme" };
+  }
+  // Une historial local + remoto (Sheet), deduplica por cliente+tipo (mayor versión / ts más reciente),
+  // sube al Sheet las entradas locales que aún no estén allí (migración), y deja el resultado en localStorage.
+  function sincronizarHistorial(token, remotas) {
+    const locales = histLoad();
+    const tsRemotos = new Set((remotas || []).map((e) => e.ts));
+    const faltan = locales.filter((e) => e && e.ts && e.snap && !tsRemotos.has(e.ts));
+    if (faltan.length && token) {
+      window.SheetsCIBSA.escribirHistorial(token, HIST_HOJA, faltan.map(entryToRow), HIST_ENC)
+        .catch((e) => console.warn("CIBSA: no se pudo migrar el historial local al Sheet —", e && e.message ? e.message : e));
+    }
+    const porClave = {};
+    (remotas || []).concat(locales).forEach((e) => {
+      if (!e || !e.ts) return;
+      const k = (e.nombre || "").trim().toLowerCase() + "|" + (e.apellido || "").trim().toLowerCase() + "|" + e.tipo;
+      const prev = porClave[k];
+      const ver = Math.max(parseInt(e.version, 10) || 1, prev ? (parseInt(prev.version, 10) || 1) : 1);
+      const base = (!prev || e.ts >= prev.ts) ? e : prev;
+      porClave[k] = Object.assign({}, base, { version: ver });
+    });
+    const merged = Object.keys(porClave).map((k) => porClave[k]).sort((a, b) => b.ts - a.ts).slice(0, HIST_MAX);
+    histStore(merged);
+  }
   function histLoad() { try { const a = JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
   function histStore(arr) {
     try { localStorage.setItem(HIST_KEY, JSON.stringify(arr)); return true; }
@@ -149,6 +180,12 @@
     arr = arr.slice(0, HIST_MAX);
     histStore(arr);
     renderHistorial();
+    // Sincroniza esta cotización a la hoja HISTORIAL del Sheet (mejor esfuerzo; no bloquea el PDF).
+    const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+    if (tok) {
+      window.SheetsCIBSA.escribirHistorial(tok, HIST_HOJA, [entryToRow(ent)], HIST_ENC)
+        .catch((e) => console.warn("CIBSA: no se pudo sincronizar el historial al Sheet —", e && e.message ? e.message : e));
+    }
   }
   function aplicarHistorial(ent) {
     if (ent && ent.snap) { // memoria completa: reconstruye toda la cotización
@@ -262,7 +299,7 @@
   };
   const AYUDA_SECCION = {
     "Datos del cliente": "Identifican al cliente en el documento y en el nombre del archivo.",
-    "Cotizaciones recientes": "Memoria local de este dispositivo. Toca una para reconstruir toda la cotización y editarla rápido. Puedes exportarla a CSV o Excel.",
+    "Cotizaciones recientes": "Memoria de tus cotizaciones, sincronizada con la hoja HISTORIAL del Google Sheet (sobrevive aunque borres datos del navegador). Toca una para reconstruir toda la cotización y editarla rápido. Puedes exportarla a CSV o Excel.",
     "Producto": "Elige Uniforme (una sola pieza) o Compuesto (varias piezas distintas en un mismo documento).",
     "Telas recomendadas": "En modo preliminar, marca una o más telas para estimar el valor en cada una.",
     "Piezas del producto": "Cada pieza es un paño distinto con sus propias medidas, tela, ojetillos y terminaciones.",
@@ -427,6 +464,13 @@
         o.value = v.nombre; o.textContent = v.nombre; vsel.appendChild(o);
       });
     }
+    // Historial en la nube: lee la hoja HISTORIAL, fusiona con lo local y sube lo que falte.
+    try {
+      const info = await window.SheetsCIBSA.leerHistorialRaw(token, HIST_HOJA);
+      const remotas = (info && info.existe) ? (info.filas || []).map(rowToEntry).filter(Boolean) : [];
+      sincronizarHistorial(token, remotas);
+    } catch (e) { console.warn("CIBSA: no se pudo sincronizar el historial —", e && e.message ? e.message : e); }
+    renderHistorial();
     mostrarForm();
     renderOjetillos();
     recompute();
@@ -894,6 +938,10 @@
         selO.value = ins.orient || "largo"; selO.addEventListener("change", (e) => { ins.orient = e.target.value; refresh(); onChange(); });
         lo.appendChild(selO); addHelpTo(lo, "Sentido de las uniones de paños dentro de la ventana (a lo largo o a lo ancho). La app calcula el material según esto.", "INS-ORIENT"); grid.appendChild(lo);
         card.appendChild(grid);
+        { const f2 = window.CalcCIBSA.fmtNum, ev2 = window.CalcCIBSA.evalExpr, bL = ev2(pz.largo), bA = ev2(pz.ancho);
+          const bp = document.createElement("p"); bp.className = "muted small";
+          bp.textContent = (bL > 0 && bA > 0) ? ("Paño base: " + f2(bL) + " × " + f2(bA) + " m (largo × ancho).") : "Define el largo y ancho del paño base para ver su medida aquí.";
+          card.appendChild(bp); }
         // Posición — margen por arista. Al editar una, la opuesta se completa para que calce.
         const pcap = document.createElement("p"); pcap.className = "muted small"; pcap.textContent = "Posición — margen desde cada arista (m). Centrado por defecto; al editar una, la opuesta se ajusta."; card.appendChild(addHelpTo(pcap, "Margen desde cada arista del paño base hasta la ventana, en metros (define su ubicación). Al editar uno, el opuesto se completa solo para que calce.", "INS-POS"));
         const pgrid = document.createElement("div"); pgrid.className = "pieza-grid";
@@ -1119,6 +1167,10 @@
           });
         }
         card.appendChild(grid);
+        { const f2 = window.CalcCIBSA.fmtNum, bL = ctx.baseLargo(), bA = ctx.baseAncho();
+          const bp = document.createElement("p"); bp.className = "muted small";
+          bp.textContent = (bL > 0 && bA > 0) ? ("Paño base: " + f2(bL) + " × " + f2(bA) + " m (largo × ancho).") : "Define el largo y ancho del paño base para ver su medida aquí.";
+          card.appendChild(bp); }
         if (esCirc) { const nc = document.createElement("p"); nc.className = "muted small"; nc.textContent = "El círculo se centra en el paño base; el padding lo desplaza (N/S/E/O). Puede exceder el paño: solo se dibuja lo que queda dentro."; card.appendChild(nc); }
         const pcap = document.createElement("p"); pcap.className = "muted small"; pcap.textContent = esCirc ? "Posición del centro — padding por punto cardinal (m)." : "Posición — margen desde cada arista (m). Si un margen es 0, ese lado coincide con el borde y el corte queda abierto ahí."; card.appendChild(addHelpTo(pcap, "Ubicación del calado dentro del paño: margen desde cada arista (o padding del centro si es círculo). Un margen 0 hace que ese lado coincida con el borde y el calado lo seccione.", "CORTE-POS"));
         const pgrid = document.createElement("div"); pgrid.className = "pieza-grid";
