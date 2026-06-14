@@ -671,7 +671,43 @@
         bC.addEventListener("click", () => { centrarCorte(ctx.baseLargo(), ctx.baseAncho(), c); setPad(); refresh(); onChange(); });
         const bL = document.createElement("button"); bL.type = "button"; bL.className = "pz-btn"; bL.textContent = "Limpiar márgenes";
         bL.addEventListener("click", () => { ["padSup", "padInf", "padIzq", "padDer"].forEach((k) => { c[k] = "0"; }); setPad(); refresh(); onChange(); });
-        acc.appendChild(bC); acc.appendChild(bL); card.appendChild(acc);
+        const bDup = document.createElement("button"); bDup.type = "button"; bDup.className = "pz-btn"; bDup.textContent = "Duplicar diseño";
+        bDup.addEventListener("click", () => { const copy = nuevaCorte(c); centrarCorte(ctx.baseLargo(), ctx.baseAncho(), copy); ctx.cortes.push(copy); pintar(); onChange(); });
+        acc.appendChild(bC); acc.appendChild(bL); acc.appendChild(bDup); card.appendChild(acc);
+        // Replicar en esquinas (mismo diseño, posición espejo desde la esquina).
+        function setCorner(obj, corner, baseL, baseA, mV, mH, cV, cH) {
+          const f = window.CalcCIBSA.fmtNum;
+          const sup = (corner === "TL" || corner === "TR") ? mV : (baseL - cV - mV);
+          const izq = (corner === "TL" || corner === "BL") ? mH : (baseA - cH - mH);
+          obj.padSup = f(Math.max(0, sup)); obj.padInf = f(Math.max(0, baseL - cV - sup));
+          obj.padIzq = f(Math.max(0, izq)); obj.padDer = f(Math.max(0, baseA - cH - izq));
+        }
+        function replicarEsquinas(marca) {
+          const ev = window.CalcCIBSA.evalExpr;
+          const baseL = ctx.baseLargo(), baseA = ctx.baseAncho(), cV = ev(c.largo), cH = ev(c.ancho);
+          if (baseL == null || baseA == null || !(cV > 0) || !(cH > 0)) { alert("Completa dimensiones del corte y del paño base."); return; }
+          const order = ["TL", "TR", "BL", "BR"].filter((k) => marca[k]);
+          if (!order.length) { alert("Marca al menos una esquina."); return; }
+          const mV = Math.min(ev(c.padSup) || 0, ev(c.padInf) || 0), mH = Math.min(ev(c.padIzq) || 0, ev(c.padDer) || 0);
+          setCorner(c, order[0], baseL, baseA, mV, mH, cV, cH);
+          for (let i = 1; i < order.length; i++) { const copy = nuevaCorte(c); setCorner(copy, order[i], baseL, baseA, mV, mH, cV, cH); ctx.cortes.push(copy); }
+          pintar(); onChange();
+        }
+        const rcap = document.createElement("p"); rcap.className = "muted small"; rcap.textContent = "Replicar en esquinas (mismo diseño, posición espejo respecto del paño base):"; card.appendChild(rcap);
+        const rrow = document.createElement("div"); rrow.className = "radios";
+        const marca = { TL: false, TR: false, BL: false, BR: false };
+        [["TL", "↖ Sup-Izq"], ["TR", "↗ Sup-Der"], ["BL", "↙ Inf-Izq"], ["BR", "↘ Inf-Der"]].forEach(([k, lab]) => {
+          const l = document.createElement("label"); const cb = document.createElement("input"); cb.type = "checkbox";
+          cb.addEventListener("change", (e) => { marca[k] = e.target.checked; });
+          l.appendChild(cb); l.appendChild(document.createTextNode(" " + lab)); rrow.appendChild(l);
+        });
+        card.appendChild(rrow);
+        const racc = document.createElement("div"); racc.className = "pz-actions"; racc.style.marginTop = "4px";
+        const b4 = document.createElement("button"); b4.type = "button"; b4.className = "pz-btn"; b4.textContent = "Replicar en 4 esquinas";
+        b4.addEventListener("click", () => replicarEsquinas({ TL: true, TR: true, BL: true, BR: true }));
+        const bRep = document.createElement("button"); bRep.type = "button"; bRep.className = "pz-btn"; bRep.textContent = "Replicar en esquinas marcadas";
+        bRep.addEventListener("click", () => replicarEsquinas(marca));
+        racc.appendChild(bRep); racc.appendChild(b4); card.appendChild(racc);
         // Aristas a dibujar (solo corte rectangular) — visible.
         if (!esCirc) {
           const lcap = document.createElement("p"); lcap.className = "muted small"; lcap.textContent = "Aristas a dibujar (apaga lados para un corte recto; deja una sola = una línea):"; card.appendChild(lcap);

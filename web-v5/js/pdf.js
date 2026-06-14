@@ -95,7 +95,7 @@
     const py = (sy) => topRect - sy * scale;
     const GRAY = PDFLib.rgb(0.12, 0.12, 0.12);
     const ACC = BLUE();
-    const RED = PDFLib.rgb(0.82, 0.23, 0.18);
+    const RED = PDFLib.rgb(0.106, 0.369, 0.125); // verde pino
     const TICK = 3, EXTGAP = 3;
     // Ventanas (rectangulares o circulares)
     sk.ventanas.forEach((v) => {
@@ -140,14 +140,15 @@
     // Ojetillos = anillo + círculo concéntrico menor (borde fino), hacia adentro del paño.
     const r = Math.max(1.4, Math.min(2.6, scale * 0.022));
     const ojePDF = (cx, cy, col) => {
-      page.drawCircle({ x: cx, y: cy, size: r, borderColor: col, borderWidth: 0.6, color: WHITE() });
-      page.drawCircle({ x: cx, y: cy, size: r * 0.42, borderColor: col, borderWidth: 0.5 });
+      page.drawCircle({ x: cx, y: cy, size: r, borderColor: col, borderWidth: 0.4, color: WHITE() });
+      page.drawCircle({ x: cx, y: cy, size: r * 0.42, borderColor: col, borderWidth: 0.35 });
     };
     const insetOj = r + 1;
     sk.ojetillos.forEach((p) => {
       let cx = px(p.x), cy = py(p.y);
+      // En coords PDF el eje Y va hacia arriba: arriba (p.y=0) entra restando; abajo (p.y=largo) sumando.
       if (p.x <= 0.001) cx += insetOj; else if (p.x >= sk.ancho - 0.001) cx -= insetOj;
-      if (p.y <= 0.001) cy += insetOj; else if (p.y >= sk.largo - 0.001) cy -= insetOj;
+      if (p.y <= 0.001) cy -= insetOj; else if (p.y >= sk.largo - 0.001) cy += insetOj;
       ojePDF(cx, cy, ACC);
     });
     // Cortes / calados: líneas de corte (lados existentes) + tijeras + ojetillos del corte
@@ -187,17 +188,17 @@
         const lbl = SK.fmt(c.value) + "m";
         if (c.axis === "h") {
           const dimY = topRect + off, xa = px(c.a), xb = px(c.b);
-          ln(xa, topRect, xa, dimY + EXTGAP, 0.4); ln(xb, topRect, xb, dimY + EXTGAP, 0.4);
-          ln(xa, dimY, xb, dimY, 0.6);
-          ln(xa, dimY - TICK, xa, dimY + TICK, 0.6); ln(xb, dimY - TICK, xb, dimY + TICK, 0.6);
-          page.drawText(lbl, { x: (xa + xb) / 2 - font.widthOfTextAtSize(lbl, 7.5) / 2, y: dimY + 2, size: 7.5, font: font, color: RED });
+          ln(xa, topRect, xa, dimY + EXTGAP, 0.3); ln(xb, topRect, xb, dimY + EXTGAP, 0.3);
+          ln(xa, dimY, xb, dimY, 0.4);
+          ln(xa, dimY - TICK, xa, dimY + TICK, 0.4); ln(xb, dimY - TICK, xb, dimY + TICK, 0.4);
+          page.drawText(lbl, { x: (xa + xb) / 2 - font.widthOfTextAtSize(lbl, 5.5) / 2, y: dimY + 2, size: 5.5, font: font, color: RED });
         } else {
           const dimX = x0 - off, ya = py(c.a), yb = py(c.b);
-          ln(x0, ya, dimX - EXTGAP, ya, 0.4); ln(x0, yb, dimX - EXTGAP, yb, 0.4);
-          ln(dimX, ya, dimX, yb, 0.6);
-          ln(dimX - TICK, ya, dimX + TICK, ya, 0.6); ln(dimX - TICK, yb, dimX + TICK, yb, 0.6);
+          ln(x0, ya, dimX - EXTGAP, ya, 0.3); ln(x0, yb, dimX - EXTGAP, yb, 0.3);
+          ln(dimX, ya, dimX, yb, 0.4);
+          ln(dimX - TICK, ya, dimX + TICK, ya, 0.4); ln(dimX - TICK, yb, dimX + TICK, yb, 0.4);
           const my = (ya + yb) / 2;
-          page.drawText(lbl, { x: dimX - 4, y: my - font.widthOfTextAtSize(lbl, 7.5) / 2, size: 7.5, font: font, color: RED, rotate: PDFLib.degrees(90) });
+          page.drawText(lbl, { x: dimX - 4, y: my - font.widthOfTextAtSize(lbl, 5.5) / 2, size: 5.5, font: font, color: RED, rotate: PDFLib.degrees(90) });
         }
       });
     }

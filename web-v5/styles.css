@@ -169,15 +169,15 @@ button:active { transform: scale(0.98); }
 .sketch { margin: 8px 0 4px; display: flex; justify-content: center; }
 .sketch-svg { max-width: 360px; width: 100%; height: auto; }
 .sketch-svg .edge { fill: none; stroke: var(--text); stroke-width: 1.6; }
-.sketch-svg .oje { fill: var(--surface); stroke: var(--accent); stroke-width: 0.7; }
-.sketch-svg .oje-in { fill: none; stroke: var(--accent); stroke-width: 0.5; }
-.sketch-svg .cut-oje-in { fill: none; stroke: #8e44ad; stroke-width: 0.5; }
+.sketch-svg .oje { fill: var(--surface); stroke: var(--accent); stroke-width: 0.5; }
+.sketch-svg .oje-in { fill: none; stroke: var(--accent); stroke-width: 0.4; }
+.sketch-svg .cut-oje-in { fill: none; stroke: #8e44ad; stroke-width: 0.4; }
 .sketch-svg .win { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; }
 .sketch-svg .dim { fill: var(--muted); font-size: 9px; font-family: inherit; }
-.sketch-svg .cota { stroke: #d23b2e; stroke-width: 0.7; fill: none; }
-.sketch-svg .cota-ext { stroke: #d23b2e; stroke-width: 0.5; fill: none; }
-.sketch-svg .cota-tick { stroke: #d23b2e; stroke-width: 0.7; }
-.sketch-svg .cota-lbl { fill: #d23b2e; font-size: 7.5px; font-family: inherit; }
+.sketch-svg .cota { stroke: #1B5E20; stroke-width: 0.45; fill: none; }
+.sketch-svg .cota-ext { stroke: #1B5E20; stroke-width: 0.3; fill: none; }
+.sketch-svg .cota-tick { stroke: #1B5E20; stroke-width: 0.45; }
+.sketch-svg .cota-lbl { fill: #1B5E20; font-size: 5.5px; font-family: inherit; }
 .sketch-svg .cut { stroke: #8e44ad; stroke-width: 1.1; fill: none; stroke-dasharray: 6 3; }
 .sketch-svg .scissor { stroke: #8e44ad; stroke-width: 0.7; fill: none; }
 .sketch-svg .cut-oje { fill: var(--surface); stroke: #8e44ad; stroke-width: 1.1; }
