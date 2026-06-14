@@ -4,7 +4,7 @@
    El corte NO afecta cálculo de valor ni material; un lado que coincide con el borde del
    paño base "desaparece" (queda calado abierto). */
 (function (global) {
-  const OFF_MAJOR = 34, OFF_MIN0 = 14, OFF_STEP = 13, TICK = 3, EXTGAP = 3, EPS = 0.001;
+  const OFF_MIN0 = 16, OFF_STEP = 18, OFF_GAP = 20, TICK = 3, EXTGAP = 3, EPS = 0.001;
 
   // Distribuye n puntos uniformemente por el perímetro (sentido horario desde 0,0).
   function ojetillosPerimetro(n, ancho, largo) {
@@ -109,22 +109,24 @@
   function cotasDe(sk) {
     const out = [];
     if (!(sk.ancho > 0) || !(sk.largo > 0)) return out;
-    out.push({ axis: "h", a: 0, b: sk.ancho, level: "major", slot: 0, value: sk.ancho });
-    out.push({ axis: "v", a: 0, b: sk.largo, level: "major", slot: 0, value: sk.largo });
     const rects = (sk.ventanas || []).concat((sk.cortes || []).filter((c) => !c.rotated && !c.circ).map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h })));
+    // La cota mayor (paño base) va por FUERA de todas las menores, con separación constante.
+    const majorOff = OFF_MIN0 + rects.length * OFF_STEP + OFF_GAP;
+    out.push({ axis: "h", a: 0, b: sk.ancho, off: majorOff, value: sk.ancho });
+    out.push({ axis: "v", a: 0, b: sk.largo, off: majorOff, value: sk.largo });
     rects.forEach((v, i) => {
-      if (v.x > EPS) out.push({ axis: "h", a: 0, b: v.x, level: "minor", slot: i, value: v.x });
-      out.push({ axis: "h", a: v.x, b: v.x + v.w, level: "minor", slot: i, value: v.w });
-      if (v.y > EPS) out.push({ axis: "v", a: 0, b: v.y, level: "minor", slot: i, value: v.y });
-      out.push({ axis: "v", a: v.y, b: v.y + v.h, level: "minor", slot: i, value: v.h });
+      const off = OFF_MIN0 + i * OFF_STEP;
+      if (v.x > EPS) out.push({ axis: "h", a: 0, b: v.x, off: off, value: v.x });
+      out.push({ axis: "h", a: v.x, b: v.x + v.w, off: off, value: v.w });
+      if (v.y > EPS) out.push({ axis: "v", a: 0, b: v.y, off: off, value: v.y });
+      out.push({ axis: "v", a: v.y, b: v.y + v.h, off: off, value: v.h });
     });
     return out;
   }
-  function offsetCota(c) { return c.level === "major" ? OFF_MAJOR : (OFF_MIN0 + c.slot * OFF_STEP); }
+  function offsetCota(c) { return c.off; }
   function margenCotas(sk) {
     const nv = (sk.ventanas || []).length + (sk.cortes || []).filter((c) => !c.rotated && !c.circ).length;
-    const minMax = nv > 0 ? (OFF_MIN0 + (nv - 1) * OFF_STEP) : 0;
-    return Math.max(OFF_MAJOR, minMax) + 14;
+    return OFF_MIN0 + nv * OFF_STEP + OFF_GAP + 14;
   }
 
   function fmt(n) { return (Math.round(n * 1000) / 1000).toString(); }
@@ -162,9 +164,11 @@
     const mTL = conCotas ? margenCotas(sk) : 26, mBR = 18;
     const scale = Math.min((maxW - mTL - mBR) / sk.ancho, (maxH - mTL - mBR) / sk.largo);
     const w = sk.ancho * scale, h = sk.largo * scale, ox = mTL, oy = mTL;
-    const r = Math.max(2.2, Math.min(4.5, scale * 0.03));
+    const r = Math.max(1.7, Math.min(3.0, scale * 0.022));
     const f1 = (n) => n.toFixed(1);
     const px = (sx) => ox + sx * scale, py = (sy) => oy + sy * scale;
+    // Ojetillo = anillo + círculo concéntrico menor (borde fino).
+    const ojeSVG = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r * 0.42)}"/>`;
     let s = `<svg class="sketch-svg" viewBox="0 0 ${f1(w + mTL + mBR)} ${f1(h + mTL + mBR)}" xmlns="http://www.w3.org/2000/svg">`;
     // Ventanas (rectangulares o circulares)
     sk.ventanas.forEach((v) => {
@@ -202,8 +206,14 @@
       if (horiz) s += `<text class="pocket-lbl" x="${f1(bx + bw / 2)}" y="${f1(by + bh / 2 + 2.5)}" text-anchor="middle">${lbl}</text>`;
       else { const mx = bx + bw / 2, my = by + bh / 2; s += `<text class="pocket-lbl" x="${f1(mx)}" y="${f1(my)}" text-anchor="middle" transform="rotate(-90 ${f1(mx)} ${f1(my)})">${lbl}</text>`; }
     });
-    // Ojetillos del paño base
-    sk.ojetillos.forEach((p) => { s += `<circle class="oje" cx="${f1(px(p.x))}" cy="${f1(py(p.y))}" r="${f1(r)}"/>`; });
+    // Ojetillos del paño base — desplazados hacia adentro (≥1px desde la tangente).
+    const inset = r + 1;
+    sk.ojetillos.forEach((p) => {
+      let cx = px(p.x), cy = py(p.y);
+      if (p.x <= EPS) cx += inset; else if (p.x >= sk.ancho - EPS) cx -= inset;
+      if (p.y <= EPS) cy += inset; else if (p.y >= sk.largo - EPS) cy -= inset;
+      s += ojeSVG(cx, cy, "oje");
+    });
     // Cortes / calados: líneas de corte (lados existentes) + tijeras + ojetillos del corte
     const tijeraSVG = (tx, ty) => {
       const tp = tijeraPrims(tx, ty, 8); let out = "";
@@ -221,7 +231,7 @@
         if (!c.tijeras) tijerasEn(a, b, d, e).forEach((t) => { s += tijeraSVG(t.x, t.y); });
       });
       if (c.tijeras) c.tijeras.forEach((t) => { s += tijeraSVG(px(t.x), py(t.y)); });
-      c.ojetillos.forEach((p) => { s += `<circle class="cut-oje" cx="${f1(px(p.x))}" cy="${f1(py(p.y))}" r="${f1(r)}"/>`; });
+      c.ojetillos.forEach((p) => { s += ojeSVG(px(p.x), py(p.y), "cut-oje"); });
       if (c.rotated && c.pivote) {
         const cx = px(c.pivote.x), cy = py(c.pivote.y);
         s += `<circle class="cut-piv" cx="${f1(cx)}" cy="${f1(cy)}" r="2.6"/>`;

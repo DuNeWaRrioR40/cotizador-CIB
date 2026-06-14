@@ -74,6 +74,9 @@ input, select, textarea {
   width: 100%; appearance: none; -webkit-appearance: none;
 }
 textarea { font-family: inherit; resize: vertical; min-height: 70px; }
+input[type="checkbox"], input[type="radio"] { appearance: auto; -webkit-appearance: auto; width: auto; accent-color: var(--accent); padding: 0; }
+.adv-btn { margin: 8px 0; }
+.adv-panel { border-left: 2px solid var(--border); padding-left: 10px; margin: 4px 0 6px; }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
 select { background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) 18px, calc(100% - 13px) 18px; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
 
@@ -166,7 +169,9 @@ button:active { transform: scale(0.98); }
 .sketch { margin: 8px 0 4px; display: flex; justify-content: center; }
 .sketch-svg { max-width: 360px; width: 100%; height: auto; }
 .sketch-svg .edge { fill: none; stroke: var(--text); stroke-width: 1.6; }
-.sketch-svg .oje { fill: var(--surface); stroke: var(--accent); stroke-width: 1.2; }
+.sketch-svg .oje { fill: var(--surface); stroke: var(--accent); stroke-width: 0.7; }
+.sketch-svg .oje-in { fill: none; stroke: var(--accent); stroke-width: 0.5; }
+.sketch-svg .cut-oje-in { fill: none; stroke: #8e44ad; stroke-width: 0.5; }
 .sketch-svg .win { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; }
 .sketch-svg .dim { fill: var(--muted); font-size: 9px; font-family: inherit; }
 .sketch-svg .cota { stroke: #d23b2e; stroke-width: 0.7; fill: none; }

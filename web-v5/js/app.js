@@ -672,55 +672,63 @@
         const bL = document.createElement("button"); bL.type = "button"; bL.className = "pz-btn"; bL.textContent = "Limpiar márgenes";
         bL.addEventListener("click", () => { ["padSup", "padInf", "padIzq", "padDer"].forEach((k) => { c[k] = "0"; }); setPad(); refresh(); onChange(); });
         acc.appendChild(bC); acc.appendChild(bL); card.appendChild(acc);
+        // Aristas a dibujar (solo corte rectangular) — visible.
         if (!esCirc) {
-        // Aristas a dibujar — apaga lados para lograr un corte recto (deja una sola = una línea).
-        const lcap = document.createElement("p"); lcap.className = "muted small"; lcap.textContent = "Aristas a dibujar (apaga lados para un corte recto; deja una sola = una línea):"; card.appendChild(lcap);
-        const lrow = document.createElement("div"); lrow.className = "radios";
-        [["sup", "Superior"], ["inf", "Inferior"], ["izq", "Izquierda"], ["der", "Derecha"]].forEach(([k, lab]) => {
-          const l = document.createElement("label"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = (c.lados ? c.lados[k] !== false : true);
-          cb.addEventListener("change", (e) => { if (!c.lados) c.lados = { sup: true, inf: true, izq: true, der: true }; c.lados[k] = e.target.checked; refresh(); onChange(); });
-          l.appendChild(cb); l.appendChild(document.createTextNode(" " + lab)); lrow.appendChild(l);
-        });
-        card.appendChild(lrow);
-        // Ángulo y pivote del corte.
-        const acap = document.createElement("p"); acap.className = "muted small"; acap.textContent = "Ángulo y pivote (arrastra las barras; pivote 0–1: 0,0 = esquina sup-izq · 0.5,0.5 = centro):"; card.appendChild(acap);
-        const agrid = document.createElement("div");
-        const sliderField = (key, lab, min, max, step, def, unit) => {
-          const wrap = document.createElement("div"); wrap.style.margin = "6px 0";
-          const cur = (c[key] != null && c[key] !== "") ? c[key] : def;
-          const sp = document.createElement("div"); sp.className = "muted small"; sp.textContent = lab + ": " + cur + (unit || "");
-          const row = document.createElement("div"); row.className = "slider-row";
-          const rng = document.createElement("input"); rng.type = "range"; rng.min = String(min); rng.max = String(max); rng.step = String(step); rng.value = String(cur);
-          const numi = document.createElement("input"); numi.type = "text"; numi.inputMode = "decimal"; numi.value = String(cur); numi.className = "slider-num";
-          const apply = (v) => { c[key] = String(v); sp.textContent = lab + ": " + v + (unit || ""); refresh(); onChange(); };
-          rng.addEventListener("input", (e) => { numi.value = e.target.value; apply(e.target.value); });
-          numi.addEventListener("input", (e) => { const v = e.target.value; if (v !== "" && !isNaN(parseFloat(v))) rng.value = v; apply(v); });
-          row.appendChild(rng); row.appendChild(numi); wrap.appendChild(sp); wrap.appendChild(row);
-          return wrap;
-        };
-        agrid.appendChild(sliderField("angulo", "Ángulo", -180, 180, 1, "0", "°"));
-        agrid.appendChild(sliderField("pivX", "Pivote X", 0, 1, 0.01, "0.5", ""));
-        agrid.appendChild(sliderField("pivY", "Pivote Y", 0, 1, 0.01, "0.5", ""));
-        card.appendChild(agrid);
-        const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos por arista del corte (solo van al dibujo de taller):"; card.appendChild(ocap);
-        const ogrid = document.createElement("div"); ogrid.className = "pieza-grid";
-        [["sup", "Superior"], ["inf", "Inferior"], ["izq", "Izquierda"], ["der", "Derecha"]].forEach(([k, lab]) => {
-          const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
-          const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "numeric"; inp.value = (c.oj && c.oj[k]) || "0";
-          inp.addEventListener("input", (e) => { c.oj[k] = e.target.value; refresh(); onChange(); });
-          l.appendChild(inp); ogrid.appendChild(l);
-        });
-        card.appendChild(ogrid);
+          const lcap = document.createElement("p"); lcap.className = "muted small"; lcap.textContent = "Aristas a dibujar (apaga lados para un corte recto; deja una sola = una línea):"; card.appendChild(lcap);
+          const lrow = document.createElement("div"); lrow.className = "radios";
+          [["sup", "Superior"], ["inf", "Inferior"], ["izq", "Izquierda"], ["der", "Derecha"]].forEach(([k, lab]) => {
+            const l = document.createElement("label"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = (c.lados ? c.lados[k] !== false : true);
+            cb.addEventListener("change", (e) => { if (!c.lados) c.lados = { sup: true, inf: true, izq: true, der: true }; c.lados[k] = e.target.checked; refresh(); onChange(); });
+            l.appendChild(cb); l.appendChild(document.createTextNode(" " + lab)); lrow.appendChild(l);
+          });
+          card.appendChild(lrow);
+        }
+        // Opciones avanzadas (colapsable): ángulo/pivote + ojetillos + materiales.
+        const advBtn = document.createElement("button"); advBtn.type = "button"; advBtn.className = "btn-outline adv-btn";
+        const adv = document.createElement("div"); adv.className = "adv-panel";
+        const setAdv = (open) => { c._advOpen = open; adv.style.display = open ? "" : "none"; advBtn.textContent = (open ? "▾ " : "▸ ") + "Opciones avanzadas"; };
+        advBtn.addEventListener("click", () => setAdv(!c._advOpen));
+        card.appendChild(advBtn); card.appendChild(adv);
+        if (!esCirc) {
+          const acap = document.createElement("p"); acap.className = "muted small"; acap.textContent = "Ángulo y pivote (arrastra las barras; pivote 0–1: 0,0 = esquina sup-izq · 0.5,0.5 = centro):"; adv.appendChild(acap);
+          const agrid = document.createElement("div");
+          const sliderField = (key, lab, min, max, step, def, unit) => {
+            const wrap = document.createElement("div"); wrap.style.margin = "6px 0";
+            const cur = (c[key] != null && c[key] !== "") ? c[key] : def;
+            const sp = document.createElement("div"); sp.className = "muted small"; sp.textContent = lab + ": " + cur + (unit || "");
+            const row = document.createElement("div"); row.className = "slider-row";
+            const rng = document.createElement("input"); rng.type = "range"; rng.min = String(min); rng.max = String(max); rng.step = String(step); rng.value = String(cur);
+            const numi = document.createElement("input"); numi.type = "text"; numi.inputMode = "decimal"; numi.value = String(cur); numi.className = "slider-num";
+            const apply = (v) => { c[key] = String(v); sp.textContent = lab + ": " + v + (unit || ""); refresh(); onChange(); };
+            rng.addEventListener("input", (e) => { numi.value = e.target.value; apply(e.target.value); });
+            numi.addEventListener("input", (e) => { const v = e.target.value; if (v !== "" && !isNaN(parseFloat(v))) rng.value = v; apply(v); });
+            row.appendChild(rng); row.appendChild(numi); wrap.appendChild(sp); wrap.appendChild(row);
+            return wrap;
+          };
+          agrid.appendChild(sliderField("angulo", "Ángulo", -180, 180, 1, "0", "°"));
+          agrid.appendChild(sliderField("pivX", "Pivote X", 0, 1, 0.01, "0.5", ""));
+          agrid.appendChild(sliderField("pivY", "Pivote Y", 0, 1, 0.01, "0.5", ""));
+          adv.appendChild(agrid);
+          const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos por arista del corte (solo van al dibujo de taller):"; adv.appendChild(ocap);
+          const ogrid = document.createElement("div"); ogrid.className = "pieza-grid";
+          [["sup", "Superior"], ["inf", "Inferior"], ["izq", "Izquierda"], ["der", "Derecha"]].forEach(([k, lab]) => {
+            const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
+            const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "numeric"; inp.value = (c.oj && c.oj[k]) || "0";
+            inp.addEventListener("input", (e) => { c.oj[k] = e.target.value; refresh(); onChange(); });
+            l.appendChild(inp); ogrid.appendChild(l);
+          });
+          adv.appendChild(ogrid);
         } else {
-          const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos del corte (repartidos alrededor del círculo; solo al dibujo de taller):"; card.appendChild(ocap);
+          const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos del corte (repartidos alrededor del círculo; solo al dibujo de taller):"; adv.appendChild(ocap);
           const ol = document.createElement("label"); ol.className = "field"; ol.innerHTML = "<span>Ojetillos (alrededor)</span>";
           const oi = document.createElement("input"); oi.type = "text"; oi.inputMode = "numeric"; oi.value = c.ojCirc || "0";
           oi.addEventListener("input", (e) => { c.ojCirc = e.target.value; refresh(); onChange(); });
-          ol.appendChild(oi); card.appendChild(ol);
+          ol.appendChild(oi); adv.appendChild(ol);
         }
-        const mcap = document.createElement("p"); mcap.className = "muted small"; mcap.textContent = "Materiales del corte (solo al dibujo de taller, no a la cotización):"; card.appendChild(mcap);
-        const mdiv = document.createElement("div"); card.appendChild(mdiv);
+        const mcap = document.createElement("p"); mcap.className = "muted small"; mcap.textContent = "Materiales del corte (solo al dibujo de taller, no a la cotización):"; adv.appendChild(mcap);
+        const mdiv = document.createElement("div"); adv.appendChild(mdiv);
         renderComplementos(mdiv, c.complementos, onChange);
+        setAdv(!!c._advOpen);
         const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
         function refresh() {
           const ev = window.CalcCIBSA.evalExpr, w = ev(c.ancho), h = ev(c.largo);

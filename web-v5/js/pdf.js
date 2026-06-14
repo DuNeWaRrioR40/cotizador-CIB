@@ -137,10 +137,18 @@
       if (horiz) page.drawText(lbl, { x: cxp - font.widthOfTextAtSize(lbl, 7) / 2, y: cyp - 2.5, size: 7, font: font, color: TEAL });
       else page.drawText(lbl, { x: cxp - 2.5, y: cyp - font.widthOfTextAtSize(lbl, 7) / 2, size: 7, font: font, color: TEAL, rotate: PDFLib.degrees(90) });
     });
-    // Ojetillos
-    const r = Math.max(1.6, Math.min(3.4, scale * 0.03));
+    // Ojetillos = anillo + círculo concéntrico menor (borde fino), hacia adentro del paño.
+    const r = Math.max(1.4, Math.min(2.6, scale * 0.022));
+    const ojePDF = (cx, cy, col) => {
+      page.drawCircle({ x: cx, y: cy, size: r, borderColor: col, borderWidth: 0.6, color: WHITE() });
+      page.drawCircle({ x: cx, y: cy, size: r * 0.42, borderColor: col, borderWidth: 0.5 });
+    };
+    const insetOj = r + 1;
     sk.ojetillos.forEach((p) => {
-      page.drawCircle({ x: px(p.x), y: py(p.y), size: r, borderColor: ACC, borderWidth: 1, color: WHITE() });
+      let cx = px(p.x), cy = py(p.y);
+      if (p.x <= 0.001) cx += insetOj; else if (p.x >= sk.ancho - 0.001) cx -= insetOj;
+      if (p.y <= 0.001) cy += insetOj; else if (p.y >= sk.largo - 0.001) cy -= insetOj;
+      ojePDF(cx, cy, ACC);
     });
     // Cortes / calados: líneas de corte (lados existentes) + tijeras + ojetillos del corte
     const PURPLE = PDFLib.rgb(0.557, 0.267, 0.678);
@@ -159,7 +167,7 @@
         if (!c.tijeras) SK.tijerasEn(a, b, d, e).forEach((t) => tijeraPDF(t.x, t.y));
       });
       if (c.tijeras) c.tijeras.forEach((t) => tijeraPDF(px(t.x), py(t.y)));
-      (c.ojetillos || []).forEach((p) => page.drawCircle({ x: px(p.x), y: py(p.y), size: r, borderColor: PURPLE, borderWidth: 1, color: WHITE() }));
+      (c.ojetillos || []).forEach((p) => ojePDF(px(p.x), py(p.y), PURPLE));
       if (c.rotated && c.pivote) {
         const cx = px(c.pivote.x), cy = py(c.pivote.y);
         page.drawCircle({ x: cx, y: cy, size: 2.6, borderColor: PURPLE, borderWidth: 0.7 });
