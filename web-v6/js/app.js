@@ -405,7 +405,9 @@
     // Materiales (desde RANGO → tabla "Materiales"; si no existe, queda vacío)
     try { state.materiales = await window.SheetsCIBSA.cargarMateriales(token); }
     catch (e) { console.warn("CIBSA: no se pudieron cargar los materiales —", e && e.message ? e.message : e); state.materiales = []; }
-    renderComplementosUnif();
+    // Re-dibuja los sub-editores que dependen de las telas/materiales recién cargadas
+    // (de lo contrario sus botones "+ …" quedan deshabilitados desde el arranque sin telas).
+    renderComplementosUnif(); renderAletasUnif(); renderTraseraUnif(); renderPiezas();
     // Vendedores (desde RANGO → tabla "Vendedores"; si no existe, usa el de config)
     let vendedores = [];
     try { vendedores = await window.SheetsCIBSA.cargarVendedores(token); }
