@@ -73,7 +73,9 @@
         <div class="hist-actions">
           <button id="btnExportHistCsv" type="button" class="btn-outline small">Exportar CSV</button>
           <button id="btnExportHistXlsx" type="button" class="btn-outline small">Exportar Excel</button>
+          <button id="btnImportarHist" type="button" class="btn-outline small">Importar respaldo</button>
           <button id="btnLimpiarHist" type="button" class="btn-outline small">Borrar historial</button>
+          <input id="fileImportarHist" type="file" accept="application/json,.json" class="hidden" />
         </div>
       </div>
       <p class="muted small">Toca una para reconstruir toda la cotización y sugerir la versión siguiente. Se sincronizan con tu Google Sheet (hoja HISTORIAL), así no se pierden aunque borres datos del navegador.</p>
@@ -166,7 +168,7 @@
     <!-- Cortes / Calados (uniforme) -->
     <div id="wCortesUnif">
       <h2 class="section">Cortes / Calados</h2>
-      <p class="muted small">Huecos o calados de diseño. Costo $0 y sin consumo de material; van solo al dibujo de taller.</p>
+      <p class="muted small">Huecos o calados de diseño. Costo $0 y sin consumo de material; van solo al plano de taller.</p>
       <div id="cortesUnif"></div>
     </div>
 
@@ -207,7 +209,7 @@
     <!-- Vista del producto (uniforme) -->
     <div id="wSketchUnif">
       <h2 class="section">Vista del producto</h2>
-      <p class="muted small">Dibujo a escala: contorno, ojetillos y cotas (referencial).</p>
+      <p class="muted small">Plano a escala: contorno, ojetillos y cotas (referencial).</p>
       <label class="chk"><input type="checkbox" id="f_trasUnif" /> <span>Incluir vista trasera (espejo)</span></label>
       <p id="trasUnifHint" class="muted small hidden">Define primero el diseño frontal (largo y ancho) para habilitar la vista trasera.</p>
       <div id="wTraseraUnif" class="hidden trasera-box">
@@ -219,7 +221,7 @@
         <div id="backAletasUnif"></div>
       </div>
       <div id="sketchUnif" class="sketch"></div>
-      <button id="btnDescargarSketch" class="btn-outline" type="button">Descargar dibujo (PDF)</button>
+      <button id="btnDescargarSketch" class="btn-outline" type="button">Descargar plano (PDF)</button>
     </div>
 
     <!-- Orientación de uniones (preliminar) -->

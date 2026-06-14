@@ -258,5 +258,33 @@
     await anexarFilas(token, hoja, filas);
   }
 
-  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarWiki, leerHistorialRaw, escribirHistorial, parseNumero };
+  // Id numérico (gid) de una pestaña por su nombre. Necesario para eliminar filas.
+  async function obtenerSheetId(token, hoja) {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}?fields=sheets(properties(sheetId,title))`;
+    const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) throw new Error("No se pudo leer la estructura del Sheet (código " + r.status + ").");
+    const data = await r.json();
+    const s = (data.sheets || []).find((x) => x.properties && x.properties.title === hoja);
+    return s ? s.properties.sheetId : null;
+  }
+  // Elimina por completo la fila cuyo Timestamp (col A) coincide con ts (deleteDimension: corre el resto hacia arriba).
+  async function borrarFilaHistorial(token, hoja, ts) {
+    const info = await leerHistorialRaw(token, hoja);
+    if (!info.existe) return false;
+    const filas = info.filas || [];
+    let idx = -1;
+    for (let i = 0; i < filas.length; i++) {
+      if (String((filas[i] || [])[0]).trim() === String(ts).trim()) { idx = i; break; }
+    }
+    if (idx < 0) return false; // ya no está
+    const sheetId = await obtenerSheetId(token, hoja);
+    if (sheetId == null) return false;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}:batchUpdate`;
+    const body = { requests: [{ deleteDimension: { range: { sheetId: sheetId, dimension: "ROWS", startIndex: idx, endIndex: idx + 1 } } }] };
+    const r = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error("No se pudo eliminar la fila del historial (código " + r.status + ").");
+    return true;
+  }
+
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);

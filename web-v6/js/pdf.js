@@ -259,7 +259,9 @@
     const sk = SK.construirSketch(spec);
     if (!(sk.ancho > 0) || !(sk.largo > 0)) return;
     const conCotas = opts.cotas !== false;
-    const mTL = conCotas ? SK.margenCotas(sk) : 24, mBR = 18;
+    // Margen extra para los rótulos de orientación: los aleja de las cotas y achica un poco la imagen.
+    const LBL = 22;
+    const mTL = (conCotas ? SK.margenCotas(sk) : 24) + LBL, mBR = 18 + LBL;
     const availW = box.w - mTL - mBR, availH = box.h - mTL - mBR;
     if (availW <= 0 || availH <= 0) return;
     // Bounds: paño base + aletas que se extienden fuera.
@@ -851,7 +853,7 @@
     const fmtN = (n) => (Math.round((+n) * 1000) / 1000).toString();
 
     let y = dibujarEncabezado(page, cibsa, kam, W, M, H - 40);
-    tituloCentrado(page, "DIBUJO DEL PRODUCTO", W, y, bold, 15, BLUE()); y -= 15;
+    tituloCentrado(page, "PLANO DEL PRODUCTO", W, y, bold, 15, BLUE()); y -= 15;
     tituloCentrado(page, "(plano referencial para taller)", W, y, font, 10, BLUE()); y -= 22;
     if (datos.titulo) { txt(`"${datos.titulo}"`, M, y, { f: bold, size: 12 }); y -= 18; }
 
@@ -912,9 +914,9 @@
     }
 
     const bytes = await doc.save();
-    const base = datos.filenameBase || "Dibujo";
+    const base = datos.filenameBase || "Plano";
     const etq = datos.etiquetaArchivo ? "_" + String(datos.etiquetaArchivo).replace(/\s+/g, "") : "";
-    return { bytes, filename: base + etq + "_dibujo.pdf" };
+    return { bytes, filename: base + etq + "_plano.pdf" };
   }
 
   global.PDFCotizacion = {

@@ -102,13 +102,11 @@
     const porClave = {};
     (remotas || []).concat(locales).forEach((e) => {
       if (!e || !e.ts) return;
-      const k = (e.nombre || "").trim().toLowerCase() + "|" + (e.apellido || "").trim().toLowerCase() + "|" + e.tipo;
+      const k = (e.nombre || "").trim().toLowerCase() + "|" + (e.apellido || "").trim().toLowerCase() + "|" + e.tipo + "|" + (parseInt(e.version, 10) || 1);
       const prev = porClave[k];
-      const ver = Math.max(parseInt(e.version, 10) || 1, prev ? (parseInt(prev.version, 10) || 1) : 1);
-      const base = (!prev || e.ts >= prev.ts) ? e : prev;
-      porClave[k] = Object.assign({}, base, { version: ver });
+      if (!prev || e.ts >= prev.ts) porClave[k] = e; // misma versión: conserva la generación más reciente
     });
-    const merged = Object.keys(porClave).map((k) => porClave[k]).sort((a, b) => b.ts - a.ts).slice(0, HIST_MAX);
+    const merged = Object.keys(porClave).map((k) => porClave[k]).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, HIST_MAX);
     histStore(merged);
   }
   function histLoad() { try { const a = JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
@@ -173,9 +171,9 @@
     const tipo = histTipo(), vNum = parseInt(version, 10) || 1;
     const k = (s) => (s || "").trim().toLowerCase();
     let arr = histPrune(histLoad());
-    const i = arr.findIndex((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === tipo);
+    const i = arr.findIndex((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === tipo && (parseInt(e.version, 10) || 1) === vNum);
     const ent = { ts: Date.now(), fecha: histFechaCorta(new Date()), nombre: nom, apellido: ape, tipo: tipo, modo: state.docMode, prod: state.prodMode, version: vNum, snap: snapshotCotizacion() };
-    if (i >= 0) { ent.version = Math.max(vNum, parseInt(arr[i].version, 10) || 1); arr.splice(i, 1); }
+    if (i >= 0) arr.splice(i, 1); // reemplaza la MISMA versión; versiones distintas conviven como registros separados
     arr.unshift(ent);
     arr = arr.slice(0, HIST_MAX);
     histStore(arr);
@@ -208,25 +206,78 @@
     $("f_nombre").focus();
     recompute();
   }
+  const histClave = (e) => (e.nombre || "").trim().toLowerCase() + "|" + (e.apellido || "").trim().toLowerCase() + "|" + e.tipo;
   function renderHistorial() {
     const cont = $("histList"); if (!cont) return;
     let arr = histPrune(histLoad());
-    histStore(arr); // purga persistente
+    histStore(arr);
+    // Orden: más reciente primero → la última versión de cada cotización queda arriba.
+    arr = arr.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    // Versión máxima por cotización (cliente+tipo) para marcar la "última versión".
+    const maxVer = {};
+    arr.forEach((e) => { const k = histClave(e), v = parseInt(e.version, 10) || 1; if (!(k in maxVer) || v > maxVer[k]) maxVer[k] = v; });
     cont.innerHTML = "";
-    if (!arr.length) { cont.innerHTML = '<p class="muted small">Aún no hay cotizaciones guardadas en este dispositivo.</p>'; return; }
+    if (!arr.length) { cont.innerHTML = '<p class="muted small">Aún no hay cotizaciones guardadas.</p>'; return; }
     arr.forEach((ent) => {
-      const chip = document.createElement("button");
-      chip.type = "button"; chip.className = "hist-chip";
+      const esUltima = (parseInt(ent.version, 10) || 1) === maxVer[histClave(ent)];
       const nom = ((ent.nombre || "") + " " + (ent.apellido || "")).trim();
       const vtxt = "v" + ("0" + (parseInt(ent.version, 10) || 1)).slice(-2);
-      chip.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + '</span>' +
+      const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "");
+      const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = "Duplicar para editar (como versión siguiente)";
+      main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + (esUltima ? ' · <span class="hist-badge">última versión</span>' : '') + '</span>' +
         '<span class="hist-nom">' + esc(nom) + '</span>' +
         '<span class="hist-tipo">' + esc(ent.tipo || "") + ' · ' + vtxt + '</span>';
-      chip.addEventListener("click", () => aplicarHistorial(ent));
-      cont.appendChild(chip);
+      main.addEventListener("click", () => aplicarHistorial(ent));
+      const acts = document.createElement("div"); acts.className = "hist-acts";
+      const bDl = document.createElement("button"); bDl.type = "button"; bDl.className = "hist-act"; bDl.title = "Descargar respaldo (.json)"; bDl.textContent = "⬇";
+      bDl.addEventListener("click", (e) => { e.stopPropagation(); descargarRegistro(ent); });
+      const bDel = document.createElement("button"); bDel.type = "button"; bDel.className = "hist-act del"; bDel.title = "Borrar definitivamente"; bDel.textContent = "🗑";
+      bDel.addEventListener("click", (e) => { e.stopPropagation(); borrarRegistro(ent); });
+      acts.appendChild(bDl); acts.appendChild(bDel);
+      card.appendChild(main); card.appendChild(acts);
+      cont.appendChild(card);
     });
   }
-  { const b = $("btnLimpiarHist"); if (b) b.addEventListener("click", () => { if (confirm("¿Borrar el historial de cotizaciones de este dispositivo?")) { histStore([]); renderHistorial(); } }); }
+  function nombreRegistro(ent) {
+    const ini = (ent.nombre || "").trim().charAt(0).toUpperCase();
+    const ape = (ent.apellido || "").trim().replace(/\s+/g, "");
+    return "C." + ini + ape + ("0" + (parseInt(ent.version, 10) || 1)).slice(-2);
+  }
+  function descargarRegistro(ent) {
+    const blob = new Blob([JSON.stringify(ent, null, 2)], { type: "application/json" });
+    descargarBlob(blob, "Respaldo_" + nombreRegistro(ent) + "_" + (ent.tipo || "") + ".json");
+  }
+  async function borrarRegistro(ent) {
+    const nom = ((ent.nombre || "") + " " + (ent.apellido || "")).trim();
+    const vtxt = "v" + ("0" + (parseInt(ent.version, 10) || 1)).slice(-2);
+    if (!confirm("¿Borrar el registro «" + nom + " · " + (ent.tipo || "") + " " + vtxt + "»?\n\nSe quitará del historial y de la nube. Si crees que podrías necesitarlo, descárgalo antes con el botón ⬇.")) return;
+    if (!confirm("ÚLTIMA CONFIRMACIÓN: esta acción NO se puede deshacer.\n\n¿Borrar definitivamente «" + nom + " " + vtxt + "»?")) return;
+    const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+    if (tok) {
+      try { await window.SheetsCIBSA.borrarFilaHistorial(tok, HIST_HOJA, ent.ts); }
+      catch (e) { return alert("No se pudo borrar de la nube (" + (e.message || e) + ").\nEl registro NO se borró; inténtalo con conexión."); }
+    }
+    histStore(histLoad().filter((x) => x.ts !== ent.ts));
+    renderHistorial();
+  }
+  function importarRegistro(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let ent; try { ent = JSON.parse(reader.result); } catch (e) { return alert("El archivo no es un respaldo válido (.json)."); }
+      if (!ent || !ent.ts || !ent.nombre) return alert("El archivo no parece un registro de cotización válido.");
+      const arr = histLoad(); const k = (s) => (s || "").trim().toLowerCase();
+      const i = arr.findIndex((e) => k(e.nombre) === k(ent.nombre) && k(e.apellido) === k(ent.apellido) && e.tipo === ent.tipo && (parseInt(e.version, 10) || 1) === (parseInt(ent.version, 10) || 1));
+      if (i >= 0) arr.splice(i, 1);
+      arr.unshift(ent); histStore(arr.slice(0, HIST_MAX)); renderHistorial();
+      const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+      if (tok) window.SheetsCIBSA.escribirHistorial(tok, HIST_HOJA, [entryToRow(ent)], HIST_ENC).catch(() => {});
+      alert("Registro repuesto: " + ((ent.nombre || "") + " " + (ent.apellido || "")).trim());
+    };
+    reader.readAsText(file);
+  }
+  { const b = $("btnLimpiarHist"); if (b) b.addEventListener("click", () => { if (confirm("¿Borrar TODO el historial de este dispositivo? (No borra la hoja HISTORIAL del Sheet; se volverá a leer al reiniciar sesión.)")) { histStore([]); renderHistorial(); } }); }
+  { const b = $("btnImportarHist"), inp = $("fileImportarHist");
+    if (b && inp) { b.addEventListener("click", () => inp.click()); inp.addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f) importarRegistro(f); e.target.value = ""; }); } }
   // ----- Exportar historial a CSV / Excel -----
   function histFechaLarga(ts) { const d = new Date(ts || Date.now()); return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2) + "/" + d.getFullYear(); }
   function histStamp() { const d = new Date(); return "" + d.getFullYear() + ("0" + (d.getMonth() + 1)).slice(-2) + ("0" + d.getDate()).slice(-2); }
@@ -288,7 +339,7 @@
     f_tela: "Tela del producto; su valor por m² viene de la planilla. El proveedor nunca aparece en el PDF.",
     f_color: "Color del material (opcional). Solo es una nota para el plano de taller; no afecta el precio.",
     f_titulo: "Título que encabeza el producto en el PDF. Si lo dejas vacío, se genera automáticamente.",
-    f_usarPlano: "Si está marcado, además de la cotización se genera el dibujo a escala (plano) como archivo aparte.",
+    f_usarPlano: "Si está marcado, además de la cotización se genera el plano a escala como archivo aparte.",
     f_ojvalor: "Valor neto de cada ojetillo ($). Se multiplica por la cantidad de ojetillos del producto.",
     f_union: "Traslape de costura entre paños, en metros (típico 0,045). Debe ser menor que el ancho del rollo.",
     f_dias: "Días hábiles de entrega; aparece en las condiciones del documento.",
@@ -299,18 +350,18 @@
   };
   const AYUDA_SECCION = {
     "Datos del cliente": "Identifican al cliente en el documento y en el nombre del archivo.",
-    "Cotizaciones recientes": "Memoria de tus cotizaciones, sincronizada con la hoja HISTORIAL del Google Sheet (sobrevive aunque borres datos del navegador). Toca una para reconstruir toda la cotización y editarla rápido. Puedes exportarla a CSV o Excel.",
+    "Cotizaciones recientes": "Memoria de tus cotizaciones, sincronizada con la hoja HISTORIAL del Google Sheet (sobrevive aunque borres datos del navegador). Se ordena con la más reciente arriba y marca la «última versión» de cada cotización. Toca una para duplicarla y editarla como versión siguiente; ⬇ descarga un respaldo; 🗑 la borra definitivamente (con doble confirmación). Puedes exportar todo a CSV/Excel o reponer un respaldo con «Importar respaldo».",
     "Producto": "Elige Uniforme (una sola pieza) o Compuesto (varias piezas distintas en un mismo documento).",
     "Telas recomendadas": "En modo preliminar, marca una o más telas para estimar el valor en cada una.",
     "Piezas del producto": "Cada pieza es un paño distinto con sus propias medidas, tela, ojetillos y terminaciones.",
     "Ojetillos": "Cantidad por unidad. 'Total' = un número; 'Por arista' = distanciamiento en metros por borde (esquinas siempre incluidas). Un calado que toca un borde lo secciona y reacomoda los ojetillos solo.",
     "Bordes y uniones": "Define el traslape entre paños y la terminación del perímetro (borde, bolsillo, etc.), igual en todo o por arista.",
-    "Cortes / Calados": "Huecos o calados de diseño. Costo $0 y sin consumo de material; van solo al dibujo de taller.",
+    "Cortes / Calados": "Huecos o calados de diseño. Costo $0 y sin consumo de material; van solo al plano de taller.",
     "Complementos": "Materiales o accesorios extra (cinta, cuerda, etc.). Suman al precio según cantidad y valor.",
     "Aletas / Solapas / Faldón / Cenefa": "Paños anexos fusionados al paño base. SÍ consumen tela y suman al precio (en ambas caras).",
     "Condiciones": "Días de entrega, descuento y versión que aparecen en el documento.",
     "Orientación de uniones": "Sentido de los paños. La app marca la opción más económica.",
-    "Vista del producto": "Dibujo a escala referencial: contorno, ojetillos, calados, aletas y cotas.",
+    "Vista del producto": "Plano a escala referencial: contorno, ojetillos, calados, aletas y cotas.",
     "Valores preliminares": "Estimación rápida del valor por tela, sin IVA ni descuentos.",
   };
   let helpPop = null;
@@ -1262,7 +1313,7 @@
           agrid.appendChild(sliderField("pivX", "Pivote X", 0, 1, 0.01, "0.5", ""));
           agrid.appendChild(sliderField("pivY", "Pivote Y", 0, 1, 0.01, "0.5", ""));
           adv.appendChild(agrid);
-          const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos por arista del corte (solo van al dibujo de taller):"; adv.appendChild(addHelpTo(ocap, "Cantidad de ojetillos en cada lado del calado. Son solo del calado (van al plano de taller) y no afectan el precio.", "CORTE-OJET"));
+          const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos por arista del corte (solo van al plano de taller):"; adv.appendChild(addHelpTo(ocap, "Cantidad de ojetillos en cada lado del calado. Son solo del calado (van al plano de taller) y no afectan el precio.", "CORTE-OJET"));
           const ogrid = document.createElement("div"); ogrid.className = "pieza-grid";
           [["sup", "Superior"], ["inf", "Inferior"], ["izq", "Izquierda"], ["der", "Derecha"]].forEach(([k, lab]) => {
             const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
@@ -1272,13 +1323,13 @@
           });
           adv.appendChild(ogrid);
         } else {
-          const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos del corte (repartidos alrededor del círculo; solo al dibujo de taller):"; adv.appendChild(ocap);
+          const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos del corte (repartidos alrededor del círculo; solo al plano de taller):"; adv.appendChild(ocap);
           const ol = document.createElement("label"); ol.className = "field"; ol.innerHTML = "<span>Ojetillos (alrededor)</span>";
           const oi = document.createElement("input"); oi.type = "text"; oi.inputMode = "numeric"; oi.value = c.ojCirc || "0";
           oi.addEventListener("input", (e) => { c.ojCirc = e.target.value; refresh(); onChange(); });
           ol.appendChild(oi); adv.appendChild(ol);
         }
-        const mcap = document.createElement("p"); mcap.className = "muted small"; mcap.textContent = "Materiales del corte (solo al dibujo de taller, no a la cotización):"; adv.appendChild(mcap);
+        const mcap = document.createElement("p"); mcap.className = "muted small"; mcap.textContent = "Materiales del corte (solo al plano de taller, no a la cotización):"; adv.appendChild(mcap);
         const mdiv = document.createElement("div"); adv.appendChild(mdiv);
         renderComplementos(mdiv, c.complementos, onChange);
         setAdv(!!c._advOpen);
@@ -1833,16 +1884,16 @@
       const { bytes, filename } = await window.PDFCotizacion.generarSketchPDF(datos);
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
       descargar(url, filename);
-    } catch (e) { alert("Error al generar el dibujo:\n" + (e.message || e)); }
+    } catch (e) { alert("Error al generar el plano:\n" + (e.message || e)); }
   }
   function nombreBaseArchivo() {
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
-    if (!nombre || !apellido) return "Dibujo";
+    if (!nombre || !apellido) return "Plano";
     return window.PDFCotizacion.nombreArchivo({ cliente: { nombre, apellido }, version: $("f_version").value.trim() || "01", fecha: new Date() });
   }
   async function descargarSketchUnif() {
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
-    if (largo == null || ancho == null || largo <= 0 || ancho <= 0) return alert("Ingresa largo y ancho para descargar el dibujo.");
+    if (largo == null || ancho == null || largo <= 0 || ancho <= 0) return alert("Ingresa largo y ancho para descargar el plano.");
     const tela = telaActual();
     const N = Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1);
     await descargarSketch({
@@ -1863,7 +1914,7 @@
   async function descargarSketchPieza(pz) {
     const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
     const largo = ev(pz.largo), ancho = ev(pz.ancho);
-    if (!(largo > 0) || !(ancho > 0)) return alert("Esta pieza necesita largo y ancho para el dibujo.");
+    if (!(largo > 0) || !(ancho > 0)) return alert("Esta pieza necesita largo y ancho para el plano.");
     const tela = state.telas.find((t) => t.nombre === pz.telaNombre);
     const N = Math.max(1, parseInt(ev(pz.cantidad) || 1, 10) || 1);
     const etq = (pz.etiqueta || "").trim();
@@ -2010,7 +2061,7 @@
         <p class="pz-tras-hint muted small hidden">Define primero largo y ancho de la pieza para habilitar la vista trasera.</p>
         <div class="pz-back trasera-box hidden"></div>
         <div class="pz-sketch sketch"></div>
-        <div><button class="btn-outline pz-descargar" type="button">Descargar dibujo (PDF)</button></div>
+        <div><button class="btn-outline pz-descargar" type="button">Descargar plano (PDF)</button></div>
         <div class="pieza-sub muted small"></div>`;
       list.appendChild(card);
       const q = (s) => card.querySelector(s);

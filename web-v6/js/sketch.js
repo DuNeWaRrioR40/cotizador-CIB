@@ -532,10 +532,10 @@
     const maxW = opts.maxW || 360, maxH = opts.maxH || 300;
     const sk = construirSketch(spec);
     if (!(sk.ancho > 0) || !(sk.largo > 0)) {
-      return '<p class="muted small">Ingresa largo y ancho para ver el dibujo del producto.</p>';
+      return '<p class="muted small">Ingresa largo y ancho para ver el plano del producto.</p>';
     }
     const base = conCotas ? margenCotas(sk) : 26;
-    const mLeft = base + 16, mTop = base + 24, mRight = 26, mBot = 22; // rótulos de orientación
+    const mLeft = base + 24, mTop = base + 32, mRight = 30, mBot = 26; // margen extra: aleja rótulos de orientación de las cotas
     // Bounds del dibujo: paño base + cualquier aleta que se extienda fuera.
     let minX = 0, maxX = sk.ancho, minY = 0, maxY = sk.largo;
     (sk.aletas || []).forEach((a) => { minX = Math.min(minX, a.x); maxX = Math.max(maxX, a.x + a.w); minY = Math.min(minY, a.y); maxY = Math.max(maxY, a.y + a.h); });
