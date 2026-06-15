@@ -56,6 +56,7 @@
     show("wBordes", uni);
     show("wComplementosUnif", uni);
     show("wAletasUnif", uni);
+    show("wFactorTop", f); // acceso rápido al factor dentro de la sección Producto
     show("wFactorUnif", f); // factor único por producto: visible en uniforme y compuesto
     show("wCortesUnif", uni);
     show("wCondiciones", f);
@@ -888,7 +889,14 @@
   function facUnif() { return clampFactor(state.factorUnif); }
   function facPz(pz) { return facUnif(); } // factor ÚNICO por producto: aplica igual a todas las piezas
   function infoFactorUnif() { const info = $("factorUnifInfo"); if (info) { const fv = facUnif(); info.textContent = fv > 1 ? ("Confección × " + fv + " (recargo por dificultad de diseño).") : "Sin recargo por diseño (×1)."; } }
-  function setFactorUnifUI() { const fv = facUnif(), r = $("f_factor"), n = $("f_factor_num"); if (r) r.value = String(fv); if (n) n.value = String(fv); infoFactorUnif(); }
+  // Sincroniza TODOS los controles de factor (sección inferior + botón superior). 'except' = id que se está tipeando.
+  function setFactorUnifUI(except) {
+    const fv = facUnif();
+    ["f_factor", "f_factor_num", "f_factor_top", "f_factor_top_num"].forEach((id) => { if (id !== except) { const el = $(id); if (el) el.value = String(fv); } });
+    const tv = $("factorTopVal"); if (tv) tv.textContent = String(fv);
+    const btn = $("btnFactorTop"); if (btn) btn.classList.toggle("activo", fv > 1);
+    infoFactorUnif();
+  }
   // El producto es "complejo" si es volumétrico o tiene ventanas/paños inscritos.
   function productoEsComplejo() {
     if (state.prodMode === "compuesto") return (state.piezas || []).some((pz) => pz.usaAlto || (pz.inscritos && pz.inscritos.length));
@@ -902,8 +910,13 @@
       }
     }
   }
-  { const r = $("f_factor"); if (r) r.addEventListener("input", (e) => { state.factorUnif = String(clampFactor(e.target.value)); const n = $("f_factor_num"); if (n) n.value = String(facUnif()); infoFactorUnif(); recompute(); }); }
-  { const n = $("f_factor_num"); if (n) { n.addEventListener("input", (e) => { const v = clampFactor(e.target.value); state.factorUnif = String(v); const r = $("f_factor"); if (r) r.value = String(v); infoFactorUnif(); recompute(); }); n.addEventListener("blur", () => { const n2 = $("f_factor_num"); if (n2) n2.value = String(facUnif()); }); } }
+  // Controles de factor: 4 inputs (slider+número, abajo y arriba) sincronizados al mismo state.factorUnif.
+  [["f_factor", false], ["f_factor_num", true], ["f_factor_top", false], ["f_factor_top_num", true]].forEach(([id, esNum]) => {
+    const el = $(id); if (!el) return;
+    el.addEventListener("input", (e) => { state.factorUnif = String(clampFactor(e.target.value)); setFactorUnifUI(id); recompute(); });
+    if (esNum) el.addEventListener("blur", () => { el.value = String(facUnif()); });
+  });
+  { const b = $("btnFactorTop"); if (b) b.addEventListener("click", () => { const p = $("factorTopPanel"); if (p) p.classList.toggle("hidden"); }); }
   function calcAleta(a, cantidad, valorOj, factor) {
     const ev = window.CalcCIBSA.evalExpr;
     const al = ev(a.largo), aa = ev(a.ancho), tela = state.telas.find((t) => t.nombre === a.telaNombre), N = Math.max(1, cantidad || 1);
@@ -1221,6 +1234,7 @@
           dims.innerHTML = h;
         }
         refresh();
+        fichaColapsable(card, head, tt, ins); // cada ventana/paño inscrito es plegable
         rows.appendChild(card);
       });
     }
