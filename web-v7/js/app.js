@@ -2453,7 +2453,7 @@
       renderInscritos(q(".pz-ins"), pz);
       renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
       renderAletas(q(".pz-aletas"), { aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto });
-      renderStraps(q(".pz-straps"), { straps: pz.straps, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), onChange: recomputeCompuesto });
+      renderStraps(q(".pz-straps"), { straps: (pz.straps || (pz.straps = [])), cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), onChange: recomputeCompuesto });
       subColapsar(q(".pz-oj-wrap"), "Ojetillos", pz, "_cOj", () => (pz.ojMode === "arista") || (parseInt(pz.ojetillos || 0, 10) > 0));
       subColapsar(q(".pz-straps"), "Straps / cintas", pz, "_cStr", () => (pz.straps || []).length);
       subColapsar(q(".pz-borde"), "Bordes y uniones", pz, "_cBorde", () => false);
