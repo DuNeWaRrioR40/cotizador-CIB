@@ -687,6 +687,7 @@
         multi.appendChild(lab);
       });
     }
+    renderTelaOpc(); renderCategoriasFav();
     // Materiales (desde RANGO → tabla "Materiales"; si no existe, queda vacío)
     try { state.materiales = await window.SheetsCIBSA.cargarMateriales(token); }
     catch (e) { console.warn("CIBSA: no se pudieron cargar los materiales —", e && e.message ? e.message : e); state.materiales = []; }
@@ -739,6 +740,87 @@
   function telaActual() {
     return state.telas.find((t) => t.nombre === $("f_tela").value) || null;
   }
+  // Checkboxes de telas adicionales para cotizar (uniforme). La tela del selector es la principal.
+  function renderTelaOpc() {
+    const cont = $("telaOpcList"); if (!cont) return;
+    cont.innerHTML = "";
+    state.telas.forEach((t) => {
+      const lab = document.createElement("label"); lab.className = "tela-chk";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.value = t.nombre; cb.dataset.telaopc = "1";
+      cb.addEventListener("change", recompute);
+      const span = document.createElement("span");
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = t.nombre;
+      const mt = document.createElement("span"); mt.className = "mt"; mt.textContent = `Valor m²: ${money(t.valorM2)} · Rollo: ${t.anchoRollo} m`;
+      span.appendChild(nm); span.appendChild(document.createElement("br")); span.appendChild(mt);
+      lab.appendChild(cb); lab.appendChild(span); cont.appendChild(lab);
+    });
+  }
+  // Categorías FAV (selección rápida). Botones excluyentes bajo el selector de Tela.
+  let favCatActiva = null;
+  function categoriasFav() {
+    const seen = [], out = [];
+    state.telas.forEach((t) => (t.fav || []).forEach((c) => { const k = c.toLowerCase(); if (!seen.includes(k)) { seen.push(k); out.push(c); } }));
+    return out;
+  }
+  function setChecksTelaOpc(filtro) {
+    const cont = $("telaOpcList"); if (!cont) return;
+    cont.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      const t = state.telas.find((x) => x.nombre === cb.value);
+      cb.checked = !!(t && filtro(t));
+    });
+  }
+  function aplicarCategoriaFav(cat) {
+    if (favCatActiva && favCatActiva.toLowerCase() === cat.toLowerCase()) { // toggle off
+      favCatActiva = null; setChecksTelaOpc(() => false);
+    } else {
+      favCatActiva = cat;
+      const enCat = (t) => (t.fav || []).some((c) => c.toLowerCase() === cat.toLowerCase());
+      const primera = state.telas.find(enCat);
+      if (primera) setSelectIfOption("f_tela", primera.nombre);
+      setChecksTelaOpc(enCat);
+    }
+    renderCategoriasFav(); recompute();
+  }
+  function renderCategoriasFav() {
+    const wrap = $("favWrap"), cont = $("favBtns"); if (!wrap || !cont) return;
+    const cats = categoriasFav();
+    wrap.classList.toggle("hidden", cats.length === 0);
+    cont.innerHTML = "";
+    cats.forEach((cat) => {
+      const b = document.createElement("button"); b.type = "button";
+      b.className = "fav-btn" + (favCatActiva && favCatActiva.toLowerCase() === cat.toLowerCase() ? " active" : "");
+      const n = state.telas.filter((t) => (t.fav || []).some((c) => c.toLowerCase() === cat.toLowerCase())).length;
+      b.textContent = cat + " (" + n + ")";
+      b.addEventListener("click", () => aplicarCategoriaFav(cat));
+      cont.appendChild(b);
+    });
+  }
+  // Telas a cotizar (uniforme): la principal (selector) + las marcadas como adicionales, sin repetir.
+  function telasParaCotizar() {
+    const principal = telaActual();
+    const out = principal ? [principal] : [];
+    const cont = $("telaOpcList");
+    if (cont) cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
+      if (out.some((t) => t.nombre === cb.value)) return;
+      const t = state.telas.find((x) => x.nombre === cb.value); if (t) out.push(t);
+    });
+    return out;
+  }
+  function telasConsideradasTxt(telas) { return (telas || []).map((t) => t.nombre).join(" o "); }
+  // Lote (motor v4) para una tela arbitraria con los mismos parámetros del formulario uniforme.
+  function loteParaTela(tela, largo, ancho) {
+    return window.CalcCIBSA.calcularLote({
+      largo, ancho, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo,
+      cantidad: Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1),
+      union: num("f_union", 0.045), altura: alturaUnif(), defaults: BORDE_DEFAULTS,
+      bordes: bordesActuales(), factorTela: facUnif(),
+      ojetillos: nOjetillos(), valorOjetillo: num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT),
+    });
+  }
+  // Orientación de costuras por GRUPO de ancho de rollo: las telas que comparten rollo comparten elección.
+  const orientByRollo = {};
+  function rolloKey(ancho) { return String(Math.round((ancho || 0) * 1000)); }
+  function orientDeTela(tela) { return (tela && orientByRollo[rolloKey(tela.anchoRollo)]) || state.orientUnif; }
   function telaInfo() {
     const t = telaActual();
     $("telaInfo").textContent = t
@@ -2066,6 +2148,7 @@
   function recomputeUniforme() {
     telaInfo();
     const cont = $("cmpCards"); cont.innerHTML = ""; state.loteUnif = null;
+    { const rt = $("resumenTelas"); if (rt) rt.innerHTML = ""; }
     const avisos = $("avisosUnif"); if (avisos) avisos.innerHTML = "";
     const tela = telaActual();
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
@@ -2080,23 +2163,39 @@
       cont.innerHTML = '<p class="muted small">Ingresa largo, ancho y tela para ver los montos.</p>';
       return;
     }
-    let lote;
-    try {
-      lote = window.CalcCIBSA.calcularLote({
-        largo, ancho, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo,
-        cantidad: Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1),
-        union: num("f_union", 0.045), altura: alturaUnif(), defaults: BORDE_DEFAULTS, bordes: bordesActuales(), factorTela: facUnif(),
-        ojetillos: nOjetillos(), valorOjetillo: num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT),
-      });
-    } catch (e) { return; }
-    state.loteUnif = lote;
-    cardLote("largo", lote.oLargo, "Uniones a lo largo", lote);
-    cardLote("ancho", lote.oAncho, "Uniones a lo ancho", lote);
-    renderAvisosUnif(lote);
+    let lotePrimary;
+    try { lotePrimary = loteParaTela(tela, largo, ancho); } catch (e) { return; }
+    state.loteUnif = lotePrimary;
+
+    // Telas a cotizar agrupadas por ancho de rollo (geometría idéntica dentro del grupo).
+    const telas = telasParaCotizar();
+    const grupos = [];
+    telas.forEach((t) => {
+      const k = rolloKey(t.anchoRollo);
+      let g = grupos.find((x) => x.key === k);
+      if (!g) { g = { key: k, ancho: t.anchoRollo, telas: [] }; grupos.push(g); }
+      g.telas.push(t);
+    });
+    const multiGrupo = grupos.length > 1;
+    grupos.forEach((g) => {
+      let lote; try { lote = loteParaTela(g.telas[0], largo, ancho); } catch (e) { return; }
+      const cur = orientByRollo[g.key] || state.orientUnif;
+      if (multiGrupo) {
+        const lbl = document.createElement("p"); lbl.className = "muted small"; lbl.style.margin = "6px 0 2px";
+        lbl.innerHTML = "<b>Rollo " + window.CalcCIBSA.fmtNum(g.ancho) + " m</b> — " + g.telas.map((t) => t.nombre).join(", ");
+        cont.appendChild(lbl);
+      }
+      cardLoteGrupo(g.key, "largo", lote.oLargo, "Uniones a lo largo", lote, cur);
+      cardLoteGrupo(g.key, "ancho", lote.oAncho, "Uniones a lo ancho", lote, cur);
+    });
+
+    if (telas.length > 1) renderResumenTelas(telas, largo, ancho);
+    renderAvisosUnif(lotePrimary);
   }
 
-  function cardLote(key, o, head, lote) {
-    const sel = state.orientUnif === key;
+  // Tarjeta de orientación para un grupo de ancho de rollo. Al elegir, se replica a todo el grupo.
+  function cardLoteGrupo(groupKey, key, o, head, lote, cur) {
+    const sel = cur === key;
     const el = document.createElement("div");
     el.className = "cmp-card" + (sel ? " sel" : "");
     const esEco = lote.recomendacion.masEconomica === key;
@@ -2108,8 +2207,31 @@
     if (compTot > 0) h += `<div class="muted small">+ complementos ${money(compTot)}</div>`;
     if (esEco) h += `<div class="eco">Más económica</div>`;
     el.innerHTML = h;
-    el.addEventListener("click", () => { state.orientUnif = key; recompute(); });
+    el.addEventListener("click", () => {
+      orientByRollo[groupKey] = key;
+      const tp = telaActual(); if (tp && rolloKey(tp.anchoRollo) === groupKey) state.orientUnif = key;
+      recompute();
+    });
     $("cmpCards").appendChild(el);
+  }
+
+  // Mini-resumen: subtotal estimado de cada tela seleccionada (con la orientación de su grupo de rollo).
+  function renderResumenTelas(telas, largo, ancho) {
+    const cont = $("resumenTelas"); if (!cont) return; cont.innerHTML = "";
+    const box = document.createElement("div"); box.className = "resumen-telas";
+    const head = document.createElement("div"); head.className = "rt-row head";
+    head.innerHTML = "<span>Tela · subtotal estimado (neto)</span><span>Orientación</span>";
+    box.appendChild(head);
+    telas.forEach((t) => {
+      let lote; try { lote = loteParaTela(t, largo, ancho); } catch (e) { return; }
+      const orientKey = orientDeTela(t);
+      const calc = construirDatosUnif(t, lote, "01").calc;
+      const row = document.createElement("div"); row.className = "rt-row";
+      row.innerHTML = `<span><span class="rt-nm">${t.nombre}</span><br><span class="rt-sub">${lote.N > 1 ? lote.N + " u · " : ""}rollo ${window.CalcCIBSA.fmtNum(t.anchoRollo)} m</span></span>` +
+        `<span style="text-align:right"><b>${money(calc.subtotal)}</b><br><span class="rt-sub">${orientKey === "ancho" ? "a lo ancho" : "a lo largo"}</span></span>`;
+      box.appendChild(row);
+    });
+    cont.appendChild(box);
   }
 
   function renderAvisosUnif(lote) {
@@ -2454,12 +2576,14 @@
   async function descargarSketchUnif() {
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
     if (largo == null || ancho == null || largo <= 0 || ancho <= 0) return alert("Ingresa largo y ancho para descargar el plano.");
+    const telasC = telasParaCotizar();
     const tela = telaActual();
+    const telaPlano = telasC.length > 1 ? telasConsideradasTxt(telasC) : (tela ? tela.nombre : "N/A");
     const N = Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1);
     await descargarSketch({
       filenameBase: nombreBaseArchivo(),
       titulo: $("f_titulo").value.trim() || ("Carpa " + (+largo) + "m x " + (+ancho) + "m"),
-      tela: tela ? tela.nombre : "N/A",
+      tela: telaPlano,
       color: $("f_color").value.trim(),
       largo: largo, ancho: ancho,
       ojetillos: nOjetillos(), unidades: N,
@@ -2894,6 +3018,8 @@
     document.querySelector('input[name="ojmode"][value="total"]').checked = true;
     state.orientacionSel = "mayor"; state.orientUnif = "largo"; $("resultHolder").innerHTML = ""; $("formStatus").textContent = "";
     const multi = $("telaMulti"); if (multi) multi.querySelectorAll("input:checked").forEach((c) => (c.checked = false));
+    { const to = $("telaOpcList"); if (to) to.querySelectorAll("input:checked").forEach((c) => (c.checked = false)); }
+    favCatActiva = null; renderCategoriasFav();
     $("telaMultiErr").classList.add("hidden"); state.prelim = [];
     // Reset bordes/unión → mismo borde 0.045
     state.bordeModo = "uniforme"; state.bordeValor = "0.045";
@@ -2926,7 +3052,37 @@
     recomputeUniforme();
     const lote = state.loteUnif;
     if (!lote) return alert("No se pudo calcular. Revisa los datos.");
-    const o = state.orientUnif === "ancho" ? lote.oAncho : lote.oLargo;
+    const telas = telasParaCotizar();
+    const baseV = parseInt(($("f_version").value.trim() || "01"), 10) || 1;
+    const pad = (n) => String(n).padStart(2, "0");
+
+    // Una sola tela → cotización individual (comportamiento de siempre).
+    if (telas.length <= 1) {
+      const { datos, calc } = construirDatosUnif(tela, lote, $("f_version").value.trim() || "01");
+      guardarHistorial(nombre, apellido, datos.version);
+      abrirProgreso();
+      try {
+        const { bytes, filename } = await window.PDFCotizacion.generarCotizacion(datos);
+        genListo(new Blob([bytes], { type: "application/pdf" }), filename, calc);
+      } catch (e) { cerrarProgreso(); alert("Error al generar el PDF:\n" + (e.message || e)); }
+      return;
+    }
+    // Varias telas → una cotización por cada una (versión correlativa) en un único PDF combinado.
+    const datosList = telas.map((t, i) => construirDatosUnif(t, (i === 0 ? lote : loteParaTela(t, largo, ancho)), pad(baseV + i)).datos);
+    guardarHistorial(nombre, apellido, datosList[0].version + "-" + datosList[datosList.length - 1].version);
+    abrirProgreso();
+    try {
+      const { bytes, filename } = await window.PDFCotizacion.generarCotizacionCombinada(datosList);
+      genListo(new Blob([bytes], { type: "application/pdf" }), filename, null);
+    } catch (e) { cerrarProgreso(); alert("Error al generar el PDF:\n" + (e.message || e)); }
+  }
+
+  // Arma el objeto `datos` (y `calc`) de una cotización uniforme para una tela y versión dadas.
+  function construirDatosUnif(tela, lote, versionStr) {
+    const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
+    const largo = num("f_largo", null), ancho = num("f_ancho", null);
+    const orientKey = orientDeTela(tela);
+    const o = orientKey === "ancho" ? lote.oAncho : lote.oLargo;
     const N = lote.N;
     const desc = num("f_descuento", 0);
     const ojeTotal = lote.nOjetillos * lote.valorOjetillo * N;
@@ -2949,7 +3105,7 @@
     };
     const datos = {
       cliente: { nombre, apellido, email: $("f_email").value.trim() },
-      version: $("f_version").value.trim() || "01", fecha: new Date(),
+      version: versionStr, fecha: new Date(),
       largo, ancho, tela, calc,
       titulo: $("f_titulo").value.trim() || null,
       ojetillosDetalle: ojDetalle(),
@@ -2962,17 +3118,7 @@
       aletas: aletasUnifPDF(state.aletasUnif, N).concat(aletasUnifPDF(state.backAletasUnif, N)).concat(strapsLineasPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 })),
       sketch: { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) },
     };
-    guardarHistorial(nombre, apellido, datos.version);
-
-    abrirProgreso();
-    try {
-      const { bytes, filename } = await window.PDFCotizacion.generarCotizacion(datos);
-      const blob = new Blob([bytes], { type: "application/pdf" });
-      genListo(blob, filename, calc);
-    } catch (e) {
-      cerrarProgreso();
-      alert("Error al generar el PDF:\n" + (e.message || e));
-    }
+    return { datos, calc };
   }
 
   function descBorde(b) {

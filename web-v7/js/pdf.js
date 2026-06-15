@@ -624,6 +624,33 @@
     return { bytes, filename: nombreArchivo(datos) + ".pdf" };
   }
 
+  // ---------- Cotización combinada (varias telas: 1 cotización por tela en un solo PDF) ----------
+  // Nombre con rango de versiones: C.{Inicial}{Apellido}{primera}-{última}_{ddmmaaaa}.pdf
+  function nombreArchivoCombinada(datosList) {
+    const d0 = datosList[0], c = d0.cliente;
+    const inicial = c.nombre.trim().charAt(0).toUpperCase();
+    let ap = c.apellido.trim();
+    ap = (ap.charAt(0).toUpperCase() + ap.slice(1)).replace(/\s+/g, "");
+    const f = d0.fecha;
+    const dd = String(f.getDate()).padStart(2, "0"), mm = String(f.getMonth() + 1).padStart(2, "0");
+    const vIni = datosList[0].version, vFin = datosList[datosList.length - 1].version;
+    const rango = (datosList.length > 1 && vIni !== vFin) ? (vIni + "-" + vFin) : vIni;
+    return `C.${inicial}${ap}${rango}_${dd}${mm}${f.getFullYear()}`;
+  }
+  async function generarCotizacionCombinada(datosList) {
+    const { PDFDocument } = PDFLib;
+    if (!datosList || !datosList.length) throw new Error("Sin telas para cotizar.");
+    const master = await PDFDocument.create();
+    for (let i = 0; i < datosList.length; i++) {
+      const { bytes } = await generarCotizacion(datosList[i]);
+      const sub = await PDFDocument.load(bytes);
+      const pages = await master.copyPages(sub, sub.getPageIndices());
+      pages.forEach((p) => master.addPage(p));
+    }
+    const bytes = await master.save();
+    return { bytes, filename: nombreArchivoCombinada(datosList) + ".pdf" };
+  }
+
   // ---------- Documento "Valor Preliminar (Estimado)" ----------
   function nombreArchivoPreliminar(datos) {
     const f = datos.fecha;
@@ -1026,7 +1053,7 @@
   }
 
   global.PDFCotizacion = {
-    generarCotizacion, generarPreliminar, generarCotizacionCompuesta, generarSketchPDF,
+    generarCotizacion, generarCotizacionCombinada, generarPreliminar, generarCotizacionCompuesta, generarSketchPDF,
     nombreArchivo, nombreArchivoPreliminar, money,
   };
 })(typeof window !== "undefined" ? window : globalThis);

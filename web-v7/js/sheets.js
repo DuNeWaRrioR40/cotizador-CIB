@@ -91,6 +91,7 @@
     const iAncho = buscarColumna(encabezados, CFG.COL_ANCHO_ROLLO);
     const iFicha = buscarColumna(encabezados, CFG.COL_FICHA);
     const iProv = buscarColumna(encabezados, CFG.COL_PROVEEDOR_TELA);
+    const iFav = buscarColumna(encabezados, CFG.COL_FAV_TELA);
 
     const faltan = [];
     if (iNom === -1) faltan.push(CFG.COL_NOMBRE_TELA);
@@ -103,6 +104,7 @@
     const cNom = encabezados[iNom], cM2 = encabezados[iM2], cAncho = encabezados[iAncho];
     const cFicha = iFicha !== -1 ? encabezados[iFicha] : null;
     const cProv = iProv !== -1 ? encabezados[iProv] : null;
+    const cFav = iFav !== -1 ? encabezados[iFav] : null;
 
     const telas = [];
     for (const r of registros) {
@@ -113,7 +115,9 @@
       const fichaRaw = cFicha ? (r[cFicha] || "") : "";
       const ficha = fichaRaw.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
       const proveedor = cProv ? (r[cProv] || "").trim() : "";   // interno (no va al PDF)
-      telas.push({ nombre, valorM2, anchoRollo: ancho, ficha, proveedor });
+      // FAV: una o más categorías separadas por "/" (p.ej. "Premium / Económica"). Para selección rápida.
+      const favCats = cFav ? String(r[cFav] || "").split("/").map((s) => s.trim()).filter(Boolean) : [];
+      telas.push({ nombre, valorM2, anchoRollo: ancho, ficha, proveedor, fav: favCats });
     }
     if (!telas.length) throw new Error("La tabla de telas no contiene filas válidas.");
     return telas;

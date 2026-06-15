@@ -17,6 +17,7 @@
     COL_ANCHO_ROLLO: "FORMATO ROLLO (M)",
     COL_FICHA: "SPECS",
     COL_PROVEEDOR_TELA: "PROVEEDOR",   // interno: se muestra en la App, NUNCA en el PDF
+    COL_FAV_TELA: "FAV",               // categorías de la tela (varias separadas por "/"); para selección rápida por categoría
 
     // --- Tabla de Materiales (Insumo / Accesorio / Estructural) ---
     // Celdas en blanco no rompen la lectura; el mínimo para un ítem es CATEGORIA + ITEM.

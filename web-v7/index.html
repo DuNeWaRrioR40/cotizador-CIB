@@ -128,6 +128,16 @@
     <div id="wTelaUnica">
       <label class="field"><span>Tela</span><select id="f_tela"></select></label>
       <p id="telaInfo" class="muted small"></p>
+      <div id="favWrap" class="field full hidden">
+        <span>Selección rápida por categoría (FAV)</span>
+        <p class="muted small">Un clic marca todas las telas de esa categoría para cotizarlas juntas. Vuelve a pincharla para limpiar. Abajo puedes des-marcar telas puntuales.</p>
+        <div id="favBtns" class="fav-btns"></div>
+      </div>
+      <div id="telaOpcWrap" class="field full">
+        <span>Cotizar también en estas telas (opcional)</span>
+        <p class="muted small">Marca telas adicionales: se emite una cotización por cada una (versión correlativa) en un único PDF. El plano listará las telas consideradas separadas por «o».</p>
+        <div id="telaOpcList" class="tela-multi"></div>
+      </div>
       <label class="field"><span>Color (opcional)</span><input id="f_color" type="text" autocomplete="off" placeholder="N/A · solo para el plano de taller" /></label>
     </div>
 
@@ -237,6 +247,7 @@
       <h2 class="section">Orientación de uniones</h2>
       <p class="muted small">Elige la orientación de los paños. La app marca la más económica.</p>
       <div id="cmpCards" class="cmp"></div>
+      <div id="resumenTelas"></div>
       <div id="avisosUnif"></div>
     </div>
 
