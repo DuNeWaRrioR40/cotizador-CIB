@@ -97,6 +97,9 @@ button:active { transform: scale(0.98); }
 
 /* Comparación de costuras */
 .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cmp-group { margin-bottom: 12px; }
+.cmp-group + .cmp-group { padding-top: 10px; border-top: 1px dashed var(--border); }
+.cmp-grouplbl { margin: 2px 0 6px; }
 @media (max-width: 420px) { .cmp { grid-template-columns: 1fr; } }
 .cmp-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; cursor: pointer; }
 .cmp-card.sel { border: 2px solid var(--accent); background: var(--sel); }

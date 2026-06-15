@@ -2177,16 +2177,20 @@
       g.telas.push(t);
     });
     const multiGrupo = grupos.length > 1;
+    const mostrarLbl = multiGrupo || telas.length > 1;
     grupos.forEach((g) => {
       let lote; try { lote = loteParaTela(g.telas[0], largo, ancho); } catch (e) { return; }
       const cur = orientByRollo[g.key] || state.orientUnif;
-      if (multiGrupo) {
-        const lbl = document.createElement("p"); lbl.className = "muted small"; lbl.style.margin = "6px 0 2px";
+      const gEl = document.createElement("div"); gEl.className = "cmp-group";
+      if (mostrarLbl) {
+        const lbl = document.createElement("p"); lbl.className = "muted small cmp-grouplbl";
         lbl.innerHTML = "<b>Rollo " + window.CalcCIBSA.fmtNum(g.ancho) + " m</b> — " + g.telas.map((t) => t.nombre).join(", ");
-        cont.appendChild(lbl);
+        gEl.appendChild(lbl);
       }
-      cardLoteGrupo(g.key, "largo", lote.oLargo, "Uniones a lo largo", lote, cur);
-      cardLoteGrupo(g.key, "ancho", lote.oAncho, "Uniones a lo ancho", lote, cur);
+      const row = document.createElement("div"); row.className = "cmp"; gEl.appendChild(row);
+      cardLoteGrupo(g.key, "largo", lote.oLargo, "Uniones a lo largo", lote, cur, row);
+      cardLoteGrupo(g.key, "ancho", lote.oAncho, "Uniones a lo ancho", lote, cur, row);
+      cont.appendChild(gEl);
     });
 
     if (telas.length > 1) renderResumenTelas(telas, largo, ancho);
@@ -2194,7 +2198,7 @@
   }
 
   // Tarjeta de orientación para un grupo de ancho de rollo. Al elegir, se replica a todo el grupo.
-  function cardLoteGrupo(groupKey, key, o, head, lote, cur) {
+  function cardLoteGrupo(groupKey, key, o, head, lote, cur, parent) {
     const sel = cur === key;
     const el = document.createElement("div");
     el.className = "cmp-card" + (sel ? " sel" : "");
@@ -2212,7 +2216,7 @@
       const tp = telaActual(); if (tp && rolloKey(tp.anchoRollo) === groupKey) state.orientUnif = key;
       recompute();
     });
-    $("cmpCards").appendChild(el);
+    (parent || $("cmpCards")).appendChild(el);
   }
 
   // Mini-resumen: subtotal estimado de cada tela seleccionada (con la orientación de su grupo de rollo).
