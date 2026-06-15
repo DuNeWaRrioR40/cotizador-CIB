@@ -99,8 +99,10 @@
         const zz = SK.zigzagPts(px(rm.a.x), py(rm.a.y), px(rm.b.x), py(rm.b.y), 2.2, 4);
         for (let i = 0; i < zz.length - 1; i++) page.drawLine({ start: { x: zz[i].x, y: zz[i].y }, end: { x: zz[i + 1].x, y: zz[i + 1].y }, thickness: 1, color: STRAP });
       });
-      const mx = px((st.a.x + st.b.x) / 2), my = py((st.a.y + st.b.y) / 2), nom = st.nombre || "Strap";
-      page.drawText(nom, { x: mx - font.widthOfTextAtSize(nom, 6) / 2, y: my - 2, size: 6, font: font, color: STRAP });
+      const offpx = st.hw * scale + 8;
+      const lx = px((st.a.x + st.b.x) / 2) + st.perp.x * offpx, ly = py((st.a.y + st.b.y) / 2) - st.perp.y * offpx; // py invertido en PDF
+      const lbl = (st.nombre || "Cinta") + " " + SK.fmt(st.largo) + " m";
+      page.drawText(lbl, { x: lx - font.widthOfTextAtSize(lbl, 6) / 2, y: ly - 2, size: 6, font: font, color: STRAP });
     });
     const tijeraPDF = (tx, ty) => {
       const tp = SK.tijeraPrims(tx, ty, 8);
@@ -328,10 +330,10 @@
     const mBot = ML.bottom + 18 + LBL + legH;
     const availW = box.w - mLeft - mRight, availH = box.h - mTop - mBot;
     if (availW <= 0 || availH <= 0) return;
-    // Bounds: paño base + aletas que se extienden fuera.
-    let minX = 0, maxX = sk.ancho, minY = 0, maxY = sk.largo;
-    (sk.aletas || []).forEach((a) => { minX = Math.min(minX, a.x); maxX = Math.max(maxX, a.x + a.w); minY = Math.min(minY, a.y); maxY = Math.max(maxY, a.y + a.h); });
-    (sk.straps || []).forEach((st) => st.corners.forEach((c) => { minX = Math.min(minX, c.x); maxX = Math.max(maxX, c.x); minY = Math.min(minY, c.y); maxY = Math.max(maxY, c.y); }));
+    // Bounds del paño (base + aletas) — las cotas se anclan AQUÍ (los straps NO afectan las cotas).
+    let pMinX = 0, pMaxX = sk.ancho, pMinY = 0, pMaxY = sk.largo;
+    (sk.aletas || []).forEach((a) => { pMinX = Math.min(pMinX, a.x); pMaxX = Math.max(pMaxX, a.x + a.w); pMinY = Math.min(pMinY, a.y); pMaxY = Math.max(pMaxY, a.y + a.h); });
+    const minX = pMinX, maxX = pMaxX, minY = pMinY, maxY = pMaxY; // straps no alteran el tamaño del dibujo
     const bw = maxX - minX, bh = maxY - minY;
     const scale = Math.min(availW / bw, availH / bh);
     const wpx = sk.ancho * scale, hpx = sk.largo * scale;
@@ -353,7 +355,7 @@
     // Cotas (rojo): mayor = paño base; menor = padding / ventanas
     if (conCotas) {
       const ln = (x1, y1, x2, y2, w) => page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: w, color: RED });
-      const bTopY = py(minY), bBotY = py(maxY), bLeftX = px(minX), bRightX = px(maxX);
+      const bTopY = py(pMinY), bBotY = py(pMaxY), bLeftX = px(pMinX), bRightX = px(pMaxX);
       const ccx = px(sk.ancho / 2), ccy = py(sk.largo / 2);
       page.drawLine({ start: { x: ccx, y: bTopY }, end: { x: ccx, y: bBotY }, thickness: 0.25, color: RED, dashArray: [3, 2], opacity: 0.5 });
       page.drawLine({ start: { x: bLeftX, y: ccy }, end: { x: bRightX, y: ccy }, thickness: 0.25, color: RED, dashArray: [3, 2], opacity: 0.5 });

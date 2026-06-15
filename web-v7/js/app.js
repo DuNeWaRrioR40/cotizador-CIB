@@ -1024,17 +1024,17 @@
   // ---------- Straps (cintas/webbing): banda recta sobre el paño ----------
   function anchoCintaM(mat) { if (!mat) return 0; const v = parseFloat(String(mat.modelo == null ? "" : mat.modelo).replace(",", ".")); return (v > 0) ? v / 100 : 0; } // MODELO en cm → m
   function strapMat(s) { return (s && s.matId != null && state.materiales[s.matId]) || null; }
+  function strapLargo(s) { const ev = window.CalcCIBSA.evalExpr; return Math.max(0, ev(s.offset) || 0) + Math.max(0, ev(s.inset) || 0); }
   function strapsSpec(list) {
     const ev = window.CalcCIBSA.evalExpr;
-    return (list || []).map((s) => ({ ax: ev(s.ax) || 0, ay: ev(s.ay) || 0, angulo: ev(s.angulo) || 0, largo: ev(s.largo) || 0, ancho: anchoCintaM(strapMat(s)), legend: s.legend || "" })).filter((s) => s.largo > 0 && s.ancho > 0);
+    return (list || []).map((s) => ({ cx: ev(s.cx) || 0, cy: ev(s.cy) || 0, angulo: ev(s.angulo) || 0, offset: Math.max(0, ev(s.offset) || 0), inset: Math.max(0, ev(s.inset) || 0), ancho: anchoCintaM(strapMat(s)), legend: s.legend || "" })).filter((s) => (s.offset + s.inset) > 0 && s.ancho > 0);
   }
   function strapsTotal(list, N) {
-    const ev = window.CalcCIBSA.evalExpr, n = Math.max(1, N || 1);
-    return (list || []).reduce((acc, s) => { const m = strapMat(s), largo = ev(s.largo) || 0; return acc + largo * (m && m.precio != null ? m.precio : 0) * n; }, 0);
+    const n = Math.max(1, N || 1);
+    return (list || []).reduce((acc, s) => { const m = strapMat(s); return acc + strapLargo(s) * (m && m.precio != null ? m.precio : 0) * n; }, 0);
   }
   function strapsLineasPDF(list) {
-    const ev = window.CalcCIBSA.evalExpr;
-    return (list || []).map((s) => { const m = strapMat(s); if (!m) return null; const largo = ev(s.largo) || 0, ancho = anchoCintaM(m); if (!(largo > 0) || !(ancho > 0)) return null; const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : "Strap"; return nom + ": " + m.item + " " + window.CalcCIBSA.fmtNum(largo) + " m × " + window.CalcCIBSA.fmtNum(ancho * 100) + " cm — " + money(largo * (m.precio || 0)) + "/u"; }).filter(Boolean);
+    return (list || []).map((s) => { const m = strapMat(s); if (!m) return null; const largo = strapLargo(s), ancho = anchoCintaM(m); if (!(largo > 0) || !(ancho > 0)) return null; const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : "Cinta"; return nom + ": " + m.item + " " + window.CalcCIBSA.fmtNum(largo) + " m × " + window.CalcCIBSA.fmtNum(ancho * 100) + " cm — " + money(largo * (m.precio || 0)) + "/u"; }).filter(Boolean);
   }
   // Editor de straps. ctx: { straps, cantidad(), onChange }
   function renderStraps(container, ctx) {
@@ -1064,17 +1064,18 @@
         selT.addEventListener("change", (e) => { s.matId = e.target.value === "" ? null : parseInt(e.target.value, 10); refresh(); onChange(); });
         lt.appendChild(selT); addHelpTo(lt, "Cinta/webbing del strap. El ancho se toma de la columna MODELO (en cm) y el precio por metro de la columna de precio.", "STRAP-CINTA"); card.appendChild(lt);
         const grid = document.createElement("div"); grid.className = "pieza-grid";
-        const numField = (lab, key, ph) => {
+        const numField = (lab, key, ph, min0) => {
           const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
           const i = document.createElement("input"); i.type = "text"; i.inputMode = "decimal"; i.value = s[key] != null ? s[key] : ""; if (ph) i.placeholder = ph;
           i.addEventListener("input", (e) => { s[key] = e.target.value; refresh(); onChange(); });
-          i.addEventListener("blur", (e) => { const r = ev(e.target.value); if (r != null && !isNaN(r)) { s[key] = f(r); e.target.value = s[key]; refresh(); onChange(); } });
+          i.addEventListener("blur", (e) => { let r = ev(e.target.value); if (r != null && !isNaN(r)) { if (min0) r = Math.max(0, r); s[key] = f(r); e.target.value = s[key]; refresh(); onChange(); } });
           l.appendChild(i); agregarCalc(i); return l;
         };
-        grid.appendChild(addHelpTo(numField("Largo (m)", "largo", "ej. 1.5"), "Largo total del strap, en metros. Puede exceder el paño (entra y sale).", "STRAP-LARGO"));
+        grid.appendChild(addHelpTo(numField("Centro X (m)", "cx", "0"), "Punto central/pivote en X (0 = borde izquierdo). Desde aquí el strap crece a cada lado. Puede ser negativo.", "STRAP-CX"));
+        grid.appendChild(addHelpTo(numField("Centro Y (m)", "cy", "0"), "Punto central/pivote en Y (0 = borde superior). Desde aquí el strap crece a cada lado. Puede ser negativo.", "STRAP-CY"));
         grid.appendChild(addHelpTo(numField("Ángulo (°)", "angulo", "0"), "Inclinación: 0 = horizontal, 90 = vertical, 45 = diagonal. La banda es siempre recta.", "STRAP-ANG"));
-        grid.appendChild(addHelpTo(numField("Inicio/pivote X (m)", "ax", "0"), "Punto de inicio/pivote en X (0 = borde izquierdo). Negativo para empezar fuera del paño.", "STRAP-AX"));
-        grid.appendChild(addHelpTo(numField("Inicio/pivote Y (m)", "ay", "0"), "Punto de inicio/pivote en Y (0 = borde superior). Puede ser negativo o mayor que el largo.", "STRAP-AY"));
+        grid.appendChild(addHelpTo(numField("Crece offset (m)", "offset", "0", true), "Cuánto crece el strap hacia un lado del centro (sentido del ángulo). Solo valores ≥ 0.", "STRAP-OFFSET"));
+        grid.appendChild(addHelpTo(numField("Crece inset (m)", "inset", "0", true), "Cuánto crece el strap hacia el otro lado del centro. Solo ≥ 0. No choca con offset (van en sentidos opuestos).", "STRAP-INSET"));
         card.appendChild(grid);
         const ln = document.createElement("label"); ln.className = "field full"; ln.innerHTML = "<span>Nombre / leyenda (plano)</span>";
         const ni = document.createElement("input"); ni.type = "text"; ni.value = s.legend || ""; ni.placeholder = "ej. Strap superior";
@@ -1082,11 +1083,11 @@
         ln.appendChild(ni); card.appendChild(ln);
         const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
         function refresh() {
-          const m = strapMat(s), largo = ev(s.largo), ancho = anchoCintaM(m);
+          const m = strapMat(s), largo = strapLargo(s), ancho = anchoCintaM(m);
           if (!m) { dims.textContent = "Elige la cinta para ver ancho y costo."; return; }
-          if (!(largo > 0)) { dims.textContent = "Completa el largo del strap."; return; }
+          if (!(largo > 0)) { dims.textContent = "Define offset y/o inset (> 0)."; return; }
           const N = ctx.cantidad ? ctx.cantidad() : 1, pu = largo * (m.precio || 0), tot = pu * Math.max(1, N);
-          let html = "Cinta <b>" + m.item + "</b> · ancho <b>" + (ancho > 0 ? f(ancho * 100) + " cm" : "?") + "</b> · " + money(pu) + "/u";
+          let html = "Cinta <b>" + m.item + "</b> · largo <b>" + f(largo) + " m</b> · ancho <b>" + (ancho > 0 ? f(ancho * 100) + " cm" : "?") + "</b> · " + money(pu) + "/u";
           if (N > 1) html += " · " + N + " u = <b>" + money(tot) + "</b>";
           if (!(ancho > 0)) html += " · <span style=\"color:#d8443a\">⚠ la cinta no tiene ancho (col. MODELO) en cm</span>";
           dims.innerHTML = html;
@@ -1099,7 +1100,7 @@
     pintar();
     const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline"; add.textContent = "+ Strap (cinta)";
     add.disabled = !hayCintas;
-    add.addEventListener("click", () => { ctx.straps.push({ matId: null, largo: "", angulo: "0", ax: "0", ay: "0", legend: "" }); pintar(); onChange(); });
+    add.addEventListener("click", () => { ctx.straps.push({ matId: null, cx: "", cy: "", angulo: "0", offset: "", inset: "0", legend: "" }); pintar(); onChange(); });
     container.appendChild(add);
   }
   // Editor de aletas. ctx: { aletas, cantidad(), valorOj(), onChange }

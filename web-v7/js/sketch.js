@@ -257,13 +257,15 @@
     // Straps (cintas/webbing): banda RECTA de ancho fijo (del material) y largo del usuario, en cualquier
     // ángulo/posición. Puede iniciar fuera, cruzar y salir del paño. Remates = costuras perpendiculares en
     // los extremos (símbolo zigzag). No dobla: el pivote (ax,ay) es solo el punto de referencia/rotación.
-    const straps = (spec.straps || []).filter((s) => s && parseFloat(s.largo) > 0 && parseFloat(s.ancho) > 0).map((s) => {
+    const straps = (spec.straps || []).filter((s) => s && parseFloat(s.ancho) > 0 && ((Math.max(0, parseFloat(s.offset) || 0)) + (Math.max(0, parseFloat(s.inset) || 0))) > 0).map((s) => {
       const th = (parseFloat(s.angulo) || 0) * Math.PI / 180;
       const dx = Math.cos(th), dy = Math.sin(th);
       const px = -dy, py = dx; // perpendicular unitaria
-      const Ls = parseFloat(s.largo), W = parseFloat(s.ancho), hw = W / 2;
-      const ax = parseFloat(s.ax) || 0, ay = parseFloat(s.ay) || 0; // pivote/origen del strap
-      const bx = ax + dx * Ls, by = ay + dy * Ls;
+      const W = parseFloat(s.ancho), hw = W / 2;
+      const off = Math.max(0, parseFloat(s.offset) || 0), ins = Math.max(0, parseFloat(s.inset) || 0), Ls = off + ins;
+      const cx = parseFloat(s.cx) || 0, cy = parseFloat(s.cy) || 0; // punto central/pivote
+      const ax = cx - dx * ins, ay = cy - dy * ins; // extremo "inset"
+      const bx = cx + dx * off, by = cy + dy * off; // extremo "offset"
       const corners = [
         { x: ax + px * hw, y: ay + py * hw },
         { x: bx + px * hw, y: by + py * hw },
@@ -393,8 +395,9 @@
         const zz = zigzagPts(px(rm.a.x), py(rm.a.y), px(rm.b.x), py(rm.b.y), 2.2, 4);
         s += `<polyline class="strap-rem" points="${zz.map((p) => f1(p.x) + "," + f1(p.y)).join(" ")}"/>`;
       });
-      const mx = px((st.a.x + st.b.x) / 2), my = py((st.a.y + st.b.y) / 2);
-      s += `<text class="strap-lbl" x="${f1(mx)}" y="${f1(my)}" text-anchor="middle">${esc(st.nombre)}</text>`;
+      const Mx = px((st.a.x + st.b.x) / 2), My = py((st.a.y + st.b.y) / 2), offpx = st.hw * scale + 8;
+      const lbl = st.nombre + " " + fmt(st.largo) + " m";
+      s += `<text class="strap-lbl" x="${f1(Mx + st.perp.x * offpx)}" y="${f1(My + st.perp.y * offpx)}" text-anchor="middle">${esc(lbl)}</text>`;
     });
     // Aletas / solapas / faldón / cenefa (paños anexos) — con su arista fusionada.
     (sk.aletas || []).forEach((a) => {
@@ -697,10 +700,11 @@
     }
     const ML = conCotas ? margenCotasLados(sk) : { top: 0, bottom: 0, left: 0, right: 0 };
     const mLeft = ML.left + 24, mTop = ML.top + 32, mRight = ML.right + 30, mBot = ML.bottom + 26; // + espacio para rótulos de orientación
-    // Bounds del dibujo: paño base + aletas + straps que se extiendan fuera.
-    let minX = 0, maxX = sk.ancho, minY = 0, maxY = sk.largo;
-    (sk.aletas || []).forEach((a) => { minX = Math.min(minX, a.x); maxX = Math.max(maxX, a.x + a.w); minY = Math.min(minY, a.y); maxY = Math.max(maxY, a.y + a.h); });
-    (sk.straps || []).forEach((st) => st.corners.forEach((c) => { minX = Math.min(minX, c.x); maxX = Math.max(maxX, c.x); minY = Math.min(minY, c.y); maxY = Math.max(maxY, c.y); }));
+    // Bounds del paño (base + aletas) — las cotas se anclan AQUÍ (los straps NO afectan las cotas).
+    let pMinX = 0, pMaxX = sk.ancho, pMinY = 0, pMaxY = sk.largo;
+    (sk.aletas || []).forEach((a) => { pMinX = Math.min(pMinX, a.x); pMaxX = Math.max(pMaxX, a.x + a.w); pMinY = Math.min(pMinY, a.y); pMaxY = Math.max(pMaxY, a.y + a.h); });
+    // El dibujo se dimensiona SOLO por el paño (los straps no lo alteran: se dibujan encima).
+    const minX = pMinX, maxX = pMaxX, minY = pMinY, maxY = pMaxY;
     const bw = maxX - minX, bh = maxY - minY;
     const scale = Math.min((maxW - mLeft - mRight) / bw, (maxH - mTop - mBot) / bh);
     const w = sk.ancho * scale, h = sk.largo * scale;
@@ -723,7 +727,7 @@
     s += elementosSketch(sk, { px: px, py: py, scale: scale, r: r, ojeSVG: ojeSVG, ox: ox, oy: oy, w: w, h: h });
     // Cotas (verde) — origen al centro para posición de elementos; 4 lados; eje de referencia.
     if (conCotas) {
-      const bTop = py(minY), bBot = py(maxY), bLeft = px(minX), bRight = px(maxX);
+      const bTop = py(pMinY), bBot = py(pMaxY), bLeft = px(pMinX), bRight = px(pMaxX);
       const ccx = px(sk.ancho / 2), ccy = py(sk.largo / 2);
       s += `<line class="cota-eje" x1="${f1(ccx)}" y1="${f1(bTop)}" x2="${f1(ccx)}" y2="${f1(bBot)}"/>`;
       s += `<line class="cota-eje" x1="${f1(bLeft)}" y1="${f1(ccy)}" x2="${f1(bRight)}" y2="${f1(ccy)}"/>`;
