@@ -200,10 +200,10 @@ button:active { transform: scale(0.98); }
 .sketch-svg .pocket-line { stroke: #1f9d8a; stroke-width: 0.9; }
 .sketch-svg .pocket-stitch { stroke: #1f9d8a; stroke-width: 0.6; }
 .sketch-svg .pocket-lbl { fill: #0f7d6c; font-size: 7px; font-family: inherit; }
-.sketch-svg .strap { fill: #4a5b75; fill-opacity: 0.16; stroke: #3a4a63; stroke-width: 1; }
-.sketch-svg .strap-mid { stroke: #3a4a63; stroke-width: 0.5; stroke-dasharray: 4 3; opacity: 0.7; }
-.sketch-svg .strap-rem { stroke: #2f3e57; stroke-width: 1; fill: none; }
-.sketch-svg .strap-lbl { fill: #2f3e57; font-size: 6.5px; font-weight: 600; font-family: inherit; }
+.sketch-svg .strap { fill: #e23b2e; fill-opacity: 0.10; stroke: #d8443a; stroke-width: 0.5; }
+.sketch-svg .strap-mid { stroke: #d8443a; stroke-width: 0.4; stroke-dasharray: 4 3; opacity: 0.45; }
+.sketch-svg .strap-rem { stroke: #d8443a; stroke-width: 0.7; fill: none; }
+.sketch-svg .strap-lbl { fill: #b3261e; font-size: 6.5px; font-weight: 600; font-family: inherit; }
 .sketch-svg .leyenda-bg { fill: var(--surface); fill-opacity: 0.92; stroke: var(--border, #cdd6e0); stroke-width: 0.5; }
 .sketch-svg .leyenda-tit { fill: var(--text); font-size: 6px; font-weight: 700; font-family: inherit; letter-spacing: 0.5px; }
 .sketch-svg .leyenda-lbl { fill: var(--text); font-size: 6px; font-family: inherit; }

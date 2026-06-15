@@ -1052,13 +1052,15 @@
       const ancho = anchoCintaM(strapMat(s)), off = Math.max(0, ev(s.offset) || 0), ins = Math.max(0, ev(s.inset) || 0);
       if (!(ancho > 0) || !(off + ins > 0)) return;
       const nom = s.legend || "";
+      const EDGELBL = { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha" };
       if (s.modo === "arista") {
         const e = strapAristaEdge(s.arista || "sup", ctx), d = ev(s.d) || 0;
         if (!e || !(d > 0)) return;
+        const grp = EDGELBL[s.arista || "sup"] || "Arista";
         const ux = (e.bx - e.ax) / e.len, uy = (e.by - e.ay) / e.len, supr = new Set(parseSupr(s.supr));
-        window.SketchCIBSA.posicionesArista(e.len, d, false).forEach((t, i) => { if (supr.has(i)) return; out.push({ cx: e.ax + ux * t, cy: e.ay + uy * t, angulo: e.outAng, offset: off, inset: ins, ancho: ancho, legend: nom }); });
+        window.SketchCIBSA.posicionesArista(e.len, d, false).forEach((t, i) => { if (supr.has(i)) return; out.push({ cx: e.ax + ux * t, cy: e.ay + uy * t, angulo: e.outAng, offset: off, inset: ins, ancho: ancho, legend: nom, grupo: grp }); });
       } else {
-        out.push({ cx: ev(s.cx) || 0, cy: ev(s.cy) || 0, angulo: ev(s.angulo) || 0, offset: off, inset: ins, ancho: ancho, legend: nom });
+        out.push({ cx: ev(s.cx) || 0, cy: ev(s.cy) || 0, angulo: ev(s.angulo) || 0, offset: off, inset: ins, ancho: ancho, legend: nom, grupo: "Manual" });
       }
     });
     return out;
@@ -1491,7 +1493,7 @@
       id: "cut" + corteSeq,
       tipo: base ? (base.tipo || "calado") : "calado", fade: base ? (base.fade || "") : "",
       ojAristaLado: base ? (base.ojAristaLado || "") : "", ojAristaD: base ? (base.ojAristaD || "0.2") : "0.2", ojAristaInset: base ? (base.ojAristaInset || "0.025") : "0.025", ojAristaSupr: base ? (base.ojAristaSupr || "") : "",
-      strapMatId: base ? (base.strapMatId != null ? base.strapMatId : null) : null, strapLado: base ? (base.strapLado || "") : "", strapInset: base ? (base.strapInset || "0.02") : "0.02", strapNombre: base ? (base.strapNombre || "") : "",
+      strapMatId: base ? (base.strapMatId != null ? base.strapMatId : null) : null, strapLado: base ? (base.strapLado || "A") : "A", strapD: base ? (base.strapD || "0.3") : "0.3", strapOffset: base ? (base.strapOffset || "0.1") : "0.1", strapInset: base ? (base.strapInset || "0.1") : "0.1", strapSupr: base ? (base.strapSupr || "") : "", strapNombre: base ? (base.strapNombre || "") : "",
       secEsq: base ? (base.secEsq || "") : "", secArista: base ? (base.secArista || "") : "", secDist: base ? (base.secDist || "") : "",
       forma: base ? base.forma : "rect", ojCirc: base ? base.ojCirc : "0",
       largo: base ? base.largo : "", ancho: base ? base.ancho : "",
@@ -1539,7 +1541,7 @@
     if (c.tipo === "corte") { // línea recta: largo = longitud de la línea (horizontal), x/y = inicio
       const Ln = ev(c.largo); if (Ln == null || Ln <= 0) return null;
       const x = ev(c.padIzq), y = ev(c.padSup);
-      return { tipo: "corte", x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: Ln, h: 0, circ: false, ojCirc: 0, oj: { sup: 0, inf: 0, izq: 0, der: 0 }, lados: {}, angulo: ev(c.angulo) || 0, pivX: num01(c.pivX, 0), pivY: 0, fade: c.fade || "", ojAristaLado: c.ojAristaLado || "", ojAristaD: ev(c.ojAristaD) || 0, ojAristaInset: ev(c.ojAristaInset) || 0, ojAristaSupr: parseSupr(c.ojAristaSupr), strapAncho: anchoCintaM((c.strapMatId != null && state.materiales[c.strapMatId]) || null), strapLado: c.strapLado || "", strapInset: ev(c.strapInset) || 0, strapNombre: (c.strapNombre || "").trim() };
+      return { tipo: "corte", x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: Ln, h: 0, circ: false, ojCirc: 0, oj: { sup: 0, inf: 0, izq: 0, der: 0 }, lados: {}, angulo: ev(c.angulo) || 0, pivX: num01(c.pivX, 0), pivY: 0, fade: c.fade || "", ojAristaLado: c.ojAristaLado || "", ojAristaD: ev(c.ojAristaD) || 0, ojAristaInset: ev(c.ojAristaInset) || 0, ojAristaSupr: parseSupr(c.ojAristaSupr), strapAncho: anchoCintaM((c.strapMatId != null && state.materiales[c.strapMatId]) || null), strapLado: c.strapLado || "A", strapD: ev(c.strapD) || 0, strapOffset: ev(c.strapOffset) || 0, strapInset: ev(c.strapInset) || 0, strapSupr: parseSupr(c.strapSupr), strapNombre: (c.strapNombre || "").trim() };
     }
     const w = ev(c.ancho), h = ev(c.largo); if (w == null || h == null || w <= 0 || h <= 0) return null;
     const x = ev(c.padIzq), y = ev(c.padSup);
@@ -1721,20 +1723,23 @@
           state.materiales.forEach((m, i) => { if (!/cinta/i.test((m && m.item) || "")) return; const o = document.createElement("option"); o.value = String(i); o.textContent = matLabel(m); sopt.appendChild(o); });
           sopt.value = c.strapMatId != null ? String(c.strapMatId) : "";
           sopt.addEventListener("change", (e) => { c.strapMatId = e.target.value === "" ? null : parseInt(e.target.value, 10); if (c.strapMatId != null && !c.strapLado) c.strapLado = "A"; pintar(); onChange(); });
-          ssel.appendChild(sopt); card.appendChild(addHelpTo(ssel, "Coloca una cinta (strap) a lo largo de la arista del corte. Elige la cinta (define el ancho), el lado y el inset desde la línea de corte.", "CORTE-STRAP"));
+          ssel.appendChild(sopt); card.appendChild(addHelpTo(ssel, "Coloca cintas (straps) que cruzan la arista del corte, repartidas a lo largo de ella (como los ojetillos): distanciamiento, cuánto cruza a cada lado y supresión.", "CORTE-STRAP"));
           if (c.strapMatId != null) {
-            const sg = document.createElement("div"); sg.className = "pieza-grid";
-            const lsel = document.createElement("label"); lsel.className = "field"; lsel.innerHTML = "<span>Lado</span>";
+            const mk = (lab, key, ph) => { const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>"; const i = document.createElement("input"); i.type = "text"; i.inputMode = "decimal"; i.value = c[key] != null ? c[key] : ""; if (ph) i.placeholder = ph; i.addEventListener("input", (e) => { c[key] = e.target.value; refresh(); onChange(); }); i.addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { c[key] = window.CalcCIBSA.fmtNum(r); e.target.value = c[key]; refresh(); onChange(); } }); l.appendChild(i); agregarCalc(i); return l; };
+            const lsel = document.createElement("label"); lsel.className = "field full"; lsel.innerHTML = "<span>Lado del offset (hacia dónde cruza más)</span>";
             const lopt = document.createElement("select");
             [["A", "Lado A — " + cardi(pnx, pny)], ["B", "Lado B — " + cardi(-pnx, -pny)]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; lopt.appendChild(o); });
             lopt.value = c.strapLado || "A"; lopt.addEventListener("change", (e) => { c.strapLado = e.target.value; refresh(); onChange(); });
-            lsel.appendChild(lopt); sg.appendChild(lsel);
-            const isel = document.createElement("label"); isel.className = "field"; isel.innerHTML = "<span>Inset desde el corte (m)</span>";
-            const iinp = document.createElement("input"); iinp.type = "text"; iinp.inputMode = "decimal"; iinp.value = c.strapInset != null ? c.strapInset : "0.02";
-            iinp.addEventListener("input", (e) => { c.strapInset = e.target.value; refresh(); onChange(); });
-            iinp.addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { c.strapInset = window.CalcCIBSA.fmtNum(r); e.target.value = c.strapInset; refresh(); onChange(); } });
-            isel.appendChild(iinp); agregarCalc(iinp); sg.appendChild(isel);
+            lsel.appendChild(lopt); card.appendChild(addHelpTo(lsel, "Cada strap cruza el corte perpendicularmente. \"Offset\" sale hacia el lado elegido; \"Inset\" hacia el lado opuesto.", "CORTE-STRAP-LADO"));
+            const sg = document.createElement("div"); sg.className = "pieza-grid";
+            sg.appendChild(addHelpTo(mk("Distanciamiento (m)", "strapD", "0.3"), "Separación entre straps a lo largo de la arista del corte. Vacío o 0 = una sola cinta al centro.", "CORTE-STRAP-D"));
+            sg.appendChild(addHelpTo(mk("Cruza lado A — offset (m)", "strapOffset", "0.1"), "Cuánto cruza cada strap hacia el lado del offset.", "CORTE-STRAP-OFF"));
+            sg.appendChild(addHelpTo(mk("Cruza lado B — inset (m)", "strapInset", "0.1"), "Cuánto cruza cada strap hacia el lado opuesto.", "CORTE-STRAP-INS"));
             card.appendChild(sg);
+            const sl = document.createElement("label"); sl.className = "field full"; sl.innerHTML = "<span>Suprimir posiciones (0..n, sep. , o /)</span>";
+            const si = document.createElement("input"); si.type = "text"; si.value = c.strapSupr || ""; si.placeholder = "ej. 0, 3 / 5";
+            si.addEventListener("input", (e) => { c.strapSupr = e.target.value; refresh(); onChange(); });
+            sl.appendChild(si); card.appendChild(addHelpTo(sl, "Quita straps puntuales de la línea de corte por su número de orden (0 desde el inicio del corte). Ej.: \"0, 3\" o \"2/5\".", "CORTE-STRAP-SUPR"));
           }
         }
         { const f2 = window.CalcCIBSA.fmtNum, bL = ctx.baseLargo(), bA = ctx.baseAncho();

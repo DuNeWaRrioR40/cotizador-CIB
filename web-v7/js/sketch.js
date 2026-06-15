@@ -191,7 +191,7 @@
             posicionesArista(Ls, dd, false).forEach((t, i) => { if (supr.has(i)) return; aristaOje.push({ x: a.x + ux * t + inx * ins * sgn, y: a.y + uy * t + iny * ins * sgn }); });
           }
         }
-        return { x: x, y: y, w: w, h: 0, corte: true, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, fadePoly: fadePoly, strapAncho: parseFloat(c.strapAncho) || 0, strapLado: c.strapLado || "", strapInset: parseFloat(c.strapInset) || 0, strapNombre: c.strapNombre || "" };
+        return { x: x, y: y, w: w, h: 0, corte: true, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, fadePoly: fadePoly, strapAncho: parseFloat(c.strapAncho) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
       }
       // --- Corte circular: se recorta al paño base; lo que sale, desaparece. ---
       if (c.circ) {
@@ -323,18 +323,30 @@
       const rem0 = { a: { x: ax + px * hw, y: ay + py * hw }, b: { x: ax - px * hw, y: ay - py * hw } };
       const rem1 = { a: { x: bx + px * hw, y: by + py * hw }, b: { x: bx - px * hw, y: by - py * hw } };
       const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : "Strap";
-      return { corners: corners, rem0: rem0, rem1: rem1, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: dx, y: dy }, perp: { x: px, y: py }, hw: hw, ancho: W, largo: Ls, nombre: nom };
+      return { corners: corners, rem0: rem0, rem1: rem1, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: dx, y: dy }, perp: { x: px, y: py }, hw: hw, ancho: W, largo: Ls, nombre: nom, grupo: s.grupo || "Manual" };
     });
-    // Straps anclados a la arista de un corte (línea): banda a lo largo del corte, hacia el lado A/B.
+    // Straps anclados a la arista de un corte: cintas que CRUZAN el corte, repartidas a lo largo de él
+    // (como los ojetillos por arista). Cada strap es perpendicular al corte; offset cruza hacia el lado
+    // elegido e inset hacia el opuesto. Distanciamiento = separación; supresión por índice.
     (cortes || []).forEach((cc) => {
-      if (!(cc.strapAncho > 0) || !(cc.strapLado === "A" || cc.strapLado === "B") || !cc.segments || !cc.segments[0]) return;
+      if (!(cc.strapAncho > 0) || !cc.segments || !cc.segments[0]) return;
+      const off = Math.max(0, cc.strapOffset || 0), ins = Math.max(0, cc.strapInset || 0);
+      if (!(off + ins > 0)) return;
       const sa = cc.segments[0].a, sb = cc.segments[0].b, L = Math.hypot(sb.x - sa.x, sb.y - sa.y);
       if (!(L > 0)) return;
-      const ux = (sb.x - sa.x) / L, uy = (sb.y - sa.y) / L, pxn = -uy, pyn = ux;
-      const W = cc.strapAncho, hw = W / 2, sgn = (cc.strapLado === "A") ? 1 : -1, offd = (cc.strapInset || 0) + hw;
-      const ca = { x: sa.x + pxn * sgn * offd, y: sa.y + pyn * sgn * offd }, cb = { x: sb.x + pxn * sgn * offd, y: sb.y + pyn * sgn * offd };
-      const corners = [{ x: ca.x + pxn * hw, y: ca.y + pyn * hw }, { x: cb.x + pxn * hw, y: cb.y + pyn * hw }, { x: cb.x - pxn * hw, y: cb.y - pyn * hw }, { x: ca.x - pxn * hw, y: ca.y - pyn * hw }];
-      straps.push({ corners: corners, rem0: { a: corners[0], b: corners[3] }, rem1: { a: corners[1], b: corners[2] }, a: ca, b: cb, dir: { x: ux, y: uy }, perp: { x: pxn, y: pyn }, hw: hw, ancho: W, largo: L, nombre: cc.strapNombre || "Cinta" });
+      const ux = (sb.x - sa.x) / L, uy = (sb.y - sa.y) / L, pxn = -uy, pyn = ux; // ux=along, pxn=perp(cruza)
+      const W = cc.strapAncho, hw = W / 2, sgn = (cc.strapLado === "B") ? -1 : 1;
+      const ldx = pxn * sgn, ldy = pyn * sgn; // eje largo del strap = perpendicular al corte, hacia lado del offset
+      const d = cc.strapD || 0, supr = new Set(Array.isArray(cc.strapSupr) ? cc.strapSupr : []);
+      const pts = (d > 0) ? posicionesArista(L, d, false) : [L / 2];
+      pts.forEach((t, i) => {
+        if (supr.has(i)) return;
+        const Px = sa.x + ux * t, Py = sa.y + uy * t;
+        const ax = Px - ldx * ins, ay = Py - ldy * ins; // extremo lado B
+        const bx = Px + ldx * off, by = Py + ldy * off; // extremo lado A (offset)
+        const corners = [{ x: ax + ux * hw, y: ay + uy * hw }, { x: bx + ux * hw, y: by + uy * hw }, { x: bx - ux * hw, y: by - uy * hw }, { x: ax - ux * hw, y: ay - uy * hw }];
+        straps.push({ corners: corners, rem0: { a: corners[0], b: corners[3] }, rem1: { a: corners[1], b: corners[2] }, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: ldx, y: ldy }, perp: { x: ux, y: uy }, hw: hw, ancho: W, largo: off + ins, nombre: cc.strapNombre || "Cinta", grupo: (cc.strapNombre && cc.strapNombre.trim()) ? cc.strapNombre.trim() : "Corte" });
+      });
     });
     return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps };
   }
@@ -382,6 +394,23 @@
     // Total exterior (incluye aletas) solo si exceden el paño base.
     if (maxY > L + EPS || minY < -EPS) out.push({ axis: "v", a: minY, b: maxY, off: totalOff, value: maxY - minY, side: "left", total: true });
     if (maxX > A + EPS || minX < -EPS) out.push({ axis: "h", a: minX, b: maxX, off: totalOff, value: maxX - minX, side: "top", total: true });
+    // Cortes / secciones: ubicar cada extremo del corte en las aristas LIBRES (X abajo desde la izq.,
+    // Y a la derecha desde arriba). Se escalonan por encima de lo ya usado en esos lados.
+    const cutPts = [];
+    (sk.cortes || []).forEach((c) => { (c.segments || []).forEach((seg) => { if (seg && seg.a && seg.b) { cutPts.push(seg.a); cutPts.push(seg.b); } }); });
+    if (cutPts.length) {
+      const uniq = (vals, max) => {
+        const set = [];
+        vals.forEach((v) => { const r = Math.round(v * 1000) / 1000; if (r > EPS && r < max - EPS && !set.some((s) => Math.abs(s - r) < EPS)) set.push(r); });
+        return set.sort((a, b) => a - b);
+      };
+      const xs = uniq(cutPts.map((p) => p.x), A);
+      const ys = uniq(cutPts.map((p) => p.y), L);
+      let bOff = OFF_MIN0, rOff = OFF_MIN0;
+      out.forEach((c) => { if (c.side === "bottom" && c.off >= bOff) bOff = c.off + OFF_STEP; if (c.side === "right" && c.off >= rOff) rOff = c.off + OFF_STEP; });
+      xs.forEach((x) => { out.push({ axis: "h", a: 0, b: x, off: bOff, value: x, side: "bottom", corte: true }); bOff += OFF_STEP; });
+      ys.forEach((y) => { out.push({ axis: "v", a: 0, b: y, off: rOff, value: y, side: "right", corte: true }); rOff += OFF_STEP; });
+    }
     return out;
   }
   function offsetCota(c) { return c.off; }
@@ -642,6 +671,40 @@
     });
     return s;
   }
+  // Resumen de straps agrupado por origen (arista/corte/manual) y por medida (largo × ancho).
+  // Devuelve filas { grupo, largo, ancho, n } ordenadas por grupo y luego por medida.
+  function strapsResumen(sk) {
+    const map = new Map();
+    (sk && sk.straps || []).forEach((st) => {
+      const grupo = st.grupo || "Strap";
+      const largo = Math.round((parseFloat(st.largo) || 0) * 1000) / 1000;
+      const ancho = Math.round((parseFloat(st.ancho) || 0) * 1000) / 1000;
+      const key = grupo + "|" + largo + "|" + ancho;
+      const prev = map.get(key);
+      if (prev) prev.n += 1; else map.set(key, { grupo: grupo, largo: largo, ancho: ancho, n: 1 });
+    });
+    return Array.from(map.values()).sort((a, b) => (a.grupo < b.grupo ? -1 : a.grupo > b.grupo ? 1 : a.largo - b.largo));
+  }
+  // Bloque SVG "STRAPS" (resumen) anclado en (x0, yTop). Mismas clases visuales que la leyenda.
+  function resumenStrapsSVG(sk, x0, yTop) {
+    const filas = strapsResumen(sk);
+    if (!filas.length) return "";
+    const f1 = (n) => n.toFixed(1), rowH = 9, titH = 11, boxW = 132;
+    const total = filas.reduce((a, r) => a + r.n, 0);
+    const boxH = titH + (filas.length + 1) * rowH + 4;
+    let s = `<rect class="leyenda-bg" x="${f1(x0 - 4)}" y="${f1(yTop - 2)}" width="${f1(boxW)}" height="${f1(boxH)}" rx="3"/>`;
+    s += `<text class="leyenda-tit" x="${f1(x0)}" y="${f1(yTop + 7)}">STRAPS POR ARISTA</text>`;
+    filas.forEach((r, i) => {
+      const y = yTop + titH + i * rowH + rowH / 2 + 1.4;
+      const med = fmt(r.largo) + " m × " + fmt(Math.round(r.ancho * 100)) + " cm";
+      s += `<text class="leyenda-lbl" x="${f1(x0)}" y="${f1(y)}">${esc(r.grupo)}</text>`;
+      s += `<text class="leyenda-lbl" x="${f1(x0 + boxW - 8)}" y="${f1(y)}" text-anchor="end">${r.n} × ${esc(med)}</text>`;
+    });
+    const yT = yTop + titH + filas.length * rowH + rowH / 2 + 1.4;
+    s += `<text class="leyenda-tit" x="${f1(x0)}" y="${f1(yT)}">TOTAL</text>`;
+    s += `<text class="leyenda-tit" x="${f1(x0 + boxW - 8)}" y="${f1(yT)}" text-anchor="end">${total} cinta(s)</text>`;
+    return s;
+  }
 
   // SVG temático (clases coloreadas por el CSS de la App).
   // ----- Vista volumétrica: cuboide 3D + hoja de corte desplegada (calados en esquinas) -----
@@ -776,8 +839,13 @@
     const simb = simbologia(sk);
     const legRowH = 11, legTitH = 11, legPad = 8;
     const legH = simb.length ? (legTitH + simb.length * legRowH + legPad) : 0;
+    const resFilas = strapsResumen(sk);
+    const resH = resFilas.length ? (11 + (resFilas.length + 1) * 9 + 4) : 0;
+    const bottomH = Math.max(legH, resH);
     const boundsBot = mTop + bh * scale;
-    const totalW = bw * scale + mLeft + mRight, totalH = boundsBot + mBot + legH;
+    let totalW = bw * scale + mLeft + mRight;
+    if (resFilas.length) totalW = Math.max(totalW, 246);
+    const totalH = boundsBot + mBot + bottomH;
     const r = Math.max(1.7, Math.min(3.0, scale * 0.022));
     const f1 = (n) => n.toFixed(1);
     // Ojetillo = anillo + círculo concéntrico menor (borde fino).
@@ -832,8 +900,9 @@
       s += `<text class="vista-sub" x="19" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 19 ${f1(lyA)})">(frontal: der.)</text>`;
       s += `<text class="vista-sub" x="${f1(totalW - 18)}" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 ${f1(totalW - 18)} ${f1(lyA)})">(frontal: izq.)</text>`;
     }
-    // Leyenda de simbología en la parte inferior izquierda.
+    // Leyenda de simbología en la parte inferior izquierda + resumen de straps contiguo.
     if (legH) s += leyendaSVG(simb, 6, boundsBot + mBot + 2, ojeSVG, r);
+    s += resumenStrapsSVG(sk, 108, boundsBot + mBot + 2);
     s += `</svg>`;
     return s;
   }
@@ -843,7 +912,7 @@
     cotasDe, offsetCota, margenCotas, margenCotasLados, centroProducto, fmt, esc, tijeraPrims, tijerasEn, flechaBarbas, zigzagPts,
     distribuirArista, distribuirParejo, posicionesArista,
     intervalosCalados, segmentosSolidos, posicionesAristaSeg,
-    simbologia,
+    simbologia, strapsResumen, resumenStrapsSVG,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   global.SketchCIBSA = API;

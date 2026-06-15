@@ -83,21 +83,19 @@
     const SK = global.SketchCIBSA;
     const ACC = BLUE(), FUS = PDFLib.rgb(0.82, 0.23, 0.18), TEAL = PDFLib.rgb(0.12, 0.62, 0.54);
     const AMBER = PDFLib.rgb(0.753, 0.475, 0.122), PURPLE = PDFLib.rgb(0.557, 0.267, 0.678);
-    const STRAP = PDFLib.rgb(0.227, 0.29, 0.388), STRAPF = PDFLib.rgb(0.29, 0.357, 0.459);
+    const STRAP = PDFLib.rgb(0.847, 0.267, 0.227), STRAPF = PDFLib.rgb(0.847, 0.267, 0.227);
     const ojePDF = (cx, cy, col) => {
       page.drawCircle({ x: cx, y: cy, size: r, borderColor: col, borderWidth: 0.4, color: WHITE() });
       page.drawCircle({ x: cx, y: cy, size: r * 0.42, borderColor: col, borderWidth: 0.35 });
     };
-    // Straps (cintas): banda recta + línea media + remates zigzag + etiqueta.
+    // Straps (cintas): banda con relleno suave translúcido + borde fino rojo + línea media + remates + etiqueta.
     (sk.straps || []).forEach((st) => {
-      for (let i = 0; i < st.corners.length; i++) {
-        const a = st.corners[i], b = st.corners[(i + 1) % st.corners.length];
-        page.drawLine({ start: { x: px(a.x), y: py(a.y) }, end: { x: px(b.x), y: py(b.y) }, thickness: 1, color: STRAP });
-      }
-      page.drawLine({ start: { x: px(st.a.x), y: py(st.a.y) }, end: { x: px(st.b.x), y: py(st.b.y) }, thickness: 0.4, color: STRAPF, dashArray: [4, 3] });
+      const d = "M " + st.corners.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";
+      page.drawSvgPath(d, { color: STRAP, opacity: 0.10, borderColor: STRAP, borderWidth: 0.5, borderOpacity: 1 });
+      page.drawLine({ start: { x: px(st.a.x), y: py(st.a.y) }, end: { x: px(st.b.x), y: py(st.b.y) }, thickness: 0.4, color: STRAPF, dashArray: [4, 3], opacity: 0.45 });
       [st.rem0, st.rem1].forEach((rm) => {
         const zz = SK.zigzagPts(px(rm.a.x), py(rm.a.y), px(rm.b.x), py(rm.b.y), 2.2, 4);
-        for (let i = 0; i < zz.length - 1; i++) page.drawLine({ start: { x: zz[i].x, y: zz[i].y }, end: { x: zz[i + 1].x, y: zz[i + 1].y }, thickness: 1, color: STRAP });
+        for (let i = 0; i < zz.length - 1; i++) page.drawLine({ start: { x: zz[i].x, y: zz[i].y }, end: { x: zz[i + 1].x, y: zz[i + 1].y }, thickness: 0.6, color: STRAP });
       });
       const offpx = st.hw * scale + 8;
       const lx = px((st.a.x + st.b.x) / 2) + st.perp.x * offpx, ly = py((st.a.y + st.b.y) / 2) - st.perp.y * offpx; // py invertido en PDF
@@ -315,6 +313,28 @@
       page.drawText(it.label, { x: xLeft + 16, y: yMid - 2, size: 5.5, font: font, color: TXT });
     });
   }
+  // Resumen de straps agrupado por arista/origen y medida, contiguo a la leyenda.
+  function resumenStrapsPDF(page, sk, xLeft, yTop, font) {
+    const SK = global.SketchCIBSA;
+    const filas = SK.strapsResumen(sk);
+    if (!filas.length) return;
+    const GRAY = PDFLib.rgb(0.6, 0.65, 0.7), TXT = PDFLib.rgb(0.12, 0.12, 0.12);
+    const titH = 9, rowH = 8, boxW = 150;
+    const total = filas.reduce((a, r) => a + r.n, 0);
+    const boxH = titH + (filas.length + 1) * rowH + 4;
+    page.drawRectangle({ x: xLeft - 3, y: yTop - boxH, width: boxW, height: boxH, color: WHITE(), opacity: 0.9, borderColor: GRAY, borderWidth: 0.5, borderOpacity: 1 });
+    page.drawText("STRAPS POR ARISTA", { x: xLeft, y: yTop - 7, size: 6, font: font, color: TXT });
+    filas.forEach((r, i) => {
+      const y = yTop - titH - i * rowH - rowH / 2 - 2;
+      const med = r.n + " × " + SK.fmt(r.largo) + " m × " + SK.fmt(Math.round(r.ancho * 100)) + " cm";
+      page.drawText(r.grupo, { x: xLeft, y: y, size: 5.5, font: font, color: TXT });
+      page.drawText(med, { x: xLeft + boxW - 6 - font.widthOfTextAtSize(med, 5.5), y: y, size: 5.5, font: font, color: TXT });
+    });
+    const yT = yTop - titH - filas.length * rowH - rowH / 2 - 2;
+    page.drawText("TOTAL", { x: xLeft, y: yT, size: 6, font: font, color: TXT });
+    const tot = total + " cinta(s)";
+    page.drawText(tot, { x: xLeft + boxW - 6 - font.widthOfTextAtSize(tot, 6), y: yT, size: 6, font: font, color: TXT });
+  }
 
   function dibujarSketchPDF(page, spec, box, font, opts) {
     opts = opts || {};
@@ -330,8 +350,11 @@
     const ML = conCotas ? SK.margenCotasLados(sk) : { top: 0, bottom: 0, left: 0, right: 0 };
     const simb = SK.simbologia(sk);
     const legH = simb.length ? (9 + simb.length * 9 + 6) : 0;
+    const resFilas = SK.strapsResumen(sk);
+    const resH = resFilas.length ? (9 + (resFilas.length + 1) * 8 + 4) : 0;
+    const bottomH = Math.max(legH, resH);
     const mTop = ML.top + LBL, mLeft = ML.left + LBL, mRight = ML.right + 18 + LBL;
-    const mBot = ML.bottom + 18 + LBL + legH;
+    const mBot = ML.bottom + 18 + LBL + bottomH;
     const availW = box.w - mLeft - mRight, availH = box.h - mTop - mBot;
     if (availW <= 0 || availH <= 0) return;
     // Bounds del paño (base + aletas) — las cotas se anclan AQUÍ (los straps NO afectan las cotas).
@@ -401,8 +424,10 @@
       vlbl("(frontal: der.)", px(minX) - ML.left + 1, 4.2, MUT);
       vlbl("(frontal: izq.)", px(maxX) + ML.right + 8, 4.2, MUT);
     }
-    // Leyenda de simbología en el borde inferior izquierdo del recuadro.
-    if (legH) leyendaPDF(page, simb, box.x + 3, box.top - box.h + legH, font);
+    // Leyenda de simbología + resumen de straps en el borde inferior del recuadro.
+    const legTop = box.top - box.h + bottomH;
+    if (legH) leyendaPDF(page, simb, box.x + 3, legTop, font);
+    resumenStrapsPDF(page, sk, box.x + 3 + 99, legTop, font);
   }
 
   async function generarCotizacion(datos) {
