@@ -187,7 +187,8 @@
           if (Ls > 0) {
             const ux = (b.x - a.x) / Ls, uy = (b.y - a.y) / Ls, inx = -uy, iny = ux;
             const ins = parseFloat(c.ojAristaInset) || 0, sgn = (c.ojAristaLado === "A") ? 1 : -1;
-            posicionesArista(Ls, dd, false).forEach((t) => aristaOje.push({ x: a.x + ux * t + inx * ins * sgn, y: a.y + uy * t + iny * ins * sgn }));
+            const supr = new Set(Array.isArray(c.ojAristaSupr) ? c.ojAristaSupr : []);
+            posicionesArista(Ls, dd, false).forEach((t, i) => { if (supr.has(i)) return; aristaOje.push({ x: a.x + ux * t + inx * ins * sgn, y: a.y + uy * t + iny * ins * sgn }); });
           }
         }
         return { x: x, y: y, w: w, h: 0, corte: true, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, fadePoly: fadePoly, strapAncho: parseFloat(c.strapAncho) || 0, strapLado: c.strapLado || "", strapInset: parseFloat(c.strapInset) || 0, strapNombre: c.strapNombre || "" };
