@@ -474,6 +474,18 @@
     head.innerHTML = (cerrado ? "▸ " : "▾ ") + titulo + (cerrado && datos ? ' <span class="subcolap-badge">● con datos</span>' : "");
     head.classList.toggle("con-datos", cerrado && datos);
   }
+  // Hace plegable una ficha individual (Anexo, Corte/calado). Estado en obj._colap (persiste).
+  function fichaColapsable(card, head, tt, obj) {
+    const body = document.createElement("div"); body.className = "anexo-body";
+    let nx = head.nextSibling; while (nx) { const s = nx.nextSibling; body.appendChild(nx); nx = s; }
+    card.appendChild(body);
+    const chev = document.createElement("button"); chev.type = "button"; chev.className = "anexo-colap";
+    head.insertBefore(chev, head.firstChild);
+    const apl = () => { body.style.display = obj._colap ? "none" : ""; chev.textContent = obj._colap ? "▸" : "▾"; card.classList.toggle("anexo-cerrado", !!obj._colap); };
+    chev.addEventListener("click", () => { obj._colap = !obj._colap; apl(); });
+    tt.style.cursor = "pointer"; tt.addEventListener("click", () => { obj._colap = !obj._colap; apl(); });
+    apl();
+  }
   function subColapsar(container, titulo, host, key, hasData) {
     if (!container) return;
     if (!container._subHead) {
@@ -986,16 +998,7 @@
           dims.innerHTML = html;
         }
         refresh();
-        // Cada Anexo es plegable (estado en a._colap, persiste entre re-render).
-        const body = document.createElement("div"); body.className = "anexo-body";
-        let nx = head.nextSibling; while (nx) { const s2 = nx.nextSibling; body.appendChild(nx); nx = s2; }
-        card.appendChild(body);
-        const chev = document.createElement("button"); chev.type = "button"; chev.className = "anexo-colap";
-        head.insertBefore(chev, head.firstChild);
-        const aplicA = () => { body.style.display = a._colap ? "none" : ""; chev.textContent = a._colap ? "▸" : "▾"; card.classList.toggle("anexo-cerrado", !!a._colap); };
-        chev.addEventListener("click", () => { a._colap = !a._colap; aplicA(); });
-        tt.style.cursor = "pointer"; tt.addEventListener("click", () => { a._colap = !a._colap; aplicA(); });
-        aplicA();
+        fichaColapsable(card, head, tt, a); // cada Anexo es plegable
         rows.appendChild(card);
       });
     }
@@ -1186,32 +1189,25 @@
           obj.padSup = f(Math.max(0, sup)); obj.padInf = f(Math.max(0, baseL - cV - sup));
           obj.padIzq = f(Math.max(0, izq)); obj.padDer = f(Math.max(0, baseA - cH - izq));
         }
-        function replicarEsquinasIns(marca) {
+        // Copia espejo en esquinas — la ventana original SIEMPRE se mantiene; cada esquina agrega una ficha nueva.
+        function crearInsEnEsquinas(corners) {
           const ev = window.CalcCIBSA.evalExpr;
           const baseL = ev(pz.largo), baseA = ev(pz.ancho), cV = ev(ins.largo), cH = ev(ins.ancho);
           if (baseL == null || baseA == null || !(cV > 0) || !(cH > 0)) { alert("Completa dimensiones de la ventana y del paño base."); return; }
-          const order = ["TL", "TR", "BL", "BR"].filter((k) => marca[k]);
-          if (!order.length) { alert("Marca al menos una esquina."); return; }
           const mV = Math.min(ev(ins.padSup) || 0, ev(ins.padInf) || 0), mH = Math.min(ev(ins.padIzq) || 0, ev(ins.padDer) || 0);
-          setCornerIns(ins, order[0], baseL, baseA, mV, mH, cV, cH);
-          for (let i = 1; i < order.length; i++) { const copy = nuevaInscrito(ins); setCornerIns(copy, order[i], baseL, baseA, mV, mH, cV, cH); pz.inscritos.push(copy); }
+          corners.forEach((corner) => { const copy = nuevaInscrito(ins); setCornerIns(copy, corner, baseL, baseA, mV, mH, cV, cH); pz.inscritos.push(copy); });
           pintar(); actualizarSuper(); onChange();
         }
-        const rcap = document.createElement("p"); rcap.className = "muted small"; rcap.textContent = "Replicar en esquinas (mismo diseño, posición espejo):"; card.appendChild(rcap);
-        const rrow = document.createElement("div"); rrow.className = "radios";
-        const marca = { TL: false, TR: false, BL: false, BR: false };
+        const rcap = document.createElement("p"); rcap.className = "muted small"; rcap.textContent = "Copia espejo en una esquina (agrega una ficha nueva; la ventana original NO se modifica):"; card.appendChild(rcap);
+        const rrow = document.createElement("div"); rrow.className = "pz-actions"; rrow.style.flexWrap = "wrap";
         [["TL", "↖ Sup-Izq"], ["TR", "↗ Sup-Der"], ["BL", "↙ Inf-Izq"], ["BR", "↘ Inf-Der"]].forEach(([k, lab]) => {
-          const l = document.createElement("label"); const cb = document.createElement("input"); cb.type = "checkbox";
-          cb.addEventListener("change", (e) => { marca[k] = e.target.checked; });
-          l.appendChild(cb); l.appendChild(document.createTextNode(" " + lab)); rrow.appendChild(l);
+          const b = document.createElement("button"); b.type = "button"; b.className = "pz-btn"; b.textContent = lab;
+          b.addEventListener("click", () => crearInsEnEsquinas([k]));
+          rrow.appendChild(b);
         });
-        card.appendChild(rrow);
-        const racc = document.createElement("div"); racc.className = "pz-actions"; racc.style.marginTop = "4px";
-        const bRepIns = document.createElement("button"); bRepIns.type = "button"; bRepIns.className = "pz-btn"; bRepIns.textContent = "Replicar en esquinas marcadas";
-        bRepIns.addEventListener("click", () => replicarEsquinasIns(marca));
-        const b4Ins = document.createElement("button"); b4Ins.type = "button"; b4Ins.className = "pz-btn"; b4Ins.textContent = "Replicar en 4 esquinas";
-        b4Ins.addEventListener("click", () => replicarEsquinasIns({ TL: true, TR: true, BL: true, BR: true }));
-        racc.appendChild(bRepIns); racc.appendChild(b4Ins); card.appendChild(racc);
+        const b4Ins = document.createElement("button"); b4Ins.type = "button"; b4Ins.className = "pz-btn"; b4Ins.textContent = "⊞ Copia en las 4";
+        b4Ins.addEventListener("click", () => crearInsEnEsquinas(["TL", "TR", "BL", "BR"]));
+        rrow.appendChild(b4Ins); card.appendChild(rrow);
         // Dimensiones derivadas + subtotal
         const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
         const bcap = document.createElement("p"); bcap.className = "muted small"; bcap.textContent = "Bordes y unión de la ventana:"; card.appendChild(bcap);
@@ -1394,32 +1390,26 @@
           obj.padSup = f(Math.max(0, sup)); obj.padInf = f(Math.max(0, baseL - cV - sup));
           obj.padIzq = f(Math.max(0, izq)); obj.padDer = f(Math.max(0, baseA - cH - izq));
         }
-        function replicarEsquinas(marca) {
+        // Crear copia espejo en esquinas — el calado original SIEMPRE se mantiene; cada esquina agrega una ficha nueva.
+        function crearEnEsquinas(corners) {
           const ev = window.CalcCIBSA.evalExpr;
           const baseL = ctx.baseLargo(), baseA = ctx.baseAncho(), cV = ev(c.largo), cH = ev(c.ancho);
           if (baseL == null || baseA == null || !(cV > 0) || !(cH > 0)) { alert("Completa dimensiones del corte y del paño base."); return; }
-          const order = ["TL", "TR", "BL", "BR"].filter((k) => marca[k]);
-          if (!order.length) { alert("Marca al menos una esquina."); return; }
           const mV = Math.min(ev(c.padSup) || 0, ev(c.padInf) || 0), mH = Math.min(ev(c.padIzq) || 0, ev(c.padDer) || 0);
-          setCorner(c, order[0], baseL, baseA, mV, mH, cV, cH);
-          for (let i = 1; i < order.length; i++) { const copy = nuevaCorte(c); setCorner(copy, order[i], baseL, baseA, mV, mH, cV, cH); ctx.cortes.push(copy); }
+          corners.forEach((corner) => { const copy = nuevaCorte(c); copy._colap = false; setCorner(copy, corner, baseL, baseA, mV, mH, cV, cH); ctx.cortes.push(copy); });
           pintar(); onChange();
         }
-        const rcap = document.createElement("p"); rcap.className = "muted small"; rcap.textContent = "Replicar en esquinas (mismo diseño, posición espejo respecto del paño base):"; card.appendChild(rcap);
-        const rrow = document.createElement("div"); rrow.className = "radios";
-        const marca = { TL: false, TR: false, BL: false, BR: false };
+        const rcap = document.createElement("p"); rcap.className = "muted small"; rcap.textContent = "Copia espejo en una esquina (agrega una ficha nueva; el calado original NO se modifica):";
+        card.appendChild(addHelpTo(rcap, "Crea una COPIA de este calado en la esquina elegida, en posición espejo respecto del paño base. El original se mantiene tal cual; se agrega una ficha nueva (como duplicar).", "CORTE-ESQUINAS"));
+        const rrow = document.createElement("div"); rrow.className = "pz-actions"; rrow.style.flexWrap = "wrap";
         [["TL", "↖ Sup-Izq"], ["TR", "↗ Sup-Der"], ["BL", "↙ Inf-Izq"], ["BR", "↘ Inf-Der"]].forEach(([k, lab]) => {
-          const l = document.createElement("label"); const cb = document.createElement("input"); cb.type = "checkbox";
-          cb.addEventListener("change", (e) => { marca[k] = e.target.checked; });
-          l.appendChild(cb); l.appendChild(document.createTextNode(" " + lab)); rrow.appendChild(l);
+          const b = document.createElement("button"); b.type = "button"; b.className = "pz-btn"; b.textContent = lab;
+          b.addEventListener("click", () => crearEnEsquinas([k]));
+          rrow.appendChild(b);
         });
-        card.appendChild(rrow);
-        const racc = document.createElement("div"); racc.className = "pz-actions"; racc.style.marginTop = "4px";
-        const b4 = document.createElement("button"); b4.type = "button"; b4.className = "pz-btn"; b4.textContent = "Replicar en 4 esquinas";
-        b4.addEventListener("click", () => replicarEsquinas({ TL: true, TR: true, BL: true, BR: true }));
-        const bRep = document.createElement("button"); bRep.type = "button"; bRep.className = "pz-btn"; bRep.textContent = "Replicar en esquinas marcadas";
-        bRep.addEventListener("click", () => replicarEsquinas(marca));
-        racc.appendChild(bRep); racc.appendChild(b4); card.appendChild(racc);
+        const b4 = document.createElement("button"); b4.type = "button"; b4.className = "pz-btn"; b4.textContent = "⊞ Copia en las 4";
+        b4.addEventListener("click", () => crearEnEsquinas(["TL", "TR", "BL", "BR"]));
+        rrow.appendChild(b4); card.appendChild(rrow);
         // Aristas a dibujar (solo corte rectangular) — visible.
         if (!esCirc) {
           const lcap = document.createElement("p"); lcap.className = "muted small"; lcap.textContent = "Aristas a dibujar (apaga lados para un corte recto; deja una sola = una línea):"; card.appendChild(addHelpTo(lcap, "Elige qué lados del calado se dibujan. Apaga lados para un corte recto; deja uno solo para una línea. No cambia el precio, solo el plano de taller.", "CORTE-ARISTAS"));
@@ -1499,6 +1489,7 @@
           dims.innerHTML = html;
         }
         refresh();
+        fichaColapsable(card, head, tt, c); // cada Corte/calado es plegable
         rows.appendChild(card);
       });
     }

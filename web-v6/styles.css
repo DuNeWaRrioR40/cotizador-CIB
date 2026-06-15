@@ -249,9 +249,9 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .subcolap-badge { font-size: 0.7em; font-weight: 700; letter-spacing: 0.3px; color: #b35c00; }
 /* Anexo (aleta/solapa/faldón/cenefa) plegable */
 .anexo-colap { background: transparent; border: 0; cursor: pointer; color: var(--muted); font-size: 1em; padding: 0 5px 0 0; line-height: 1; }
-.aleta-card .ins-head { cursor: pointer; align-items: center; }
-.aleta-card.anexo-cerrado .ins-head { background: #ffe9b8; border: 1px solid #e9a23b; border-radius: 8px; padding: 3px 8px; box-shadow: 0 2px 6px rgba(180,110,0,0.32); }
-.aleta-card.anexo-cerrado .ins-head .muted, .aleta-card.anexo-cerrado .anexo-colap { color: #8a4b00; }
+.ins-card .ins-head { align-items: center; }
+.ins-card.anexo-cerrado .ins-head { background: #ffe9b8; border: 1px solid #e9a23b; border-radius: 8px; padding: 3px 8px; box-shadow: 0 2px 6px rgba(180,110,0,0.32); }
+.ins-card.anexo-cerrado .ins-head .muted, .ins-card.anexo-cerrado .anexo-colap { color: #8a4b00; }
 .calc-wrap { display: flex; gap: 6px; align-items: stretch; }
 .calc-wrap input { flex: 1; }
 .calc-btn { flex: 0 0 auto; width: 46px; padding: 0; font-size: 18px; background: var(--field); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
