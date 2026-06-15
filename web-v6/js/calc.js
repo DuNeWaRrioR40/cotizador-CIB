@@ -154,7 +154,8 @@
   // Cobertura (m) de m paños traslapados.
   function cobertura(m, rollo, union) { return m <= 0 ? 0 : m * rollo - (m - 1) * union; }
 
-  function loteOrient(panoLen, across, rollo, union, N, valorM2) {
+  function loteOrient(panoLen, across, rollo, union, N, valorM2, factorTela) {
+    const fT = (factorTela > 0) ? factorTela : 1;   // factor de diseño: solo afecta el costo de tela
     const { panos, lastStrip } = panosPara(across, rollo, union);
     const pr = prorratearPanos(panos, lastStrip, rollo, N);
     const m2Full = r2(pr.panosFull * rollo * panoLen);
@@ -162,13 +163,13 @@
     // Asesor de paño marginal: cuánto habría que achicar 'across' para necesitar 1 paño menos.
     const faltanteParaBajar = panos > 1 ? Math.round((across - cobertura(panos - 1, rollo, union)) * 10000) / 10000 : null;
     const excedenteCobertura = r2(cobertura(panos, rollo, union) - across);
-    const costoPano = r2(rollo * panoLen * valorM2);   // valor de 1 paño en esta orientación
+    const costoPano = r2(rollo * panoLen * valorM2 * fT);   // valor de 1 paño en esta orientación
     return {
       panoLen: r2(panoLen), across: r2(across), panosUnit: panos, uniones: panos - 1,
       lastStrip: r2(lastStrip), k: pr.k, panosLote: pr.panosLote, panosFull: pr.panosFull,
       prorrata: pr.prorrata, m2Full, m2Lote,
-      materialFull: m2Full * valorM2, materialLote: m2Lote * valorM2,
-      ahorro: r2((m2Full - m2Lote) * valorM2),
+      materialFull: m2Full * valorM2 * fT, materialLote: m2Lote * valorM2 * fT,
+      ahorro: r2((m2Full - m2Lote) * valorM2 * fT),
       faltanteParaBajar, excedenteCobertura, costoPano,
     };
   }
@@ -199,9 +200,11 @@
     const valOj = opts.valorOjetillo != null ? parseFloat(opts.valorOjetillo) : 450;
     const ojeLote = nOj * valOj * N;
 
+    // Factor de diseño (1..2): multiplica solo el costo de tela (confección), no ojetillos ni materiales.
+    const fT = (opts.factorTela != null && parseFloat(opts.factorTela) > 0) ? parseFloat(opts.factorTela) : 1;
     // Dos direcciones de paño: a lo largo (paños ‖ al largo) y a lo ancho.
-    const oLargo = loteOrient(largoFuente, anchoNeto, rollo, union, N, valorM2); // paños a lo largo
-    const oAncho = loteOrient(anchoNeto, largoFuente, rollo, union, N, valorM2); // paños a lo ancho
+    const oLargo = loteOrient(largoFuente, anchoNeto, rollo, union, N, valorM2, fT); // paños a lo largo
+    const oAncho = loteOrient(anchoNeto, largoFuente, rollo, union, N, valorM2, fT); // paños a lo ancho
     [oLargo, oAncho].forEach((o) => {
       o.ojetillosLote = ojeLote;
       o.subtotalLote = o.materialLote + ojeLote;        // neto del lote con prorrata
@@ -214,7 +217,7 @@
     const barata = masEconomica === "ancho" ? oAncho : oLargo;
     return {
       largoFuente: r2(largoFuente), anchoNeto: r2(anchoNeto), N, nOjetillos: nOj,
-      valorOjetillo: valOj, union: union, unionInvalida: unionInvalida, altura: altura, oLargo, oAncho,
+      valorOjetillo: valOj, union: union, unionInvalida: unionInvalida, altura: altura, factorTela: fT, oLargo, oAncho,
       recomendacion: {
         masEconomica,
         ahorroOrientacion: r2(cara.subtotalLote - barata.subtotalLote),

@@ -198,6 +198,9 @@ button:active { transform: scale(0.98); }
 .sketch-svg .pocket-line { stroke: #1f9d8a; stroke-width: 0.9; }
 .sketch-svg .pocket-stitch { stroke: #1f9d8a; stroke-width: 0.6; }
 .sketch-svg .pocket-lbl { fill: #0f7d6c; font-size: 7px; font-family: inherit; }
+.sketch-svg .leyenda-bg { fill: var(--surface); fill-opacity: 0.92; stroke: var(--border, #cdd6e0); stroke-width: 0.5; }
+.sketch-svg .leyenda-tit { fill: var(--text); font-size: 6px; font-weight: 700; font-family: inherit; letter-spacing: 0.5px; }
+.sketch-svg .leyenda-lbl { fill: var(--text); font-size: 6px; font-family: inherit; }
 .cut-card { border: 1px dashed #8e44ad; }
 .aleta-card { border: 1px solid #c0791f; }
 .trasera-box { border: 1px dashed var(--accent); border-radius: 10px; padding: 8px 10px; margin: 8px 0; }
@@ -227,6 +230,18 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .help-pop .help-wiki { margin-top: 8px; padding: 8px 10px; background: rgba(37,99,168,0.08); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 12.5px; line-height: 1.35; }
 .help-pop .help-cod { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); letter-spacing: 0.3px; }
 .help-pop .help-cod b { color: var(--text); font-weight: 600; }
+/* Secciones colapsables */
+.colap-h { cursor: pointer; user-select: none; }
+.colap-ind { display: inline-block; width: 1.1em; color: var(--muted); font-size: 0.85em; }
+.colap.collapsed > .colap-body { display: none; }
+.colap.collapsed.con-datos > h2.section,
+.colap.collapsed.con-datos > .hist-head { background: rgba(37,99,168,0.12); border-radius: 8px; padding: 2px 6px; }
+.colap.collapsed.con-datos h2.section, .colap.collapsed.con-datos .colap-ind { color: var(--accent); }
+.colap.collapsed.con-datos h2.section::after { content: " ● con datos"; font-size: 0.55em; vertical-align: middle; font-weight: 700; letter-spacing: 0.3px; }
+.colap-pz.colap-cerrada > .colap-body { display: none; }
+.pz-colap-btn { background: transparent; border: 0; cursor: pointer; color: var(--muted); font-size: 1em; padding: 0 4px 0 0; line-height: 1; }
+.colap-pz.colap-cerrada.con-datos > .pieza-head { background: rgba(37,99,168,0.10); border-radius: 8px; }
+.colap-pz.colap-cerrada.con-datos .pz-colap-btn, .colap-pz.colap-cerrada.con-datos .pz-num { color: var(--accent); }
 .calc-wrap { display: flex; gap: 6px; align-items: stretch; }
 .calc-wrap input { flex: 1; }
 .calc-btn { flex: 0 0 auto; width: 46px; padding: 0; font-size: 18px; background: var(--field); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
@@ -238,6 +253,7 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .calc-grid .calc-eq { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .calc-actions { display: flex; gap: 8px; margin-top: 10px; }
 .calc-actions button { flex: 1; }
+.pz-factor-wrap { margin: 8px 0; }
 .slider-row { display: flex; gap: 8px; align-items: center; }
 .slider-row input[type="range"] { flex: 1; width: auto; accent-color: #8e44ad; }
 .slider-row .slider-num { flex: 0 0 auto; width: 62px; }

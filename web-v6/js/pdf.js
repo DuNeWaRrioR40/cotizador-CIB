@@ -200,6 +200,10 @@
     const A = parseFloat(spec.ancho) || 0, L = parseFloat(spec.largo) || 0, H = parseFloat(spec.volumetrico.alto) || 0;
     if (!(A > 0) || !(L > 0) || !(H > 0)) return;
     const conCotas = opts.cotas !== false, fmt = SK.fmt;
+    // Simbología presente (hoja desplegada, sin aletas): reserva alto para la leyenda.
+    const skVol = Object.assign({}, SK.construirSketch(spec), { aletas: [] });
+    const simb = SK.simbologia(skVol);
+    const legH = simb.length ? (9 + simb.length * 9 + 6) : 0;
     const EDGE = PDFLib.rgb(0.12, 0.12, 0.12), FOLD = PDFLib.rgb(0.54, 0.63, 0.72), CUT = PDFLib.rgb(0.557, 0.267, 0.678);
     const GREEN = PDFLib.rgb(0.106, 0.369, 0.125), INK = PDFLib.rgb(0.12, 0.12, 0.12), MUT = PDFLib.rgb(0.42, 0.42, 0.42);
     const VW = box.w;
@@ -228,7 +232,7 @@
     // ----- Panel B: hoja desplegada -----
     const Wd = A + 2 * H, Ld = L + 2 * H;
     const pbx = 60, pbyTit = panelAH + 12, pby = panelAH + 30;
-    const scB = Math.min((VW - 120) / Wd, (box.h - pby - 40) / Ld);
+    const scB = Math.min((VW - 120) / Wd, (box.h - pby - 40 - legH) / Ld);
     const X = (x) => pbx + x * scB, Y = (y) => pby + y * scB;
     dtC("PLANO DESPLEGADO (hoja de corte)", VW / 2, pbyTit, 8.5, INK);
     const cross = [[H, 0], [H + A, 0], [H + A, H], [Wd, H], [Wd, H + L], [H + A, H + L], [H + A, Ld], [H, Ld], [H, H + L], [0, H + L], [0, H], [H, H]];
@@ -240,7 +244,7 @@
       dtC(fmt(H) + "x" + fmt(H), X(n[0] + H / 2), Y(n[1] + H / 2) + 2, 5.5, CUT);
     });
     // Elementos del paño (ventanas, calados, bolsillos, ojetillos) sobre la tapa central, offset por el alto.
-    const skT = Object.assign({}, SK.construirSketch(spec), { aletas: [] });
+    const skT = skVol;
     const rT = Math.max(1.4, Math.min(2.6, scB * 0.022));
     elementosPDF(page, skT, { px: (ex) => box.x + X(H + ex), py: (ey) => box.top - Y(H + ey), scale: scB, x0: box.x + X(H), topRect: box.top - Y(H), wpx: A * scB, hpx: L * scB, r: rT }, font);
     dtL("TAPA " + fmt(L) + "x" + fmt(A) + "m", X(H) + 3, Y(H) + 9, 6.5, INK);
@@ -249,6 +253,46 @@
       vCota(Y(0), Y(Ld), pbx - 14, Ld);
       vCota(Y(0), Y(H), X(H + A) + 14, H);
     }
+    // Leyenda de simbología en el borde inferior izquierdo.
+    if (legH) leyendaPDF(page, simb, box.x + 3, box.top - box.h + legH, font);
+  }
+
+  // Leyenda de simbología en PDF (anclada por su esquina superior-izquierda en x,yTop; y crece hacia abajo).
+  function leyendaPDF(page, items, xLeft, yTop, font) {
+    if (!items.length) return;
+    const SK = global.SketchCIBSA;
+    const ACC = BLUE(), FUS = PDFLib.rgb(0.82, 0.23, 0.18), TEAL = PDFLib.rgb(0.12, 0.62, 0.54);
+    const AMBER = PDFLib.rgb(0.753, 0.475, 0.122), PURPLE = PDFLib.rgb(0.557, 0.267, 0.678);
+    const GRAY = PDFLib.rgb(0.6, 0.65, 0.7), TXT = PDFLib.rgb(0.12, 0.12, 0.12);
+    const titH = 9, rowH = 9, boxW = 96, W = 5, Hh = 2.8, rr = 1.8;
+    const boxH = titH + items.length * rowH + 3;
+    page.drawRectangle({ x: xLeft - 3, y: yTop - boxH, width: boxW, height: boxH, color: WHITE(), opacity: 0.9, borderColor: GRAY, borderWidth: 0.5, borderOpacity: 1 });
+    page.drawText("SIMBOLOGÍA", { x: xLeft, y: yTop - 7, size: 6, font: font, color: TXT });
+    const ojeG = (cx, cy) => { page.drawCircle({ x: cx, y: cy, size: rr, borderColor: ACC, borderWidth: 0.4, color: WHITE() }); page.drawCircle({ x: cx, y: cy, size: rr * 0.42, borderColor: ACC, borderWidth: 0.35 }); };
+    items.forEach((it, i) => {
+      const yMid = yTop - titH - i * rowH - rowH / 2, gx = xLeft + 7;
+      const k = it.k;
+      if (k === "oje") ojeG(gx, yMid);
+      else if (k === "win") page.drawRectangle({ x: gx - W, y: yMid - Hh, width: W * 2, height: Hh * 2, borderColor: ACC, borderWidth: 0.8, borderDashArray: [2, 1.5] });
+      else if (k === "aleta") page.drawRectangle({ x: gx - W, y: yMid - Hh, width: W * 2, height: Hh * 2, borderColor: AMBER, borderWidth: 0.9, color: AMBER, opacity: 0.1, borderOpacity: 1 });
+      else if (k === "pocket") {
+        page.drawRectangle({ x: gx - W, y: yMid - Hh, width: W * 2, height: Hh * 2, borderColor: TEAL, borderWidth: 0.7, color: TEAL, opacity: 0.12, borderOpacity: 1 });
+        page.drawLine({ start: { x: gx - W, y: yMid - Hh * 0.4 }, end: { x: gx + W, y: yMid - Hh * 0.4 }, thickness: 0.8, color: TEAL });
+        for (let j = 0; j <= 3; j++) { const sx = gx - W + (2 * W) * j / 3; page.drawLine({ start: { x: sx, y: yMid - Hh * 0.4 - 1 }, end: { x: sx, y: yMid - Hh * 0.4 + 1 }, thickness: 0.45, color: TEAL }); }
+      } else if (k === "cut") {
+        page.drawLine({ start: { x: gx - W, y: yMid }, end: { x: gx + W, y: yMid }, thickness: 1, color: PURPLE, dashArray: [3, 2] });
+        for (let j = 0; j < 3; j++) { const sx = gx - W * 0.6 + j * W * 0.6; page.drawLine({ start: { x: sx, y: yMid - 1.8 }, end: { x: sx + 1.4, y: yMid + 1.8 }, thickness: 0.35, color: PURPLE, opacity: 0.4 }); }
+      } else if (k === "fusion") {
+        page.drawLine({ start: { x: gx - W, y: yMid }, end: { x: gx + W, y: yMid }, thickness: 0.9, color: FUS });
+        SK.flechaBarbas(gx - W, yMid, 1, 0, 3.5).concat(SK.flechaBarbas(gx + W, yMid, -1, 0, 3.5))
+          .forEach((b) => page.drawLine({ start: { x: b.x1, y: b.y1 }, end: { x: b.x2, y: b.y2 }, thickness: 0.9, color: FUS }));
+      } else if (k === "piv") {
+        page.drawCircle({ x: gx, y: yMid, size: 2, borderColor: PURPLE, borderWidth: 0.6 });
+        page.drawLine({ start: { x: gx - 4.5, y: yMid }, end: { x: gx + 4.5, y: yMid }, thickness: 0.5, color: PURPLE });
+        page.drawLine({ start: { x: gx, y: yMid - 4.5 }, end: { x: gx, y: yMid + 4.5 }, thickness: 0.5, color: PURPLE });
+      }
+      page.drawText(it.label, { x: xLeft + 16, y: yMid - 2, size: 5.5, font: font, color: TXT });
+    });
   }
 
   function dibujarSketchPDF(page, spec, box, font, opts) {
@@ -262,7 +306,11 @@
     // Margen extra para los rótulos de orientación: los aleja de las cotas y achica un poco la imagen.
     const LBL = 22;
     const mTL = (conCotas ? SK.margenCotas(sk) : 24) + LBL, mBR = 18 + LBL;
-    const availW = box.w - mTL - mBR, availH = box.h - mTL - mBR;
+    // Leyenda de simbología: reserva alto en el borde inferior.
+    const simb = SK.simbologia(sk);
+    const legH = simb.length ? (9 + simb.length * 9 + 6) : 0;
+    const mBot = mBR + legH;
+    const availW = box.w - mTL - mBR, availH = box.h - mTL - mBot;
     if (availW <= 0 || availH <= 0) return;
     // Bounds: paño base + aletas que se extienden fuera.
     let minX = 0, maxX = sk.ancho, minY = 0, maxY = sk.largo;
@@ -270,7 +318,7 @@
     const bw = maxX - minX, bh = maxY - minY;
     const scale = Math.min(availW / bw, availH / bh);
     const wpx = sk.ancho * scale, hpx = sk.largo * scale;
-    const totalW = bw * scale + mTL + mBR, totalH = bh * scale + mTL + mBR;
+    const totalW = bw * scale + mTL + mBR, totalH = bh * scale + mTL + mBot;
     const x0region = box.x + (box.w - totalW) / 2 + mTL;
     const topRegion = box.top - (box.h - totalH) / 2 - mTL;
     const x0 = x0region - minX * scale, topRect = topRegion + minY * scale;
@@ -322,6 +370,8 @@
       vlbl("(frontal: der.)", x0 - mTL + 13, 4.2, MUT);
       vlbl("(frontal: izq.)", x0 + wpx + mBR - 10, 4.2, MUT);
     }
+    // Leyenda de simbología en el borde inferior izquierdo del recuadro.
+    if (legH) leyendaPDF(page, simb, box.x + 3, box.top - box.h + legH, font);
   }
 
   async function generarCotizacion(datos) {

@@ -427,6 +427,80 @@
     return s;
   }
 
+  // ----- Simbología: qué símbolos están presentes en el plano (orden canónico) -----
+  const SIMBOLOS = [
+    { k: "oje", label: "Ojetillos" },
+    { k: "win", label: "Paño inscrito / ventana" },
+    { k: "aleta", label: "Aleta / faldón" },
+    { k: "pocket", label: "Bolsillo" },
+    { k: "cut", label: "Calado / corte" },
+    { k: "fusion", label: "Fusión (unir paños)" },
+    { k: "piv", label: "Pivote de giro" },
+  ];
+  function simbologia(sk) {
+    if (!sk) return [];
+    const has = {};
+    const ojeBase = (sk.ojetillos || []).length > 0;
+    const ojeAle = (sk.aletas || []).some((a) => (a.ojetillos || []).length > 0);
+    const ojeCut = (sk.cortes || []).some((c) => (c.ojetillos || []).length > 0);
+    has.oje = ojeBase || ojeAle || ojeCut;
+    has.win = (sk.ventanas || []).length > 0;
+    has.aleta = (sk.aletas || []).length > 0;
+    has.pocket = (sk.bolsillos || []).length > 0;
+    has.cut = (sk.cortes || []).length > 0;
+    // Fusión: las aletas siempre llevan arista fusionada; las ventanas, si tienen algún lado fusionado.
+    has.fusion = has.aleta || (sk.ventanas || []).some((v) => v.fusion && (v.fusion.sup || v.fusion.inf || v.fusion.izq || v.fusion.der));
+    has.piv = (sk.cortes || []).some((c) => c.rotated);
+    return SIMBOLOS.filter((s) => has[s.k]);
+  }
+
+  // Glifo SVG de un símbolo, centrado en (gx, gy). Reusa las clases del CSS para color.
+  function glifoSVG(k, gx, gy, ojeSVG, r) {
+    const f1 = (n) => n.toFixed(1), W = 6, Hh = 3.2;
+    if (k === "oje") return ojeSVG(gx, gy, "oje");
+    if (k === "win") return `<rect class="win" x="${f1(gx - W)}" y="${f1(gy - Hh)}" width="${f1(W * 2)}" height="${f1(Hh * 2)}"/>`;
+    if (k === "aleta") return `<rect class="aleta" x="${f1(gx - W)}" y="${f1(gy - Hh)}" width="${f1(W * 2)}" height="${f1(Hh * 2)}"/>`;
+    if (k === "pocket") {
+      let o = `<rect class="pocket" x="${f1(gx - W)}" y="${f1(gy - Hh)}" width="${f1(W * 2)}" height="${f1(Hh * 2)}" rx="1.2"/>`;
+      o += `<line class="pocket-line" x1="${f1(gx - W)}" y1="${f1(gy + Hh * 0.4)}" x2="${f1(gx + W)}" y2="${f1(gy + Hh * 0.4)}"/>`;
+      for (let i = 0; i <= 3; i++) { const sx = gx - W + (2 * W) * i / 3; o += `<line class="pocket-stitch" x1="${f1(sx)}" y1="${f1(gy + Hh * 0.4 - 1.2)}" x2="${f1(sx)}" y2="${f1(gy + Hh * 0.4 + 1.2)}"/>`; }
+      return o;
+    }
+    if (k === "cut") {
+      let o = `<line class="cut" x1="${f1(gx - W)}" y1="${f1(gy)}" x2="${f1(gx + W)}" y2="${f1(gy)}"/>`;
+      for (let i = 0; i < 3; i++) { const sx = gx - W * 0.6 + i * W * 0.6; o += `<line class="cut-hatch" x1="${f1(sx)}" y1="${f1(gy - 2)}" x2="${f1(sx + 1.6)}" y2="${f1(gy + 2)}"/>`; }
+      return o;
+    }
+    if (k === "fusion") {
+      let o = "";
+      flechaBarbas(gx - W, gy, 1, 0, 4).concat(flechaBarbas(gx + W, gy, -1, 0, 4))
+        .forEach((b) => { o += `<line class="fusion" x1="${f1(b.x1)}" y1="${f1(b.y1)}" x2="${f1(b.x2)}" y2="${f1(b.y2)}"/>`; });
+      o += `<line class="fusion" x1="${f1(gx - W)}" y1="${f1(gy)}" x2="${f1(gx + W)}" y2="${f1(gy)}"/>`;
+      return o;
+    }
+    if (k === "piv") {
+      let o = `<circle class="cut-piv" cx="${f1(gx)}" cy="${f1(gy)}" r="2.2"/>`;
+      o += `<line class="cut-piv" x1="${f1(gx - 5)}" y1="${f1(gy)}" x2="${f1(gx + 5)}" y2="${f1(gy)}"/>`;
+      o += `<line class="cut-piv" x1="${f1(gx)}" y1="${f1(gy - 5)}" x2="${f1(gx)}" y2="${f1(gy + 5)}"/>`;
+      return o;
+    }
+    return "";
+  }
+  // Bloque de leyenda SVG anclado con su esquina superior-izquierda en (x0, yTop).
+  function leyendaSVG(items, x0, yTop, ojeSVG, r) {
+    if (!items.length) return "";
+    const f1 = (n) => n.toFixed(1), rowH = 11, titH = 11, boxW = 96;
+    const boxH = titH + items.length * rowH + 4;
+    let s = `<rect class="leyenda-bg" x="${f1(x0 - 4)}" y="${f1(yTop - 2)}" width="${f1(boxW)}" height="${f1(boxH)}" rx="3"/>`;
+    s += `<text class="leyenda-tit" x="${f1(x0)}" y="${f1(yTop + 7)}">SIMBOLOGÍA</text>`;
+    items.forEach((it, i) => {
+      const yMid = yTop + titH + i * rowH + rowH / 2, gx = x0 + 7;
+      s += glifoSVG(it.k, gx, yMid, ojeSVG, r);
+      s += `<text class="leyenda-lbl" x="${f1(x0 + 18)}" y="${f1(yMid + 2.4)}">${esc(it.label)}</text>`;
+    });
+    return s;
+  }
+
   // SVG temático (clases coloreadas por el CSS de la App).
   // ----- Vista volumétrica: cuboide 3D + hoja de corte desplegada (calados en esquinas) -----
   function volSVG(spec, opts) {
@@ -436,6 +510,10 @@
     const conCotas = opts.cotas !== false;
     const f1 = (n) => n.toFixed(1);
     const VW = 380;
+    // Simbología presente en la hoja desplegada (sin aletas: no aplican en volumétrico).
+    const skVol = Object.assign({}, construirSketch(spec), { aletas: [] });
+    const simbVol = simbologia(skVol);
+    const legH = simbVol.length ? (11 + simbVol.length * 11 + 8) : 0;
     const hCota = (xa, xb, y, val) => {
       let o = `<line class="cota" x1="${f1(xa)}" y1="${f1(y)}" x2="${f1(xb)}" y2="${f1(y)}"/>`;
       o += `<line class="cota-tick" x1="${f1(xa)}" y1="${f1(y - 2.5)}" x2="${f1(xa)}" y2="${f1(y + 2.5)}"/>`;
@@ -492,7 +570,8 @@
     const scB = Math.min((VW - 96) / Wd, 230 / Ld);
     const pbx = 52, pby = pbTit + 24;
     const X = (x) => pbx + x * scB, Y = (y) => pby + y * scB;
-    const totalH = pby + Ld * scB + 20;
+    const sheetBot = pby + Ld * scB + 20;
+    const totalH = sheetBot + legH;
     s = s.replace("0H", f1(totalH)); // fijar alto del viewBox
     s += `<text class="vista-tit" x="${f1(VW / 2)}" y="${f1(pbTit + 12)}" text-anchor="middle">PLANO DESPLEGADO (hoja de corte)</text>`;
     // Contorno en cruz (tapa central + 4 alas), sin las esquinas (calados)
@@ -509,7 +588,7 @@
       s += scSVG(X(n[0] + H / 2), Y(n[1] + H / 2));
     });
     // Elementos del paño (ventanas, calados, bolsillos, ojetillos) sobre la tapa central, offset por el alto.
-    const skT = Object.assign({}, construirSketch(spec), { aletas: [] });
+    const skT = skVol;
     const rT = Math.max(1.4, Math.min(2.6, scB * 0.022));
     const ojeT = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rT)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rT * 0.42)}"/>`;
     s += elementosSketch(skT, { px: (x) => X(H + x), py: (y) => Y(H + y), scale: scB, r: rT, ojeSVG: ojeT, ox: X(H), oy: Y(H), w: A * scB, h: L * scB });
@@ -520,6 +599,11 @@
       s += vCota(Y(0), Y(Ld), pbx - 12, Ld); // largo total = L+2·alto
       s += vCota(Y(0), Y(H), X(H + A) + 12, H); // alto (ala) marcado en una esquina
       s += `<text class="cota-lbl" x="${f1(X(H / 2))}" y="${f1(Y(H + L / 2))}" text-anchor="middle" transform="rotate(-90 ${f1(X(H / 2))} ${f1(Y(H + L / 2))})">calado ${fmt(H)}m</text>`;
+    }
+    // Leyenda de simbología (parte inferior izquierda).
+    if (legH) {
+      const ojeLeg = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="2.2"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="0.9"/>`;
+      s += leyendaSVG(simbVol, 6, sheetBot + 2, ojeLeg, 2.2);
     }
     s += `</svg>`;
     return s;
@@ -544,7 +628,12 @@
     const w = sk.ancho * scale, h = sk.largo * scale;
     const px = (sx) => mLeft + (sx - minX) * scale, py = (sy) => mTop + (sy - minY) * scale;
     const ox = px(0), oy = py(0);
-    const totalW = bw * scale + mLeft + mRight, totalH = bh * scale + mTop + mBot;
+    // Leyenda de simbología (parte inferior izquierda): reserva alto al final del lienzo.
+    const simb = simbologia(sk);
+    const legRowH = 11, legTitH = 11, legPad = 8;
+    const legH = simb.length ? (legTitH + simb.length * legRowH + legPad) : 0;
+    const boundsBot = mTop + bh * scale;
+    const totalW = bw * scale + mLeft + mRight, totalH = boundsBot + mBot + legH;
     const r = Math.max(1.7, Math.min(3.0, scale * 0.022));
     const f1 = (n) => n.toFixed(1);
     // Ojetillo = anillo + círculo concéntrico menor (borde fino).
@@ -583,13 +672,15 @@
     const cxA = mLeft + bw * scale / 2, lyA = mTop + bh * scale / 2;
     s += `<text class="vista-tit" x="${f1(cxA)}" y="10" text-anchor="middle">VISTA ${esTras ? "TRASERA" : "FRONTAL"}</text>`;
     s += `<text class="vista-lbl" x="${f1(cxA)}" y="20" text-anchor="middle">SUPERIOR</text>`;
-    s += `<text class="vista-lbl" x="${f1(cxA)}" y="${f1(totalH - 6)}" text-anchor="middle">INFERIOR</text>`;
+    s += `<text class="vista-lbl" x="${f1(cxA)}" y="${f1(boundsBot + mBot - 8)}" text-anchor="middle">INFERIOR</text>`;
     s += `<text class="vista-lbl" x="10" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 10 ${f1(lyA)})">LADO IZQUIERDO</text>`;
     s += `<text class="vista-lbl" x="${f1(totalW - 9)}" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 ${f1(totalW - 9)} ${f1(lyA)})">LADO DERECHO</text>`;
     if (esTras) {
       s += `<text class="vista-sub" x="19" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 19 ${f1(lyA)})">(frontal: der.)</text>`;
       s += `<text class="vista-sub" x="${f1(totalW - 18)}" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 ${f1(totalW - 18)} ${f1(lyA)})">(frontal: izq.)</text>`;
     }
+    // Leyenda de simbología en la parte inferior izquierda.
+    if (legH) s += leyendaSVG(simb, 6, boundsBot + mBot + 2, ojeSVG, r);
     s += `</svg>`;
     return s;
   }
@@ -599,6 +690,7 @@
     cotasDe, offsetCota, margenCotas, fmt, esc, tijeraPrims, tijerasEn, flechaBarbas,
     distribuirArista, distribuirParejo, posicionesArista,
     intervalosCalados, segmentosSolidos, posicionesAristaSeg,
+    simbologia,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   global.SketchCIBSA = API;

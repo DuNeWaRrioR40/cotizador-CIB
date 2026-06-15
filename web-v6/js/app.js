@@ -8,7 +8,7 @@
     telas: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
     ojAristas: [], ojEdges: null, ojParejo: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
-    docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], wikiAyuda: {},
+    docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [],
     // v4: bordes y unión (uniforme)
@@ -56,6 +56,7 @@
     show("wBordes", uni);
     show("wComplementosUnif", uni);
     show("wAletasUnif", uni);
+    show("wFactorUnif", f); // factor único por producto: visible en uniforme y compuesto
     show("wCortesUnif", uni);
     show("wCondiciones", f);
     show("wObservaciones", f);
@@ -124,7 +125,7 @@
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
   const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_version"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "bordeModo", "bordeValor", "bordes", "piezas"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "bordeModo", "bordeValor", "bordes", "piezas", "factorUnif"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -161,8 +162,30 @@
     setRadio("ojmode", state.ojMode); setRadio("bordemodo", state.bordeModo);
     bumpSeqs();
     renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderTraseraUnif();
-    renderOjetillos(); aplicarVis(); recompute();
+    renderOjetillos(); setFactorUnifUI(); aplicarVis(); recompute();
     return true;
+  }
+
+  // --- Borrador automático (anti-pérdida de datos en iPhone al descargar un PDF) ---
+  // iOS puede descartar de memoria la pestaña al abrir el PDF y recargarla al volver.
+  // Guardamos el estado justo antes de descargar y lo reponemos al recargar (ventana corta, un solo uso).
+  const BORR_KEY = "cibsa_borrador_v1", BORR_MAX_MS = 10 * 60 * 1000;
+  function guardarBorrador() {
+    try {
+      const snap = snapshotCotizacion(); if (!snap) return;
+      localStorage.setItem(BORR_KEY, JSON.stringify({ ts: Date.now(), snap: snap }));
+    } catch (e) {}
+  }
+  function limpiarBorrador() { try { localStorage.removeItem(BORR_KEY); } catch (e) {} }
+  function restaurarBorradorSiCorresponde() {
+    let b = null;
+    try { b = JSON.parse(localStorage.getItem(BORR_KEY) || "null"); } catch (e) {}
+    limpiarBorrador(); // un solo uso, pase lo que pase
+    if (b && b.snap && b.ts && (Date.now() - b.ts) < BORR_MAX_MS) {
+      restaurarCotizacion(b.snap);
+      return true;
+    }
+    return false;
   }
 
   function guardarHistorial(nombre, apellido, version) {
@@ -416,6 +439,74 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") ocultarHelp(); });
   window.addEventListener("scroll", ocultarHelp, true);
 
+  // ---------- Secciones colapsables ----------
+  const COLAP_CERRADAS = ["wHistorial", "wOjetillos", "wBordes", "wCortesUnif", "wComplementosUnif", "wAletasUnif", "wFactorUnif", "wCondiciones", "wOrientFormal", "wSketchUnif", "telaMultiWrap"];
+  const COLAP_ABIERTAS = ["wCliente", "wPiezas"];
+  function seccionTieneDatos(sec) {
+    const body = sec.querySelector(".colap-body"); if (!body) return false;
+    if (body.querySelector(".pieza-card, .ins-card, .aleta-card, .cut-card, .comp-row, .hist-chip")) return true;
+    const els = body.querySelectorAll("input, textarea");
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i];
+      if (el.type === "checkbox" || el.type === "radio") { if (el.checked && el.defaultChecked === false) return true; }
+      else if (el.type === "range") { if (String(el.value) !== String(el.defaultValue)) return true; }
+      else { const v = (el.value || "").trim(); if (v !== "" && v !== (el.defaultValue || "")) return true; }
+    }
+    return false;
+  }
+  function actualizarColapData(sec) {
+    if (!sec || !sec.classList.contains("colap")) return;
+    sec.classList.toggle("con-datos", sec.classList.contains("collapsed") && seccionTieneDatos(sec));
+  }
+  function actualizarColapDataPieza(card) {
+    card.classList.toggle("con-datos", card.classList.contains("colap-cerrada") && seccionTieneDatos(card));
+  }
+  function actualizarColapsables() {
+    document.querySelectorAll(".colap").forEach(actualizarColapData);
+    document.querySelectorAll(".colap-pz").forEach(actualizarColapDataPieza);
+  }
+  // Cada tarjeta de pieza es plegable; el estado se guarda en pz._colap (persiste entre renders).
+  function hacerColapsablePieza(card, pz) {
+    const head = card.querySelector(".pieza-head"); if (!head) return;
+    card.classList.add("colap-pz");
+    const body = document.createElement("div"); body.className = "colap-body";
+    let n = head.nextSibling; while (n) { const s = n.nextSibling; body.appendChild(n); n = s; }
+    card.appendChild(body);
+    const ind = document.createElement("button"); ind.type = "button"; ind.className = "colap-ind pz-colap-btn"; ind.textContent = pz._colap ? "▸" : "▾";
+    head.insertBefore(ind, head.firstChild);
+    if (pz._colap) card.classList.add("colap-cerrada");
+    ind.addEventListener("click", (e) => {
+      e.stopPropagation(); pz._colap = !pz._colap;
+      card.classList.toggle("colap-cerrada", pz._colap); ind.textContent = pz._colap ? "▸" : "▾";
+      actualizarColapDataPieza(card);
+    });
+    const num = head.querySelector(".pz-num"); if (num) { num.style.cursor = "pointer"; num.addEventListener("click", () => ind.click()); }
+    actualizarColapDataPieza(card);
+  }
+  function toggleColap(sec) {
+    sec.classList.toggle("collapsed");
+    const ind = sec.querySelector(".colap-ind"); if (ind) ind.textContent = sec.classList.contains("collapsed") ? "▸" : "▾";
+    actualizarColapData(sec);
+  }
+  function hacerColapsable(secId, cerrada) {
+    const sec = $(secId); if (!sec || sec._colap) return;
+    const h = sec.querySelector("h2.section"); if (!h) return;
+    sec._colap = true; sec.classList.add("colap");
+    let topChild = h; while (topChild.parentNode !== sec) topChild = topChild.parentNode; // contenedor directo que envuelve al h2
+    const body = document.createElement("div"); body.className = "colap-body";
+    let n = topChild.nextSibling; while (n) { const s = n.nextSibling; body.appendChild(n); n = s; }
+    sec.appendChild(body);
+    const ind = document.createElement("span"); ind.className = "colap-ind"; ind.textContent = cerrada ? "▸" : "▾";
+    h.insertBefore(ind, h.firstChild); h.classList.add("colap-h");
+    h.addEventListener("click", (e) => { if (e.target.closest && e.target.closest(".help-ico")) return; toggleColap(sec); });
+    if (cerrada) sec.classList.add("collapsed");
+    actualizarColapData(sec);
+  }
+  function initColapsables() {
+    COLAP_CERRADAS.forEach((id) => hacerColapsable(id, true));
+    COLAP_ABIERTAS.forEach((id) => hacerColapsable(id, false));
+  }
+
   function telasMultiSel() {
     const cont = $("telaMulti");
     if (!cont) return [];
@@ -522,6 +613,7 @@
       sincronizarHistorial(token, remotas);
     } catch (e) { console.warn("CIBSA: no se pudo sincronizar el historial —", e && e.message ? e.message : e); }
     renderHistorial();
+    restaurarBorradorSiCorresponde(); // iPhone: repone el estado si se recargó la pestaña tras descargar un PDF
     mostrarForm();
     renderOjetillos();
     recompute();
@@ -698,10 +790,10 @@
   function cantUnif() { return Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1); }
   function valorOjUnif() { return num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT); }
   function renderAletasUnif() {
-    const c = $("aletasUnif"); if (c) renderAletas(c, { aletas: state.aletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, onChange: recompute });
+    const c = $("aletasUnif"); if (c) renderAletas(c, { aletas: state.aletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, factor: facUnif, onChange: recompute });
   }
   function renderBackAletasUnif() {
-    const c = $("backAletasUnif"); if (c) renderAletas(c, { aletas: state.backAletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, onChange: recompute });
+    const c = $("backAletasUnif"); if (c) renderAletas(c, { aletas: state.backAletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, factor: facUnif, onChange: recompute });
   }
   // Diseño de la vista trasera (calados + materiales propios, $0). Genérico para uniforme/pieza.
   function renderTraseraDiseno(contCortes, contComp, getCortes, getComp, baseL, baseA, onChange) {
@@ -759,29 +851,50 @@
       complementos: base ? (base.complementos || []).map((c) => Object.assign({}, c, { cantAristas: (c.cantAristas || []).slice() })) : [],
     };
   }
-  function calcAleta(a, cantidad, valorOj) {
+  // Factor de diseño (1..2): solo afecta el costo de tela (confección).
+  function clampFactor(v) { const n = parseFloat(v); return (n >= 1 && n <= 2) ? n : (n > 2 ? 2 : 1); }
+  function facUnif() { return clampFactor(state.factorUnif); }
+  function facPz(pz) { return facUnif(); } // factor ÚNICO por producto: aplica igual a todas las piezas
+  function infoFactorUnif() { const info = $("factorUnifInfo"); if (info) { const fv = facUnif(); info.textContent = fv > 1 ? ("Confección × " + fv + " (recargo por dificultad de diseño).") : "Sin recargo por diseño (×1)."; } }
+  function setFactorUnifUI() { const fv = facUnif(), r = $("f_factor"), n = $("f_factor_num"); if (r) r.value = String(fv); if (n) n.value = String(fv); infoFactorUnif(); }
+  // El producto es "complejo" si es volumétrico o tiene ventanas/paños inscritos.
+  function productoEsComplejo() {
+    if (state.prodMode === "compuesto") return (state.piezas || []).some((pz) => pz.usaAlto || (pz.inscritos && pz.inscritos.length));
+    return alturaUnif() > 0;
+  }
+  // Sugerencia de factor 1.4 al generar, si el producto es complejo y el factor (único) sigue en 1.
+  function sugerirFactor() {
+    if (facUnif() === 1 && productoEsComplejo()) {
+      if (confirm("Este producto es volumétrico o tiene ventanas/paños inscritos y el factor de diseño está en 1 (sin recargo por dificultad de confección).\n\n¿Aplicar el factor sugerido 1.4? (solo afecta el valor de la tela)")) {
+        state.factorUnif = "1.4"; setFactorUnifUI(); recompute();
+      }
+    }
+  }
+  { const r = $("f_factor"); if (r) r.addEventListener("input", (e) => { state.factorUnif = String(clampFactor(e.target.value)); const n = $("f_factor_num"); if (n) n.value = String(facUnif()); infoFactorUnif(); recompute(); }); }
+  { const n = $("f_factor_num"); if (n) { n.addEventListener("input", (e) => { const v = clampFactor(e.target.value); state.factorUnif = String(v); const r = $("f_factor"); if (r) r.value = String(v); infoFactorUnif(); recompute(); }); n.addEventListener("blur", () => { const n2 = $("f_factor_num"); if (n2) n2.value = String(facUnif()); }); } }
+  function calcAleta(a, cantidad, valorOj, factor) {
     const ev = window.CalcCIBSA.evalExpr;
     const al = ev(a.largo), aa = ev(a.ancho), tela = state.telas.find((t) => t.nombre === a.telaNombre), N = Math.max(1, cantidad || 1);
     if (!tela || al == null || aa == null || al <= 0 || aa <= 0) return null;
     const u = ev(a.union);
     let lote;
     try {
-      lote = window.CalcCIBSA.calcularLote({ largo: al, ancho: aa, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo, cantidad: N, union: (u == null || isNaN(u)) ? 0.045 : u, defaults: BORDE_DEFAULTS, bordes: bordesDePieza(a), ojetillos: ojIntPz(a.ojetillos), valorOjetillo: valorOj });
+      lote = window.CalcCIBSA.calcularLote({ largo: al, ancho: aa, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo, cantidad: N, union: (u == null || isNaN(u)) ? 0.045 : u, defaults: BORDE_DEFAULTS, bordes: bordesDePieza(a), ojetillos: ojIntPz(a.ojetillos), valorOjetillo: valorOj, factorTela: clampFactor(factor) });
     } catch (e) { return null; }
     const o = a.orient === "ancho" ? lote.oAncho : lote.oLargo;
     const compTot = compTotalUnit(a.complementos) * N;
     return { tela, al, aa, lote, o, N, subtotal: o.subtotalLote + compTot };
   }
-  function aletasTotal(list, cantidad, valorOj) {
-    return (list || []).reduce((s, a) => { const r = calcAleta(a, cantidad, valorOj); return s + (r ? r.subtotal : 0); }, 0);
+  function aletasTotal(list, cantidad, valorOj, factor) {
+    return (list || []).reduce((s, a) => { const r = calcAleta(a, cantidad, valorOj, factor); return s + (r ? r.subtotal : 0); }, 0);
   }
   function aletasSpec(list) {
     const ev = window.CalcCIBSA.evalExpr;
     return (list || []).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), legend: a.legend || "" })).filter((a) => a.largo > 0 && a.ancho > 0);
   }
-  function aletasLineasPDF(list, cantidad, valorOj) {
+  function aletasLineasPDF(list, cantidad, valorOj, factor) {
     return (list || []).map((a) => {
-      const r = calcAleta(a, cantidad, valorOj); if (!r) return null;
+      const r = calcAleta(a, cantidad, valorOj, factor); if (!r) return null;
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (ALETA_NOM[a.tipo] || "Aleta");
       let t = nom + " en " + r.tela.nombre + " " + window.CalcCIBSA.fmtNum(r.al) + "×" + window.CalcCIBSA.fmtNum(r.aa) + " m — " + money(r.subtotal / r.N) + "/u";
       if (a.descripcion && a.descripcion.trim()) t += " · " + a.descripcion.trim();
@@ -845,7 +958,7 @@
         const mdiv = document.createElement("div"); card.appendChild(mdiv); renderComplementos(mdiv, a.complementos, onChange);
         const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
         function refresh() {
-          const r = calcAleta(a, ctx.cantidad(), ctx.valorOj());
+          const r = calcAleta(a, ctx.cantidad(), ctx.valorOj(), ctx.factor ? ctx.factor() : 1);
           const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum, dB = ev(a.dBorde), un = ev(a.union) || 0.045;
           let html = r ? ("Aleta <b>" + f(r.al) + "×" + f(r.aa) + " m</b> · subtotal <b>" + money(r.subtotal) + "</b> (" + r.N + " u)") : "Completa tela, largo y ancho de la aleta.";
           if (dB != null && dB < un - 1e-9) html += " · <span style=\"color:#d8443a\">⚠ distancia (" + f(dB) + ") menor que la unión (" + f(un) + ")</span>";
@@ -873,7 +986,7 @@
       lote = window.CalcCIBSA.calcularLote({
         largo: winLargo, ancho: winAncho, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo,
         cantidad: N, union: (u == null || isNaN(u)) ? 0.045 : u,
-        defaults: BORDE_DEFAULTS, bordes: bordesDePieza(ins), ojetillos: 0, valorOjetillo: 0,
+        defaults: BORDE_DEFAULTS, bordes: bordesDePieza(ins), ojetillos: 0, valorOjetillo: 0, factorTela: facPz(pz),
       });
     } catch (e) { return null; }
     const o = ins.orient === "ancho" ? lote.oAncho : lote.oLargo;
@@ -1380,7 +1493,7 @@
   function aletasUnifPDF(list, N) {
     const f = window.CalcCIBSA.fmtNum;
     return (list || []).map((a) => {
-      const r = calcAleta(a, N, valorOjUnif()); if (!r) return null;
+      const r = calcAleta(a, N, valorOjUnif(), facUnif()); if (!r) return null;
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (ALETA_NOM[a.tipo] || "Aleta");
       let det = nom + " en " + r.tela.nombre + " " + f(r.al) + "×" + f(r.aa) + " m";
       if (a.descripcion && a.descripcion.trim()) det += " · " + a.descripcion.trim();
@@ -1528,9 +1641,10 @@
   function alturaUnif() { return $("f_usaAlto").checked ? num("f_altura", 0) : 0; }
 
   function recompute() {
-    if (state.docMode === "preliminar") { recomputePrelim(); return; }
-    if (state.docMode === "formal" && state.prodMode === "compuesto") { recomputeCompuesto(); return; }
-    recomputeUniforme();
+    if (state.docMode === "preliminar") recomputePrelim();
+    else if (state.docMode === "formal" && state.prodMode === "compuesto") recomputeCompuesto();
+    else recomputeUniforme();
+    actualizarColapsables();
   }
 
   function recomputeUniforme() {
@@ -1555,7 +1669,7 @@
       lote = window.CalcCIBSA.calcularLote({
         largo, ancho, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo,
         cantidad: Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1),
-        union: num("f_union", 0.045), altura: alturaUnif(), defaults: BORDE_DEFAULTS, bordes: bordesActuales(),
+        union: num("f_union", 0.045), altura: alturaUnif(), defaults: BORDE_DEFAULTS, bordes: bordesActuales(), factorTela: facUnif(),
         ojetillos: nOjetillos(), valorOjetillo: num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT),
       });
     } catch (e) { return; }
@@ -1770,6 +1884,18 @@
   function ojEdgesCopy(e) { const c = {}; ["sup", "inf", "izq", "der"].forEach((k) => { const s = (e && e[k]) || {}; c[k] = { on: s.on !== false, d: s.d != null ? s.d : "0.5", supr: s.supr || "" }; }); return c; }
   function parseSupr(s) { return String(s || "").split(/[,/]/).map((x) => x.trim()).filter((x) => x !== "").map((x) => Math.round(Number(x))).filter((x) => !isNaN(x) && x >= 0); }
   // Devuelve { pos:[{x,y}], total, errores:[], detalle:{sup:{n,kept,d,esp}, ...} }
+  // Posiciones de una arista, descontando las esquinas que ya colocan las aristas horizontales
+  // (las verticales no repiten esquinas: así cada esquina se suprime con UNA sola supresión).
+  function posicionesEdge(k, L, d, parejo, removed, edges) {
+    const ev = window.CalcCIBSA.evalExpr;
+    let full = window.SketchCIBSA.posicionesAristaSeg(L, d, !!parejo, removed);
+    if (k === "izq" || k === "der") {
+      const horizOn = (kk) => { const he = edges && edges[kk]; return !!(he && he.on !== false && ev(he.d) > 0); };
+      const supOn = horizOn("sup"), infOn = horizOn("inf");
+      full = full.filter((p) => !((p <= 1e-6 && supOn) || (p >= L - 1e-6 && infOn)));
+    }
+    return full;
+  }
   function ojetillosPosiciones(ancho, largo, edges, parejo, cortes) {
     const SK = window.SketchCIBSA, ev = window.CalcCIBSA.evalExpr;
     const out = [], errs = [], detalle = {};
@@ -1778,7 +1904,7 @@
       const e = (edges && edges[k]) || {}, d = ev(e.d);
       detalle[k] = { n: 0, kept: 0, d: d > 0 ? d : 0, esp: 0, seccionada: (removed || []).length > 0 };
       if (e.on === false || !(d > 0) || !(L > 0)) return;
-      const full = SK.posicionesAristaSeg(L, d, !!parejo, removed), n = full.length;
+      const full = posicionesEdge(k, L, d, parejo, removed, edges), n = full.length;
       detalle[k].n = n; detalle[k].esp = n > 1 ? L / (n - 1) : 0;
       const supr = parseSupr(e.supr), suprSet = new Set(supr);
       supr.forEach((i) => { if (i >= n) errs.push(OJ_NOMBRE[k] + ": posición " + i + " supera el máximo (" + (n - 1) + ")"); });
@@ -1974,7 +2100,7 @@
     cbp.addEventListener("change", (e) => { host.ojParejo = e.target.checked; repintar(); onChange(); });
     const spp = document.createElement("span"); spp.textContent = "Distribución pareja (ideal, reparte exacto a la medida más cercana)";
     lp.appendChild(cbp); lp.appendChild(spp); addHelpTo(lp, "Reparte los ojetillos en tramos exactamente iguales, ajustando la cantidad a la medida más cercana a tu distanciamiento. Apagado: respeta el distanciamiento y agrega uno extra solo si el último tramo lo supera.", "OJ-PAREJA"); container.appendChild(lp);
-    const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = "Distanciamiento (m) por arista. Esquinas siempre incluidas; el extra se agrega solo si el tramo final supera el distanciamiento."; container.appendChild(cap);
+    const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = "Distanciamiento (m) por arista. Las 4 esquinas las colocan las aristas Superior/Inferior (las laterales no las repiten), así cada esquina se cuenta y se suprime una sola vez. El extra se agrega solo si el tramo final supera el distanciamiento."; container.appendChild(cap);
     [["sup", "Superior", getAncho], ["inf", "Inferior", getAncho], ["izq", "Izquierda", getLargo], ["der", "Derecha", getLargo]].forEach(([k, lab, getL]) => {
       const e = edges[k] || (edges[k] = { on: true, d: "0.5", supr: "" });
       const card = document.createElement("div"); card.className = "oj-edge";
@@ -2000,9 +2126,11 @@
           const tl = container.querySelector(".pz-oj-total");
           if (!(L > 0) || !(d > 0)) { info.textContent = "Define dimensiones y distanciamiento."; if (tl) tl.textContent = "Total: " + getTotal(); return; }
           const removed = getCortes ? (window.SketchCIBSA.intervalosCalados(getAncho(), getLargo(), getCortes())[k] || []) : [];
-          const full = window.SketchCIBSA.posicionesAristaSeg(L, d, !!host.ojParejo, removed), n = full.length;
+          const full = posicionesEdge(k, L, d, host.ojParejo, removed, edges), n = full.length;
           const supr = parseSupr(e.supr), kept = n - supr.filter((i) => i < n).length;
+          const sinEsq = (k === "izq" || k === "der") && n < window.SketchCIBSA.posicionesAristaSeg(L, d, !!host.ojParejo, removed).length;
           let html = n + " ojetillos (0.." + (n - 1) + ")";
+          if (sinEsq) html += " · <span style=\"color:var(--accent)\">esquinas las pone la arista horizontal</span>";
           if (removed.length) {
             html += " · <span style=\"color:var(--accent)\">borde seccionado por calado (ojetillo en cada esquina nueva)</span>";
           } else {
@@ -2087,7 +2215,7 @@
       renderComplementos(q(".pz-comp"), pz.complementos, recomputeCompuesto);
       renderInscritos(q(".pz-ins"), pz);
       renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
-      renderAletas(q(".pz-aletas"), { aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), onChange: recomputeCompuesto });
+      renderAletas(q(".pz-aletas"), { aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto });
 
       const bindNum = (sel, prop) => {
         q(sel).addEventListener("input", (e) => { pz[prop] = e.target.value; recomputeCompuesto(); });
@@ -2117,7 +2245,7 @@
         const backC = q(".pz-back"), trasHint = q(".pz-tras-hint"), trasCb = q(".pz-tras");
         backC.innerHTML = '<div class="pz-back-cortes"></div><div class="pz-back-aletas"></div><div class="pz-back-comp"></div>';
         renderTraseraDiseno(backC.querySelector(".pz-back-cortes"), backC.querySelector(".pz-back-comp"), () => pz.backCortes, () => pz.backComplementos, () => window.CalcCIBSA.evalExpr(pz.largo), () => window.CalcCIBSA.evalExpr(pz.ancho), recomputeCompuesto);
-        renderAletas(backC.querySelector(".pz-back-aletas"), { aletas: pz.backAletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), onChange: recomputeCompuesto });
+        renderAletas(backC.querySelector(".pz-back-aletas"), { aletas: pz.backAletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto });
         trasCb.checked = !!pz.trasera;
         const actualizarTrasPz = () => {
           const ok = window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0;
@@ -2130,6 +2258,7 @@
         q(".pz-ancho").addEventListener("input", actualizarTrasPz);
         actualizarTrasPz();
       }
+      hacerColapsablePieza(card, pz);
     });
   }
 
@@ -2151,7 +2280,7 @@
         cantidad: Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1),
         union: (u == null || isNaN(u)) ? 0.045 : u,
         altura: pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0,
-        defaults: BORDE_DEFAULTS, bordes: bordesDePieza(pz),
+        defaults: BORDE_DEFAULTS, bordes: bordesDePieza(pz), factorTela: facPz(pz),
         ojetillos: ojTotalPieza(pz),
         valorOjetillo: num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT),
       });
@@ -2177,6 +2306,7 @@
     } else {
       out.push("Borde perimetral: " + (pz.bordeValor || "0.045") + " m.");
     }
+    if (facUnif() > 1) out.push("ƒ(x) ; x= " + facUnif());
     return out;
   }
 
@@ -2203,7 +2333,7 @@
         const compUnit = compTotalUnit(pz.complementos);
         const insTot = inscritosTotal(pz);
         const valOjPz = num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT);
-        const aleTot = aletasTotal(pz.aletas, r.lote.N, valOjPz) + aletasTotal(pz.backAletas, r.lote.N, valOjPz);
+        const aleTot = aletasTotal(pz.aletas, r.lote.N, valOjPz, facPz(pz)) + aletasTotal(pz.backAletas, r.lote.N, valOjPz, facPz(pz));
         const piezaTotal = r.o.subtotalLote + compUnit * r.lote.N + insTot + aleTot;
         r.compUnit = compUnit; r.insTot = insTot; r.aleTot = aleTot; r.piezaTotal = piezaTotal;
         subtotalGen += piezaTotal; calcs.push({ pz, r });
@@ -2257,7 +2387,7 @@
     $("f_union").value = "0.045";
     $("f_usaAlto").checked = false; $("f_altura").value = ""; $("wAltura").classList.add("hidden");
     state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
-    state.cortesUnif = []; state.backCortesUnif = []; state.backComplementosUnif = []; state.aletasUnif = []; state.backAletasUnif = [];
+    state.cortesUnif = []; state.backCortesUnif = []; state.backComplementosUnif = []; state.aletasUnif = []; state.backAletasUnif = []; state.factorUnif = "1";
     { const t = $("f_trasUnif"); if (t) t.checked = false; }
     document.querySelector('input[name="ojmode"][value="total"]').checked = true;
     state.orientacionSel = "mayor"; state.orientUnif = "largo"; $("resultHolder").innerHTML = ""; $("formStatus").textContent = "";
@@ -2271,10 +2401,10 @@
     state.prodMode = "uniforme"; state.piezas = []; state.compuesto = null;
     state.complementosUnif = [];
     const ru = document.querySelector('input[name="prodmode"][value="uniforme"]'); if (ru) ru.checked = true;
-    renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderTraseraUnif(); aplicarVis();
+    renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderTraseraUnif(); setFactorUnifUI(); aplicarVis();
     renderOjetillos(); recompute();
   }
-  $("btnLimpiar").addEventListener("click", limpiarCampos);
+  $("btnLimpiar").addEventListener("click", () => { limpiarBorrador(); limpiarCampos(); });
 
   // ---------- Generar ----------
   $("btnGenerar").addEventListener("click", generar);
@@ -2290,6 +2420,7 @@
     if (!nombre || !apellido) return alert("Ingresa nombre y apellido del cliente.");
     if (!tela) return alert("Selecciona una tela.");
     if (largo == null || ancho == null || largo <= 0 || ancho <= 0) return alert("Largo y ancho deben ser mayores que 0.");
+    sugerirFactor();
     recomputeUniforme();
     const lote = state.loteUnif;
     if (!lote) return alert("No se pudo calcular. Revisa los datos.");
@@ -2298,7 +2429,7 @@
     const desc = num("f_descuento", 0);
     const ojeTotal = lote.nOjetillos * lote.valorOjetillo * N;
     const compTotal = compTotalUnit(state.complementosUnif) * N;
-    const aleTotal = aletasTotal(state.aletasUnif, N, lote.valorOjetillo) + aletasTotal(state.backAletasUnif, N, lote.valorOjetillo);
+    const aleTotal = aletasTotal(state.aletasUnif, N, lote.valorOjetillo, facUnif()) + aletasTotal(state.backAletasUnif, N, lote.valorOjetillo, facUnif());
     const subtotal = o.materialLote + ojeTotal + compTotal + aleTotal;
     const descuento = Math.round(subtotal * desc / 100);
     const neto = subtotal - descuento;
@@ -2360,6 +2491,7 @@
       const nm = { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha" };
       ["sup", "inf", "izq", "der"].forEach((k) => out.push(nm[k] + ": " + descBorde(state.bordes[k]) + "."));
     }
+    if (facUnif() > 1) out.push("ƒ(x) ; x= " + facUnif());
     return out;
   }
 
@@ -2370,6 +2502,7 @@
     if (!state.piezas.length) return alert("Agrega al menos una pieza.");
     const dup = etiquetasDuplicadas();
     if (dup.length) return alert("Hay etiquetas de pieza repetidas: " + dup.join(", ") + ". Usa un nombre distinto para cada pieza.");
+    sugerirFactor();
     recomputeCompuesto();
     const calcs = (state.compuesto && state.compuesto.calcs) || [];
     if (!calcs.length) return alert("Ninguna pieza tiene largo, ancho y tela válidos.");
@@ -2393,7 +2526,7 @@
         orientTxt: pz.orient === "ancho" ? "uniones a lo ancho" : "uniones a lo largo",
         terminaciones: terminacionesPieza(pz),
         complementosLineas: compLineasPDF(pz.complementos),
-        inscritosLineas: inscritosLineasPDF(pz).concat(aletasLineasPDF(pz.aletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT))).concat(aletasLineasPDF(pz.backAletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT))),
+        inscritosLineas: inscritosLineasPDF(pz).concat(aletasLineasPDF(pz.aletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))).concat(aletasLineasPDF(pz.backAletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))),
         sketch: sketchPieza(pz),
         valorUnitario: r.o.valorUnitario + (r.compUnit || 0) + (((r.insTot || 0) + (r.aleTot || 0)) / r.lote.N),
         valorTotal: r.piezaTotal != null ? r.piezaTotal : r.o.subtotalLote,
@@ -2528,6 +2661,7 @@
   }
 
   function descargar(url, filename) {
+    guardarBorrador(); // iPhone: si iOS recarga la pestaña al abrir el archivo, al volver se repone el estado
     const a = document.createElement("a");
     a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
   }
@@ -2583,6 +2717,7 @@
     renderHistorial();
     limpiarCampos(); // arranque/reinicio de sesión: App siempre comienza sin datos de cotizaciones previas
     aplicarAyudas();
+    initColapsables();
     aplicarVis();
     const s = window.AuthCIBSA.sesionGuardada();
     if (s) { cargarTelas().catch(() => mostrarLogin()); } else { mostrarLogin(); }
