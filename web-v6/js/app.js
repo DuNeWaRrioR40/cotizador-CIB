@@ -440,8 +440,8 @@
   window.addEventListener("scroll", ocultarHelp, true);
 
   // ---------- Secciones colapsables ----------
-  const COLAP_CERRADAS = ["wOjetillos", "wBordes", "wCortesUnif", "wComplementosUnif", "wAletasUnif", "wFactorUnif", "wCondiciones", "wOrientFormal", "telaMultiWrap"];
-  const COLAP_ABIERTAS = ["wCliente", "wPiezas", "wHistorial", "wSketchUnif"];
+  const COLAP_CERRADAS = ["wOjetillos", "wBordes", "wCortesUnif", "wComplementosUnif", "wAletasUnif", "wFactorUnif", "wCondiciones", "telaMultiWrap"];
+  const COLAP_ABIERTAS = ["wCliente", "wPiezas", "wHistorial", "wSketchUnif", "wOrientFormal"];
   function seccionTieneDatos(sec) {
     const body = sec.querySelector(".colap-body"); if (!body) return false;
     if (body.querySelector(".pieza-card, .ins-card, .aleta-card, .cut-card, .comp-row, .hist-chip")) return true;
@@ -933,7 +933,8 @@
       (ctx.aletas || []).forEach((a, idx) => {
         const card = document.createElement("div"); card.className = "ins-card aleta-card";
         const head = document.createElement("div"); head.className = "ins-head";
-        const tt = document.createElement("span"); tt.className = "muted small"; tt.textContent = "Anexo Nº" + (idx + 1);
+        const nomAnexo = (a.legend && a.legend.trim()) ? a.legend.trim() : (ALETA_NOM[a.tipo] || "");
+        const tt = document.createElement("span"); tt.className = "muted small"; tt.textContent = "Anexo Nº" + (idx + 1) + (nomAnexo ? " — " + nomAnexo : "");
         const del = document.createElement("button"); del.type = "button"; del.className = "pz-btn del"; del.textContent = "✕";
         del.addEventListener("click", () => { ctx.aletas.splice(idx, 1); pintar(); onChange(); });
         head.appendChild(tt); head.appendChild(del); card.appendChild(head);
@@ -985,6 +986,16 @@
           dims.innerHTML = html;
         }
         refresh();
+        // Cada Anexo es plegable (estado en a._colap, persiste entre re-render).
+        const body = document.createElement("div"); body.className = "anexo-body";
+        let nx = head.nextSibling; while (nx) { const s2 = nx.nextSibling; body.appendChild(nx); nx = s2; }
+        card.appendChild(body);
+        const chev = document.createElement("button"); chev.type = "button"; chev.className = "anexo-colap";
+        head.insertBefore(chev, head.firstChild);
+        const aplicA = () => { body.style.display = a._colap ? "none" : ""; chev.textContent = a._colap ? "▸" : "▾"; card.classList.toggle("anexo-cerrado", !!a._colap); };
+        chev.addEventListener("click", () => { a._colap = !a._colap; aplicA(); });
+        tt.style.cursor = "pointer"; tt.addEventListener("click", () => { a._colap = !a._colap; aplicA(); });
+        aplicA();
         rows.appendChild(card);
       });
     }

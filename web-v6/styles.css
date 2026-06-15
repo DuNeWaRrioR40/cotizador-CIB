@@ -231,7 +231,8 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .help-pop .help-cod { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); letter-spacing: 0.3px; }
 .help-pop .help-cod b { color: var(--text); font-weight: 600; }
 /* Secciones colapsables */
-.colap-h { cursor: pointer; user-select: none; }
+.colap-h { cursor: pointer; user-select: none; background: #eef4fb; border: 1px solid #c9d6e5; border-radius: 8px; padding: 5px 10px; box-shadow: 0 1px 3px rgba(20,50,90,0.14); }
+.colap.collapsed.con-datos > .hist-head .colap-h { background: transparent; border: 0; box-shadow: none; padding: 0; }
 .colap-ind { display: inline-block; width: 1.1em; color: var(--muted); font-size: 0.85em; }
 .colap.collapsed > .colap-body { display: none; }
 .colap.collapsed.con-datos > h2.section,
@@ -246,6 +247,11 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .subcolap-h { display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border, #cdd6e0); border-radius: 8px; padding: 6px 9px; margin: 8px 0 4px; cursor: pointer; font-weight: 600; font-size: 0.9em; color: var(--text); user-select: none; }
 .subcolap-h.con-datos { background: #ffe9b8; border-color: #e9a23b; color: #8a4b00; box-shadow: 0 2px 6px rgba(180,110,0,0.32); }
 .subcolap-badge { font-size: 0.7em; font-weight: 700; letter-spacing: 0.3px; color: #b35c00; }
+/* Anexo (aleta/solapa/faldón/cenefa) plegable */
+.anexo-colap { background: transparent; border: 0; cursor: pointer; color: var(--muted); font-size: 1em; padding: 0 5px 0 0; line-height: 1; }
+.aleta-card .ins-head { cursor: pointer; align-items: center; }
+.aleta-card.anexo-cerrado .ins-head { background: #ffe9b8; border: 1px solid #e9a23b; border-radius: 8px; padding: 3px 8px; box-shadow: 0 2px 6px rgba(180,110,0,0.32); }
+.aleta-card.anexo-cerrado .ins-head .muted, .aleta-card.anexo-cerrado .anexo-colap { color: #8a4b00; }
 .calc-wrap { display: flex; gap: 6px; align-items: stretch; }
 .calc-wrap input { flex: 1; }
 .calc-btn { flex: 0 0 auto; width: 46px; padding: 0; font-size: 18px; background: var(--field); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
