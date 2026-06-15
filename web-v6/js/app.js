@@ -440,8 +440,8 @@
   window.addEventListener("scroll", ocultarHelp, true);
 
   // ---------- Secciones colapsables ----------
-  const COLAP_CERRADAS = ["wHistorial", "wOjetillos", "wBordes", "wCortesUnif", "wComplementosUnif", "wAletasUnif", "wFactorUnif", "wCondiciones", "wOrientFormal", "wSketchUnif", "telaMultiWrap"];
-  const COLAP_ABIERTAS = ["wCliente", "wPiezas"];
+  const COLAP_CERRADAS = ["wOjetillos", "wBordes", "wCortesUnif", "wComplementosUnif", "wAletasUnif", "wFactorUnif", "wCondiciones", "wOrientFormal", "telaMultiWrap"];
+  const COLAP_ABIERTAS = ["wCliente", "wPiezas", "wHistorial", "wSketchUnif"];
   function seccionTieneDatos(sec) {
     const body = sec.querySelector(".colap-body"); if (!body) return false;
     if (body.querySelector(".pieza-card, .ins-card, .aleta-card, .cut-card, .comp-row, .hist-chip")) return true;
@@ -464,6 +464,26 @@
   function actualizarColapsables() {
     document.querySelectorAll(".colap").forEach(actualizarColapData);
     document.querySelectorAll(".colap-pz").forEach(actualizarColapDataPieza);
+  }
+  // Sub-editor plegable dentro de una pieza (complementos / inscritos / cortes / aletas).
+  // Inserta un encabezado hermano (sobrevive a los re-render internos del contenedor); estado en host[key].
+  function aplicarSub(container, titulo, host, key, hasData) {
+    const head = container._subHead; if (!head) return;
+    const cerrado = !!host[key], datos = !!(hasData && hasData());
+    container.style.display = cerrado ? "none" : "";
+    head.innerHTML = (cerrado ? "▸ " : "▾ ") + titulo + (cerrado && datos ? ' <span class="subcolap-badge">● con datos</span>' : "");
+    head.classList.toggle("con-datos", cerrado && datos);
+  }
+  function subColapsar(container, titulo, host, key, hasData) {
+    if (!container) return;
+    if (!container._subHead) {
+      const head = document.createElement("button");
+      head.type = "button"; head.className = "subcolap-h";
+      container.parentNode.insertBefore(head, container);
+      container._subHead = head;
+      head.addEventListener("click", () => { host[key] = !host[key]; aplicarSub(container, titulo, host, key, hasData); });
+    }
+    aplicarSub(container, titulo, host, key, hasData);
   }
   // Cada tarjeta de pieza es plegable; el estado se guarda en pz._colap (persiste entre renders).
   function hacerColapsablePieza(card, pz) {
@@ -2216,6 +2236,10 @@
       renderInscritos(q(".pz-ins"), pz);
       renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
       renderAletas(q(".pz-aletas"), { aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto });
+      subColapsar(q(".pz-comp"), "Complementos", pz, "_cComp", () => (pz.complementos || []).length);
+      subColapsar(q(".pz-ins"), "Inscribir paños (ventanas)", pz, "_cIns", () => (pz.inscritos || []).length);
+      subColapsar(q(".pz-cortes"), "Cortes / Calados", pz, "_cCut", () => (pz.cortes || []).length);
+      subColapsar(q(".pz-aletas"), "Aletas / Solapas / Faldón / Cenefa", pz, "_cAle", () => (pz.aletas || []).length);
 
       const bindNum = (sel, prop) => {
         q(sel).addEventListener("input", (e) => { pz[prop] = e.target.value; recomputeCompuesto(); });
