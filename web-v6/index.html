@@ -49,6 +49,13 @@
 
   <!-- Formulario -->
   <main id="formView" class="view hidden">
+    <!-- Navegación lateral: pestaña fija + panel deslizante -->
+    <button id="navTab" type="button" aria-label="Abrir navegación" title="Ir a una sección">☰</button>
+    <div id="navBackdrop"></div>
+    <nav id="navPanel" aria-label="Secciones">
+      <div class="nav-head"><b>Ir a…</b><button id="navClose" type="button" aria-label="Cerrar">✕</button></div>
+      <div id="navList"></div>
+    </nav>
     <!-- Selector de tipo de documento -->
     <div id="modeSwitch" class="mode-switch">
       <label class="mode-opt"><input type="radio" name="docmode" value="formal" checked /> <span><b>Cotización Formal</b><br /><small class="muted">Documento completo con datos del cliente, descuentos e IVA.</small></span></label>
@@ -64,6 +71,7 @@
       <label class="field"><span>Nombre</span><input id="f_nombre" type="text" autocomplete="off" /></label>
       <label class="field"><span>Apellido</span><input id="f_apellido" type="text" autocomplete="off" /></label>
       <label class="field"><span>E-mail</span><input id="f_email" type="email" autocomplete="off" /></label>
+      <button id="btnLimpiarCliente" class="btn-outline" type="button">Limpiar</button>
     </div>
 
     <!-- Historial local de cotizaciones recientes -->
@@ -259,6 +267,9 @@
       </div>
       <div id="factorUnifInfo" class="muted small"></div>
     </div>
+
+    <!-- Resumen del compuesto, replicado justo encima de Generar -->
+    <div id="piezasResumenBottom" class="cmp hidden"></div>
 
     <div class="actions">
       <button id="btnGenerar" class="btn-gen btn-lg" type="button">Generar cotización (PDF)</button>

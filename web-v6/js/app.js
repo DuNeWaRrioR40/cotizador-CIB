@@ -49,6 +49,7 @@
     show("wTelaUnica", uni);
     show("telaMultiWrap", p);
     show("wPiezas", comp);
+    show("piezasResumenBottom", comp);
     show("wTitulo", f);
     show("wPlanoToggle", f);
     show("wOjetillos", uni || p);
@@ -538,6 +539,76 @@
   function initColapsables() {
     COLAP_CERRADAS.forEach((id) => hacerColapsable(id, true));
     COLAP_ABIERTAS.forEach((id) => hacerColapsable(id, false));
+  }
+
+  // ---------- Barra de navegación lateral ----------
+  function expandirSiCerrada(sec) {
+    if (!sec) return;
+    if (sec.classList.contains("colap") && sec.classList.contains("collapsed")) {
+      sec.classList.remove("collapsed");
+      const ind = sec.querySelector(".colap-ind"); if (ind) ind.textContent = "▾";
+      actualizarColapData(sec);
+    }
+    if (sec.classList.contains("colap-pz") && sec.classList.contains("colap-cerrada")) {
+      sec.classList.remove("colap-cerrada");
+      const pz = sec.querySelector(".pz-colap-btn"); if (pz) pz.textContent = "▾";
+    }
+  }
+  function navCerrar() { const p = $("navPanel"), b = $("navBackdrop"); if (p) p.classList.remove("open"); if (b) b.classList.remove("open"); }
+  function irANodo(target) {
+    expandirSiCerrada(target);
+    // si está dentro de una pieza plegada, ábrela también
+    const pzCard = target.closest && target.closest(".colap-pz"); if (pzCard) expandirSiCerrada(pzCard);
+    setTimeout(() => { (target.scrollIntoView ? target : target.parentElement).scrollIntoView({ behavior: "smooth", block: "start" }); }, 30);
+    navCerrar();
+  }
+  function limpiarTitulo(t) { return (t || "").replace(/[▸▾✂☰✕]/g, "").replace(/●\s*con datos/gi, "").replace(/\s+/g, " ").trim(); }
+  // ¿La sección/pieza tiene datos ingresados por el usuario? (ámbito propio, sin descender a otras secciones)
+  function navTieneDatos(sec) {
+    if (!sec || sec.id === "formView") return false;
+    const body = sec.querySelector(":scope > .colap-body") || sec;
+    if (body.querySelector(".pieza-card, .ins-card, .aleta-card, .cut-card, .comp-row, .hist-chip")) return true;
+    const els = body.querySelectorAll("input, textarea, select");
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i];
+      if (el.type === "checkbox" || el.type === "radio") { if (el.checked && el.defaultChecked === false) return true; }
+      else if (el.type === "range") { if (String(el.value) !== String(el.defaultValue)) return true; }
+      else { const v = (el.value || "").trim(); if (v !== "" && v !== (el.defaultValue || "")) return true; }
+    }
+    return false;
+  }
+  function construirNav() {
+    const cont = $("navList"); if (!cont) return;
+    cont.innerHTML = "";
+    // Recorre secciones (h2) y piezas en orden de aparición; solo lo visible.
+    const nodos = document.querySelectorAll("#formView h2.section, #formView .pieza-head");
+    nodos.forEach((nodo) => {
+      if (nodo.offsetParent === null) return; // oculto
+      const esPieza = nodo.classList.contains("pieza-head");
+      const sec = esPieza ? (nodo.closest(".pieza-card") || nodo.parentElement) : (nodo.closest(".colap") || nodo.parentElement);
+      let titulo;
+      if (esPieza) {
+        const numEl = nodo.querySelector(".pz-num"), etqEl = nodo.querySelector(".pz-etq");
+        const etq = etqEl && etqEl.value ? (" — " + etqEl.value.trim()) : "";
+        titulo = limpiarTitulo(numEl ? numEl.textContent : "Pieza") + etq;
+      } else {
+        titulo = limpiarTitulo(nodo.textContent);
+      }
+      if (!titulo) return;
+      const b = document.createElement("button"); b.type = "button"; b.className = "nav-link" + (esPieza ? " nav-pieza" : "");
+      if (navTieneDatos(sec)) b.classList.add("con-datos");
+      b.textContent = (esPieza ? "• " : "") + titulo;
+      b.addEventListener("click", () => irANodo(sec));
+      cont.appendChild(b);
+    });
+    if (!cont.children.length) cont.innerHTML = '<p class="muted small">No hay secciones visibles.</p>';
+  }
+  function navAbrir() { construirNav(); const p = $("navPanel"), b = $("navBackdrop"); if (p) p.classList.add("open"); if (b) b.classList.add("open"); }
+  function initNav() {
+    const tab = $("navTab"), cls = $("navClose"), bd = $("navBackdrop");
+    if (tab) tab.addEventListener("click", () => { const p = $("navPanel"); if (p && p.classList.contains("open")) navCerrar(); else navAbrir(); });
+    if (cls) cls.addEventListener("click", navCerrar);
+    if (bd) bd.addEventListener("click", navCerrar);
   }
 
   function telasMultiSel() {
@@ -1916,8 +1987,10 @@
   function ojIntPz(v) { const r = window.CalcCIBSA.evalExpr(v); return (r == null || isNaN(r)) ? 0 : Math.max(0, Math.round(r)); }
   // ---------- Ojetillos por arista por distanciamiento (modelo compartido) ----------
   const OJ_NOMBRE = { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha" };
-  function ojEdgesDefault() { return { sup: { on: true, d: "0.5", supr: "" }, inf: { on: true, d: "0.5", supr: "" }, izq: { on: true, d: "0.5", supr: "" }, der: { on: true, d: "0.5", supr: "" } }; }
-  function ojEdgesCopy(e) { const c = {}; ["sup", "inf", "izq", "der"].forEach((k) => { const s = (e && e[k]) || {}; c[k] = { on: s.on !== false, d: s.d != null ? s.d : "0.5", supr: s.supr || "" }; }); return c; }
+  const OJ_DIAM = 0.03; // diámetro del ojetillo (m): la 2da línea suprime 0/n si el inset es menor (se solapan)
+  function defOjEdge() { return { on: true, d: "0.5", supr: "", linea2: { on: false, inset: "0.025", supr: "" } }; }
+  function ojEdgesDefault() { return { sup: defOjEdge(), inf: defOjEdge(), izq: defOjEdge(), der: defOjEdge() }; }
+  function ojEdgesCopy(e) { const c = {}; ["sup", "inf", "izq", "der"].forEach((k) => { const s = (e && e[k]) || {}; const l2 = s.linea2 || {}; c[k] = { on: s.on !== false, d: s.d != null ? s.d : "0.5", supr: s.supr || "", linea2: { on: !!l2.on, inset: l2.inset != null ? l2.inset : "0.025", supr: l2.supr || "" } }; }); return c; }
   function parseSupr(s) { return String(s || "").split(/[,/]/).map((x) => x.trim()).filter((x) => x !== "").map((x) => Math.round(Number(x))).filter((x) => !isNaN(x) && x >= 0); }
   // Devuelve { pos:[{x,y}], total, errores:[], detalle:{sup:{n,kept,d,esp}, ...} }
   // Posiciones de una arista, descontando las esquinas que ya colocan las aristas horizontales
@@ -1947,6 +2020,21 @@
       const kept = full.filter((_, i) => !suprSet.has(i));
       detalle[k].kept = kept.length;
       kept.forEach((p) => out.push(mapFn(p)));
+      // 2da línea: paralela a la arista, hacia adentro (inset). 0 y n se suprimen solos si se solapan con el perímetro.
+      const l2 = e.linea2;
+      if (l2 && l2.on) {
+        const ins0 = ev(l2.inset), ins = (ins0 != null && ins0 > 0) ? ins0 : 0.025;
+        const off = (k === "sup") ? { x: 0, y: ins } : (k === "inf") ? { x: 0, y: -ins } : (k === "izq") ? { x: ins, y: 0 } : { x: -ins, y: 0 };
+        const supr2 = new Set(parseSupr(l2.supr)), n2 = full.length, autoOv = ins < OJ_DIAM;
+        let kept2 = 0;
+        full.forEach((p, i) => {
+          if (supr2.has(i)) return;
+          const esCorner = (p <= 1e-6 || p >= L - 1e-6);
+          if (autoOv && esCorner && (i === 0 || i === n2 - 1)) return; // endpoint en esquina se solapa con el perímetro
+          const b = mapFn(p); out.push({ x: b.x + off.x, y: b.y + off.y }); kept2++;
+        });
+        detalle[k].l2 = { n: n2, kept: kept2 };
+      }
     };
     proc("sup", ancho, rem.sup, (p) => ({ x: p, y: 0 }));
     proc("inf", ancho, rem.inf, (p) => ({ x: p, y: largo }));
@@ -2156,6 +2244,31 @@
         is.addEventListener("input", (ev2) => { e.supr = ev2.target.value; refrescar(); onChange(); });
         ls.appendChild(is); addHelpTo(ls, "Quita ojetillos puntuales por su número de orden en la arista (empezando en 0 desde la esquina). Ej.: \"0, 3\" o \"2/5\".", "OJ-SUPR"); grid.appendChild(ls);
         card.appendChild(grid);
+        // 2da línea de ojetillos (inset). Al activarse despliega un sub-menú plegable.
+        if (!e.linea2) e.linea2 = { on: false, inset: "0.025", supr: "" };
+        const l2lab = document.createElement("label"); l2lab.className = "chk";
+        const l2cb = document.createElement("input"); l2cb.type = "checkbox"; l2cb.checked = !!e.linea2.on;
+        l2cb.addEventListener("change", (ev2) => { e.linea2.on = ev2.target.checked; repintar(); onChange(); });
+        const l2sp = document.createElement("span"); l2sp.textContent = "2da línea de ojetillos (paralela, con inset)";
+        l2lab.appendChild(l2cb); l2lab.appendChild(l2sp);
+        addHelpTo(l2lab, "Agrega una 2da fila de ojetillos paralela a esta arista, hacia adentro. Inset por defecto 0,025 m (½ ojetillo + 0,01). Los ojetillos 0 y n se suprimen solos si chocan con los del borde; puedes suprimir otros a mano.", "OJ-L2");
+        card.appendChild(l2lab);
+        if (e.linea2.on) {
+          const panel = document.createElement("div"); panel.className = "oj-l2-panel";
+          const g2 = document.createElement("div"); g2.className = "pieza-grid";
+          const li = document.createElement("label"); li.className = "field"; li.innerHTML = "<span>Inset (m)</span>";
+          const ii = document.createElement("input"); ii.type = "text"; ii.inputMode = "decimal"; ii.value = e.linea2.inset != null ? e.linea2.inset : "0.025";
+          ii.addEventListener("input", (ev2) => { e.linea2.inset = ev2.target.value; refrescar(); onChange(); });
+          ii.addEventListener("blur", (ev2) => { const r = ev(ev2.target.value); if (r != null && !isNaN(r)) { e.linea2.inset = f(r); ev2.target.value = e.linea2.inset; refrescar(); onChange(); } });
+          li.appendChild(ii); agregarCalc(ii); addHelpTo(li, "Distancia de la 2da línea hacia adentro, en metros. Mínimo sugerido 0,025 m (½ ojetillo + 0,01).", "OJ-L2-INSET"); g2.appendChild(li);
+          const ls2 = document.createElement("label"); ls2.className = "field"; ls2.innerHTML = "<span>Suprimir de la 2da línea (0..n)</span>";
+          const is2 = document.createElement("input"); is2.type = "text"; is2.value = e.linea2.supr || ""; is2.placeholder = "ej. 2 / 4";
+          is2.addEventListener("input", (ev2) => { e.linea2.supr = ev2.target.value; refrescar(); onChange(); });
+          ls2.appendChild(is2); addHelpTo(ls2, "Quita ojetillos puntuales de la 2da línea por su número de orden (0 desde la esquina). Los 0 y n ya se suprimen solos si se solapan con el borde.", "OJ-L2-SUPR"); g2.appendChild(ls2);
+          panel.appendChild(g2);
+          card.appendChild(panel);
+          subColapsar(panel, "2da línea — opciones", e.linea2, "_colap", () => true);
+        }
         const info = document.createElement("div"); info.className = "muted small oj-edge-info"; card.appendChild(info);
         function refrescar() {
           const L = getL(), d = ev(e.d);
@@ -2252,6 +2365,8 @@
       renderInscritos(q(".pz-ins"), pz);
       renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
       renderAletas(q(".pz-aletas"), { aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto });
+      subColapsar(q(".pz-oj-wrap"), "Ojetillos", pz, "_cOj", () => (pz.ojMode === "arista") || (parseInt(pz.ojetillos || 0, 10) > 0));
+      subColapsar(q(".pz-borde"), "Bordes y uniones", pz, "_cBorde", () => false);
       subColapsar(q(".pz-comp"), "Complementos", pz, "_cComp", () => (pz.complementos || []).length);
       subColapsar(q(".pz-ins"), "Inscribir paños (ventanas)", pz, "_cIns", () => (pz.inscritos || []).length);
       subColapsar(q(".pz-cortes"), "Cortes / Calados", pz, "_cCut", () => (pz.cortes || []).length);
@@ -2403,18 +2518,19 @@
     const neto = subtotalGen - descuento;
     const iva = Math.round(neto * CFG.IVA_PCT / 100);
     const total = neto + iva;
-    if (resumen) {
-      if (!calcs.length) {
-        resumen.innerHTML = '<p class="muted small">Agrega piezas con largo, ancho y tela para ver el total.</p>';
-      } else {
-        let h = '<div class="cmp-card"><div class="h">Resumen (' + calcs.length + ' pieza' + (calcs.length > 1 ? 's' : '') + ')</div>';
-        h += `<div class="muted small">Subtotal neto: ${money(subtotalGen)}</div>`;
-        if (desc > 0) { h += `<div class="muted small">Descuento ${desc}%: -${money(descuento)}</div>`; h += `<div class="muted small">Neto con descuento: ${money(neto)}</div>`; }
-        h += `<div class="muted small">IVA ${CFG.IVA_PCT}%: ${money(iva)}</div>`;
-        h += `<div class="total">${money(total)}</div></div>`;
-        resumen.innerHTML = h;
-      }
+    let resumenHTML;
+    if (!calcs.length) {
+      resumenHTML = '<p class="muted small">Agrega piezas con largo, ancho y tela para ver el total.</p>';
+    } else {
+      let h = '<div class="cmp-card"><div class="h">Resumen (' + calcs.length + ' pieza' + (calcs.length > 1 ? 's' : '') + ')</div>';
+      h += `<div class="muted small">Subtotal neto: ${money(subtotalGen)}</div>`;
+      if (desc > 0) { h += `<div class="muted small">Descuento ${desc}%: -${money(descuento)}</div>`; h += `<div class="muted small">Neto con descuento: ${money(neto)}</div>`; }
+      h += `<div class="muted small">IVA ${CFG.IVA_PCT}%: ${money(iva)}</div>`;
+      h += `<div class="total">${money(total)}</div></div>`;
+      resumenHTML = h;
     }
+    if (resumen) resumen.innerHTML = resumenHTML;
+    { const rb = $("piezasResumenBottom"); if (rb) rb.innerHTML = resumenHTML; }
     state.compuesto = { calcs, subtotalGen, desc, descuento, neto, iva, total };
   }
 
@@ -2444,7 +2560,7 @@
     renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderTraseraUnif(); setFactorUnifUI(); aplicarVis();
     renderOjetillos(); recompute();
   }
-  $("btnLimpiar").addEventListener("click", () => { limpiarBorrador(); limpiarCampos(); });
+  { const limpiarTodo = () => { limpiarBorrador(); limpiarCampos(); }; const b1 = $("btnLimpiar"); if (b1) b1.addEventListener("click", limpiarTodo); const b2 = $("btnLimpiarCliente"); if (b2) b2.addEventListener("click", limpiarTodo); }
 
   // ---------- Generar ----------
   $("btnGenerar").addEventListener("click", generar);
@@ -2758,6 +2874,7 @@
     limpiarCampos(); // arranque/reinicio de sesión: App siempre comienza sin datos de cotizaciones previas
     aplicarAyudas();
     initColapsables();
+    initNav();
     aplicarVis();
     const s = window.AuthCIBSA.sesionGuardada();
     if (s) { cargarTelas().catch(() => mostrarLogin()); } else { mostrarLogin(); }

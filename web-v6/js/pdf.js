@@ -305,12 +305,13 @@
     const conCotas = opts.cotas !== false;
     // Margen extra para los rótulos de orientación: los aleja de las cotas y achica un poco la imagen.
     const LBL = 22;
-    const mTL = (conCotas ? SK.margenCotas(sk) : 24) + LBL, mBR = 18 + LBL;
-    // Leyenda de simbología: reserva alto en el borde inferior.
+    // Márgenes por lado: espacio de cotas (por lado) + rótulos de orientación.
+    const ML = conCotas ? SK.margenCotasLados(sk) : { top: 0, bottom: 0, left: 0, right: 0 };
     const simb = SK.simbologia(sk);
     const legH = simb.length ? (9 + simb.length * 9 + 6) : 0;
-    const mBot = mBR + legH;
-    const availW = box.w - mTL - mBR, availH = box.h - mTL - mBot;
+    const mTop = ML.top + LBL, mLeft = ML.left + LBL, mRight = ML.right + 18 + LBL;
+    const mBot = ML.bottom + 18 + LBL + legH;
+    const availW = box.w - mLeft - mRight, availH = box.h - mTop - mBot;
     if (availW <= 0 || availH <= 0) return;
     // Bounds: paño base + aletas que se extienden fuera.
     let minX = 0, maxX = sk.ancho, minY = 0, maxY = sk.largo;
@@ -318,9 +319,9 @@
     const bw = maxX - minX, bh = maxY - minY;
     const scale = Math.min(availW / bw, availH / bh);
     const wpx = sk.ancho * scale, hpx = sk.largo * scale;
-    const totalW = bw * scale + mTL + mBR, totalH = bh * scale + mTL + mBot;
-    const x0region = box.x + (box.w - totalW) / 2 + mTL;
-    const topRegion = box.top - (box.h - totalH) / 2 - mTL;
+    const totalW = bw * scale + mLeft + mRight, totalH = bh * scale + mTop + mBot;
+    const x0region = box.x + (box.w - totalW) / 2 + mLeft;
+    const topRegion = box.top - (box.h - totalH) / 2 - mTop;
     const x0 = x0region - minX * scale, topRect = topRegion + minY * scale;
     const px = (sx) => x0 + sx * scale;
     const py = (sy) => topRect - sy * scale;
@@ -336,39 +337,47 @@
     // Cotas (rojo): mayor = paño base; menor = padding / ventanas
     if (conCotas) {
       const ln = (x1, y1, x2, y2, w) => page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: w, color: RED });
+      const bTopY = py(minY), bBotY = py(maxY), bLeftX = px(minX), bRightX = px(maxX);
+      const ccx = px(sk.ancho / 2), ccy = py(sk.largo / 2);
+      page.drawLine({ start: { x: ccx, y: bTopY }, end: { x: ccx, y: bBotY }, thickness: 0.25, color: RED, dashArray: [3, 2], opacity: 0.5 });
+      page.drawLine({ start: { x: bLeftX, y: ccy }, end: { x: bRightX, y: ccy }, thickness: 0.25, color: RED, dashArray: [3, 2], opacity: 0.5 });
       SK.cotasDe(sk).forEach((c) => {
-        const off = SK.offsetCota(c);
-        const lbl = SK.fmt(c.value) + "m";
+        const off = SK.offsetCota(c), lbl = SK.fmt(c.value) + "m";
         if (c.axis === "h") {
-          const dimY = topRect + off, xa = px(c.a), xb = px(c.b);
-          ln(xa, topRect, xa, dimY + EXTGAP, 0.3); ln(xb, topRect, xb, dimY + EXTGAP, 0.3);
+          const xa = px(c.a), xb = px(c.b);
+          const base = (c.side === "bottom") ? bBotY : bTopY, dir = (c.side === "bottom") ? -1 : 1;
+          const dimY = base + dir * off, tEnd = dimY - dir * EXTGAP;
+          ln(xa, base, xa, tEnd, 0.3); ln(xb, base, xb, tEnd, 0.3);
           ln(xa, dimY, xb, dimY, 0.4);
           ln(xa, dimY - TICK, xa, dimY + TICK, 0.4); ln(xb, dimY - TICK, xb, dimY + TICK, 0.4);
-          page.drawText(lbl, { x: (xa + xb) / 2 - font.widthOfTextAtSize(lbl, 5.5) / 2, y: dimY + 2, size: 5.5, font: font, color: RED });
+          const ty = (c.side === "bottom") ? dimY - 6 : dimY + 2;
+          page.drawText(lbl, { x: (xa + xb) / 2 - font.widthOfTextAtSize(lbl, 5.5) / 2, y: ty, size: 5.5, font: font, color: RED });
         } else {
-          const dimX = x0 - off, ya = py(c.a), yb = py(c.b);
-          ln(x0, ya, dimX - EXTGAP, ya, 0.3); ln(x0, yb, dimX - EXTGAP, yb, 0.3);
+          const ya = py(c.a), yb = py(c.b);
+          const base = (c.side === "right") ? bRightX : bLeftX, dir = (c.side === "right") ? 1 : -1;
+          const dimX = base + dir * off, tEnd = dimX - dir * EXTGAP;
+          ln(base, ya, tEnd, ya, 0.3); ln(base, yb, tEnd, yb, 0.3);
           ln(dimX, ya, dimX, yb, 0.4);
           ln(dimX - TICK, ya, dimX + TICK, ya, 0.4); ln(dimX - TICK, yb, dimX + TICK, yb, 0.4);
-          const my = (ya + yb) / 2;
-          page.drawText(lbl, { x: dimX - 4, y: my - font.widthOfTextAtSize(lbl, 5.5) / 2, size: 5.5, font: font, color: RED, rotate: PDFLib.degrees(90) });
+          const my = (ya + yb) / 2, tx = (c.side === "right") ? dimX + 2 : dimX - 4;
+          page.drawText(lbl, { x: tx, y: my - font.widthOfTextAtSize(lbl, 5.5) / 2, size: 5.5, font: font, color: RED, rotate: PDFLib.degrees(90) });
         }
       });
     }
     // Rótulos de orientación (frontal/trasera + lados).
     const esTras = spec.vista === "trasera";
     const MUT = PDFLib.rgb(0.42, 0.42, 0.42);
-    const cxA = x0 + wpx / 2, cyA = topRect - hpx / 2;
+    const cxA = (px(minX) + px(maxX)) / 2, cyA = (py(minY) + py(maxY)) / 2;
     const ctr = (s, x, y, sz, col) => page.drawText(s, { x: x - font.widthOfTextAtSize(s, sz) / 2, y: y, size: sz, font: font, color: col });
-    ctr("VISTA " + (esTras ? "TRASERA" : "FRONTAL"), cxA, topRect + mTL - 8, 7, ACC);
-    ctr("SUPERIOR", cxA, topRect + mTL - 16, 5.5, MUT);
-    ctr("INFERIOR", cxA, topRect - hpx - mBR + 4, 5.5, MUT);
+    ctr("VISTA " + (esTras ? "TRASERA" : "FRONTAL"), cxA, py(minY) + ML.top + LBL - 8, 7, ACC);
+    ctr("SUPERIOR", cxA, py(minY) + ML.top + 6, 5.5, MUT);
+    ctr("INFERIOR", cxA, py(maxY) - ML.bottom - 9, 5.5, MUT);
     const vlbl = (s, x, sz, col) => page.drawText(s, { x: x, y: cyA - font.widthOfTextAtSize(s, sz) / 2, size: sz, font: font, color: col, rotate: PDFLib.degrees(90) });
-    vlbl("LADO IZQUIERDO", x0 - mTL + 6, 5.5, MUT);
-    vlbl("LADO DERECHO", x0 + wpx + mBR - 4, 5.5, MUT);
+    vlbl("LADO IZQUIERDO", px(minX) - ML.left - 6, 5.5, MUT);
+    vlbl("LADO DERECHO", px(maxX) + ML.right + 14, 5.5, MUT);
     if (esTras) {
-      vlbl("(frontal: der.)", x0 - mTL + 13, 4.2, MUT);
-      vlbl("(frontal: izq.)", x0 + wpx + mBR - 10, 4.2, MUT);
+      vlbl("(frontal: der.)", px(minX) - ML.left + 1, 4.2, MUT);
+      vlbl("(frontal: izq.)", px(maxX) + ML.right + 8, 4.2, MUT);
     }
     // Leyenda de simbología en el borde inferior izquierdo del recuadro.
     if (legH) leyendaPDF(page, simb, box.x + 3, box.top - box.h + legH, font);

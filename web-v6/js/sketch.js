@@ -258,28 +258,61 @@
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
+  // Cotas con origen en el CENTRO del producto para la posición de los elementos (ventanas/calados),
+  // tamaño de cada elemento, dimensiones base, y cotas de aletas (tamaño propio + total exterior).
+  // Cada cota lleva 'side' (top/bottom/left/right) para ubicarse del lado correcto.
   function cotasDe(sk) {
     const out = [];
-    if (!(sk.ancho > 0) || !(sk.largo > 0)) return out;
+    const A = sk.ancho, L = sk.largo;
+    if (!(A > 0) || !(L > 0)) return out;
+    const cx = A / 2, cy = L / 2;
     const rects = (sk.ventanas || []).concat((sk.cortes || []).filter((c) => !c.rotated && !c.circ).map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h })));
-    // La cota mayor (paño base) va por FUERA de todas las menores, con separación constante.
-    const majorOff = OFF_MIN0 + rects.length * OFF_STEP + OFF_GAP;
-    out.push({ axis: "h", a: 0, b: sk.ancho, off: majorOff, value: sk.ancho });
-    out.push({ axis: "v", a: 0, b: sk.largo, off: majorOff, value: sk.largo });
+    let minX = 0, maxX = A, minY = 0, maxY = L;
+    (sk.aletas || []).forEach((a) => { minX = Math.min(minX, a.x); maxX = Math.max(maxX, a.x + a.w); minY = Math.min(minY, a.y); maxY = Math.max(maxY, a.y + a.h); });
+    const baseOff = OFF_MIN0 + rects.length * OFF_STEP + OFF_GAP;
+    const aletaOff = baseOff + OFF_STEP;
+    const totalOff = baseOff + 2 * OFF_STEP + 4;
+    // Base (general): ancho arriba, largo a la izquierda.
+    out.push({ axis: "h", a: 0, b: A, off: baseOff, value: A, side: "top" });
+    out.push({ axis: "v", a: 0, b: L, off: baseOff, value: L, side: "left" });
+    // Elementos: tamaño + posición desde el centro (al borde que mira al centro).
     rects.forEach((v, i) => {
       const off = OFF_MIN0 + i * OFF_STEP;
-      if (v.x > EPS) out.push({ axis: "h", a: 0, b: v.x, off: off, value: v.x });
-      out.push({ axis: "h", a: v.x, b: v.x + v.w, off: off, value: v.w });
-      if (v.y > EPS) out.push({ axis: "v", a: 0, b: v.y, off: off, value: v.y });
-      out.push({ axis: "v", a: v.y, b: v.y + v.h, off: off, value: v.h });
+      out.push({ axis: "h", a: v.x, b: v.x + v.w, off: off, value: v.w, side: "top" });
+      out.push({ axis: "v", a: v.y, b: v.y + v.h, off: off, value: v.h, side: "left" });
+      const nearX = (v.x + v.w / 2) <= cx ? (v.x + v.w) : v.x;
+      if (Math.abs(cx - nearX) > EPS) out.push({ axis: "h", a: Math.min(cx, nearX), b: Math.max(cx, nearX), off: off, value: Math.abs(cx - nearX), side: "top", desdeCentro: true });
+      const nearY = (v.y + v.h / 2) <= cy ? (v.y + v.h) : v.y;
+      if (Math.abs(cy - nearY) > EPS) out.push({ axis: "v", a: Math.min(cy, nearY), b: Math.max(cy, nearY), off: off, value: Math.abs(cy - nearY), side: "left", desdeCentro: true });
     });
+    // Aletas (opción A): ancho propio (lado exterior) + caída (apilada del lado de la base) + total exterior.
+    (sk.aletas || []).forEach((a) => {
+      const below = a.y >= L - EPS, above = (a.y + a.h) <= EPS;
+      const right = a.x >= A - EPS;
+      if (below || above) {
+        out.push({ axis: "h", a: a.x, b: a.x + a.w, off: OFF_MIN0, value: a.w, side: below ? "bottom" : "top" });
+        out.push({ axis: "v", a: a.y, b: a.y + a.h, off: aletaOff, value: a.h, side: "left" });
+      } else { // izquierda o derecha
+        out.push({ axis: "v", a: a.y, b: a.y + a.h, off: OFF_MIN0, value: a.h, side: right ? "right" : "left" });
+        out.push({ axis: "h", a: a.x, b: a.x + a.w, off: aletaOff, value: a.w, side: "top" });
+      }
+    });
+    // Total exterior (incluye aletas) solo si exceden el paño base.
+    if (maxY > L + EPS || minY < -EPS) out.push({ axis: "v", a: minY, b: maxY, off: totalOff, value: maxY - minY, side: "left", total: true });
+    if (maxX > A + EPS || minX < -EPS) out.push({ axis: "h", a: minX, b: maxX, off: totalOff, value: maxX - minX, side: "top", total: true });
     return out;
   }
   function offsetCota(c) { return c.off; }
-  function margenCotas(sk) {
-    const nv = (sk.ventanas || []).length + (sk.cortes || []).filter((c) => !c.rotated && !c.circ).length;
-    return OFF_MIN0 + nv * OFF_STEP + OFF_GAP + 14;
+  // Margen necesario por lado (para que las cotas no se salgan del lienzo).
+  function margenCotasLados(sk) {
+    const m = { top: 0, bottom: 0, left: 0, right: 0 };
+    cotasDe(sk).forEach((c) => { if (c.off > m[c.side]) m[c.side] = c.off; });
+    ["top", "bottom", "left", "right"].forEach((k) => { if (m[k] > 0) m[k] += 14; });
+    return m;
   }
+  function margenCotas(sk) { const m = margenCotasLados(sk); return Math.max(m.top, m.bottom, m.left, m.right); }
+  // Centro del producto (para dibujar el eje de referencia).
+  function centroProducto(sk) { return { cx: (sk.ancho || 0) / 2, cy: (sk.largo || 0) / 2 }; }
 
   function fmt(n) { return (Math.round(n * 1000) / 1000).toString(); }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
@@ -618,8 +651,8 @@
     if (!(sk.ancho > 0) || !(sk.largo > 0)) {
       return '<p class="muted small">Ingresa largo y ancho para ver el plano del producto.</p>';
     }
-    const base = conCotas ? margenCotas(sk) : 26;
-    const mLeft = base + 24, mTop = base + 32, mRight = 30, mBot = 26; // margen extra: aleja rótulos de orientación de las cotas
+    const ML = conCotas ? margenCotasLados(sk) : { top: 0, bottom: 0, left: 0, right: 0 };
+    const mLeft = ML.left + 24, mTop = ML.top + 32, mRight = ML.right + 30, mBot = ML.bottom + 26; // + espacio para rótulos de orientación
     // Bounds del dibujo: paño base + cualquier aleta que se extienda fuera.
     let minX = 0, maxX = sk.ancho, minY = 0, maxY = sk.largo;
     (sk.aletas || []).forEach((a) => { minX = Math.min(minX, a.x); maxX = Math.max(maxX, a.x + a.w); minY = Math.min(minY, a.y); maxY = Math.max(maxY, a.y + a.h); });
@@ -643,27 +676,36 @@
     s += `<rect class="edge" x="${f1(ox)}" y="${f1(oy)}" width="${f1(w)}" height="${f1(h)}"/>`;
     // Elementos del paño (aletas, ventanas, bolsillos, ojetillos, cortes)
     s += elementosSketch(sk, { px: px, py: py, scale: scale, r: r, ojeSVG: ojeSVG, ox: ox, oy: oy, w: w, h: h });
-    // Cotas (rojo)
+    // Cotas (verde) — origen al centro para posición de elementos; 4 lados; eje de referencia.
     if (conCotas) {
+      const bTop = py(minY), bBot = py(maxY), bLeft = px(minX), bRight = px(maxX);
+      const ccx = px(sk.ancho / 2), ccy = py(sk.largo / 2);
+      s += `<line class="cota-eje" x1="${f1(ccx)}" y1="${f1(bTop)}" x2="${f1(ccx)}" y2="${f1(bBot)}"/>`;
+      s += `<line class="cota-eje" x1="${f1(bLeft)}" y1="${f1(ccy)}" x2="${f1(bRight)}" y2="${f1(ccy)}"/>`;
       cotasDe(sk).forEach((c) => {
         const off = offsetCota(c);
         if (c.axis === "h") {
-          const dimY = oy - off, xa = px(c.a), xb = px(c.b);
-          s += `<line class="cota-ext" x1="${f1(xa)}" y1="${f1(oy)}" x2="${f1(xa)}" y2="${f1(dimY - EXTGAP)}"/>`;
-          s += `<line class="cota-ext" x1="${f1(xb)}" y1="${f1(oy)}" x2="${f1(xb)}" y2="${f1(dimY - EXTGAP)}"/>`;
+          const xa = px(c.a), xb = px(c.b);
+          const base = (c.side === "bottom") ? bBot : bTop, dir = (c.side === "bottom") ? 1 : -1;
+          const dimY = base + dir * off, tEnd = dimY - dir * EXTGAP;
+          s += `<line class="cota-ext" x1="${f1(xa)}" y1="${f1(base)}" x2="${f1(xa)}" y2="${f1(tEnd)}"/>`;
+          s += `<line class="cota-ext" x1="${f1(xb)}" y1="${f1(base)}" x2="${f1(xb)}" y2="${f1(tEnd)}"/>`;
           s += `<line class="cota" x1="${f1(xa)}" y1="${f1(dimY)}" x2="${f1(xb)}" y2="${f1(dimY)}"/>`;
           s += `<line class="cota-tick" x1="${f1(xa)}" y1="${f1(dimY - TICK)}" x2="${f1(xa)}" y2="${f1(dimY + TICK)}"/>`;
           s += `<line class="cota-tick" x1="${f1(xb)}" y1="${f1(dimY - TICK)}" x2="${f1(xb)}" y2="${f1(dimY + TICK)}"/>`;
-          s += `<text class="cota-lbl" x="${f1((xa + xb) / 2)}" y="${f1(dimY - 2)}" text-anchor="middle">${fmt(c.value)}m</text>`;
+          const ty = (c.side === "bottom") ? dimY + 7 : dimY - 2;
+          s += `<text class="cota-lbl" x="${f1((xa + xb) / 2)}" y="${f1(ty)}" text-anchor="middle">${fmt(c.value)}m</text>`;
         } else {
-          const dimX = ox - off, ya = py(c.a), yb = py(c.b);
-          s += `<line class="cota-ext" x1="${f1(ox)}" y1="${f1(ya)}" x2="${f1(dimX - EXTGAP)}" y2="${f1(ya)}"/>`;
-          s += `<line class="cota-ext" x1="${f1(ox)}" y1="${f1(yb)}" x2="${f1(dimX - EXTGAP)}" y2="${f1(yb)}"/>`;
+          const ya = py(c.a), yb = py(c.b);
+          const base = (c.side === "right") ? bRight : bLeft, dir = (c.side === "right") ? 1 : -1;
+          const dimX = base + dir * off, tEnd = dimX - dir * EXTGAP;
+          s += `<line class="cota-ext" x1="${f1(base)}" y1="${f1(ya)}" x2="${f1(tEnd)}" y2="${f1(ya)}"/>`;
+          s += `<line class="cota-ext" x1="${f1(base)}" y1="${f1(yb)}" x2="${f1(tEnd)}" y2="${f1(yb)}"/>`;
           s += `<line class="cota" x1="${f1(dimX)}" y1="${f1(ya)}" x2="${f1(dimX)}" y2="${f1(yb)}"/>`;
           s += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(ya)}" x2="${f1(dimX + TICK)}" y2="${f1(ya)}"/>`;
           s += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(yb)}" x2="${f1(dimX + TICK)}" y2="${f1(yb)}"/>`;
-          const my = (ya + yb) / 2;
-          s += `<text class="cota-lbl" x="${f1(dimX - 3)}" y="${f1(my)}" text-anchor="middle" transform="rotate(-90 ${f1(dimX - 3)} ${f1(my)})">${fmt(c.value)}m</text>`;
+          const my = (ya + yb) / 2, tx = (c.side === "right") ? dimX + 3 : dimX - 3;
+          s += `<text class="cota-lbl" x="${f1(tx)}" y="${f1(my)}" text-anchor="middle" transform="rotate(-90 ${f1(tx)} ${f1(my)})">${fmt(c.value)}m</text>`;
         }
       });
     }
@@ -687,7 +729,7 @@
 
   const API = {
     construirSketch, sketchSVG, volSVG, ojetillosPerimetro, puntosArista,
-    cotasDe, offsetCota, margenCotas, fmt, esc, tijeraPrims, tijerasEn, flechaBarbas,
+    cotasDe, offsetCota, margenCotas, margenCotasLados, centroProducto, fmt, esc, tijeraPrims, tijerasEn, flechaBarbas,
     distribuirArista, distribuirParejo, posicionesArista,
     intervalosCalados, segmentosSolidos, posicionesAristaSeg,
     simbologia,
