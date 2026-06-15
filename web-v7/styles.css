@@ -184,6 +184,7 @@ button:active { transform: scale(0.98); }
 .sketch-svg .cut-oje { fill: var(--surface); stroke: #8e44ad; stroke-width: 1.1; }
 .sketch-svg .cut-lbl { fill: #8e44ad; font-size: 8px; font-family: inherit; }
 .sketch-svg .cut-hatch { stroke: #8e44ad; stroke-width: 0.4; opacity: 0.32; }
+.sketch-svg .cut-fade { fill: var(--surface, #ffffff); fill-opacity: 0.62; stroke: none; }
 .sketch-svg .cut-piv { stroke: #8e44ad; stroke-width: 0.8; fill: none; }
 .sketch-svg .ins-lbl { fill: var(--text); font-size: 6.5px; font-family: inherit; }
 .sketch-svg .ins-dim { fill: var(--muted); font-size: 5.5px; font-family: inherit; }
@@ -276,6 +277,11 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .nav-link.con-datos { background: #ffe9b8; border: 1px solid #e9a23b; color: #8a4b00; font-weight: 600; box-shadow: 0 1px 4px rgba(180,110,0,0.28); margin: 2px 0; }
 .nav-link.con-datos::after { content: " ●"; color: #b35c00; }
 .oj-l2-panel { margin: 4px 0 2px; padding-left: 6px; border-left: 2px solid var(--border, #d4dde7); }
+/* Vista previa consolidada de planos por pieza (compuesto) */
+.prev-block { border: 1px solid var(--border, #d4dde7); border-radius: 8px; margin: 8px 0; overflow: hidden; }
+.prev-head { display: block; width: 100%; text-align: left; background: #eef4fb; border: 0; border-bottom: 1px solid var(--border, #d4dde7); padding: 8px 12px; cursor: pointer; font-weight: 600; color: var(--text); }
+.prev-body { padding: 8px 10px; }
+.prev-body .sketch { margin: 0 0 8px; }
 .calc-wrap { display: flex; gap: 6px; align-items: stretch; }
 .calc-wrap input { flex: 1; }
 .calc-btn { flex: 0 0 auto; width: 46px; padding: 0; font-size: 18px; background: var(--field); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }

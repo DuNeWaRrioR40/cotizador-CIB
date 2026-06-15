@@ -49,6 +49,7 @@
     show("wTelaUnica", uni);
     show("telaMultiWrap", p);
     show("wPiezas", comp);
+    show("wPreviewCompuesto", comp);
     show("piezasResumenBottom", comp);
     show("wTitulo", f);
     show("wPlanoToggle", f);
@@ -444,7 +445,7 @@
 
   // ---------- Secciones colapsables ----------
   const COLAP_CERRADAS = ["wOjetillos", "wBordes", "wCortesUnif", "wComplementosUnif", "wAletasUnif", "wStrapsUnif", "wFactorUnif", "wCondiciones", "telaMultiWrap"];
-  const COLAP_ABIERTAS = ["wCliente", "wPiezas", "wHistorial", "wSketchUnif", "wOrientFormal"];
+  const COLAP_ABIERTAS = ["wCliente", "wPiezas", "wHistorial", "wSketchUnif", "wOrientFormal", "wPreviewCompuesto"];
   function seccionTieneDatos(sec) {
     const body = sec.querySelector(".colap-body"); if (!body) return false;
     if (body.querySelector(".pieza-card, .ins-card, .aleta-card, .cut-card, .comp-row, .hist-chip")) return true;
@@ -901,7 +902,7 @@
     const c = $("backAletasUnif"); if (c) renderAletas(c, { aletas: state.backAletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, factor: facUnif, onChange: recompute });
   }
   function renderStrapsUnif() {
-    const c = $("strapsUnif"); if (c) renderStraps(c, { straps: state.strapsUnif, cantidad: cantUnif, onChange: recompute });
+    const c = $("strapsUnif"); if (c) renderStraps(c, { straps: state.strapsUnif, cantidad: cantUnif, getAncho: () => num("f_ancho", null), getLargo: () => num("f_largo", null), onChange: recompute });
   }
   // Diseño de la vista trasera (calados + materiales propios, $0). Genérico para uniforme/pieza.
   function renderTraseraDiseno(contCortes, contComp, getCortes, getComp, baseL, baseA, onChange) {
@@ -1077,6 +1078,21 @@
         grid.appendChild(addHelpTo(numField("Crece offset (m)", "offset", "0", true), "Cuánto crece el strap hacia un lado del centro (sentido del ángulo). Solo valores ≥ 0.", "STRAP-OFFSET"));
         grid.appendChild(addHelpTo(numField("Crece inset (m)", "inset", "0", true), "Cuánto crece el strap hacia el otro lado del centro. Solo ≥ 0. No choca con offset (van en sentidos opuestos).", "STRAP-INSET"));
         card.appendChild(grid);
+        // Medidas del paño base (bajo X/Y) + alineación rápida a una arista.
+        const A = ctx.getAncho ? ctx.getAncho() : null, L = ctx.getLargo ? ctx.getLargo() : null;
+        const dimInfo = document.createElement("p"); dimInfo.className = "muted small";
+        dimInfo.innerHTML = (A > 0 && L > 0) ? ("Paño base: <b>largo " + f(L) + " m × ancho " + f(A) + " m</b> · X de 0 a " + f(A) + " · Y de 0 a " + f(L)) : "Define largo y ancho del paño base para ubicar el strap.";
+        card.appendChild(dimInfo);
+        if (A > 0 && L > 0) {
+          const acap = document.createElement("p"); acap.className = "muted small"; acap.textContent = "Alinear el centro a 0,01 m de una arista (offset crece hacia afuera; inset hacia adentro):";
+          card.appendChild(addHelpTo(acap, "Coloca el centro del strap a 1 cm por dentro de la arista elegida y orienta el ángulo para que 'offset' salga del paño e 'inset' entre. Luego puedes mover el centro a lo largo de esa arista.", "STRAP-ARISTA"));
+          const arow = document.createElement("div"); arow.className = "pz-actions"; arow.style.flexWrap = "wrap";
+          const snap = (axis, val, ang) => { if (axis === "y") s.cy = f(val); else s.cx = f(val); s.angulo = String(ang); pintar(); onChange(); };
+          [["↑ Superior", () => snap("y", 0.01, 270)], ["↓ Inferior", () => snap("y", L - 0.01, 90)], ["← Izquierda", () => snap("x", 0.01, 180)], ["→ Derecha", () => snap("x", A - 0.01, 0)]].forEach(([lab, fn]) => {
+            const b = document.createElement("button"); b.type = "button"; b.className = "pz-btn"; b.textContent = lab; b.addEventListener("click", fn); arow.appendChild(b);
+          });
+          card.appendChild(arow);
+        }
         const ln = document.createElement("label"); ln.className = "field full"; ln.innerHTML = "<span>Nombre / leyenda (plano)</span>";
         const ni = document.createElement("input"); ni.type = "text"; ni.value = s.legend || ""; ni.placeholder = "ej. Strap superior";
         ni.addEventListener("input", (e) => { s.legend = e.target.value; refresh(); onChange(); });
@@ -1409,6 +1425,10 @@
     corteSeq += 1;
     return {
       id: "cut" + corteSeq,
+      tipo: base ? (base.tipo || "calado") : "calado", fade: base ? (base.fade || "") : "",
+      ojAristaLado: base ? (base.ojAristaLado || "") : "", ojAristaD: base ? (base.ojAristaD || "0.2") : "0.2", ojAristaInset: base ? (base.ojAristaInset || "0.025") : "0.025",
+      strapMatId: base ? (base.strapMatId != null ? base.strapMatId : null) : null, strapLado: base ? (base.strapLado || "") : "", strapInset: base ? (base.strapInset || "0.02") : "0.02", strapNombre: base ? (base.strapNombre || "") : "",
+      secEsq: base ? (base.secEsq || "") : "", secArista: base ? (base.secArista || "") : "", secDist: base ? (base.secDist || "") : "",
       forma: base ? base.forma : "rect", ojCirc: base ? base.ojCirc : "0",
       largo: base ? base.largo : "", ancho: base ? base.ancho : "",
       padSup: base ? base.padSup : "0.1", padInf: base ? base.padInf : "0.1",
@@ -1421,17 +1441,44 @@
   }
   function centrarCorte(baseL, baseA, c) {
     const ev = window.CalcCIBSA.evalExpr;
+    if (c.tipo === "corte") { // línea: centra a lo ancho según su largo; al medio en vertical
+      const Ln = ev(c.largo);
+      if (baseA != null && Ln != null) { const m = String(Math.max(0, Math.round((baseA - Ln) / 2 * 1000) / 1000)); c.padIzq = m; c.padDer = m; }
+      if (baseL != null) { const m = String(Math.round(baseL / 2 * 1000) / 1000); c.padSup = m; c.padInf = m; }
+      return;
+    }
     const cL = ev(c.largo), cA = ev(c.ancho);
     // El círculo (corte) puede exceder el paño: se permite padding negativo para mantener el centro.
     const clamp = (c.forma === "circ") ? (n) => n : (n) => Math.max(0, n);
     if (baseL != null && cL != null) { const m = String(clamp(Math.round((baseL - cL) / 2 * 1000) / 1000)); c.padSup = m; c.padInf = m; }
     if (baseA != null && cA != null) { const m = String(clamp(Math.round((baseA - cA) / 2 * 1000) / 1000)); c.padIzq = m; c.padDer = m; }
   }
+  // Configurador "Sección de paño": corte desde una esquina hasta la arista opuesta, cuyo otro
+  // extremo queda a 'secDist' del borde de referencia. Escribe x/y(largo de inicio), largo y ángulo.
+  const SEC_OPUESTAS = { TL: ["inf", "der"], TR: ["inf", "izq"], BL: ["sup", "der"], BR: ["sup", "izq"] };
+  function aplicarSeccion(c, A, L) {
+    const f = window.CalcCIBSA.fmtNum, ev = window.CalcCIBSA.evalExpr;
+    if (!(A > 0) || !(L > 0) || !c.secEsq) return;
+    const corner = { TL: [0, 0], TR: [A, 0], BL: [0, L], BR: [A, L] }[c.secEsq]; if (!corner) return;
+    const D = ev(c.secDist); if (D == null || isNaN(D)) return;
+    const edge = c.secArista || SEC_OPUESTAS[c.secEsq][0];
+    let ex, ey;
+    if (edge === "sup") { ex = D; ey = 0; } else if (edge === "inf") { ex = D; ey = L; }
+    else if (edge === "izq") { ex = 0; ey = D; } else { ex = A; ey = D; }
+    const cx = corner[0], cy = corner[1], len = Math.hypot(ex - cx, ey - cy);
+    if (!(len > 0)) return;
+    c.padIzq = f(cx); c.padSup = f(cy); c.largo = f(len); c.angulo = f(Math.atan2(ey - cy, ex - cx) * 180 / Math.PI); c.pivX = "0";
+  }
   function rectCorte(c) {
     const ev = window.CalcCIBSA.evalExpr;
+    const num01 = (v, d) => { const r = window.CalcCIBSA.evalExpr(v); return (r == null || isNaN(r)) ? d : Math.max(0, Math.min(1, r)); };
+    if (c.tipo === "corte") { // línea recta: largo = longitud de la línea (horizontal), x/y = inicio
+      const Ln = ev(c.largo); if (Ln == null || Ln <= 0) return null;
+      const x = ev(c.padIzq), y = ev(c.padSup);
+      return { tipo: "corte", x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: Ln, h: 0, circ: false, ojCirc: 0, oj: { sup: 0, inf: 0, izq: 0, der: 0 }, lados: {}, angulo: ev(c.angulo) || 0, pivX: num01(c.pivX, 0), pivY: 0, fade: c.fade || "", ojAristaLado: c.ojAristaLado || "", ojAristaD: ev(c.ojAristaD) || 0, ojAristaInset: ev(c.ojAristaInset) || 0, strapAncho: anchoCintaM((c.strapMatId != null && state.materiales[c.strapMatId]) || null), strapLado: c.strapLado || "", strapInset: ev(c.strapInset) || 0, strapNombre: (c.strapNombre || "").trim() };
+    }
     const w = ev(c.ancho), h = ev(c.largo); if (w == null || h == null || w <= 0 || h <= 0) return null;
     const x = ev(c.padIzq), y = ev(c.padSup);
-    const num01 = (v, d) => { const r = window.CalcCIBSA.evalExpr(v); return (r == null || isNaN(r)) ? d : Math.max(0, Math.min(1, r)); };
     const L = c.lados || {};
     return {
       x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h,
@@ -1505,14 +1552,29 @@
         const del = document.createElement("button"); del.type = "button"; del.className = "pz-btn del"; del.textContent = "✕";
         del.addEventListener("click", () => { ctx.cortes.splice(idx, 1); pintar(); onChange(); });
         head.appendChild(tt); head.appendChild(del); card.appendChild(head);
-        const esCirc = (c.forma || "rect") === "circ";
-        const fsel = document.createElement("label"); fsel.className = "field full"; fsel.innerHTML = "<span>Forma</span>";
-        const fopt = document.createElement("select");
-        [["rect", "Rectángulo"], ["circ", "Círculo"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; fopt.appendChild(o); });
-        fopt.value = c.forma || "rect"; fopt.addEventListener("change", (e) => { c.forma = e.target.value; if (c.forma === "circ") c.ancho = c.largo; centrarCorte(ctx.baseLargo(), ctx.baseAncho(), c); pintar(); onChange(); });
-        fsel.appendChild(fopt); card.appendChild(fsel);
+        // Tipo: calado (área) o corte (línea recta)
+        const tsel = document.createElement("label"); tsel.className = "field full"; tsel.innerHTML = "<span>Tipo</span>";
+        const topt = document.createElement("select");
+        [["calado", "Calado (área)"], ["corte", "Corte (línea recta)"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; topt.appendChild(o); });
+        topt.value = c.tipo || "calado"; topt.addEventListener("change", (e) => { c.tipo = e.target.value; pintar(); onChange(); });
+        tsel.appendChild(topt); card.appendChild(addHelpTo(tsel, "Calado: hueco con área (rectángulo o círculo). Corte: una sola línea recta, posicionable con ángulo/pivote.", "CORTE-TIPO"));
+        const esCorte = (c.tipo === "corte");
+        const esCirc = !esCorte && (c.forma || "rect") === "circ";
+        if (!esCorte) {
+          const fsel = document.createElement("label"); fsel.className = "field full"; fsel.innerHTML = "<span>Forma</span>";
+          const fopt = document.createElement("select");
+          [["rect", "Rectángulo"], ["circ", "Círculo"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; fopt.appendChild(o); });
+          fopt.value = c.forma || "rect"; fopt.addEventListener("change", (e) => { c.forma = e.target.value; if (c.forma === "circ") c.ancho = c.largo; centrarCorte(ctx.baseLargo(), ctx.baseAncho(), c); pintar(); onChange(); });
+          fsel.appendChild(fopt); card.appendChild(fsel);
+        }
         const grid = document.createElement("div"); grid.className = "pieza-grid";
-        if (esCirc) {
+        if (esCorte) {
+          const l = document.createElement("label"); l.className = "field full"; l.innerHTML = "<span>Largo del corte (m)</span>";
+          const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = c.largo || "";
+          inp.addEventListener("input", (e) => { c.largo = e.target.value; refresh(); onChange(); });
+          inp.addEventListener("blur", (e) => { const rr = window.CalcCIBSA.evalExpr(e.target.value); if (rr != null && !isNaN(rr)) { c.largo = window.CalcCIBSA.fmtNum(rr); e.target.value = c.largo; refresh(); onChange(); } });
+          l.appendChild(inp); agregarCalc(inp); addHelpTo(l, "Longitud de la línea de corte, en metros. Se dibuja horizontal desde la posición X/Y y se inclina con el ángulo.", "CORTE-LINEA-LARGO"); grid.appendChild(l);
+        } else if (esCirc) {
           const l = document.createElement("label"); l.className = "field full"; l.innerHTML = "<span>Diámetro (m)</span>";
           const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = c.largo || "";
           const setD = (val) => { c.largo = val; c.ancho = val; centrarCorte(ctx.baseLargo(), ctx.baseAncho(), c); setPad(); refresh(); onChange(); };
@@ -1529,6 +1591,84 @@
           });
         }
         card.appendChild(grid);
+        if (esCorte) {
+          // Configurador "Sección de paño": define el corte desde una esquina hacia una arista opuesta.
+          {
+            const A = ctx.baseAncho(), L = ctx.baseLargo();
+            const secWrap = document.createElement("div");
+            const grpC = document.createElement("label"); grpC.className = "field full"; grpC.innerHTML = "<span>Sección de paño — esquina de inicio</span>";
+            const cSel = document.createElement("select");
+            [["", "— manual (no usar) —"], ["TL", "↖ Sup-Izq"], ["TR", "↗ Sup-Der"], ["BL", "↙ Inf-Izq"], ["BR", "↘ Inf-Der"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; cSel.appendChild(o); });
+            cSel.value = c.secEsq || "";
+            cSel.addEventListener("change", (e) => { c.secEsq = e.target.value; if (c.secEsq && !c.secArista) c.secArista = SEC_OPUESTAS[c.secEsq][0]; aplicarSeccion(c, A, L); pintar(); onChange(); });
+            grpC.appendChild(cSel); secWrap.appendChild(addHelpTo(grpC, "Configura un corte que secciona el paño desde una esquina hasta la arista opuesta. Define largo, ángulo y posición automáticamente. Deja 'manual' para configurarlo a mano.", "CORTE-SECCION"));
+            if (c.secEsq) {
+              const opp = SEC_OPUESTAS[c.secEsq], NOM = { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha" };
+              const g = document.createElement("div"); g.className = "pieza-grid";
+              const eSel = document.createElement("label"); eSel.className = "field"; eSel.innerHTML = "<span>Termina en arista</span>";
+              const es = document.createElement("select");
+              opp.forEach((k) => { const o = document.createElement("option"); o.value = k; o.textContent = NOM[k]; es.appendChild(o); });
+              es.value = c.secArista || opp[0];
+              es.addEventListener("change", (e) => { c.secArista = e.target.value; aplicarSeccion(c, A, L); pintar(); onChange(); });
+              eSel.appendChild(es); g.appendChild(eSel);
+              const horiz = (c.secArista === "sup" || c.secArista === "inf");
+              const dl = document.createElement("label"); dl.className = "field"; dl.innerHTML = "<span>" + (horiz ? "Distancia desde borde izquierdo (m)" : "Distancia desde borde superior (m)") + "</span>";
+              const di = document.createElement("input"); di.type = "text"; di.inputMode = "decimal"; di.value = c.secDist || "";
+              di.addEventListener("input", (e) => { c.secDist = e.target.value; aplicarSeccion(c, A, L); refresh(); onChange(); });
+              di.addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { c.secDist = window.CalcCIBSA.fmtNum(r); e.target.value = c.secDist; aplicarSeccion(c, A, L); refresh(); onChange(); } });
+              dl.appendChild(di); agregarCalc(di); g.appendChild(dl);
+              secWrap.appendChild(g);
+              const note = document.createElement("p"); note.className = "muted small"; note.textContent = "El corte va desde la esquina hasta esa arista; su otro extremo queda a esa distancia del borde de referencia.";
+              secWrap.appendChild(note);
+            }
+            card.appendChild(secWrap);
+            subColapsar(secWrap, "Sección de paño (desde esquina)", c, "_colapSec", () => !!c.secEsq);
+          }
+          // Difuminar el lado que se separa (opción b): se nombra por cardinalidad según el ángulo.
+          const aa = (window.CalcCIBSA.evalExpr(c.angulo) || 0) * Math.PI / 180;
+          const pnx = -Math.sin(aa), pny = Math.cos(aa);
+          const cardi = (nx, ny) => (Math.abs(nx) >= Math.abs(ny)) ? (nx >= 0 ? "Este (der.)" : "Oeste (izq.)") : (ny >= 0 ? "Sur (abajo)" : "Norte (arriba)");
+          const fsel = document.createElement("label"); fsel.className = "field full"; fsel.innerHTML = "<span>Difuminar parte separada</span>";
+          const fopt = document.createElement("select");
+          [["", "No difuminar"], ["A", "Lado A — " + cardi(pnx, pny)], ["B", "Lado B — " + cardi(-pnx, -pny)]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; fopt.appendChild(o); });
+          fopt.value = c.fade || ""; fopt.addEventListener("change", (e) => { c.fade = e.target.value; onChange(); });
+          fsel.appendChild(fopt); card.appendChild(addHelpTo(fsel, "Si el corte separa el paño, difumina la parte que se va (la del lado elegido). El rectángulo base se mantiene. El lado se nombra por su orientación (cardinalidad), según el ángulo del corte.", "CORTE-FADE"));
+          // Ojetillos sobre la arista del corte (lado A/B, mismo nombre cardinal que el difuminado).
+          const osel = document.createElement("label"); osel.className = "field full"; osel.innerHTML = "<span>Ojetillos en la arista</span>";
+          const oopt = document.createElement("select");
+          [["", "Ninguno"], ["A", "Lado A — " + cardi(pnx, pny)], ["B", "Lado B — " + cardi(-pnx, -pny)]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; oopt.appendChild(o); });
+          oopt.value = c.ojAristaLado || ""; oopt.addEventListener("change", (e) => { c.ojAristaLado = e.target.value; pintar(); onChange(); });
+          osel.appendChild(oopt); card.appendChild(addHelpTo(osel, "Coloca ojetillos a lo largo de la arista del corte, del lado elegido. Configura distanciamiento e inset. Por ahora van solo al plano de taller.", "CORTE-OJ-ARISTA"));
+          if (c.ojAristaLado === "A" || c.ojAristaLado === "B") {
+            const og = document.createElement("div"); og.className = "pieza-grid";
+            const mk = (lab, key, ph) => { const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>"; const i = document.createElement("input"); i.type = "text"; i.inputMode = "decimal"; i.value = c[key] != null ? c[key] : ""; if (ph) i.placeholder = ph; i.addEventListener("input", (e) => { c[key] = e.target.value; refresh(); onChange(); }); i.addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { c[key] = window.CalcCIBSA.fmtNum(r); e.target.value = c[key]; refresh(); onChange(); } }); l.appendChild(i); agregarCalc(i); return l; };
+            og.appendChild(mk("Distanciamiento (m)", "ojAristaD", "0.2"));
+            og.appendChild(mk("Inset (m)", "ojAristaInset", "0.025"));
+            card.appendChild(og);
+          }
+          // Strap (cinta) a lo largo de la arista del corte.
+          const ssel = document.createElement("label"); ssel.className = "field full"; ssel.innerHTML = "<span>Strap (cinta) en la arista</span>";
+          const sopt = document.createElement("select");
+          const so0 = document.createElement("option"); so0.value = ""; so0.textContent = "— sin strap —"; sopt.appendChild(so0);
+          state.materiales.forEach((m, i) => { if (!/cinta/i.test((m && m.item) || "")) return; const o = document.createElement("option"); o.value = String(i); o.textContent = matLabel(m); sopt.appendChild(o); });
+          sopt.value = c.strapMatId != null ? String(c.strapMatId) : "";
+          sopt.addEventListener("change", (e) => { c.strapMatId = e.target.value === "" ? null : parseInt(e.target.value, 10); if (c.strapMatId != null && !c.strapLado) c.strapLado = "A"; pintar(); onChange(); });
+          ssel.appendChild(sopt); card.appendChild(addHelpTo(ssel, "Coloca una cinta (strap) a lo largo de la arista del corte. Elige la cinta (define el ancho), el lado y el inset desde la línea de corte.", "CORTE-STRAP"));
+          if (c.strapMatId != null) {
+            const sg = document.createElement("div"); sg.className = "pieza-grid";
+            const lsel = document.createElement("label"); lsel.className = "field"; lsel.innerHTML = "<span>Lado</span>";
+            const lopt = document.createElement("select");
+            [["A", "Lado A — " + cardi(pnx, pny)], ["B", "Lado B — " + cardi(-pnx, -pny)]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; lopt.appendChild(o); });
+            lopt.value = c.strapLado || "A"; lopt.addEventListener("change", (e) => { c.strapLado = e.target.value; refresh(); onChange(); });
+            lsel.appendChild(lopt); sg.appendChild(lsel);
+            const isel = document.createElement("label"); isel.className = "field"; isel.innerHTML = "<span>Inset desde el corte (m)</span>";
+            const iinp = document.createElement("input"); iinp.type = "text"; iinp.inputMode = "decimal"; iinp.value = c.strapInset != null ? c.strapInset : "0.02";
+            iinp.addEventListener("input", (e) => { c.strapInset = e.target.value; refresh(); onChange(); });
+            iinp.addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { c.strapInset = window.CalcCIBSA.fmtNum(r); e.target.value = c.strapInset; refresh(); onChange(); } });
+            isel.appendChild(iinp); agregarCalc(iinp); sg.appendChild(isel);
+            card.appendChild(sg);
+          }
+        }
         { const f2 = window.CalcCIBSA.fmtNum, bL = ctx.baseLargo(), bA = ctx.baseAncho();
           const bp = document.createElement("p"); bp.className = "muted small";
           bp.textContent = (bL > 0 && bA > 0) ? ("Paño base: " + f2(bL) + " × " + f2(bA) + " m (largo × ancho).") : "Define el largo y ancho del paño base para ver su medida aquí.";
@@ -1536,7 +1676,7 @@
         if (esCirc) { const nc = document.createElement("p"); nc.className = "muted small"; nc.textContent = "El círculo se centra en el paño base; el padding lo desplaza (N/S/E/O). Puede exceder el paño: solo se dibuja lo que queda dentro."; card.appendChild(nc); }
         const pcap = document.createElement("p"); pcap.className = "muted small"; pcap.textContent = esCirc ? "Posición del centro — padding por punto cardinal (m)." : "Posición — margen desde cada arista (m). Si un margen es 0, ese lado coincide con el borde y el corte queda abierto ahí."; card.appendChild(addHelpTo(pcap, "Ubicación del calado dentro del paño: margen desde cada arista (o padding del centro si es círculo). Un margen 0 hace que ese lado coincida con el borde y el calado lo seccione.", "CORTE-POS"));
         const pgrid = document.createElement("div"); pgrid.className = "pieza-grid";
-        const libreEje = (k) => { const ev = window.CalcCIBSA.evalExpr; if (k === "padSup" || k === "padInf") { const b = ctx.baseLargo(), w = ev(c.largo); return (b != null && w != null) ? b - w : null; } const b = ctx.baseAncho(), w = ev(c.ancho); return (b != null && w != null) ? b - w : null; };
+        const libreEje = (k) => { const ev = window.CalcCIBSA.evalExpr; if (k === "padSup" || k === "padInf") { const b = ctx.baseLargo(), w = esCorte ? 0 : ev(c.largo); return (b != null && w != null) ? b - w : null; } const b = ctx.baseAncho(), w = esCorte ? ev(c.largo) : ev(c.ancho); return (b != null && w != null) ? b - w : null; };
         const autoOp = (k) => { const libre = libreEje(k); if (libre == null) return; const este = window.CalcCIBSA.evalExpr(c[k]); if (este == null || isNaN(este)) return; const op = opuesto[k]; c[op] = String(Math.max(0, Math.round((libre - este) * 1000) / 1000)); if (padInputs[op]) padInputs[op].value = c[op]; };
         [["padSup", "Superior"], ["padInf", "Inferior"], ["padIzq", "Izquierda"], ["padDer", "Derecha"]].forEach(([k, lab]) => {
           const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
@@ -1570,19 +1710,21 @@
           corners.forEach((corner) => { const copy = nuevaCorte(c); copy._colap = false; setCorner(copy, corner, baseL, baseA, mV, mH, cV, cH); ctx.cortes.push(copy); });
           pintar(); onChange();
         }
-        const rcap = document.createElement("p"); rcap.className = "muted small"; rcap.textContent = "Copia espejo en una esquina (agrega una ficha nueva; el calado original NO se modifica):";
-        card.appendChild(addHelpTo(rcap, "Crea una COPIA de este calado en la esquina elegida, en posición espejo respecto del paño base. El original se mantiene tal cual; se agrega una ficha nueva (como duplicar).", "CORTE-ESQUINAS"));
-        const rrow = document.createElement("div"); rrow.className = "pz-actions"; rrow.style.flexWrap = "wrap";
-        [["TL", "↖ Sup-Izq"], ["TR", "↗ Sup-Der"], ["BL", "↙ Inf-Izq"], ["BR", "↘ Inf-Der"]].forEach(([k, lab]) => {
-          const b = document.createElement("button"); b.type = "button"; b.className = "pz-btn"; b.textContent = lab;
-          b.addEventListener("click", () => crearEnEsquinas([k]));
-          rrow.appendChild(b);
-        });
-        const b4 = document.createElement("button"); b4.type = "button"; b4.className = "pz-btn"; b4.textContent = "⊞ Copia en las 4";
-        b4.addEventListener("click", () => crearEnEsquinas(["TL", "TR", "BL", "BR"]));
-        rrow.appendChild(b4); card.appendChild(rrow);
-        // Aristas a dibujar (solo corte rectangular) — visible.
-        if (!esCirc) {
+        if (!esCorte) {
+          const rcap = document.createElement("p"); rcap.className = "muted small"; rcap.textContent = "Copia espejo en una esquina (agrega una ficha nueva; el calado original NO se modifica):";
+          card.appendChild(addHelpTo(rcap, "Crea una COPIA de este calado en la esquina elegida, en posición espejo respecto del paño base. El original se mantiene tal cual; se agrega una ficha nueva (como duplicar).", "CORTE-ESQUINAS"));
+          const rrow = document.createElement("div"); rrow.className = "pz-actions"; rrow.style.flexWrap = "wrap";
+          [["TL", "↖ Sup-Izq"], ["TR", "↗ Sup-Der"], ["BL", "↙ Inf-Izq"], ["BR", "↘ Inf-Der"]].forEach(([k, lab]) => {
+            const b = document.createElement("button"); b.type = "button"; b.className = "pz-btn"; b.textContent = lab;
+            b.addEventListener("click", () => crearEnEsquinas([k]));
+            rrow.appendChild(b);
+          });
+          const b4 = document.createElement("button"); b4.type = "button"; b4.className = "pz-btn"; b4.textContent = "⊞ Copia en las 4";
+          b4.addEventListener("click", () => crearEnEsquinas(["TL", "TR", "BL", "BR"]));
+          rrow.appendChild(b4); card.appendChild(rrow);
+        }
+        // Aristas a dibujar (solo calado rectangular) — visible.
+        if (!esCirc && !esCorte) {
           const lcap = document.createElement("p"); lcap.className = "muted small"; lcap.textContent = "Aristas a dibujar (apaga lados para un corte recto; deja una sola = una línea):"; card.appendChild(addHelpTo(lcap, "Elige qué lados del calado se dibujan. Apaga lados para un corte recto; deja uno solo para una línea. No cambia el precio, solo el plano de taller.", "CORTE-ARISTAS"));
           const lrow = document.createElement("div"); lrow.className = "radios";
           [["sup", "Superior"], ["inf", "Inferior"], ["izq", "Izquierda"], ["der", "Derecha"]].forEach(([k, lab]) => {
@@ -1618,15 +1760,17 @@
           agrid.appendChild(sliderField("pivX", "Pivote X", 0, 1, 0.01, "0.5", ""));
           agrid.appendChild(sliderField("pivY", "Pivote Y", 0, 1, 0.01, "0.5", ""));
           adv.appendChild(agrid);
-          const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos por arista del corte (solo van al plano de taller):"; adv.appendChild(addHelpTo(ocap, "Cantidad de ojetillos en cada lado del calado. Son solo del calado (van al plano de taller) y no afectan el precio.", "CORTE-OJET"));
-          const ogrid = document.createElement("div"); ogrid.className = "pieza-grid";
-          [["sup", "Superior"], ["inf", "Inferior"], ["izq", "Izquierda"], ["der", "Derecha"]].forEach(([k, lab]) => {
-            const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
-            const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "numeric"; inp.value = (c.oj && c.oj[k]) || "0";
-            inp.addEventListener("input", (e) => { c.oj[k] = e.target.value; refresh(); onChange(); });
-            l.appendChild(inp); ogrid.appendChild(l);
-          });
-          adv.appendChild(ogrid);
+          if (!esCorte) {
+            const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos por arista del corte (solo van al plano de taller):"; adv.appendChild(addHelpTo(ocap, "Cantidad de ojetillos en cada lado del calado. Son solo del calado (van al plano de taller) y no afectan el precio.", "CORTE-OJET"));
+            const ogrid = document.createElement("div"); ogrid.className = "pieza-grid";
+            [["sup", "Superior"], ["inf", "Inferior"], ["izq", "Izquierda"], ["der", "Derecha"]].forEach(([k, lab]) => {
+              const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
+              const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "numeric"; inp.value = (c.oj && c.oj[k]) || "0";
+              inp.addEventListener("input", (e) => { c.oj[k] = e.target.value; refresh(); onChange(); });
+              l.appendChild(inp); ogrid.appendChild(l);
+            });
+            adv.appendChild(ogrid);
+          }
         } else {
           const ocap = document.createElement("p"); ocap.className = "muted small"; ocap.textContent = "Ojetillos del corte (repartidos alrededor del círculo; solo al plano de taller):"; adv.appendChild(ocap);
           const ol = document.createElement("label"); ol.className = "field"; ol.innerHTML = "<span>Ojetillos (alrededor)</span>";
@@ -1641,6 +1785,12 @@
         const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
         function refresh() {
           const ev = window.CalcCIBSA.evalExpr, w = ev(c.ancho), h = ev(c.largo);
+          if (esCorte) {
+            if (h == null || h <= 0) { dims.textContent = "Completa el largo del corte."; return; }
+            let html = "Corte (línea) <b>" + window.CalcCIBSA.fmtNum(h) + " m</b> · costo $0";
+            const aa = ev(c.angulo) || 0; if (Math.abs(aa) > 1e-6) html += " · ángulo " + window.CalcCIBSA.fmtNum(aa) + "°";
+            dims.innerHTML = html; return;
+          }
           if (w == null || h == null || w <= 0 || h <= 0) { dims.textContent = esCirc ? "Completa el diámetro del corte." : "Completa largo y ancho del corte."; return; }
           const r = rectCorte(c);
           const baseA = ctx.baseAncho(), baseL = ctx.baseLargo();
@@ -2453,7 +2603,7 @@
       renderInscritos(q(".pz-ins"), pz);
       renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
       renderAletas(q(".pz-aletas"), { aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto });
-      renderStraps(q(".pz-straps"), { straps: (pz.straps || (pz.straps = [])), cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), onChange: recomputeCompuesto });
+      renderStraps(q(".pz-straps"), { straps: (pz.straps || (pz.straps = [])), cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
       subColapsar(q(".pz-oj-wrap"), "Ojetillos", pz, "_cOj", () => (pz.ojMode === "arista") || (parseInt(pz.ojetillos || 0, 10) > 0));
       subColapsar(q(".pz-straps"), "Straps / cintas", pz, "_cStr", () => (pz.straps || []).length);
       subColapsar(q(".pz-borde"), "Bordes y uniones", pz, "_cBorde", () => false);
@@ -2623,6 +2773,38 @@
     if (resumen) resumen.innerHTML = resumenHTML;
     { const rb = $("piezasResumenBottom"); if (rb) rb.innerHTML = resumenHTML; }
     state.compuesto = { calcs, subtotalGen, desc, descuento, neto, iva, total };
+    renderPreviewCompuesto();
+  }
+
+  // Vista previa consolidada de los planos de todas las piezas (compuesto): cada plano plegable + descarga.
+  function renderPreviewCompuesto() {
+    const cont = $("previewCompuesto"); if (!cont) return;
+    cont.innerHTML = "";
+    const ev = window.CalcCIBSA.evalExpr;
+    if (!state.piezas.length) { cont.innerHTML = '<p class="muted small">Agrega piezas para ver sus planos aquí.</p>'; return; }
+    state.piezas.forEach((pz, idx) => {
+      const a = ev(pz.ancho), l = ev(pz.largo);
+      const etq = (pz.etiqueta && pz.etiqueta.trim()) ? " — " + pz.etiqueta.trim() : "";
+      const titulo = "Pieza " + (idx + 1) + etq;
+      const block = document.createElement("div"); block.className = "prev-block";
+      const head = document.createElement("button"); head.type = "button"; head.className = "prev-head";
+      const body = document.createElement("div"); body.className = "prev-body";
+      const aplic = () => { const c = !!pz._cPrev; body.style.display = c ? "none" : ""; head.textContent = (c ? "▸ " : "▾ ") + titulo; };
+      head.addEventListener("click", () => { pz._cPrev = !pz._cPrev; aplic(); });
+      block.appendChild(head); block.appendChild(body);
+      if (!(a > 0) || !(l > 0)) {
+        body.innerHTML = '<p class="muted small">Completa largo y ancho de esta pieza.</p>';
+      } else {
+        const sk = document.createElement("div"); sk.className = "sketch";
+        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas));
+        body.appendChild(sk);
+        const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn-outline"; dl.textContent = "Descargar plano (PDF)";
+        dl.addEventListener("click", () => descargarSketchPieza(pz));
+        body.appendChild(dl);
+      }
+      aplic();
+      cont.appendChild(block);
+    });
   }
 
   // ---------- Limpiar todos los campos de la App ----------

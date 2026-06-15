@@ -187,6 +187,10 @@
     });
     // Cortes / calados
     (sk.cortes || []).forEach((c) => {
+      if (c.fadePoly && c.fadePoly.length >= 3) {
+        const d = "M " + c.fadePoly.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";
+        page.drawSvgPath(d, { color: WHITE(), opacity: 0.62, borderWidth: 0 });
+      }
       (c.hatch || []).forEach((sg) => {
         page.drawLine({ start: { x: px(sg.a.x), y: py(sg.a.y) }, end: { x: px(sg.b.x), y: py(sg.b.y) }, thickness: 0.35, color: PURPLE, opacity: 0.32 });
       });

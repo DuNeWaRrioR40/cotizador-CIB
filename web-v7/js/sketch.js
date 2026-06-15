@@ -146,9 +146,52 @@
     return { a: { x: p0.x + tE * dx, y: p0.y + tE * dy }, b: { x: p0.x + tL * dx, y: p0.y + tL * dy } };
   }
 
+  // Recorta un polígono a un lado de la recta a→b (Sutherland-Hodgman de un solo plano).
+  // keepNeg=true conserva el lado donde la "side" (normal · (p-a)) es negativa.
+  function clipPolyHalfPlane(poly, ax, ay, bx, by, keepNeg) {
+    const nx = -(by - ay), ny = (bx - ax);
+    const side = (p) => nx * (p.x - ax) + ny * (p.y - ay);
+    const inside = (p) => keepNeg ? (side(p) <= 1e-9) : (side(p) >= -1e-9);
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const A = poly[i], B = poly[(i + 1) % poly.length], inA = inside(A), inB = inside(B);
+      if (inA) out.push(A);
+      if (inA !== inB) { const sA = side(A), sB = side(B), t = sA / (sA - sB); out.push({ x: A.x + (B.x - A.x) * t, y: A.y + (B.y - A.y) * t }); }
+    }
+    return out;
+  }
+  // Etiqueta cardinal del lado hacia el que apunta la normal (coords pantalla, y hacia abajo).
+  function cardinalLado(nx, ny) {
+    if (Math.abs(nx) >= Math.abs(ny)) return nx >= 0 ? "Este (der.)" : "Oeste (izq.)";
+    return ny >= 0 ? "Sur (abajo)" : "Norte (arriba)";
+  }
   // Procesa una config de corte a su geometría dibujable (segmentos, ojetillos, achurado…).
   function procesarCorte(c, ancho, largo) {
       const x = c.x, y = c.y, w = c.w, h = c.h;
+      // --- Corte (línea recta): un solo segmento de largo w (horizontal), rotado por ángulo/pivote. ---
+      if (c.tipo === "corte") {
+        let a = { x: x, y: y }, b = { x: x + w, y: y };
+        const ang = (parseFloat(c.angulo) || 0) * Math.PI / 180, rotated = Math.abs(ang) > 1e-6;
+        const Px = x + (c.pivX != null ? c.pivX : 0) * w, Py = y;
+        if (rotated) { const co = Math.cos(ang), si = Math.sin(ang); const rot = (p) => ({ x: Px + (p.x - Px) * co - (p.y - Py) * si, y: Py + (p.x - Px) * si + (p.y - Py) * co }); a = rot(a); b = rot(b); }
+        let fadePoly = null;
+        if (c.fade === "A" || c.fade === "B") {
+          const rect = [{ x: 0, y: 0 }, { x: ancho, y: 0 }, { x: ancho, y: largo }, { x: 0, y: largo }];
+          fadePoly = clipPolyHalfPlane(rect, a.x, a.y, b.x, b.y, c.fade === "B");
+        }
+        // Ojetillos sobre una arista (lado A/B) del corte: repartidos a lo largo, con inset perpendicular.
+        let aristaOje = [];
+        const dd = parseFloat(c.ojAristaD) || 0;
+        if ((c.ojAristaLado === "A" || c.ojAristaLado === "B") && dd > 0) {
+          const Ls = Math.hypot(b.x - a.x, b.y - a.y);
+          if (Ls > 0) {
+            const ux = (b.x - a.x) / Ls, uy = (b.y - a.y) / Ls, inx = -uy, iny = ux;
+            const ins = parseFloat(c.ojAristaInset) || 0, sgn = (c.ojAristaLado === "A") ? 1 : -1;
+            posicionesArista(Ls, dd, false).forEach((t) => aristaOje.push({ x: a.x + ux * t + inx * ins * sgn, y: a.y + uy * t + iny * ins * sgn }));
+          }
+        }
+        return { x: x, y: y, w: w, h: 0, corte: true, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, fadePoly: fadePoly, strapAncho: parseFloat(c.strapAncho) || 0, strapLado: c.strapLado || "", strapInset: parseFloat(c.strapInset) || 0, strapNombre: c.strapNombre || "" };
+      }
       // --- Corte circular: se recorta al paño base; lo que sale, desaparece. ---
       if (c.circ) {
         const cx = x + w / 2, cy = y + h / 2, rr = Math.min(w, h) / 2;
@@ -164,10 +207,16 @@
         return { x: x, y: y, w: w, h: h, circ: true, sides: {}, segments: segs, ojetillos: pts, tijeras: tij, hatch: [], pivote: { x: cx, y: cy }, rotated: false, angulo: 0 };
       }
       const lados = c.lados || { sup: true, inf: true, izq: true, der: true };
-      // Un lado se dibuja si el usuario lo dejó activo Y no coincide con el borde del paño base.
+      const ang = (parseFloat(c.angulo) || 0) * Math.PI / 180;
+      const rotated = Math.abs(ang) > 1e-6;
+      const allOn = !!(lados.sup && lados.inf && lados.izq && lados.der);
+      // La supresión por coincidir con el borde del paño aplica SOLO a un calado cerrado (4 aristas) y sin rotar:
+      // ahí el contorno es el propio paño. Si el usuario apagó alguna arista (corte recto) o el calado está rotado,
+      // se dibujan tal cual las aristas activas.
+      const chkB = !rotated && allOn;
       const sides = {
-        t: !!lados.sup && y > EPS, b: !!lados.inf && (y + h) < largo - EPS,
-        l: !!lados.izq && x > EPS, r: !!lados.der && (x + w) < ancho - EPS,
+        t: !!lados.sup && (!chkB || y > EPS), b: !!lados.inf && (!chkB || (y + h) < largo - EPS),
+        l: !!lados.izq && (!chkB || x > EPS), r: !!lados.der && (!chkB || (x + w) < ancho - EPS),
       };
       const oj = c.oj || {};
       let segs = [], pts = [];
@@ -186,8 +235,6 @@
         }
       }
       // Rotación opcional en torno a un pivote (fracción 0..1 del rectángulo del corte).
-      const ang = (parseFloat(c.angulo) || 0) * Math.PI / 180;
-      const rotated = Math.abs(ang) > 1e-6;
       const Px = x + (c.pivX != null ? c.pivX : 0.5) * w, Py = y + (c.pivY != null ? c.pivY : 0.5) * h;
       if (rotated) {
         const co = Math.cos(ang), si = Math.sin(ang);
@@ -202,7 +249,7 @@
   // spec: { ancho, largo, ojTotal|ojetillosPos, ventanas, cortes, bolsillos, espejo, vista, extraCortes, extraVentanas }
   function construirSketch(spec) {
     const ancho = parseFloat(spec.ancho), largo = parseFloat(spec.largo);
-    let cortes = (spec.cortes || []).filter((c) => c && c.w > 0 && c.h > 0).map((c) => procesarCorte(c, ancho, largo));
+    let cortes = (spec.cortes || []).filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte")).map((c) => procesarCorte(c, ancho, largo));
     let ojetillos = Array.isArray(spec.ojetillosPos) ? spec.ojetillosPos : ojetillosPerimetro(spec.ojTotal, ancho, largo);
     let ventanas = (spec.ventanas || []).filter((v) => v && v.w > 0 && v.h > 0).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, circ: !!v.circ, legend: v.legend || "", fusion: v.fusion || {} }));
     let bolsillos = (spec.bolsillos || []).filter((b) => b && (b.arista === "sup" || b.arista === "inf" || b.arista === "izq" || b.arista === "der"));
@@ -226,7 +273,7 @@
     }
     // Elementos propios de la vista trasera (NO se espejan: ya van en coordenadas de la trasera).
     if (spec.extraCortes && spec.extraCortes.length) {
-      cortes = cortes.concat(spec.extraCortes.filter((c) => c && c.w > 0 && c.h > 0).map((c) => procesarCorte(c, ancho, largo)));
+      cortes = cortes.concat(spec.extraCortes.filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte")).map((c) => procesarCorte(c, ancho, largo)));
     }
     if (spec.extraVentanas && spec.extraVentanas.length) {
       ventanas = ventanas.concat(spec.extraVentanas.filter((v) => v && v.w > 0 && v.h > 0).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, circ: !!v.circ, legend: v.legend || "", fusion: v.fusion || {} })));
@@ -257,7 +304,7 @@
     // Straps (cintas/webbing): banda RECTA de ancho fijo (del material) y largo del usuario, en cualquier
     // ángulo/posición. Puede iniciar fuera, cruzar y salir del paño. Remates = costuras perpendiculares en
     // los extremos (símbolo zigzag). No dobla: el pivote (ax,ay) es solo el punto de referencia/rotación.
-    const straps = (spec.straps || []).filter((s) => s && parseFloat(s.ancho) > 0 && ((Math.max(0, parseFloat(s.offset) || 0)) + (Math.max(0, parseFloat(s.inset) || 0))) > 0).map((s) => {
+    let straps = (spec.straps || []).filter((s) => s && parseFloat(s.ancho) > 0 && ((Math.max(0, parseFloat(s.offset) || 0)) + (Math.max(0, parseFloat(s.inset) || 0))) > 0).map((s) => {
       const th = (parseFloat(s.angulo) || 0) * Math.PI / 180;
       const dx = Math.cos(th), dy = Math.sin(th);
       const px = -dy, py = dx; // perpendicular unitaria
@@ -276,6 +323,17 @@
       const rem1 = { a: { x: bx + px * hw, y: by + py * hw }, b: { x: bx - px * hw, y: by - py * hw } };
       const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : "Strap";
       return { corners: corners, rem0: rem0, rem1: rem1, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: dx, y: dy }, perp: { x: px, y: py }, hw: hw, ancho: W, largo: Ls, nombre: nom };
+    });
+    // Straps anclados a la arista de un corte (línea): banda a lo largo del corte, hacia el lado A/B.
+    (cortes || []).forEach((cc) => {
+      if (!(cc.strapAncho > 0) || !(cc.strapLado === "A" || cc.strapLado === "B") || !cc.segments || !cc.segments[0]) return;
+      const sa = cc.segments[0].a, sb = cc.segments[0].b, L = Math.hypot(sb.x - sa.x, sb.y - sa.y);
+      if (!(L > 0)) return;
+      const ux = (sb.x - sa.x) / L, uy = (sb.y - sa.y) / L, pxn = -uy, pyn = ux;
+      const W = cc.strapAncho, hw = W / 2, sgn = (cc.strapLado === "A") ? 1 : -1, offd = (cc.strapInset || 0) + hw;
+      const ca = { x: sa.x + pxn * sgn * offd, y: sa.y + pyn * sgn * offd }, cb = { x: sb.x + pxn * sgn * offd, y: sb.y + pyn * sgn * offd };
+      const corners = [{ x: ca.x + pxn * hw, y: ca.y + pyn * hw }, { x: cb.x + pxn * hw, y: cb.y + pyn * hw }, { x: cb.x - pxn * hw, y: cb.y - pyn * hw }, { x: ca.x - pxn * hw, y: ca.y - pyn * hw }];
+      straps.push({ corners: corners, rem0: { a: corners[0], b: corners[3] }, rem1: { a: corners[1], b: corners[2] }, a: ca, b: cb, dir: { x: ux, y: uy }, perp: { x: pxn, y: pyn }, hw: hw, ancho: W, largo: L, nombre: cc.strapNombre || "Cinta" });
     });
     return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps };
   }
@@ -364,7 +422,7 @@
   // Posiciones de tijeras a lo largo de un segmento (en píxeles): 1 a 4 según el largo.
   function tijerasEn(x1, y1, x2, y2) {
     const L = Math.hypot(x2 - x1, y2 - y1);
-    const n = Math.min(4, Math.max(1, Math.round(L / 45)));
+    const n = Math.min(2, Math.max(1, Math.round(L / 120))); // 1–2 tijeras por línea, suficiente para entenderse
     const out = [];
     for (let k = 0; k < n; k++) { const t = (k + 0.5) / n; out.push({ x: x1 + (x2 - x1) * t, y: y1 + (y2 - y1) * t }); }
     return out;
@@ -481,6 +539,9 @@
       return out;
     };
     sk.cortes.forEach((c) => {
+      if (c.fadePoly && c.fadePoly.length >= 3) {
+        s += `<polygon class="cut-fade" points="${c.fadePoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
+      }
       (c.hatch || []).forEach((sg) => {
         s += `<line class="cut-hatch" x1="${f1(px(sg.a.x))}" y1="${f1(py(sg.a.y))}" x2="${f1(px(sg.b.x))}" y2="${f1(py(sg.b.y))}"/>`;
       });
