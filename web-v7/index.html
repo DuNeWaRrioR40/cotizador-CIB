@@ -161,7 +161,7 @@
 
     <!-- Vista previa de planos por pieza (compuesto) -->
     <div id="wPreviewCompuesto">
-      <h2 class="section">Vista previa (planos por pieza)</h2>
+      <h2 class="section" data-nav="Vista del producto">Vista previa (planos por pieza)</h2>
       <p class="muted small">Planimetría de todas las piezas, ordenada. Pliega cada plano por separado y descárgalo individualmente.</p>
       <div id="previewCompuesto"></div>
     </div>
@@ -174,6 +174,7 @@
     <!-- Representación gráfica (plano) on/off -->
     <div id="wPlanoToggle">
       <label class="chk"><input type="checkbox" id="f_usarPlano" checked /> <span>Generar representación gráfica (plano, archivo aparte)</span></label>
+      <label class="chk"><input type="checkbox" id="f_suprimirCotas" /> <span>Suprimir cotas (plano y cotización "de aprobación": sin cotas, observaciones, resumen de materiales ni "Diseño aprobado")</span></label>
     </div>
 
     <!-- Ojetillos: conteo (uniforme + preliminar) -->

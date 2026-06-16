@@ -488,7 +488,98 @@
     const apl = () => { body.style.display = obj._colap ? "none" : ""; chev.textContent = obj._colap ? "▸" : "▾"; card.classList.toggle("anexo-cerrado", !!obj._colap); };
     chev.addEventListener("click", () => { obj._colap = !obj._colap; apl(); });
     tt.style.cursor = "pointer"; tt.addEventListener("click", () => { obj._colap = !obj._colap; apl(); });
+    card._abrir = () => { obj._colap = false; apl(); }; // usado por la navegación entre fichas
     apl();
+  }
+  // Tira de enlaces a las fichas hermanas, al nivel del título y desplazada a la derecha.
+  // infos: [{ titulo, nombre }] en el mismo orden que las tarjetas .ins-card de `rows`.
+  function navFichas(rows, infos) {
+    if (!rows) return;
+    const cards = Array.from(rows.children).filter((c) => c.classList && c.classList.contains("ins-card"));
+    cards.forEach((c) => { const o = c.querySelector(".ficha-nav"); if (o) o.remove(); });
+    if (!cards.length) return;
+    cards.forEach((card, i) => {
+      const head = card.querySelector(".ins-head"); if (!head) return;
+      const nav = document.createElement("div"); nav.className = "ficha-nav";
+      infos.forEach((info, j) => {
+        if (j === i) return; // solo enlaces a OTRAS fichas
+        const a = document.createElement("a"); a.className = "ficha-nav-item" + (info.oculto ? " oculta" : ""); a.href = "#";
+        a.appendChild(document.createTextNode(info.titulo || ("Nº" + (j + 1))));
+        if (info.nombre && String(info.nombre).trim()) { const it = document.createElement("i"); it.className = "ficha-nav-sub"; it.textContent = " • " + String(info.nombre).trim(); a.appendChild(it); }
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          const t = cards[j]; if (!t) return;
+          if (typeof t._abrir === "function") t._abrir();
+          try { t.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (_) { t.scrollIntoView(); }
+        });
+        nav.appendChild(a);
+      });
+      // Último ítem (siempre): enlace al plano que esta edición afecta, con estilo distinto.
+      const pl = document.createElement("a"); pl.className = "ficha-nav-item ficha-nav-plano"; pl.href = "#";
+      pl.textContent = "▣ Ver en el plano";
+      pl.addEventListener("click", (e) => { e.preventDefault(); irAlPlano(); });
+      nav.appendChild(pl);
+      const del = head.querySelector(".pz-btn.del");
+      if (del) head.insertBefore(nav, del); else head.appendChild(nav);
+    });
+  }
+  // Desplaza a la sección del plano del producto (uniforme o compuesto), abriéndola si está colapsada.
+  function irAlPlano() {
+    const t = (state.prodMode === "compuesto") ? $("wPreviewCompuesto") : $("wSketchUnif");
+    if (!t) return;
+    if (t.classList.contains("colap") && t.classList.contains("collapsed") && typeof toggleColap === "function") toggleColap(t);
+    try { t.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { t.scrollIntoView(); }
+  }
+  // Identificador estable de ficha (para enlazar el menú del plano con la tarjeta de edición).
+  let fidSeq = 0;
+  function fidDe(o) { if (!o.id) o.id = "f" + (++fidSeq); return o.id; }
+  // Lleva a la tarjeta de edición de una ficha: abre su sección/ficha y desplaza la vista.
+  function irAFicha(fid) {
+    const card = document.querySelector('[data-fid="' + fid + '"]'); if (!card) return;
+    let p = card.parentElement;
+    while (p && p !== document.body) {
+      if (p.classList) {
+        if (p.classList.contains("colap") && p.classList.contains("collapsed") && typeof toggleColap === "function") toggleColap(p);
+        if (p.classList.contains("colap-cerrada")) { const ind = p.querySelector(".pz-colap-btn"); if (ind) ind.click(); }
+        if (p._subHead && p.style.display === "none") p._subHead.click();
+      }
+      p = p.parentElement;
+    }
+    if (typeof card._abrir === "function") card._abrir();
+    try { card.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (_) { card.scrollIntoView(); }
+  }
+  // Menú "de capas" bajo un plano: lista los elementos que lo afectan, con enlace a su ficha
+  // y un checkbox "ocultar" para excluirlo sin volver al editor. grupos: [{label, items:[{obj,titulo}]}].
+  function menuPlano(container, grupos, onToggle) {
+    if (!container) return;
+    const filas = grupos.map((g) => ({ label: g.label, items: (g.items || []).filter((it) => it && it.obj) })).filter((g) => g.items.length);
+    if (!filas.length) return;
+    const box = document.createElement("div"); box.className = "plano-menu";
+    const cap = document.createElement("div"); cap.className = "plano-menu-cap"; cap.textContent = "Elementos en este plano (ir a editar · ocultar):";
+    box.appendChild(cap);
+    filas.forEach((g) => {
+      g.items.forEach((it) => {
+        const row = document.createElement("div"); row.className = "plano-menu-row" + (it.obj._oculto ? " oculta" : "");
+        const a = document.createElement("a"); a.className = "plano-menu-link"; a.href = "#"; a.textContent = (g.tag ? g.tag + " " : "") + it.titulo;
+        a.addEventListener("click", (e) => { e.preventDefault(); irAFicha(fidDe(it.obj)); });
+        const lab = document.createElement("label"); lab.className = "plano-menu-oc"; lab.title = "Ocultar del plano y la cotización";
+        const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!it.obj._oculto;
+        cb.addEventListener("change", () => { it.obj._oculto = cb.checked; if (onToggle) onToggle(); });
+        lab.appendChild(cb); lab.appendChild(document.createTextNode("ocultar"));
+        row.appendChild(a); row.appendChild(lab); box.appendChild(row);
+      });
+    });
+    container.appendChild(box);
+  }
+  // Control "Ocultar": excluye la ficha del plano y la cotización; marca la tarjeta en violeta.
+  function ocultarFichaCtl(card, obj, rerender, onChange) {
+    if (obj) card.dataset.fid = fidDe(obj);
+    card.classList.toggle("ficha-oculta", !!obj._oculto);
+    const lab = document.createElement("label"); lab.className = "chk ficha-ocultar-chk";
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!obj._oculto;
+    const sp = document.createElement("span"); sp.textContent = "Ocultar del plano y la cotización";
+    cb.addEventListener("change", () => { obj._oculto = cb.checked; if (rerender) rerender(); if (onChange) onChange(); });
+    lab.appendChild(cb); lab.appendChild(sp); card.appendChild(lab);
   }
   function subColapsar(container, titulo, host, key, hasData) {
     if (!container) return;
@@ -594,7 +685,8 @@
         const etq = etqEl && etqEl.value ? (" — " + etqEl.value.trim()) : "";
         titulo = limpiarTitulo(numEl ? numEl.textContent : "Pieza") + etq;
       } else {
-        titulo = limpiarTitulo(nodo.textContent);
+        const ov = nodo.getAttribute("data-nav"); // etiqueta de navegación unificada (independiente del título en pantalla)
+        titulo = ov ? ov : limpiarTitulo(nodo.textContent);
       }
       if (!titulo) return;
       const b = document.createElement("button"); b.type = "button"; b.className = "nav-link" + (esPieza ? " nav-pieza" : "");
@@ -1088,15 +1180,17 @@
     const compTot = compTotalUnit(a.complementos) * N;
     return { tela, al, aa, lote, o, N, subtotal: o.subtotalLote + compTot };
   }
+  // Las fichas marcadas con _oculto se excluyen por completo (plano + costo + detalle).
+  function visibles(list) { return (list || []).filter((x) => !x._oculto); }
   function aletasTotal(list, cantidad, valorOj, factor) {
-    return (list || []).reduce((s, a) => { const r = calcAleta(a, cantidad, valorOj, factor); return s + (r ? r.subtotal : 0); }, 0);
+    return visibles(list).reduce((s, a) => { const r = calcAleta(a, cantidad, valorOj, factor); return s + (r ? r.subtotal : 0); }, 0);
   }
   function aletasSpec(list) {
     const ev = window.CalcCIBSA.evalExpr;
-    return (list || []).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), legend: a.legend || "" })).filter((a) => a.largo > 0 && a.ancho > 0);
+    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), legend: a.legend || "" })).filter((a) => a.largo > 0 && a.ancho > 0);
   }
   function aletasLineasPDF(list, cantidad, valorOj, factor) {
-    return (list || []).map((a) => {
+    return visibles(list).map((a) => {
       const r = calcAleta(a, cantidad, valorOj, factor); if (!r) return null;
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (ALETA_NOM[a.tipo] || "Aleta");
       let t = nom + " en " + r.tela.nombre + " " + window.CalcCIBSA.fmtNum(r.al) + "×" + window.CalcCIBSA.fmtNum(r.aa) + " m — " + money(r.subtotal / r.N) + "/u";
@@ -1130,7 +1224,7 @@
   function strapsSpec(list, ctx) {
     ctx = ctx || {};
     const ev = window.CalcCIBSA.evalExpr, out = [];
-    (list || []).forEach((s) => {
+    visibles(list).forEach((s) => {
       const ancho = anchoCintaM(strapMat(s)), off = Math.max(0, ev(s.offset) || 0), ins = Math.max(0, ev(s.inset) || 0);
       if (!(ancho > 0) || !(off + ins > 0)) return;
       const nom = s.legend || "";
@@ -1149,10 +1243,10 @@
   }
   function strapsTotal(list, N, ctx) {
     const n = Math.max(1, N || 1);
-    return (list || []).reduce((acc, s) => { const m = strapMat(s); return acc + strapInstancias(s, ctx) * strapLargo(s) * (m && m.precio != null ? m.precio : 0) * n; }, 0);
+    return visibles(list).reduce((acc, s) => { const m = strapMat(s); return acc + strapInstancias(s, ctx) * strapLargo(s) * (m && m.precio != null ? m.precio : 0) * n; }, 0);
   }
   function strapsLineasPDF(list, ctx) {
-    return (list || []).map((s) => { const m = strapMat(s); if (!m) return null; const largo = strapLargo(s), ancho = anchoCintaM(m), inst = strapInstancias(s, ctx); if (!(largo > 0) || !(ancho > 0) || inst <= 0) return null; const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : "Cinta"; const cant = (s.modo === "arista") ? (inst + "× ") : ""; return nom + ": " + cant + m.item + " " + window.CalcCIBSA.fmtNum(largo) + " m × " + window.CalcCIBSA.fmtNum(ancho * 100) + " cm — " + money(inst * largo * (m.precio || 0)) + "/u"; }).filter(Boolean);
+    return visibles(list).map((s) => { const m = strapMat(s); if (!m) return null; const largo = strapLargo(s), ancho = anchoCintaM(m), inst = strapInstancias(s, ctx); if (!(largo > 0) || !(ancho > 0) || inst <= 0) return null; const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : "Cinta"; const cant = (s.modo === "arista") ? (inst + "× ") : ""; return nom + ": " + cant + m.item + " " + window.CalcCIBSA.fmtNum(largo) + " m × " + window.CalcCIBSA.fmtNum(ancho * 100) + " cm — " + money(inst * largo * (m.precio || 0)) + "/u"; }).filter(Boolean);
   }
   // Editor de straps. ctx: { straps, cantidad(), onChange }
   function renderStraps(container, ctx) {
@@ -1208,10 +1302,10 @@
           grid.appendChild(addHelpTo(numField("Crece offset (m)", "offset", "0", true), "Cuánto sale cada strap hacia AFUERA del paño (cruza la arista). Solo ≥ 0.", "STRAP-OFFSET"));
           grid.appendChild(addHelpTo(numField("Crece inset (m)", "inset", "0", true), "Cuánto entra cada strap hacia ADENTRO del paño. Solo ≥ 0.", "STRAP-INSET"));
           card.appendChild(grid);
-          const ls = document.createElement("label"); ls.className = "field full"; ls.innerHTML = "<span>Suprimir posiciones (índices, ej. 0,3)</span>";
-          const si = document.createElement("input"); si.type = "text"; si.value = s.supr || ""; si.placeholder = "vacío = todas";
+          const ls = document.createElement("label"); ls.className = "field full"; ls.innerHTML = "<span>Suprimir posiciones (ej. 1, 3, 5-8)</span>";
+          const si = document.createElement("input"); si.type = "text"; si.value = s.supr || ""; si.placeholder = "ej. 1, 3, 5-8";
           si.addEventListener("input", (e) => { s.supr = e.target.value; refresh(); onChange(); });
-          ls.appendChild(si); addHelpTo(ls, "Quita straps puntuales de la propagación por su índice (desde 0), separados por coma.", "STRAP-SUPR"); card.appendChild(ls);
+          ls.appendChild(si); addHelpTo(ls, "Quita straps puntuales de la propagación por su índice (desde 0). Acepta unidades sueltas y rangos con guión, ej. \"1, 3, 5-8\" (= 1,3,5,6,7,8).", "STRAP-SUPR"); card.appendChild(ls);
           const dimInfo = document.createElement("p"); dimInfo.className = "muted small";
           const e = strapAristaEdge(s.arista || "sup", { ancho: A, largo: L });
           if (e && (ev(s.d) || 0) > 0) { const inst = strapInstancias(s, { ancho: A, largo: L }); dimInfo.innerHTML = "Arista de <b>" + f(e.len) + " m</b> → <b>" + inst + "</b> strap(s) cada " + f(ev(s.d) || 0) + " m, perpendicular a la arista."; }
@@ -1257,9 +1351,11 @@
           dims.innerHTML = html;
         }
         refresh();
+        ocultarFichaCtl(card, s, pintar, onChange);
         fichaColapsable(card, head, tt, s);
         rows.appendChild(card);
       });
+      navFichas(rows, (ctx.straps || []).map((s, i) => ({ titulo: "Strap " + (i + 1), nombre: s.legend || "", oculto: !!s._oculto })));
     }
     pintar();
     const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline"; add.textContent = "+ Strap (cinta)";
@@ -1332,9 +1428,11 @@
           dims.innerHTML = html;
         }
         refresh();
+        ocultarFichaCtl(card, a, pintar, onChange);
         fichaColapsable(card, head, tt, a); // cada Anexo es plegable
         rows.appendChild(card);
       });
+      navFichas(rows, (ctx.aletas || []).map((a, i) => ({ titulo: "Anexo " + (i + 1), nombre: a.legend || "", oculto: !!a._oculto })));
     }
     pintar();
     const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline"; add.textContent = "+ Aleta / solapa / faldón / cenefa";
@@ -1373,10 +1471,10 @@
     return fit1 || fit2;
   }
   function inscritosTotal(pz) {
-    return (pz.inscritos || []).reduce((s, ins) => { const r = calcInscrito(pz, ins); return s + (r && r.o ? r.o.subtotalLote : 0); }, 0);
+    return visibles(pz.inscritos).reduce((s, ins) => { const r = calcInscrito(pz, ins); return s + (r && r.o ? r.o.subtotalLote : 0); }, 0);
   }
   function inscritosLineasPDF(pz) {
-    return (pz.inscritos || []).map((ins) => {
+    return visibles(pz.inscritos).map((ins) => {
       const r = calcInscrito(pz, ins); if (!r || !r.o) return null;
       const dim = ins.forma === "circ" ? `circular Ø${r.winAncho} m` : `${r.winLargo}×${r.winAncho} m`;
       const nom = (ins.legend && ins.legend.trim()) ? ins.legend.trim() : "Paño inscrito";
@@ -1555,9 +1653,11 @@
           dims.innerHTML = h;
         }
         refresh();
+        ocultarFichaCtl(card, ins, pintar, onChange);
         fichaColapsable(card, head, tt, ins); // cada ventana/paño inscrito es plegable
         rows.appendChild(card);
       });
+      navFichas(rows, (pz.inscritos || []).map((ins, i) => ({ titulo: "Paño " + (i + 1), nombre: ins.legend || "", oculto: !!ins._oculto })));
     }
     pintar();
     actualizarSuper();
@@ -1573,6 +1673,7 @@
     corteSeq += 1;
     return {
       id: "cut" + corteSeq,
+      legend: base ? (base.legend || "") : "",
       tipo: base ? (base.tipo || "calado") : "calado", fade: base ? (base.fade || "") : "",
       ojAristaLado: base ? (base.ojAristaLado || "") : "", ojAristaD: base ? (base.ojAristaD || "0.2") : "0.2", ojAristaInset: base ? (base.ojAristaInset || "0.025") : "0.025", ojAristaSupr: base ? (base.ojAristaSupr || "") : "",
       strapMatId: base ? (base.strapMatId != null ? base.strapMatId : null) : null, strapLado: base ? (base.strapLado || "A") : "A", strapD: base ? (base.strapD || "0.3") : "0.3", strapOffset: base ? (base.strapOffset || "0.1") : "0.1", strapInset: base ? (base.strapInset || "0.1") : "0.1", strapSupr: base ? (base.strapSupr || "") : "", strapNombre: base ? (base.strapNombre || "") : "",
@@ -1623,7 +1724,7 @@
     if (c.tipo === "corte") { // línea recta: largo = longitud de la línea (horizontal), x/y = inicio
       const Ln = ev(c.largo); if (Ln == null || Ln <= 0) return null;
       const x = ev(c.padIzq), y = ev(c.padSup);
-      return { tipo: "corte", x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: Ln, h: 0, circ: false, ojCirc: 0, oj: { sup: 0, inf: 0, izq: 0, der: 0 }, lados: {}, angulo: ev(c.angulo) || 0, pivX: num01(c.pivX, 0), pivY: 0, fade: c.fade || "", ojAristaLado: c.ojAristaLado || "", ojAristaD: ev(c.ojAristaD) || 0, ojAristaInset: ev(c.ojAristaInset) || 0, ojAristaSupr: parseSupr(c.ojAristaSupr), strapAncho: anchoCintaM((c.strapMatId != null && state.materiales[c.strapMatId]) || null), strapLado: c.strapLado || "A", strapD: ev(c.strapD) || 0, strapOffset: ev(c.strapOffset) || 0, strapInset: ev(c.strapInset) || 0, strapSupr: parseSupr(c.strapSupr), strapNombre: (c.strapNombre || "").trim() };
+      return { tipo: "corte", x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: Ln, h: 0, circ: false, ojCirc: 0, oj: { sup: 0, inf: 0, izq: 0, der: 0 }, lados: {}, angulo: ev(c.angulo) || 0, pivX: num01(c.pivX, 0), pivY: 0, fade: c.fade || "", ojAristaLado: c.ojAristaLado || "", ojAristaD: ev(c.ojAristaD) || 0, ojAristaInset: ev(c.ojAristaInset) || 0, ojAristaSupr: parseSupr(c.ojAristaSupr), strapAncho: anchoCintaM((c.strapMatId != null && state.materiales[c.strapMatId]) || null), strapPrecioM: ((c.strapMatId != null && state.materiales[c.strapMatId] && state.materiales[c.strapMatId].precio) || 0), strapLado: c.strapLado || "A", strapD: ev(c.strapD) || 0, strapOffset: ev(c.strapOffset) || 0, strapInset: ev(c.strapInset) || 0, strapSupr: parseSupr(c.strapSupr), strapNombre: (c.strapNombre || "").trim() };
     }
     const w = ev(c.ancho), h = ev(c.largo); if (w == null || h == null || w <= 0 || h <= 0) return null;
     const x = ev(c.padIzq), y = ev(c.padSup);
@@ -1636,7 +1737,7 @@
       angulo: window.CalcCIBSA.evalExpr(c.angulo) || 0, pivX: num01(c.pivX, 0.5), pivY: num01(c.pivY, 0.5),
     };
   }
-  function cortesSpec(list) { return (list || []).map(rectCorte).filter(Boolean); }
+  function cortesSpec(list) { return visibles(list).map(rectCorte).filter(Boolean); }
   function cortesTotalOj(list) { return (list || []).reduce((s, c) => s + (c.forma === "circ" ? ojIntPz(c.ojCirc) : (ojIntPz(c.oj.sup) + ojIntPz(c.oj.inf) + ojIntPz(c.oj.izq) + ojIntPz(c.oj.der))), 0); }
   function obsCortes(list) {
     const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
@@ -1696,10 +1797,15 @@
         const padInputs = {};
         const setPad = () => { ["padSup", "padInf", "padIzq", "padDer"].forEach((k) => { if (padInputs[k]) padInputs[k].value = c[k]; }); };
         const head = document.createElement("div"); head.className = "ins-head";
-        const tt = document.createElement("span"); tt.className = "muted small"; tt.textContent = "✂ Corte/calado Nº" + (idx + 1);
+        const tt = document.createElement("span"); tt.className = "muted small"; tt.textContent = "✂ Corte/calado Nº" + (idx + 1) + ((c.legend && c.legend.trim()) ? " — " + c.legend.trim() : "");
         const del = document.createElement("button"); del.type = "button"; del.className = "pz-btn del"; del.textContent = "✕";
         del.addEventListener("click", () => { ctx.cortes.splice(idx, 1); pintar(); onChange(); });
         head.appendChild(tt); head.appendChild(del); card.appendChild(head);
+        // Nombre / referencia (para identificar el corte en la navegación y el título)
+        const nmL = document.createElement("label"); nmL.className = "field full"; nmL.innerHTML = "<span>Nombre / referencia</span>";
+        const nmI = document.createElement("input"); nmI.type = "text"; nmI.value = c.legend || ""; nmI.placeholder = "ej. puerta, costado derecho";
+        nmI.addEventListener("input", (e) => { c.legend = e.target.value; tt.textContent = "✂ Corte/calado Nº" + (idx + 1) + (e.target.value.trim() ? " — " + e.target.value.trim() : ""); onChange(); });
+        nmL.appendChild(nmI); card.appendChild(nmL);
         // Tipo: calado (área) o corte (línea recta)
         const tsel = document.createElement("label"); tsel.className = "field full"; tsel.innerHTML = "<span>Tipo</span>";
         const topt = document.createElement("select");
@@ -1793,10 +1899,10 @@
             og.appendChild(mk("Distanciamiento (m)", "ojAristaD", "0.2"));
             og.appendChild(mk("Inset (m)", "ojAristaInset", "0.025"));
             card.appendChild(og);
-            const sl = document.createElement("label"); sl.className = "field full"; sl.innerHTML = "<span>Suprimir posiciones (0..n, sep. , o /)</span>";
-            const si = document.createElement("input"); si.type = "text"; si.value = c.ojAristaSupr || ""; si.placeholder = "ej. 0, 3 / 5";
+            const sl = document.createElement("label"); sl.className = "field full"; sl.innerHTML = "<span>Suprimir posiciones (ej. 1, 3, 5-8)</span>";
+            const si = document.createElement("input"); si.type = "text"; si.value = c.ojAristaSupr || ""; si.placeholder = "ej. 1, 3, 5-8";
             si.addEventListener("input", (e) => { c.ojAristaSupr = e.target.value; refresh(); onChange(); });
-            sl.appendChild(si); card.appendChild(addHelpTo(sl, "Quita ojetillos puntuales de la línea de corte por su número de orden (0 desde el inicio del corte). Ej.: \"0, 3\" o \"2/5\".", "CORTE-OJ-SUPR"));
+            sl.appendChild(si); card.appendChild(addHelpTo(sl, "Quita ojetillos puntuales de la línea de corte por su número de orden (0 desde el inicio del corte). Acepta unidades sueltas y rangos con guión (inclusivos). Ej.: \"0, 3\", \"2/5\" o \"5-8\" (= 5,6,7,8).", "CORTE-OJ-SUPR"));
           }
           // Strap (cinta) a lo largo de la arista del corte.
           const ssel = document.createElement("label"); ssel.className = "field full"; ssel.innerHTML = "<span>Strap (cinta) en la arista</span>";
@@ -1818,10 +1924,10 @@
             sg.appendChild(addHelpTo(mk("Cruza lado A — offset (m)", "strapOffset", "0.1"), "Cuánto cruza cada strap hacia el lado del offset.", "CORTE-STRAP-OFF"));
             sg.appendChild(addHelpTo(mk("Cruza lado B — inset (m)", "strapInset", "0.1"), "Cuánto cruza cada strap hacia el lado opuesto.", "CORTE-STRAP-INS"));
             card.appendChild(sg);
-            const sl = document.createElement("label"); sl.className = "field full"; sl.innerHTML = "<span>Suprimir posiciones (0..n, sep. , o /)</span>";
-            const si = document.createElement("input"); si.type = "text"; si.value = c.strapSupr || ""; si.placeholder = "ej. 0, 3 / 5";
+            const sl = document.createElement("label"); sl.className = "field full"; sl.innerHTML = "<span>Suprimir posiciones (ej. 1, 3, 5-8)</span>";
+            const si = document.createElement("input"); si.type = "text"; si.value = c.strapSupr || ""; si.placeholder = "ej. 1, 3, 5-8";
             si.addEventListener("input", (e) => { c.strapSupr = e.target.value; refresh(); onChange(); });
-            sl.appendChild(si); card.appendChild(addHelpTo(sl, "Quita straps puntuales de la línea de corte por su número de orden (0 desde el inicio del corte). Ej.: \"0, 3\" o \"2/5\".", "CORTE-STRAP-SUPR"));
+            sl.appendChild(si); card.appendChild(addHelpTo(sl, "Quita straps puntuales de la línea de corte por su número de orden (0 desde el inicio del corte). Acepta unidades sueltas y rangos con guión (inclusivos). Ej.: \"0, 3\", \"2/5\" o \"5-8\" (= 5,6,7,8).", "CORTE-STRAP-SUPR"));
           }
         }
         { const f2 = window.CalcCIBSA.fmtNum, bL = ctx.baseLargo(), bA = ctx.baseAncho();
@@ -1965,9 +2071,11 @@
           dims.innerHTML = html;
         }
         refresh();
+        ocultarFichaCtl(card, c, pintar, onChange);
         fichaColapsable(card, head, tt, c); // cada Corte/calado es plegable
         rows.appendChild(card);
       });
+      navFichas(rows, (ctx.cortes || []).map((c, i) => ({ titulo: ((c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1), nombre: c.legend || "", oculto: !!c._oculto })));
     }
     pintar();
     const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline"; add.textContent = "+ Corte / calado";
@@ -1990,7 +2098,7 @@
   // Aletas del uniforme como filas para el PDF (cantidad = N; precio unit = subtotal/N).
   function aletasUnifPDF(list, N) {
     const f = window.CalcCIBSA.fmtNum;
-    return (list || []).map((a) => {
+    return visibles(list).map((a) => {
       const r = calcAleta(a, N, valorOjUnif(), facUnif()); if (!r) return null;
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (ALETA_NOM[a.tipo] || "Aleta");
       let det = nom + " en " + r.tela.nombre + " " + f(r.al) + "×" + f(r.aa) + " m";
@@ -2158,6 +2266,12 @@
       const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) }, ojSpecUnif());
       if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif() };
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
+      const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); recompute(); };
+      menuPlano(sk, [
+        { label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
+        { label: "Aletas / Anexos", items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
+        { label: "Straps / cintas", items: (state.strapsUnif || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
+      ], refrescarOcUnif);
     }
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) {
       cont.innerHTML = '<p class="muted small">Ingresa largo, ancho y tela para ver los montos.</p>';
@@ -2427,7 +2541,24 @@
   function defOjEdge() { return { on: true, d: "0.5", supr: "", linea2: { on: false, inset: "0.025", supr: "" } }; }
   function ojEdgesDefault() { return { sup: defOjEdge(), inf: defOjEdge(), izq: defOjEdge(), der: defOjEdge() }; }
   function ojEdgesCopy(e) { const c = {}; ["sup", "inf", "izq", "der"].forEach((k) => { const s = (e && e[k]) || {}; const l2 = s.linea2 || {}; c[k] = { on: s.on !== false, d: s.d != null ? s.d : "0.5", supr: s.supr || "", linea2: { on: !!l2.on, inset: l2.inset != null ? l2.inset : "0.025", supr: l2.supr || "" } }; }); return c; }
-  function parseSupr(s) { return String(s || "").split(/[,/]/).map((x) => x.trim()).filter((x) => x !== "").map((x) => Math.round(Number(x))).filter((x) => !isNaN(x) && x >= 0); }
+  // Parsea posiciones a suprimir. Acepta enteros sueltos y RANGOS con guión inclusivos.
+  // Separadores: "," o "/". Ej.: "4-10" => 4,5,6,7,8,9,10 ; "1,2,5-8,22" => 1,2,5,6,7,8,22.
+  function parseSupr(s) {
+    const out = [];
+    String(s || "").split(/[,/;]/).map((x) => x.trim()).filter((x) => x !== "").forEach((tok) => {
+      const m = tok.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (m) {
+        let a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+        if (a > b) { const t = a; a = b; b = t; }
+        if (b - a > 9999) b = a + 9999; // guarda contra rangos absurdos
+        for (let i = a; i <= b; i++) out.push(i);
+      } else {
+        const n = Math.round(Number(tok));
+        if (!isNaN(n) && n >= 0) out.push(n);
+      }
+    });
+    return Array.from(new Set(out)).sort((a, b) => a - b);
+  }
   // Devuelve { pos:[{x,y}], total, errores:[], detalle:{sup:{n,kept,d,esp}, ...} }
   // Posiciones de una arista, descontando las esquinas que ya colocan las aristas horizontales
   // (las verticales no repiten esquinas: así cada esquina se suprime con UNA sola supresión).
@@ -2502,7 +2633,7 @@
   function sketchPieza(pz) {
     const ev = window.CalcCIBSA.evalExpr;
     const a = ev(pz.ancho), l = ev(pz.largo);
-    const ventanas = (pz.inscritos || []).map((ins) => {
+    const ventanas = visibles(pz.inscritos).map((ins) => {
       const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
       return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {} } : null;
     }).filter(Boolean);
@@ -2565,8 +2696,11 @@
     });
     return out;
   }
+  // Checkbox global: plano/cotización "de aprobación" (sin cotas ni datos de taller).
+  function suprimeCotas() { const c = $("f_suprimirCotas"); return !!(c && c.checked); }
   async function descargarSketch(datos) {
     try {
+      datos.suprimirCotas = suprimeCotas();
       const { bytes, filename } = await window.PDFCotizacion.generarSketchPDF(datos);
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
       descargar(url, filename);
@@ -2677,10 +2811,10 @@
         id.addEventListener("input", (ev2) => { e.d = ev2.target.value; refrescar(); onChange(); });
         id.addEventListener("blur", (ev2) => { const r = ev(ev2.target.value); if (r != null && !isNaN(r)) { e.d = f(r); ev2.target.value = e.d; refrescar(); onChange(); } });
         ld.appendChild(id); agregarCalc(id); addHelpTo(ld, "Separación deseada entre ojetillos en esa arista, en metros. La app pone uno en cada esquina y reparte el resto; si el último tramo supera esta medida, agrega uno al medio.", "OJ-DIST"); grid.appendChild(ld);
-        const ls = document.createElement("label"); ls.className = "field"; ls.innerHTML = "<span>Suprimir posiciones (0..n, sep. , o /)</span>";
-        const is = document.createElement("input"); is.type = "text"; is.value = e.supr || ""; is.placeholder = "ej. 0, 3 / 5";
+        const ls = document.createElement("label"); ls.className = "field"; ls.innerHTML = "<span>Suprimir posiciones (ej. 1, 3, 5-8)</span>";
+        const is = document.createElement("input"); is.type = "text"; is.value = e.supr || ""; is.placeholder = "ej. 1, 3, 5-8";
         is.addEventListener("input", (ev2) => { e.supr = ev2.target.value; refrescar(); onChange(); });
-        ls.appendChild(is); addHelpTo(ls, "Quita ojetillos puntuales por su número de orden en la arista (empezando en 0 desde la esquina). Ej.: \"0, 3\" o \"2/5\".", "OJ-SUPR"); grid.appendChild(ls);
+        ls.appendChild(is); addHelpTo(ls, "Quita ojetillos puntuales por su número de orden en la arista (empezando en 0 desde la esquina). Acepta unidades sueltas y rangos con guión (inclusivos), ej. \"0, 3\", \"2/5\" o \"5-8\" (= 5,6,7,8).", "OJ-SUPR"); grid.appendChild(ls);
         card.appendChild(grid);
         // 2da línea de ojetillos (inset). Al activarse despliega un sub-menú plegable.
         if (!e.linea2) e.linea2 = { on: false, inset: "0.025", supr: "" };
@@ -2699,8 +2833,8 @@
           ii.addEventListener("input", (ev2) => { e.linea2.inset = ev2.target.value; refrescar(); onChange(); });
           ii.addEventListener("blur", (ev2) => { const r = ev(ev2.target.value); if (r != null && !isNaN(r)) { e.linea2.inset = f(r); ev2.target.value = e.linea2.inset; refrescar(); onChange(); } });
           li.appendChild(ii); agregarCalc(ii); addHelpTo(li, "Distancia de la 2da línea hacia adentro, en metros. Mínimo sugerido 0,025 m (½ ojetillo + 0,01).", "OJ-L2-INSET"); g2.appendChild(li);
-          const ls2 = document.createElement("label"); ls2.className = "field"; ls2.innerHTML = "<span>Suprimir de la 2da línea (0..n)</span>";
-          const is2 = document.createElement("input"); is2.type = "text"; is2.value = e.linea2.supr || ""; is2.placeholder = "ej. 2 / 4";
+          const ls2 = document.createElement("label"); ls2.className = "field"; ls2.innerHTML = "<span>Suprimir de la 2da línea (ej. 1, 3, 5-8)</span>";
+          const is2 = document.createElement("input"); is2.type = "text"; is2.value = e.linea2.supr || ""; is2.placeholder = "ej. 2, 4-6";
           is2.addEventListener("input", (ev2) => { e.linea2.supr = ev2.target.value; refrescar(); onChange(); });
           ls2.appendChild(is2); addHelpTo(ls2, "Quita ojetillos puntuales de la 2da línea por su número de orden (0 desde la esquina). Los 0 y n ya se suprimen solos si se solapan con el borde.", "OJ-L2-SUPR"); g2.appendChild(ls2);
           panel.appendChild(g2);
@@ -2931,8 +3065,9 @@
         const valOjPz = num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT);
         const aleTot = aletasTotal(pz.aletas, r.lote.N, valOjPz, facPz(pz)) + aletasTotal(pz.backAletas, r.lote.N, valOjPz, facPz(pz));
         const strapTot = strapsTotal(pz.straps, r.lote.N, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 });
-        const piezaTotal = r.o.subtotalLote + compUnit * r.lote.N + insTot + aleTot + strapTot;
-        r.compUnit = compUnit; r.insTot = insTot; r.aleTot = aleTot; r.strapTot = strapTot; r.piezaTotal = piezaTotal;
+        const corteTot = costoCortesUnit(sketchPieza(pz), valOjPz) * r.lote.N;
+        const piezaTotal = r.o.subtotalLote + compUnit * r.lote.N + insTot + aleTot + strapTot + corteTot;
+        r.compUnit = compUnit; r.insTot = insTot; r.aleTot = aleTot; r.strapTot = strapTot; r.corteTot = corteTot; r.piezaTotal = piezaTotal;
         subtotalGen += piezaTotal; calcs.push({ pz, r });
         if (card) {
           let s = `Subtotal: <b>${money(piezaTotal)}</b> · ${r.lote.N} u × (${r.largo}×${r.ancho} m) · ${r.o.panosUnit} paños/u`;
@@ -3002,6 +3137,13 @@
         const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn-outline"; dl.textContent = "Descargar plano (PDF)";
         dl.addEventListener("click", () => descargarSketchPieza(pz));
         body.appendChild(dl);
+        const refrescarOcPz = () => { renderPiezas(); recompute(); };
+        menuPlano(body, [
+          { label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
+          { label: "Paños inscritos", items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
+          { label: "Aletas / Anexos", items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
+          { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
+        ], refrescarOcPz);
       }
       aplic();
       cont.appendChild(block);
@@ -3024,6 +3166,7 @@
     const multi = $("telaMulti"); if (multi) multi.querySelectorAll("input:checked").forEach((c) => (c.checked = false));
     { const to = $("telaOpcList"); if (to) to.querySelectorAll("input:checked").forEach((c) => (c.checked = false)); }
     favCatActiva = null; renderCategoriasFav();
+    { const sc = $("f_suprimirCotas"); if (sc) sc.checked = false; }
     $("telaMultiErr").classList.add("hidden"); state.prelim = [];
     // Reset bordes/unión → mismo borde 0.045
     state.bordeModo = "uniforme"; state.bordeValor = "0.045";
@@ -3081,6 +3224,29 @@
     } catch (e) { cerrarProgreso(); alert("Error al generar el PDF:\n" + (e.message || e)); }
   }
 
+  // Costeo de elementos sobre cortes/calados: ojetillos (línea de corte + bordes de calado) y cut-straps.
+  // Usa la geometría (construirSketch) como fuente única, así coincide exactamente con el plano.
+  function costoCortesUnit(spec, valorOj) {
+    if (!window.SketchCIBSA) return 0;
+    let sk; try { sk = window.SketchCIBSA.construirSketch(spec); } catch (e) { return 0; }
+    let nOj = 0, strap = 0;
+    (sk.cortes || []).forEach((c) => { nOj += (c.ojetillos || []).length; });
+    (sk.straps || []).forEach((s) => { if (s.origen === "corte") strap += (s.largo || 0) * (s.precioM || 0); });
+    return nOj * (valorOj || 0) + strap;
+  }
+  function cortesLineasPDF(spec, valorOj, N) {
+    if (!window.SketchCIBSA) return [];
+    let sk; try { sk = window.SketchCIBSA.construirSketch(spec); } catch (e) { return []; }
+    const n = Math.max(1, N || 1), out = [];
+    let nOj = 0; (sk.cortes || []).forEach((c) => { nOj += (c.ojetillos || []).length; });
+    if (nOj > 0) out.push("Ojetillos en cortes/calados: " + nOj + " u × " + money(valorOj) + " = " + money(nOj * (valorOj || 0) * n));
+    const cs = (sk.straps || []).filter((s) => s.origen === "corte");
+    if (cs.length) {
+      const tot = cs.reduce((a, s) => a + (s.largo || 0) * (s.precioM || 0), 0);
+      out.push("Cintas en cortes: " + cs.length + " u — " + money(tot * n));
+    }
+    return out;
+  }
   // Arma el objeto `datos` (y `calc`) de una cotización uniforme para una tela y versión dadas.
   function construirDatosUnif(tela, lote, versionStr) {
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
@@ -3089,11 +3255,13 @@
     const o = orientKey === "ancho" ? lote.oAncho : lote.oLargo;
     const N = lote.N;
     const desc = num("f_descuento", 0);
+    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) };
     const ojeTotal = lote.nOjetillos * lote.valorOjetillo * N;
     const compTotal = compTotalUnit(state.complementosUnif) * N;
     const aleTotal = aletasTotal(state.aletasUnif, N, lote.valorOjetillo, facUnif()) + aletasTotal(state.backAletasUnif, N, lote.valorOjetillo, facUnif());
     const strapTotal = strapsTotal(state.strapsUnif, N, { ancho: ancho || 0, largo: largo || 0 });
-    const subtotal = o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal;
+    const corteTotal = costoCortesUnit(skSpec, lote.valorOjetillo) * N;
+    const subtotal = o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal;
     const descuento = Math.round(subtotal * desc / 100);
     const neto = subtotal - descuento;
     const iva = Math.round(neto * CFG.IVA_PCT / 100);
@@ -3109,7 +3277,7 @@
     };
     const datos = {
       cliente: { nombre, apellido, email: $("f_email").value.trim() },
-      version: versionStr, fecha: new Date(),
+      version: versionStr, fecha: new Date(), suprimirCotas: suprimeCotas(),
       largo, ancho, tela, calc,
       titulo: $("f_titulo").value.trim() || null,
       ojetillosDetalle: ojDetalle(),
@@ -3119,8 +3287,8 @@
       observaciones: $("f_observaciones").value.trim() || null,
       detalleExtra: terminacionesTexto(state.orientUnif),
       complementos: complementosUnifPDF(N),
-      aletas: aletasUnifPDF(state.aletasUnif, N).concat(aletasUnifPDF(state.backAletasUnif, N)).concat(strapsLineasPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 })),
-      sketch: { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) },
+      aletas: aletasUnifPDF(state.aletasUnif, N).concat(aletasUnifPDF(state.backAletasUnif, N)).concat(strapsLineasPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 })).concat(cortesLineasPDF(skSpec, lote.valorOjetillo, N)),
+      sketch: skSpec,
     };
     return { datos, calc };
   }
@@ -3165,7 +3333,7 @@
     const desc = num("f_descuento", 0);
     const datos = {
       cliente: { nombre, apellido, email: $("f_email").value.trim() },
-      version: $("f_version").value.trim() || "01", fecha: new Date(),
+      version: $("f_version").value.trim() || "01", fecha: new Date(), suprimirCotas: suprimeCotas(),
       titulo: $("f_titulo").value.trim() || null,
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
       descuentoPct: desc,
@@ -3179,9 +3347,9 @@
         orientTxt: pz.orient === "ancho" ? "uniones a lo ancho" : "uniones a lo largo",
         terminaciones: terminacionesPieza(pz),
         complementosLineas: compLineasPDF(pz.complementos),
-        inscritosLineas: inscritosLineasPDF(pz).concat(aletasLineasPDF(pz.aletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))).concat(aletasLineasPDF(pz.backAletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))).concat(strapsLineasPDF(pz.straps, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 })),
+        inscritosLineas: inscritosLineasPDF(pz).concat(aletasLineasPDF(pz.aletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))).concat(aletasLineasPDF(pz.backAletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))).concat(strapsLineasPDF(pz.straps, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 })).concat(cortesLineasPDF(sketchPieza(pz), num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), r.lote.N)),
         sketch: sketchPieza(pz),
-        valorUnitario: r.o.valorUnitario + (r.compUnit || 0) + (((r.insTot || 0) + (r.aleTot || 0)) / r.lote.N),
+        valorUnitario: r.o.valorUnitario + (r.compUnit || 0) + (((r.insTot || 0) + (r.aleTot || 0) + (r.strapTot || 0) + (r.corteTot || 0)) / r.lote.N),
         valorTotal: r.piezaTotal != null ? r.piezaTotal : r.o.subtotalLote,
       })),
     };

@@ -377,11 +377,13 @@
     // Contorno
     page.drawRectangle({ x: x0, y: topRect - hpx, width: wpx, height: hpx, borderColor: GRAY, borderWidth: 1.3 });
     // Elementos del paño (ventanas, bolsillos, ojetillos, aletas, cortes)
-    const r = Math.max(1.4, Math.min(2.6, scale * 0.022));
+    const r = Math.max(0.8, Math.max(1.4, Math.min(2.6, scale * 0.022)) - 0.9); // ojetillos del plano: ~2 puntos más chicos (la leyenda usa su propio radio fijo)
     elementosPDF(page, sk, { px: px, py: py, scale: scale, x0: x0, topRect: topRect, wpx: wpx, hpx: hpx, r: r }, font);
     // Cotas (rojo): mayor = paño base; menor = padding / ventanas
     if (conCotas) {
       const ln = (x1, y1, x2, y2, w) => page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: w, color: RED });
+      // Líneas de extensión (perpendiculares a la arista): finas, discontinuas y translúcidas.
+      const lnExt = (x1, y1, x2, y2) => page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.18, color: RED, dashArray: [1.6, 1.6], opacity: 0.45 });
       const bTopY = py(pMinY), bBotY = py(pMaxY), bLeftX = px(pMinX), bRightX = px(pMaxX);
       const ccx = px(sk.ancho / 2), ccy = py(sk.largo / 2);
       page.drawLine({ start: { x: ccx, y: bTopY }, end: { x: ccx, y: bBotY }, thickness: 0.25, color: RED, dashArray: [3, 2], opacity: 0.5 });
@@ -392,7 +394,7 @@
           const xa = px(c.a), xb = px(c.b);
           const base = (c.side === "bottom") ? bBotY : bTopY, dir = (c.side === "bottom") ? -1 : 1;
           const dimY = base + dir * off, tEnd = dimY - dir * EXTGAP;
-          ln(xa, base, xa, tEnd, 0.3); ln(xb, base, xb, tEnd, 0.3);
+          lnExt(xa, base, xa, tEnd); lnExt(xb, base, xb, tEnd);
           ln(xa, dimY, xb, dimY, 0.4);
           ln(xa, dimY - TICK, xa, dimY + TICK, 0.4); ln(xb, dimY - TICK, xb, dimY + TICK, 0.4);
           const ty = (c.side === "bottom") ? dimY - 6 : dimY + 2;
@@ -401,7 +403,7 @@
           const ya = py(c.a), yb = py(c.b);
           const base = (c.side === "right") ? bRightX : bLeftX, dir = (c.side === "right") ? 1 : -1;
           const dimX = base + dir * off, tEnd = dimX - dir * EXTGAP;
-          ln(base, ya, tEnd, ya, 0.3); ln(base, yb, tEnd, yb, 0.3);
+          lnExt(base, ya, tEnd, ya); lnExt(base, yb, tEnd, yb);
           ln(dimX, ya, dimX, yb, 0.4);
           ln(dimX - TICK, ya, dimX + TICK, ya, 0.4); ln(dimX - TICK, yb, dimX + TICK, yb, 0.4);
           const my = (ya + yb) / 2, tx = (c.side === "right") ? dimX + 2 : dimX - 4;
@@ -534,9 +536,11 @@
     }
 
     const detTela = [[datos.tela.nombre, true]].concat((datos.tela.ficha || []).map((s) => [s, false]));
-    detTela.push(["", false, 0]);
-    detTela.push(["Diseño aprobado", true, 11.5]);
-    (datos.detalleExtra || []).forEach((s) => detTela.push([s, false]));
+    if (!datos.suprimirCotas) {
+      detTela.push(["", false, 0]);
+      detTela.push(["Diseño aprobado", true, 11.5]);
+      (datos.detalleExtra || []).forEach((s) => detTela.push([s, false]));
+    }
     detTela.push(["Valores aproximados. La confección tiene un margen de error de aprox. ±4 cm.", false, 8.5]);
     itemRow(String(c.cantidad), detTela, money(c.material), money(c.materialTotal));
     const ojBase = datos.ojetillosDetalle || `${c.nOjetillos} ojetillos en total.`;
@@ -882,10 +886,12 @@
       const detail = [[etq || pz.tela.nombre, true]];
       if (etq) detail.push([pz.tela.nombre, false]);
       (pz.tela.ficha || []).forEach((s) => detail.push([s, false]));
-      detail.push(["", false, 0]);
-      detail.push(["Diseño aprobado", true, 11.5]);
-      detail.push([`Formato ${pz.largo}×${pz.ancho} m · ${pz.ojetillosTxt || (pz.ojetillos + " ojetillos c/u")} · ${orientTxt}`, false]);
-      (pz.terminaciones || []).forEach((s) => detail.push([s, false]));
+      if (!datos.suprimirCotas) {
+        detail.push(["", false, 0]);
+        detail.push(["Diseño aprobado", true, 11.5]);
+        detail.push([`Formato ${pz.largo}×${pz.ancho} m · ${pz.ojetillosTxt || (pz.ojetillos + " ojetillos c/u")} · ${orientTxt}`, false]);
+        (pz.terminaciones || []).forEach((s) => detail.push([s, false]));
+      }
       (pz.inscritosLineas || []).forEach((s) => detail.push([s, false]));
       (pz.complementosLineas || []).forEach((s) => detail.push([s, false]));
       detail.push(["Valores aproximados. La confección tiene un margen de error de aprox. ±4 cm.", false, 8.5]);
@@ -990,42 +996,52 @@
     tituloCentrado(page, "(plano referencial para taller)", W, y, font, 10, BLUE()); y -= 22;
     if (datos.titulo) { txt(`"${datos.titulo}"`, M, y, { f: bold, size: 12 }); y -= 18; }
 
+    // Modo "de aprobación": sin cotas, sin Ojetillos, sin Observaciones ni cuadro de materiales.
+    const limpio = !!datos.suprimirCotas;
     // Bloque de detalle (arriba-izquierda)
     const color = (datos.color && String(datos.color).trim()) ? datos.color : "N/A";
     const campos = [
       ["Tipo de Tela", datos.tela || "N/A"],
       ["Color", color],
       ["Dimensiones", fmtN(datos.largo) + "m x " + fmtN(datos.ancho) + "m"],
-      ["Ojetillos", String(datos.ojetillos || 0)],
-      ["Cantidad de Unidades", String(datos.unidades || 1)],
-    ];
+    ].concat(limpio ? [] : [["Ojetillos", String(datos.ojetillos || 0)]])
+      .concat([["Cantidad de Unidades", String(datos.unidades || 1)]]);
     campos.forEach(([k, v]) => {
       txt(k + ": ", M, y, { f: bold });
       txt(v, M + bold.widthOfTextAtSize(k + ": ", 11), y, { color: BLACK() });
       y -= 15;
     });
-    txt("Observaciones: ", M, y, { f: bold });
-    let oy = y - 14;
-    const obs = (datos.observaciones && datos.observaciones.length) ? datos.observaciones : ["Sin observaciones."];
-    obs.forEach((par) => {
-      wrap("- " + par, font, 9.5, W - 2 * M).forEach((ln, i) => { txt(i === 0 ? ln : "  " + ln, M, oy, { size: 9.5, color: BLACK() }); oy -= 12; });
-    });
-    const detalleBottom = oy - 8;
+    let detalleBottom;
+    if (limpio) {
+      detalleBottom = y - 8;
+    } else {
+      txt("Observaciones: ", M, y, { f: bold });
+      let oy = y - 14;
+      const obs = (datos.observaciones && datos.observaciones.length) ? datos.observaciones : ["Sin observaciones."];
+      obs.forEach((par) => {
+        wrap("- " + par, font, 9.5, W - 2 * M).forEach((ln, i) => { txt(i === 0 ? ln : "  " + ln, M, oy, { size: 9.5, color: BLACK() }); oy -= 12; });
+      });
+      detalleBottom = oy - 8;
+    }
 
-    // Lista de materiales (abajo)
-    const mats = datos.materiales || [];
-    const matLineH = 12.5, bottomM = 52;
-    const matBlockH = 18 + Math.max(1, mats.length) * matLineH + 4;
-    let my = bottomM + matBlockH - 12;
-    txt("Ojetillos & Materiales (resumen por unidad):", M, my, { f: bold, size: 11 }); my -= 16;
-    if (mats.length) mats.forEach((m) => { txt("- " + m.nombre + ": " + m.cant, M, my, { size: 10, color: BLACK() }); my -= matLineH; });
-    else txt("- Sin materiales adicionales.", M, my, { size: 10, color: BLACK() });
-    const notaCotas = "Cotas en metros.";
-    txt(notaCotas, W - M - font.widthOfTextAtSize(notaCotas, 8), bottomM + matBlockH + 4, { size: 8, color: PDFLib.rgb(0.82, 0.23, 0.18) });
+    // Lista de materiales (abajo) — se omite en modo de aprobación.
+    const bottomM = 52;
+    let matBlockH = 0;
+    if (!limpio) {
+      const mats = datos.materiales || [];
+      const matLineH = 12.5;
+      matBlockH = 18 + Math.max(1, mats.length) * matLineH + 4;
+      let my = bottomM + matBlockH - 12;
+      txt("Ojetillos & Materiales (resumen por unidad):", M, my, { f: bold, size: 11 }); my -= 16;
+      if (mats.length) mats.forEach((m) => { txt("- " + m.nombre + ": " + m.cant, M, my, { size: 10, color: BLACK() }); my -= matLineH; });
+      else txt("- Sin materiales adicionales.", M, my, { size: 10, color: BLACK() });
+      const notaCotas = "Cotas en metros.";
+      txt(notaCotas, W - M - font.widthOfTextAtSize(notaCotas, 8), bottomM + matBlockH + 4, { size: 8, color: PDFLib.rgb(0.82, 0.23, 0.18) });
+    }
 
-    // Sketch entre el detalle y la lista de materiales
+    // Sketch entre el detalle y la lista de materiales (más alto en modo de aprobación).
     const boxTop = detalleBottom, boxBottom = bottomM + matBlockH + 16;
-    dibujarSketchPDF(page, datos.sketch, { x: M, top: boxTop, w: W - 2 * M, h: boxTop - boxBottom }, font, { cotas: true });
+    dibujarSketchPDF(page, datos.sketch, { x: M, top: boxTop, w: W - 2 * M, h: boxTop - boxBottom }, font, { cotas: !limpio });
 
     // Página de vista trasera (espejo + diseño trasero $0), si corresponde.
     if (datos.trasera && datos.sketch) {

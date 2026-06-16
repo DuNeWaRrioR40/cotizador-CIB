@@ -188,7 +188,7 @@ button:active { transform: scale(0.98); }
 .sketch-svg .win { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; }
 .sketch-svg .dim { fill: var(--muted); font-size: 9px; font-family: inherit; }
 .sketch-svg .cota { stroke: #1B5E20; stroke-width: 0.45; fill: none; }
-.sketch-svg .cota-ext { stroke: #1B5E20; stroke-width: 0.3; fill: none; }
+.sketch-svg .cota-ext { stroke: #1B5E20; stroke-width: 0.18; fill: none; stroke-dasharray: 1.6 1.6; opacity: 0.45; }
 .sketch-svg .cota-tick { stroke: #1B5E20; stroke-width: 0.45; }
 .sketch-svg .cota-lbl { fill: #1B5E20; font-size: 5.5px; font-family: inherit; }
 .sketch-svg .cota-eje { stroke: #1B5E20; stroke-width: 0.35; stroke-dasharray: 3 2; opacity: 0.45; }
@@ -271,6 +271,34 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .ins-card .ins-head { align-items: center; }
 .ins-card.anexo-cerrado .ins-head { background: #ffe9b8; border: 1px solid #e9a23b; border-radius: 8px; padding: 3px 8px; box-shadow: 0 2px 6px rgba(180,110,0,0.32); }
 .ins-card.anexo-cerrado .ins-head .muted, .ins-card.anexo-cerrado .anexo-colap { color: #8a4b00; }
+/* Navegación entre fichas hermanas: tira de enlaces al nivel del título, desplazada a la derecha */
+.ins-head { flex-wrap: wrap; }
+.ficha-nav { margin-left: auto; display: flex; flex-wrap: wrap; gap: 1px 10px; align-items: baseline; justify-content: flex-end; padding-left: 18px; }
+.ficha-nav-item { font-size: 11px; line-height: 1.5; color: var(--muted); opacity: 0.85; text-decoration: none; border-bottom: 1px dotted transparent; white-space: nowrap; }
+.ficha-nav-item:hover { color: var(--accent); opacity: 1; border-bottom-color: var(--accent); }
+.ficha-nav-sub { font-style: italic; opacity: 0.85; }
+.ins-card.anexo-cerrado .ficha-nav-item { color: #8a4b00; }
+.ficha-ocultar-chk { font-size: 12px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; margin: 2px 0 6px; }
+/* Ficha oculta del plano/cotización: violeta (gana al ámbar del colapsado) */
+.ins-card.ficha-oculta .ins-head { background: #efe6fb; border: 1px solid #8e44ad; border-radius: 8px; padding: 3px 8px; box-shadow: 0 2px 6px rgba(110,30,150,0.28); }
+.ins-card.ficha-oculta .ins-head .muted, .ins-card.ficha-oculta .anexo-colap { color: #6c2b86; }
+.ins-card.ficha-oculta { opacity: 0.92; }
+.ficha-nav-item.oculta { color: #8e44ad; opacity: 0.95; }
+.ficha-nav-item.oculta:hover { color: #6c2b86; border-bottom-color: #8e44ad; }
+.ins-card.anexo-cerrado.ficha-oculta .ins-head .muted, .ins-card.anexo-cerrado.ficha-oculta .anexo-colap { color: #6c2b86; }
+/* Último enlace de la nav de fichas: salto al plano, con texto y fondo distintos */
+.ficha-nav-item.ficha-nav-plano { color: #fff; background: #1f7a3d; padding: 1px 9px; border-radius: 999px; font-weight: 700; opacity: 1; border-bottom: 0; }
+.ficha-nav-item.ficha-nav-plano:hover { background: #155f2e; color: #fff; border-bottom: 0; }
+.ins-card.anexo-cerrado .ficha-nav-item.ficha-nav-plano, .ins-card.ficha-oculta .ficha-nav-item.ficha-nav-plano { color: #fff; }
+/* Menú de capas bajo cada plano: ir a editar + ocultar */
+.plano-menu { margin: 8px 0 2px; border-top: 1px dashed var(--border); padding-top: 6px; }
+.plano-menu-cap { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.plano-menu-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 0; }
+.plano-menu-link { font-size: 12px; color: var(--accent); text-decoration: none; border-bottom: 1px dotted transparent; }
+.plano-menu-link:hover { border-bottom-color: var(--accent); }
+.plano-menu-oc { font-size: 11px; color: var(--muted); display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+.plano-menu-row.oculta .plano-menu-link { color: #8e44ad; }
+.plano-menu-row.oculta .plano-menu-oc { color: #8e44ad; }
 /* Factor de diseño: acceso rápido (botón) en la sección Producto */
 .factor-top-btn { display: block; width: 100%; text-align: left; background: #eef4fb; border: 1px solid #c9d6e5; border-radius: 8px; padding: 8px 12px; margin: 8px 0; cursor: pointer; font-size: 0.95em; color: var(--text); box-shadow: 0 1px 3px rgba(20,50,90,0.12); }
 .factor-top-btn.activo { background: #ffe9b8; border-color: #e9a23b; color: #8a4b00; box-shadow: 0 2px 6px rgba(180,110,0,0.30); }

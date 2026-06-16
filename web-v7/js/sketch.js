@@ -191,7 +191,7 @@
             posicionesArista(Ls, dd, false).forEach((t, i) => { if (supr.has(i)) return; aristaOje.push({ x: a.x + ux * t + inx * ins * sgn, y: a.y + uy * t + iny * ins * sgn }); });
           }
         }
-        return { x: x, y: y, w: w, h: 0, corte: true, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, fadePoly: fadePoly, strapAncho: parseFloat(c.strapAncho) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
+        return { x: x, y: y, w: w, h: 0, corte: true, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, fadePoly: fadePoly, strapAncho: parseFloat(c.strapAncho) || 0, strapPrecioM: parseFloat(c.strapPrecioM) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
       }
       // --- Corte circular: se recorta al paño base; lo que sale, desaparece. ---
       if (c.circ) {
@@ -345,7 +345,7 @@
         const ax = Px - ldx * ins, ay = Py - ldy * ins; // extremo lado B
         const bx = Px + ldx * off, by = Py + ldy * off; // extremo lado A (offset)
         const corners = [{ x: ax + ux * hw, y: ay + uy * hw }, { x: bx + ux * hw, y: by + uy * hw }, { x: bx - ux * hw, y: by - uy * hw }, { x: ax - ux * hw, y: ay - uy * hw }];
-        straps.push({ corners: corners, rem0: { a: corners[0], b: corners[3] }, rem1: { a: corners[1], b: corners[2] }, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: ldx, y: ldy }, perp: { x: ux, y: uy }, hw: hw, ancho: W, largo: off + ins, nombre: cc.strapNombre || "Cinta", grupo: (cc.strapNombre && cc.strapNombre.trim()) ? cc.strapNombre.trim() : "Corte" });
+        straps.push({ corners: corners, rem0: { a: corners[0], b: corners[3] }, rem1: { a: corners[1], b: corners[2] }, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: ldx, y: ldy }, perp: { x: ux, y: uy }, hw: hw, ancho: W, largo: off + ins, nombre: cc.strapNombre || "Cinta", grupo: (cc.strapNombre && cc.strapNombre.trim()) ? cc.strapNombre.trim() : "Corte", origen: "corte", precioM: cc.strapPrecioM || 0 });
       });
     });
     return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps };
@@ -846,10 +846,12 @@
     let totalW = bw * scale + mLeft + mRight;
     if (resFilas.length) totalW = Math.max(totalW, 246);
     const totalH = boundsBot + mBot + bottomH;
-    const r = Math.max(1.7, Math.min(3.0, scale * 0.022));
+    const rLeg = Math.max(1.7, Math.min(3.0, scale * 0.022)); // tamaño para el recuadro de simbología
+    const r = Math.max(0.9, rLeg - 0.9); // ojetillos del PLANO: ~2 puntos (diámetro) más chicos
     const f1 = (n) => n.toFixed(1);
-    // Ojetillo = anillo + círculo concéntrico menor (borde fino).
+    // Ojetillo = anillo + círculo concéntrico menor (borde fino). ojeSVG = dibujo (chico); ojeLeg = leyenda.
     const ojeSVG = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r * 0.42)}"/>`;
+    const ojeLeg = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rLeg)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rLeg * 0.42)}"/>`;
     let s = `<svg class="sketch-svg" viewBox="0 0 ${f1(totalW)} ${f1(totalH)}" xmlns="http://www.w3.org/2000/svg">`;
     // Contorno
     s += `<rect class="edge" x="${f1(ox)}" y="${f1(oy)}" width="${f1(w)}" height="${f1(h)}"/>`;
@@ -901,7 +903,7 @@
       s += `<text class="vista-sub" x="${f1(totalW - 18)}" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 ${f1(totalW - 18)} ${f1(lyA)})">(frontal: izq.)</text>`;
     }
     // Leyenda de simbología en la parte inferior izquierda + resumen de straps contiguo.
-    if (legH) s += leyendaSVG(simb, 6, boundsBot + mBot + 2, ojeSVG, r);
+    if (legH) s += leyendaSVG(simb, 6, boundsBot + mBot + 2, ojeLeg, rLeg);
     s += resumenStrapsSVG(sk, 108, boundsBot + mBot + 2);
     s += `</svg>`;
     return s;
