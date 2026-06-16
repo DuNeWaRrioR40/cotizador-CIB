@@ -121,6 +121,61 @@
     return pts;
   }
 
+  // Geometría del anexo (aleta/solapa/faldón/cenefa) en coordenadas del paño: rectángulo + arista fusionada.
+  function aletaGeomRect(a, ancho, largo) {
+    const dB = Math.max(0, parseFloat(a.dBorde) || 0), L = parseFloat(a.largo), W = parseFloat(a.ancho), off = parseFloat(a.offset) || 0;
+    const be = a.baseEdge || "inf";
+    if (be === "inf") return { x: off, y: largo - dB, w: W, h: L, fused: "t" };
+    if (be === "sup") return { x: off, y: dB - L, w: W, h: L, fused: "b" };
+    if (be === "izq") return { x: dB - L, y: off, w: L, h: W, fused: "r" };
+    return { x: ancho - dB, y: off, w: L, h: W, fused: "l" };
+  }
+  // Ojetillos por arista del anexo: reparte en las 3 aristas LIBRES (todas menos la fusionada),
+  // por distanciamiento (o parejo) con supresión por índice; NO coloca ojetillo en el punto de unión
+  // (el extremo que toca la arista fusionada) y deduplica las esquinas compartidas entre aristas libres.
+  function aletaOjArista(x, y, w, h, fused, ojEdges, parejo) {
+    const E = {
+      t: { a: { x: x, y: y }, b: { x: x + w, y: y }, L: w },
+      b: { a: { x: x, y: y + h }, b: { x: x + w, y: y + h }, L: w },
+      l: { a: { x: x, y: y }, b: { x: x, y: y + h }, L: h },
+      r: { a: { x: x + w, y: y }, b: { x: x + w, y: y + h }, L: h },
+    };
+    const enFusion = (p) => fused === "t" ? Math.abs(p.y - y) < 1e-6 : fused === "b" ? Math.abs(p.y - (y + h)) < 1e-6 :
+      fused === "l" ? Math.abs(p.x - x) < 1e-6 : Math.abs(p.x - (x + w)) < 1e-6;
+    const raw = [];
+    ["t", "b", "l", "r"].forEach((k) => {
+      if (k === fused) return;
+      const cfg = ojEdges && ojEdges[k];
+      if (!cfg || cfg.on === false) return;
+      const d = parseFloat(cfg.d); if (!(d > 0)) return;
+      const seg = E[k], ux = (seg.b.x - seg.a.x) / seg.L, uy = (seg.b.y - seg.a.y) / seg.L;
+      const supr = (cfg.supr instanceof Set) ? cfg.supr : new Set();
+      posicionesArista(seg.L, d, parejo).forEach((t, i) => {
+        if (supr.has(i)) return;
+        const p = { x: seg.a.x + ux * t, y: seg.a.y + uy * t };
+        if (enFusion(p)) return; // "hasta antes del punto de unión"
+        raw.push(p);
+      });
+    });
+    const out = [];
+    raw.forEach((p) => { if (!out.some((q) => Math.abs(q.x - p.x) < 1e-4 && Math.abs(q.y - p.y) < 1e-4)) out.push(p); });
+    return out;
+  }
+  // Puntos de ojetillos de un anexo según su modo: "arista" (por aristas libres) o simple (n en la arista libre opuesta).
+  function aletaOjPuntos(a, ancho, largo) {
+    if (!(parseFloat(a.largo) > 0) || !(parseFloat(a.ancho) > 0)) return [];
+    const g = aletaGeomRect(a, ancho, largo);
+    if (a.ojMode === "arista" && a.ojEdges) return aletaOjArista(g.x, g.y, g.w, g.h, g.fused, a.ojEdges, !!a.ojParejo);
+    const nOj = Math.max(0, Math.round(parseFloat(a.ojetillos) || 0));
+    if (nOj <= 0) return [];
+    const x = g.x, y = g.y, w = g.w, h = g.h; let p0, p1;
+    if (g.fused === "t") { p0 = { x: x, y: y + h }; p1 = { x: x + w, y: y + h }; }
+    else if (g.fused === "b") { p0 = { x: x, y: y }; p1 = { x: x + w, y: y }; }
+    else if (g.fused === "l") { p0 = { x: x + w, y: y }; p1 = { x: x + w, y: y + h }; }
+    else { p0 = { x: x, y: y }; p1 = { x: x, y: y + h }; }
+    return puntosArista(nOj, p0, p1);
+  }
+
   // Recorta un segmento p0→p1 al rectángulo [xmin,xmax]×[ymin,ymax] (Liang–Barsky).
   function clipSeg(p0, p1, xmin, xmax, ymin, ymax) {
     let t0 = 0, t1 = 1; const dx = p1.x - p0.x, dy = p1.y - p0.y;
@@ -286,25 +341,10 @@
     // Aletas / solapas / faldón / cenefa: paño anexo que cuelga de un borde del base (puede extenderse fuera).
     const NOMARI = { aleta: "Aleta", solapa: "Solapa", faldon: "Faldón", cenefa: "Cenefa" };
     const aletas = (spec.aletas || []).filter((a) => a && a.largo > 0 && a.ancho > 0).map((a) => {
-      const dB = Math.max(0, parseFloat(a.dBorde) || 0), L = parseFloat(a.largo), W = parseFloat(a.ancho), off = parseFloat(a.offset) || 0;
-      const be = a.baseEdge || "inf";
-      let x, y, w, h, fused;
-      if (be === "inf") { x = off; y = largo - dB; w = W; h = L; fused = "t"; }
-      else if (be === "sup") { x = off; y = dB - L; w = W; h = L; fused = "b"; }
-      else if (be === "izq") { x = dB - L; y = off; w = L; h = W; fused = "r"; }
-      else { x = ancho - dB; y = off; w = L; h = W; fused = "l"; }
-      const nOj = Math.max(0, Math.round(parseFloat(a.ojetillos) || 0));
-      let pts = [];
-      if (nOj > 0) {
-        let p0, p1;
-        if (fused === "t") { p0 = { x: x, y: y + h }; p1 = { x: x + w, y: y + h }; }
-        else if (fused === "b") { p0 = { x: x, y: y }; p1 = { x: x + w, y: y }; }
-        else if (fused === "l") { p0 = { x: x + w, y: y }; p1 = { x: x + w, y: y + h }; }
-        else { p0 = { x: x, y: y }; p1 = { x: x, y: y + h }; }
-        pts = puntosArista(nOj, p0, p1);
-      }
+      const g = aletaGeomRect(a, ancho, largo);
+      const pts = aletaOjPuntos(a, ancho, largo);
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (NOMARI[a.tipo] || "Aleta");
-      return { x: x, y: y, w: w, h: h, fused: fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null) };
+      return { x: g.x, y: g.y, w: g.w, h: g.h, fused: g.fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null) };
     });
     // Straps (cintas/webbing): banda RECTA de ancho fijo (del material) y largo del usuario, en cualquier
     // ángulo/posición. Puede iniciar fuera, cruzar y salir del paño. Remates = costuras perpendiculares en
@@ -959,6 +999,7 @@
     construirSketch, sketchSVG, volSVG, ojetillosPerimetro, puntosArista,
     cotasDe, offsetCota, margenCotas, margenCotasLados, centroProducto, fmt, esc, tijeraPrims, tijerasEn, flechaBarbas, zigzagPts,
     distribuirArista, distribuirParejo, posicionesArista,
+    aletaGeomRect, aletaOjArista, aletaOjPuntos,
     intervalosCalados, segmentosSolidos, posicionesAristaSeg,
     simbologia, strapsResumen, resumenStrapsSVG,
     autoRotulo: AUTOROT,

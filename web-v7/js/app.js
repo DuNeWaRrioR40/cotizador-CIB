@@ -1189,10 +1189,19 @@
       orient: base ? base.orient : "largo", union: base ? base.union : "0.045",
       bordeModo: "uniforme", bordeValor: base ? base.bordeValor : "0.045", bordes: defB(),
       ojetillos: base ? base.ojetillos : "0",
+      ojMode: base ? (base.ojMode || "simple") : "simple",
+      ojParejo: base ? !!base.ojParejo : false,
+      ojEdges: base && base.ojEdges ? aletaOjEdgesCopy(base.ojEdges) : aletaOjEdgesDefault(),
       complementos: base ? (base.complementos || []).map((c) => Object.assign({}, c, { cantAristas: (c.cantAristas || []).slice() })) : [],
       rotulo: base ? !!base.rotulo : false,
     };
   }
+  function aletaOjEdgesDefault() { return { t: defAletaEdge(), b: defAletaEdge(), l: defAletaEdge(), r: defAletaEdge() }; }
+  function defAletaEdge() { return { on: true, d: "0.2", supr: "" }; }
+  function aletaOjEdgesCopy(e) { const c = {}; ["t", "b", "l", "r"].forEach((k) => { const s = (e && e[k]) || {}; c[k] = { on: s.on !== false, d: s.d != null ? s.d : "0.2", supr: s.supr || "" }; }); return c; }
+  // Letra de la arista fusionada según el borde base (inf→t, sup→b, izq→r, der→l).
+  const ALETA_FUSED = { inf: "t", sup: "b", izq: "r", der: "l" };
+  const ALETA_EDGE_NOM = { t: "Arista superior", b: "Arista inferior", l: "Arista izquierda", r: "Arista derecha" };
   // Factor de diseño (1..2): solo afecta el costo de tela (confección).
   function clampFactor(v) { const n = parseFloat(v); return (n >= 1 && n <= 2) ? n : (n > 2 ? 2 : 1); }
   function facUnif() { return clampFactor(state.factorUnif); }
@@ -1226,6 +1235,20 @@
     if (esNum) el.addEventListener("blur", () => { el.value = String(facUnif()); });
   });
   { const b = $("btnFactorTop"); if (b) b.addEventListener("click", () => { const p = $("factorTopPanel"); if (p) p.classList.toggle("hidden"); }); }
+  // Config por arista del anexo → spec para sketch (distancia + supresión como Set). Solo aristas libres.
+  function aletaOjEdgesSpec(e) {
+    const out = {}; ["t", "b", "l", "r"].forEach((k) => { const s = (e && e[k]) || {}; out[k] = { on: s.on !== false, d: (s.d != null && s.d !== "") ? s.d : "0.4", supr: parseSupr(s.supr) }; });
+    return out;
+  }
+  // Nº de ojetillos del anexo: por arista (si ojMode="arista") o el campo rápido "hem libre".
+  function aletaOjN(a, al, aa) {
+    if (a.ojMode === "arista" && a.ojEdges && window.SketchCIBSA && window.SketchCIBSA.aletaOjPuntos) {
+      const ev = window.CalcCIBSA.evalExpr;
+      const spec = { baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: al, ancho: aa, offset: ev(a.offset) || 0, ojMode: "arista", ojParejo: !!a.ojParejo, ojEdges: aletaOjEdgesSpec(a.ojEdges) };
+      return window.SketchCIBSA.aletaOjPuntos(spec, 0, 0).length;
+    }
+    return ojIntPz(a.ojetillos);
+  }
   function calcAleta(a, cantidad, valorOj, factor) {
     const ev = window.CalcCIBSA.evalExpr;
     const al = ev(a.largo), aa = ev(a.ancho), tela = state.telas.find((t) => t.nombre === a.telaNombre), N = Math.max(1, cantidad || 1);
@@ -1233,7 +1256,7 @@
     const u = ev(a.union);
     let lote;
     try {
-      lote = window.CalcCIBSA.calcularLote({ largo: al, ancho: aa, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo, cantidad: N, union: (u == null || isNaN(u)) ? 0.045 : u, defaults: BORDE_DEFAULTS, bordes: bordesDePieza(a), ojetillos: ojIntPz(a.ojetillos), valorOjetillo: valorOj, factorTela: clampFactor(factor) });
+      lote = window.CalcCIBSA.calcularLote({ largo: al, ancho: aa, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo, cantidad: N, union: (u == null || isNaN(u)) ? 0.045 : u, defaults: BORDE_DEFAULTS, bordes: bordesDePieza(a), ojetillos: aletaOjN(a, al, aa), valorOjetillo: valorOj, factorTela: clampFactor(factor) });
     } catch (e) { return null; }
     const o = a.orient === "ancho" ? lote.oAncho : lote.oLargo;
     const compTot = compTotalUnit(a.complementos) * N;
@@ -1248,7 +1271,7 @@
   function rotId(o) { if (o._rid == null) o._rid = ++ROTSEQ; return o._rid; }
   function aletasSpec(list) {
     const ev = window.CalcCIBSA.evalExpr;
-    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), legend: a.legend || "", rotulo: !!a.rotulo, id: rotId(a) })).filter((a) => a.largo > 0 && a.ancho > 0);
+    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), ojMode: a.ojMode || "simple", ojParejo: !!a.ojParejo, ojEdges: (a.ojMode === "arista" && a.ojEdges) ? aletaOjEdgesSpec(a.ojEdges) : null, legend: a.legend || "", rotulo: !!a.rotulo, id: rotId(a) })).filter((a) => a.largo > 0 && a.ancho > 0);
   }
   function aletasLineasPDF(list, cantidad, valorOj, factor) {
     return visibles(list).map((a) => {
@@ -1289,15 +1312,19 @@
       const ancho = anchoCintaM(strapMat(s)), off = Math.max(0, ev(s.offset) || 0), ins = Math.max(0, ev(s.inset) || 0);
       if (!(ancho > 0) || !(off + ins > 0)) return;
       const nom = s.legend || "";
+      // "offset borde": corre el punto de unión hacia ADENTRO del paño (contra el sentido de crecimiento ↑/offset).
+      const B = Math.max(0, ev(s.offBorde) != null && !isNaN(ev(s.offBorde)) ? ev(s.offBorde) : 0.01);
       const EDGELBL = { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha" };
       if (s.modo === "arista") {
         const e = strapAristaEdge(s.arista || "sup", ctx), d = ev(s.d) || 0;
         if (!e || !(d > 0)) return;
         const grp = EDGELBL[s.arista || "sup"] || "Arista";
         const ux = (e.bx - e.ax) / e.len, uy = (e.by - e.ay) / e.len, supr = new Set(parseSupr(s.supr));
-        window.SketchCIBSA.posicionesArista(e.len, d, false).forEach((t, i) => { if (supr.has(i)) return; out.push({ cx: e.ax + ux * t, cy: e.ay + uy * t, angulo: e.outAng, offset: off, inset: ins, ancho: ancho, legend: nom, grupo: grp }); });
+        const ar = e.outAng * Math.PI / 180, sdx = Math.cos(ar), sdy = Math.sin(ar); // dir de crecimiento (hacia afuera)
+        window.SketchCIBSA.posicionesArista(e.len, d, false).forEach((t, i) => { if (supr.has(i)) return; out.push({ cx: e.ax + ux * t - sdx * B, cy: e.ay + uy * t - sdy * B, angulo: e.outAng, offset: off, inset: ins, ancho: ancho, legend: nom, grupo: grp }); });
       } else {
-        out.push({ cx: ev(s.cx) || 0, cy: ev(s.cy) || 0, angulo: ev(s.angulo) || 0, offset: off, inset: ins, ancho: ancho, legend: nom, grupo: "Manual" });
+        const ang = ev(s.angulo) || 0, ar = ang * Math.PI / 180;
+        out.push({ cx: (ev(s.cx) || 0) - Math.cos(ar) * B, cy: (ev(s.cy) || 0) - Math.sin(ar) * B, angulo: ang, offset: off, inset: ins, ancho: ancho, legend: nom, grupo: "Manual" });
       }
     });
     return out;
@@ -1360,8 +1387,9 @@
           le.appendChild(selE); addHelpTo(le, "Arista del paño por la que se reparten los straps. Cada strap queda perpendicular a esta arista.", "STRAP-EDGE"); card.appendChild(le);
           const grid = document.createElement("div"); grid.className = "pieza-grid";
           grid.appendChild(addHelpTo(numField("Distanciamiento (m)", "d", "0.5", true), "Separación entre straps a lo largo de la arista (igual que los ojetillos por arista).", "STRAP-DIST"));
-          grid.appendChild(addHelpTo(numField("Crece offset (m)", "offset", "0", true), "Cuánto sale cada strap hacia AFUERA del paño (cruza la arista). Solo ≥ 0.", "STRAP-OFFSET"));
-          grid.appendChild(addHelpTo(numField("Crece inset (m)", "inset", "0", true), "Cuánto entra cada strap hacia ADENTRO del paño. Solo ≥ 0.", "STRAP-INSET"));
+          grid.appendChild(addHelpTo(numField("↑ (m)", "offset", "0", true), "Cuánto crece cada cinta desde el punto de unión hacia AFUERA del paño (cruza la arista). Solo ≥ 0.", "STRAP-OFFSET"));
+          grid.appendChild(addHelpTo(numField("↓ (m)", "inset", "0", true), "Cuánto crece cada cinta desde el punto de unión hacia ADENTRO del paño. Solo ≥ 0.", "STRAP-INSET"));
+          grid.appendChild(addHelpTo(numField("Offset borde (m)", "offBorde", "0.01", true), "Corre el PUNTO DE UNIÓN hacia adentro del paño, medido desde la arista (mín. 0.01 m). Desde ahí la cinta crece ↑ y ↓.", "STRAP-OFFBORDE"));
           card.appendChild(grid);
           const ls = document.createElement("label"); ls.className = "field full"; ls.innerHTML = "<span>Suprimir posiciones (ej. 1, 3, 5-8)</span>";
           const si = document.createElement("input"); si.type = "text"; si.value = s.supr || ""; si.placeholder = "ej. 1, 3, 5-8";
@@ -1377,8 +1405,9 @@
           grid.appendChild(addHelpTo(numField("Centro X (m)", "cx", "0"), "Punto central/pivote en X (0 = borde izquierdo). Desde aquí el strap crece a cada lado. Puede ser negativo.", "STRAP-CX"));
           grid.appendChild(addHelpTo(numField("Centro Y (m)", "cy", "0"), "Punto central/pivote en Y (0 = borde superior). Desde aquí el strap crece a cada lado. Puede ser negativo.", "STRAP-CY"));
           grid.appendChild(addHelpTo(numField("Ángulo (°)", "angulo", "0"), "Inclinación: 0 = horizontal, 90 = vertical, 45 = diagonal. La banda es siempre recta.", "STRAP-ANG"));
-          grid.appendChild(addHelpTo(numField("Crece offset (m)", "offset", "0", true), "Cuánto crece el strap hacia un lado del centro (sentido del ángulo). Solo valores ≥ 0.", "STRAP-OFFSET"));
-          grid.appendChild(addHelpTo(numField("Crece inset (m)", "inset", "0", true), "Cuánto crece el strap hacia el otro lado del centro. Solo ≥ 0. No choca con offset (van en sentidos opuestos).", "STRAP-INSET"));
+          grid.appendChild(addHelpTo(numField("↑ (m)", "offset", "0", true), "Cuánto crece la cinta hacia un lado del punto de unión (sentido del ángulo). Solo ≥ 0.", "STRAP-OFFSET"));
+          grid.appendChild(addHelpTo(numField("↓ (m)", "inset", "0", true), "Cuánto crece la cinta hacia el otro lado del punto de unión. Solo ≥ 0. Va en sentido opuesto a ↑.", "STRAP-INSET"));
+          grid.appendChild(addHelpTo(numField("Offset borde (m)", "offBorde", "0.01", true), "Corre el PUNTO DE UNIÓN hacia adentro (en sentido opuesto a ↑), medido desde el centro indicado (mín. 0.01 m).", "STRAP-OFFBORDE"));
           card.appendChild(grid);
           const dimInfo = document.createElement("p"); dimInfo.className = "muted small";
           dimInfo.innerHTML = (A > 0 && L > 0) ? ("Paño base: <b>largo " + f(L) + " m × ancho " + f(A) + " m</b> · X de 0 a " + f(A) + " · Y de 0 a " + f(L)) : "Define largo y ancho del paño base para ubicar el strap.";
@@ -1421,7 +1450,7 @@
     pintar();
     const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline"; add.textContent = "+ Strap (cinta)";
     add.disabled = !hayCintas;
-    add.addEventListener("click", () => { ctx.straps.push({ matId: null, modo: "unica", arista: "sup", d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "", inset: "0", legend: "" }); pintar(); onChange(); });
+    add.addEventListener("click", () => { ctx.straps.push({ matId: null, modo: "unica", arista: "sup", d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "", inset: "0", offBorde: "0.01", legend: "" }); pintar(); onChange(); });
     container.appendChild(add);
   }
   // Editor de aletas. ctx: { aletas, cantidad(), valorOj(), onChange }
@@ -1441,10 +1470,10 @@
         const del = document.createElement("button"); del.type = "button"; del.className = "pz-btn del"; del.textContent = "✕";
         del.addEventListener("click", () => { ctx.aletas.splice(idx, 1); pintar(); onChange(); });
         head.appendChild(tt); head.appendChild(del); card.appendChild(head);
-        const selField = (lab, opts, key, full) => {
+        const selField = (lab, opts, key, full, cb) => {
           const l = document.createElement("label"); l.className = full ? "field full" : "field"; l.innerHTML = "<span>" + lab + "</span>";
           const s = document.createElement("select"); opts.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; s.appendChild(o); });
-          s.value = a[key]; s.addEventListener("change", (e) => { a[key] = e.target.value; refresh(); onChange(); });
+          s.value = a[key]; s.addEventListener("change", (e) => { a[key] = e.target.value; if (cb) cb(); refresh(); onChange(); });
           l.appendChild(s); return l;
         };
         const txtField = (lab, key, ph, full, ta) => {
@@ -1470,14 +1499,55 @@
         selT.addEventListener("change", (e) => { a.telaNombre = e.target.value; refresh(); onChange(); });
         lt.appendChild(selT); card.appendChild(lt);
         const grid = document.createElement("div"); grid.className = "pieza-grid";
-        grid.appendChild(addHelpTo(selField("Cuelga del borde", [["inf", "Inferior"], ["sup", "Superior"], ["izq", "Izquierda"], ["der", "Derecha"]], "baseEdge"), "Borde del paño base del que se fusiona y cuelga el anexo (desde ahí se extiende hacia afuera).", "ALETA-BORDE-BASE"));
+        grid.appendChild(addHelpTo(selField("Cuelga del borde", [["inf", "Inferior"], ["sup", "Superior"], ["izq", "Izquierda"], ["der", "Derecha"]], "baseEdge", false, () => pintarOjArista()), "Borde del paño base del que se fusiona y cuelga el anexo (desde ahí se extiende hacia afuera).", "ALETA-BORDE-BASE"));
         grid.appendChild(addHelpTo(numField("Distancia al borde (m, ≥ unión)", "dBorde"), "A qué distancia del borde elegido se cose el anexo. Debe ser ≥ la unión (típico 0,045 m).", "ALETA-DIST"));
         grid.appendChild(addHelpTo(numField("Largo / caída (m)", "largo"), "Cuánto cae o sobresale el anexo desde su línea de fusión, en metros.", "ALETA-CAIDA"));
         grid.appendChild(addHelpTo(numField("Ancho (m)", "ancho"), "Ancho del anexo a lo largo del borde, en metros.", "ALETA-ANCHO"));
         grid.appendChild(addHelpTo(numField("Offset (m)", "offset"), "Desplazamiento del anexo a lo largo del borde, medido desde la esquina, en metros (0 = pegado a la esquina).", "ALETA-OFFSET"));
         grid.appendChild(addHelpTo(numField("Borde perimetral (m)", "bordeValor"), "Dobladillo de los bordes libres del anexo, en metros.", "ALETA-DOBLADILLO"));
-        grid.appendChild(addHelpTo(numField("Ojetillos (hem libre)", "ojetillos"), "Cuántos ojetillos repartir en el borde libre del anexo.", "ALETA-OJET"));
+        grid.appendChild(addHelpTo(numField("Ojetillos (hem libre)", "ojetillos"), "Cuántos ojetillos repartir en el borde libre del anexo. Se ignora si activas \"ojetillos por arista\".", "ALETA-OJET"));
         card.appendChild(grid);
+        // "+ opciones": ojetillos por arista del anexo (3 aristas libres, sin el punto de unión).
+        const ojWrap = document.createElement("div"); card.appendChild(ojWrap);
+        function pintarOjArista() {
+          ojWrap.innerHTML = "";
+          const arista = a.ojMode === "arista";
+          const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn-outline small aleta-oj-toggle";
+          btn.textContent = arista ? "▾ Ojetillos por arista (activo)" : "+ opciones: ojetillos por arista";
+          btn.addEventListener("click", () => { a.ojMode = arista ? "simple" : "arista"; if (a.ojMode === "arista" && !a.ojEdges) a.ojEdges = aletaOjEdgesDefault(); pintarOjArista(); refresh(); onChange(); });
+          ojWrap.appendChild(btn);
+          if (!arista) return;
+          if (!a.ojEdges) a.ojEdges = aletaOjEdgesDefault();
+          const panel = document.createElement("div"); panel.className = "aleta-oj-panel";
+          const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = "Ojetillos por las aristas libres del anexo (no en la unión con el paño). Mientras esté activo, se ignora el campo \"hem libre\".";
+          panel.appendChild(cap);
+          const fused = ALETA_FUSED[a.baseEdge || "inf"];
+          ["t", "b", "l", "r"].filter((k) => k !== fused).forEach((k) => {
+            const e = a.ojEdges[k] || (a.ojEdges[k] = defAletaEdge());
+            const row = document.createElement("div"); row.className = "aleta-oj-row";
+            const lab = document.createElement("label"); lab.className = "chk aleta-oj-on";
+            const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = e.on !== false;
+            cb.addEventListener("change", () => { e.on = cb.checked; refresh(); onChange(); });
+            const sp = document.createElement("span"); sp.textContent = ALETA_EDGE_NOM[k];
+            lab.appendChild(cb); lab.appendChild(sp); row.appendChild(lab);
+            const dl = document.createElement("label"); dl.className = "field aleta-oj-f"; dl.innerHTML = "<span>cada (m)</span>";
+            const di = document.createElement("input"); di.type = "text"; di.inputMode = "decimal"; di.value = e.d != null ? e.d : "0.2";
+            di.addEventListener("input", () => { e.d = di.value; refresh(); onChange(); });
+            dl.appendChild(di); row.appendChild(dl);
+            const sl = document.createElement("label"); sl.className = "field aleta-oj-f"; sl.innerHTML = "<span>suprimir</span>";
+            const si = document.createElement("input"); si.type = "text"; si.value = e.supr || ""; si.placeholder = "ej. 0, 2-4";
+            si.addEventListener("input", () => { e.supr = si.value; refresh(); onChange(); });
+            sl.appendChild(si); row.appendChild(addHelpTo(sl, "Quita ojetillos por su número de orden en la arista (0 desde la esquina). Acepta sueltos y rangos con guión inclusivos, ej. \"0, 2-4\".", "ALETA-OJ-SUPR"));
+            panel.appendChild(row);
+          });
+          const pl = document.createElement("label"); pl.className = "chk aleta-oj-parejo";
+          const pcb = document.createElement("input"); pcb.type = "checkbox"; pcb.checked = !!a.ojParejo;
+          pcb.addEventListener("change", () => { a.ojParejo = pcb.checked; refresh(); onChange(); });
+          const psp = document.createElement("span"); psp.textContent = "Reparto parejo (espaciado uniforme)";
+          pl.appendChild(pcb); pl.appendChild(psp); panel.appendChild(pl);
+          ojWrap.appendChild(panel);
+        }
+        pintarOjArista();
         const mcap = document.createElement("p"); mcap.className = "muted small"; mcap.textContent = "Materiales de la aleta:"; card.appendChild(mcap);
         const mdiv = document.createElement("div"); card.appendChild(mdiv); renderComplementos(mdiv, a.complementos, onChange);
         const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
@@ -3116,6 +3186,11 @@
           a.addEventListener("click", (e) => { e.preventDefault(); if (pz[key]) cont._subHead.click(); try { cont._subHead.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (_) { cont._subHead.scrollIntoView(); } });
           navS.appendChild(a);
         });
+        // Último vínculo (siempre): "Ver plano" de la pieza, en verde destacado.
+        const pl = document.createElement("a"); pl.className = "ficha-nav-item ficha-nav-plano"; pl.href = "#";
+        pl.textContent = "▣ Ver plano";
+        pl.addEventListener("click", (e) => { e.preventDefault(); const sk = q(".pz-sketch"); if (sk) { try { sk.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (_) { sk.scrollIntoView(); } flashTitulo(sk); } });
+        navS.appendChild(pl);
         const ph = q(".pieza-head");
         if (ph && navS.children.length) ph.insertAdjacentElement("afterend", navS);
       }

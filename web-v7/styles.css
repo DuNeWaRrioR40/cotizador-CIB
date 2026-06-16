@@ -314,6 +314,15 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 }
 .nav-flash { animation: nav-flash 2s ease-in-out 2; border-radius: 8px; outline: none; }
 
+/* Ojetillos por arista del anexo (aleta/solapa/faldón) */
+.aleta-oj-toggle { margin: 6px 0 4px; width: auto; padding: 6px 12px; font-size: 13px; }
+.aleta-oj-panel { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin: 2px 0 8px; background: var(--surface); }
+.aleta-oj-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin: 6px 0; }
+.aleta-oj-on { min-width: 130px; margin: 0 0 6px; }
+.aleta-oj-f { margin: 0; flex: 1; min-width: 90px; }
+.aleta-oj-f > span { font-size: 12px; color: var(--muted); }
+.aleta-oj-parejo { margin: 8px 0 2px; }
+
 /* Lupa para ampliar el plano */
 .sketch, .pz-sketch { position: relative; }
 .sketch-zoom-btn { position: absolute; top: 6px; right: 6px; z-index: 5; width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--accent); font-size: 15px; line-height: 1; cursor: zoom-in; box-shadow: 0 1px 5px rgba(0,0,0,0.2); }
