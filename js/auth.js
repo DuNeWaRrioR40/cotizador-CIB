@@ -2,9 +2,12 @@
    Sin un token válido y autorizado, no se consulta el Sheet. */
 (function (global) {
   const CFG = global.CONFIG;
-  const KEY = "cibsa_sesion";
+  const KEY = "cibsa_sesion_v2"; // v2: fuerza re-login para consentir el permiso de escritura (historial en la nube)
+  const MIN_SESION_MS = 3 * 60 * 60 * 1000;   // objetivo: la sesión vive al menos ~3 h
+  const MARGEN_REFRESCO_MS = 5 * 60 * 1000;    // renovar 5 min antes de expirar
   let tokenClient = null;
-  let estado = { token: null, email: null, expira: 0 };
+  let refrescoTimer = null;
+  let estado = { token: null, email: null, expira: 0, inicio: 0 };
 
   function correoAutorizado(email) {
     email = (email || "").trim().toLowerCase();
@@ -43,17 +46,61 @@
       const s = JSON.parse(sessionStorage.getItem(KEY) || "null");
       if (s && s.token && s.email && s.expira > Date.now() + 60000 && correoAutorizado(s.email)) {
         estado = s;
+        if (!estado.inicio) estado.inicio = Date.now();
+        programarRefresco();   // reanuda la renovación tras recargar la página
         return { token: s.token, email: s.email };
       }
     } catch (e) {}
     return null;
   }
 
+  // --- Renovación silenciosa del token para sostener la sesión ~3 h ---
+  function programarRefresco() {
+    if (refrescoTimer) { clearTimeout(refrescoTimer); refrescoTimer = null; }
+    if (!estado.token) return;
+    let delay = estado.expira - Date.now() - MARGEN_REFRESCO_MS;
+    if (delay < 1000) delay = 1000;
+    refrescoTimer = setTimeout(function () {
+      refrescarSilencioso().catch(function () { /* si falla, la sesión expirará normalmente */ });
+    }, delay);
+  }
+
+  function refrescarSilencioso() {
+    return new Promise(function (resolve, reject) {
+      // Mantener la sesión solo mientras no se supere el objetivo de duración.
+      const inicio = estado.inicio || Date.now();
+      if (Date.now() - inicio > MIN_SESION_MS && estado.expira <= Date.now() + MARGEN_REFRESCO_MS) {
+        // Ya pasamos las ~3 h y el token está por vencer: dejamos que expire.
+        return reject(new Error("sesion-objetivo-cumplido"));
+      }
+      if (!global.google || !google.accounts || !google.accounts.oauth2) {
+        return reject(new Error("GIS no disponible"));
+      }
+      const tc = google.accounts.oauth2.initTokenClient({
+        client_id: CFG.GOOGLE_CLIENT_ID,
+        scope: scopeCompleto(),
+        prompt: "",   // silencioso: sin UI si el usuario ya dio consentimiento
+        callback: function (resp) {
+          if (resp.error || !resp.access_token) return reject(new Error("No se pudo renovar la sesión."));
+          estado.token = resp.access_token;
+          estado.expira = Date.now() + (parseInt(resp.expires_in, 10) || 3600) * 1000;
+          guardar();
+          programarRefresco();
+          resolve(estado.token);
+        },
+        error_callback: function (err) { reject(err || new Error("Renovación cancelada.")); },
+      });
+      try { tc.requestAccessToken({ prompt: "" }); } catch (e) { reject(e); }
+    });
+  }
+
   function cerrarSesion() {
-    estado = { token: null, email: null, expira: 0 };
+    if (refrescoTimer) { clearTimeout(refrescoTimer); refrescoTimer = null; }
+    const tokenPrevio = estado.token;
+    estado = { token: null, email: null, expira: 0, inicio: 0 };
     try { sessionStorage.removeItem(KEY); } catch (e) {}
-    if (global.google && estado.token) {
-      try { google.accounts.oauth2.revoke(estado.token); } catch (e) {}
+    if (global.google && tokenPrevio) {
+      try { google.accounts.oauth2.revoke(tokenPrevio); } catch (e) {}
     }
   }
 
@@ -88,8 +135,10 @@
               token: resp.access_token,
               email,
               expira: Date.now() + (parseInt(resp.expires_in, 10) || 3600) * 1000,
+              inicio: Date.now(),
             };
             guardar();
+            programarRefresco();
             resolve({ token: estado.token, email });
           } catch (e) { reject(e); }
         },

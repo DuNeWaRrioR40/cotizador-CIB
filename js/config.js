@@ -6,7 +6,8 @@
     // Pega aquí el "ID de cliente" del cliente OAuth tipo WEB (lo creas en Google Cloud).
     GOOGLE_CLIENT_ID: "844999785397-fncjlgv5l9eqhp9f1mv98t6gcdo4l9nc.apps.googleusercontent.com",
     SHEET_ID: "1oB2Mbc3pgMMOGkWMXj2nTNEQox28sQcBkDYthDB9WU4",
-    SCOPES: "https://www.googleapis.com/auth/spreadsheets.readonly",
+    // Lectura + escritura: necesario para sincronizar el historial a la hoja HISTORIAL.
+    SCOPES: "https://www.googleapis.com/auth/spreadsheets",
 
     // --- Hoja RANGO (punteros) ---
     RANGO_LECTURA: "RANGO!A2:C",
@@ -15,6 +16,38 @@
     COL_VALOR_M2: "PRECIO VENTA M2",
     COL_ANCHO_ROLLO: "FORMATO ROLLO (M)",
     COL_FICHA: "SPECS",
+    COL_PROVEEDOR_TELA: "PROVEEDOR",   // interno: se muestra en la App, NUNCA en el PDF
+    COL_FAV_TELA: "FAV",               // categorías de la tela (varias separadas por "/"); para selección rápida por categoría
+
+    // --- Tabla de Materiales (Insumo / Accesorio / Estructural) ---
+    // Celdas en blanco no rompen la lectura; el mínimo para un ítem es CATEGORIA + ITEM.
+    // PROVEEDOR es interno (se muestra en la App y ordena la lista; NUNCA va al PDF).
+    ID_TABLA_MATERIALES: "Materiales",
+    COL_MAT_CATEGORIA: "CATEGORIA",
+    COL_MAT_ITEM: "ITEM",
+    COL_MAT_MODELO: "MODELO",
+    COL_MAT_COLOR: "COLOR",
+    COL_MAT_PRECIO: "PRECIO VTA",
+    COL_MAT_UNIDAD: "UNIDAD",
+    COL_MAT_PROVEEDOR: "PROVEEDOR",
+
+    // --- Tabla de vendedores (referenciada en RANGO con este ID) ---
+    // El nombre que se muestra se compone de NOMBRE + APELLIDO PATERNO + APELLIDO MATERNO
+    // (los apellidos en blanco se omiten). Se muestran solo los teléfonos no vacíos.
+    ID_TABLA_VENDEDORES: "Vendedores",
+    COL_VENDEDOR_NOMBRE: "NOMBRE",
+    COL_VENDEDOR_APELLIDOS: ["APELLIDO PATERNO", "APELLIDO MATERNO"],
+    COL_VENDEDOR_EMAIL: "EMAIL",
+    COL_VENDEDOR_FONOS: ["TELEFONO 1", "TELEFONO 2", "TELEFONO 3"],
+
+    // --- Wiki de ayuda (referenciada en RANGO con este ID) ---
+    // Hoja con dos columnas: A = Código del globo, B = Comentario aclaratorio.
+    // Si un código tiene comentario, aparece dentro del globo de ayuda bajo el texto base.
+    ID_TABLA_WIKI: "wiki",
+
+    // --- Historial en la nube ---
+    // La app crea y administra sola esta pestaña (append por cada cotización generada).
+    HOJA_HISTORIAL: "HISTORIAL",
 
     // --- Control de acceso ---
     DOMINIO_PERMITIDO: "cibsa.cl",
@@ -51,7 +84,7 @@
       "Visitas a terreno y despachos se cobran por separado.",
       "La información respecto de las características de las telas se basa en test que otorgan promedios, " +
         "se asumen confiables pero no constituyen certificación técnica, salvo se indique lo contrario.",
-      "Las dimensiones indicadas en este estimado poseen un margen de error de +/- 3cm tanto en tela, como " +
+      "Las dimensiones indicadas en este estimado poseen un margen de error de +/- 4cm tanto en tela, como " +
         "en colocación de ojetillos, a menos que expresamente se indique lo contrario por el cliente.",
     ],
   };
