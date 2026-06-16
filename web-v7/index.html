@@ -267,7 +267,10 @@
         <div id="backAletasUnif"></div>
       </div>
       <div id="sketchUnif" class="sketch"></div>
-      <button id="btnDescargarSketch" class="btn-outline" type="button">Descargar plano (PDF)</button>
+      <div class="plano-dl-row">
+        <button id="btnDescargarSketch" class="btn-outline" type="button">Descargar plano (PDF)</button>
+        <div id="subtotalUnifHint" class="subtotal-hint muted small"></div>
+      </div>
     </div>
 
     <!-- Orientación de uniones (preliminar) -->
@@ -349,6 +352,12 @@
         <button id="calcCerrar" class="btn-outline" type="button">Cerrar</button>
       </div>
     </div>
+  </div>
+
+  <!-- Lupa: amplía el plano a pantalla completa; clic/toque o ✕ para volver -->
+  <div id="planoZoom" class="plano-zoom hidden">
+    <button id="planoZoomClose" class="plano-zoom-x" type="button" aria-label="Volver al tamaño original">✕</button>
+    <div id="planoZoomBody" class="plano-zoom-body"></div>
   </div>
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>

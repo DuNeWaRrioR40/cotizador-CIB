@@ -2325,6 +2325,7 @@
     else if (state.docMode === "formal" && state.prodMode === "compuesto") recomputeCompuesto();
     else recomputeUniforme();
     refreshRotuloChks();
+    addZoomBtns();
     actualizarColapsables();
   }
 
@@ -2350,10 +2351,11 @@
     }
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) {
       cont.innerHTML = '<p class="muted small">Ingresa largo, ancho y tela para ver los montos.</p>';
+      setSubtotalUnifHint(null);
       return;
     }
     let lotePrimary;
-    try { lotePrimary = loteParaTela(tela, largo, ancho); } catch (e) { return; }
+    try { lotePrimary = loteParaTela(tela, largo, ancho); } catch (e) { setSubtotalUnifHint(null); return; }
     state.loteUnif = lotePrimary;
 
     // Telas a cotizar agrupadas por ancho de rollo (geometría idéntica dentro del grupo).
@@ -2384,7 +2386,55 @@
 
     if (telas.length > 1) renderResumenTelas(telas, largo, ancho);
     renderAvisosUnif(lotePrimary);
+    setSubtotalUnifHint({ neto: subtotalUnifNeto(lotePrimary, tela, ancho, largo), N: lotePrimary.N });
   }
+  // Subtotal NETO del producto (tela primaria), igual fórmula que construirDatosUnif: tela + ojetillos
+  // + complementos + aletas + straps + ojetillos/cintas de cortes. Refleja en vivo "ocultar"/editar.
+  function subtotalUnifNeto(lote, tela, ancho, largo) {
+    const orientKey = orientDeTela(tela);
+    const o = orientKey === "ancho" ? lote.oAncho : lote.oLargo;
+    const N = lote.N;
+    const ojeTotal = lote.nOjetillos * lote.valorOjetillo * N;
+    const compTotal = compTotalUnit(state.complementosUnif) * N;
+    const aleTotal = aletasTotal(state.aletasUnif, N, lote.valorOjetillo, facUnif()) + aletasTotal(state.backAletasUnif, N, lote.valorOjetillo, facUnif());
+    const strapTotal = strapsTotal(state.strapsUnif, N, { ancho: ancho || 0, largo: largo || 0 });
+    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) };
+    const corteTotal = costoCortesUnit(skSpec, lote.valorOjetillo) * N;
+    return o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal;
+  }
+  function setSubtotalUnifHint(info) {
+    const el = $("subtotalUnifHint"); if (!el) return;
+    if (!info || !(info.neto > 0)) { el.innerHTML = ""; return; }
+    const uds = info.N > 1 ? (" · " + info.N + " uds.") : "";
+    el.innerHTML = "Subtotal del producto: <b>" + money(info.neto) + "</b>" +
+      "<span class=\"sh-cap\">neto, sin IVA" + uds + " · se actualiza al ocultar o editar elementos</span>";
+  }
+
+  // ---------- Lupa: ampliar el plano a pantalla completa ----------
+  // Coloca un botón "🔍+" en cada contenedor de plano que tenga un SVG (se re-coloca tras cada render).
+  function addZoomBtns() {
+    document.querySelectorAll(".sketch, .pz-sketch").forEach((cont) => {
+      const svg = cont.querySelector(".sketch-svg");
+      const prev = cont.querySelector(":scope > .sketch-zoom-btn");
+      if (!svg) { if (prev) prev.remove(); return; }
+      if (prev) return;
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "sketch-zoom-btn"; b.title = "Ampliar plano"; b.textContent = "🔍+";
+      cont.appendChild(b);
+    });
+  }
+  function openPlanoZoom(svg) {
+    const ov = $("planoZoom"), body = $("planoZoomBody"); if (!ov || !body || !svg) return;
+    body.innerHTML = ""; const clone = svg.cloneNode(true); clone.removeAttribute("style"); body.appendChild(clone);
+    ov.classList.remove("hidden");
+  }
+  function closePlanoZoom() { const ov = $("planoZoom"); if (ov) ov.classList.add("hidden"); const body = $("planoZoomBody"); if (body) body.innerHTML = ""; }
+  document.addEventListener("click", (e) => {
+    const zb = e.target.closest && e.target.closest(".sketch-zoom-btn");
+    if (zb) { e.preventDefault(); const cont = zb.closest(".sketch, .pz-sketch"); const svg = cont && cont.querySelector(".sketch-svg"); if (svg) openPlanoZoom(svg); return; }
+    if (e.target.closest && e.target.closest("#planoZoom")) closePlanoZoom();
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePlanoZoom(); });
 
   // Tarjeta de orientación para un grupo de ancho de rollo. Al elegir, se replica a todo el grupo.
   function cardLoteGrupo(groupKey, key, o, head, lote, cur, parent) {
