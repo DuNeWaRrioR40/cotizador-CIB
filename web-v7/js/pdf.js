@@ -587,7 +587,7 @@
     });
     // Aletas / solapas / faldón / cenefa — paños anexos confeccionados (SÍ cotizan)
     (datos.aletas || []).forEach((a) => {
-      itemRow(String(a.cantidad), [["Anexo", true], [a.detalle, false]],
+      itemRow(String(a.cantidad), [[a.cat || "Anexo", true], [a.detalle, false]],
         `${money(a.precio)} c/u`, money(a.totalNeto));
     });
 

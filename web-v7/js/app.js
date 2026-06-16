@@ -693,7 +693,7 @@
     setTimeout(() => { (target.scrollIntoView ? target : target.parentElement).scrollIntoView({ behavior: "smooth", block: "start" }); }, 30);
     navCerrar();
   }
-  function limpiarTitulo(t) { return (t || "").replace(/[▸▾✂☰✕]/g, "").replace(/●\s*con datos/gi, "").replace(/\s+/g, " ").trim(); }
+  function limpiarTitulo(t) { return (t || "").replace(/[▸▾✂☰✕?]/g, "").replace(/●\s*con datos/gi, "").replace(/\s+/g, " ").trim(); }
   // ¿La sección/pieza tiene datos ingresados por el usuario? (ámbito propio, sin descender a otras secciones)
   function navTieneDatos(sec) {
     if (!sec || sec.id === "formView") return false;
@@ -2152,6 +2152,35 @@
     }).filter(Boolean);
   }
 
+  // Straps del uniforme como filas-objeto para el PDF (mismo formato que aletasUnifPDF).
+  function strapsUnifPDF(list, ctx, N) {
+    const f = window.CalcCIBSA.fmtNum, n = Math.max(1, N || 1);
+    return visibles(list).map((s) => {
+      const m = strapMat(s); if (!m) return null;
+      const largo = strapLargo(s), ancho = anchoCintaM(m), inst = strapInstancias(s, ctx);
+      if (!(largo > 0) || !(ancho > 0) || inst <= 0) return null;
+      const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : "Cinta";
+      const cant = (s.modo === "arista") ? (inst + "× ") : "";
+      const det = nom + ": " + cant + m.item + " " + f(largo) + " m × " + f(ancho * 100) + " cm";
+      const unit = inst * largo * (m.precio || 0);
+      return { cantidad: n, detalle: det, precio: Math.round(unit), totalNeto: Math.round(unit * n), cat: "Refuerzo" };
+    }).filter(Boolean);
+  }
+  // Cortes/calados del uniforme (ojetillos y cintas sobre la línea de corte) como filas-objeto.
+  function cortesUnifPDF(spec, valorOj, N) {
+    if (!window.SketchCIBSA) return [];
+    let sk; try { sk = window.SketchCIBSA.construirSketch(spec); } catch (e) { return []; }
+    const n = Math.max(1, N || 1), out = [];
+    let nOj = 0; (sk.cortes || []).forEach((c) => { nOj += (c.ojetillos || []).length; });
+    if (nOj > 0) out.push({ cantidad: nOj * n, detalle: "Ojetillos sobre cortes/calados", precio: valorOj || 0, totalNeto: nOj * (valorOj || 0) * n, cat: "Ojetillos" });
+    const cs = (sk.straps || []).filter((s) => s.origen === "corte");
+    if (cs.length) {
+      const tot = cs.reduce((a, s) => a + (s.largo || 0) * (s.precioM || 0), 0);
+      out.push({ cantidad: cs.length * n, detalle: "Cintas sobre cortes (refuerzo)", precio: Math.round(tot / cs.length), totalNeto: Math.round(tot * n), cat: "Refuerzo" });
+    }
+    return out;
+  }
+
   // ---------- Ojetillos ----------
   document.querySelectorAll('input[name="ojmode"]').forEach((r) =>
     r.addEventListener("change", (e) => {
@@ -3361,7 +3390,7 @@
       observaciones: $("f_observaciones").value.trim() || null,
       detalleExtra: terminacionesTexto(state.orientUnif),
       complementos: complementosUnifPDF(N),
-      aletas: aletasUnifPDF(state.aletasUnif, N).concat(aletasUnifPDF(state.backAletasUnif, N)).concat(strapsLineasPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 })).concat(cortesLineasPDF(skSpec, lote.valorOjetillo, N)),
+      aletas: aletasUnifPDF(state.aletasUnif, N).concat(aletasUnifPDF(state.backAletasUnif, N)).concat(strapsUnifPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cortesUnifPDF(skSpec, lote.valorOjetillo, N)),
       sketch: skSpec,
     };
     return { datos, calc };
