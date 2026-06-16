@@ -552,21 +552,35 @@
   // y un checkbox "ocultar" para excluirlo sin volver al editor. grupos: [{label, items:[{obj,titulo}]}].
   function menuPlano(container, grupos, onToggle) {
     if (!container) return;
-    const filas = grupos.map((g) => ({ label: g.label, items: (g.items || []).filter((it) => it && it.obj) })).filter((g) => g.items.length);
+    const filas = grupos.map((g) => ({ label: g.label, rotulo: !!g.rotulo, items: (g.items || []).filter((it) => it && it.obj) })).filter((g) => g.items.length);
     if (!filas.length) return;
     const box = document.createElement("div"); box.className = "plano-menu";
-    const cap = document.createElement("div"); cap.className = "plano-menu-cap"; cap.textContent = "Elementos en este plano (ir a editar · ocultar):";
+    const cap = document.createElement("div"); cap.className = "plano-menu-cap"; cap.textContent = "Elementos en este plano (ir a editar · ocultar · rótulo):";
     box.appendChild(cap);
     filas.forEach((g) => {
       g.items.forEach((it) => {
         const row = document.createElement("div"); row.className = "plano-menu-row" + (it.obj._oculto ? " oculta" : "");
         const a = document.createElement("a"); a.className = "plano-menu-link"; a.href = "#"; a.textContent = (g.tag ? g.tag + " " : "") + it.titulo;
         a.addEventListener("click", (e) => { e.preventDefault(); irAFicha(fidDe(it.obj)); });
+        const ctrls = document.createElement("div"); ctrls.className = "plano-menu-ctrls";
         const lab = document.createElement("label"); lab.className = "plano-menu-oc"; lab.title = "Ocultar del plano y la cotización";
         const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!it.obj._oculto;
         cb.addEventListener("change", () => { it.obj._oculto = cb.checked; if (onToggle) onToggle(); });
         lab.appendChild(cb); lab.appendChild(document.createTextNode("ocultar"));
-        row.appendChild(a); row.appendChild(lab); box.appendChild(row);
+        ctrls.appendChild(lab);
+        // Checkbox "rótulo" (solo aletas / paños inscritos): fuerza el rótulo-guía aunque el título quepa.
+        // Inactivo y marcado cuando el auto ya lo está generando (el título no cabe).
+        if (g.rotulo) {
+          const labR = document.createElement("label"); labR.className = "plano-menu-rot"; labR.title = "Forzar rótulo (título afuera con flecha)";
+          const cbR = document.createElement("input"); cbR.type = "checkbox"; cbR.className = "rotulo-chk";
+          cbR.dataset.rid = rotId(it.obj); cbR._obj = it.obj; cbR.checked = !!it.obj.rotulo;
+          cbR.addEventListener("change", () => { it.obj.rotulo = cbR.checked; if (onToggle) onToggle(); });
+          labR.appendChild(cbR); labR.appendChild(document.createTextNode("rótulo"));
+          const auto = window.SketchCIBSA && window.SketchCIBSA.autoRotulo;
+          if (auto && auto[cbR.dataset.rid]) { cbR.disabled = true; cbR.checked = true; labR.classList.add("auto-on"); }
+          ctrls.appendChild(labR);
+        }
+        row.appendChild(a); row.appendChild(ctrls); box.appendChild(row);
       });
     });
     container.appendChild(box);
@@ -2301,7 +2315,7 @@
       const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); recompute(); };
       menuPlano(sk, [
         { label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
-        { label: "Aletas / Anexos", items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
+        { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
         { label: "Straps / cintas", items: (state.strapsUnif || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
       ], refrescarOcUnif);
     }
@@ -3110,8 +3124,8 @@
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
         menuPlano(sketchBox, [
           { label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
-          { label: "Paños inscritos", items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
-          { label: "Aletas / Anexos", items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
+          { label: "Paños inscritos", rotulo: true, items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
+          { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
         ], refrescarOcPz);
       }
@@ -3197,8 +3211,8 @@
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
         menuPlano(body, [
           { label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
-          { label: "Paños inscritos", items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
-          { label: "Aletas / Anexos", items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
+          { label: "Paños inscritos", rotulo: true, items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
+          { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
         ], refrescarOcPz);
       }
