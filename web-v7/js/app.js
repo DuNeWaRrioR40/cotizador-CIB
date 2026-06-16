@@ -529,6 +529,7 @@
     if (!t) return;
     if (t.classList.contains("colap") && t.classList.contains("collapsed") && typeof toggleColap === "function") toggleColap(t);
     try { t.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { t.scrollIntoView(); }
+    flashTitulo(tituloDestacable(t));
   }
   // Identificador estable de ficha (para enlazar el menú del plano con la tarjeta de edición).
   let fidSeq = 0;
@@ -547,6 +548,7 @@
     }
     if (typeof card._abrir === "function") card._abrir();
     try { card.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (_) { card.scrollIntoView(); }
+    flashTitulo(card.querySelector(".ins-head") || card);
   }
   // Menú "de capas" bajo un plano: lista los elementos que lo afectan, con enlace a su ficha
   // y un checkbox "ocultar" para excluirlo sin volver al editor. grupos: [{label, items:[{obj,titulo}]}].
@@ -686,12 +688,28 @@
     }
   }
   function navCerrar() { const p = $("navPanel"), b = $("navBackdrop"); if (p) p.classList.remove("open"); if (b) b.classList.remove("open"); }
-  function irANodo(target) {
+  function irANodo(target, tituloEl) {
     expandirSiCerrada(target);
     // si está dentro de una pieza plegada, ábrela también
     const pzCard = target.closest && target.closest(".colap-pz"); if (pzCard) expandirSiCerrada(pzCard);
     setTimeout(() => { (target.scrollIntoView ? target : target.parentElement).scrollIntoView({ behavior: "smooth", block: "start" }); }, 30);
+    flashTitulo(tituloEl || tituloDestacable(target));
     navCerrar();
+  }
+  // Devuelve el elemento "título" de una sección/pieza (para resaltarlo al navegar).
+  function tituloDestacable(target) {
+    if (!target) return null;
+    if (target.matches && target.matches("h2.section, .pieza-head")) return target;
+    return target.querySelector(":scope > h2.section") || target.querySelector(":scope > .pieza-head") ||
+      target.querySelector("h2.section, .pieza-head") || target;
+  }
+  // Hace "brillar y apagarse" el título de destino durante ~4 s (reinicia si ya estaba activo).
+  function flashTitulo(el) {
+    if (!el || !el.classList) return;
+    el.classList.remove("nav-flash"); void el.offsetWidth; // fuerza reinicio de la animación
+    el.classList.add("nav-flash");
+    if (el._flashT) clearTimeout(el._flashT);
+    el._flashT = setTimeout(() => { el.classList.remove("nav-flash"); el._flashT = null; }, 4300);
   }
   function limpiarTitulo(t) { return (t || "").replace(/[▸▾✂☰✕?]/g, "").replace(/●\s*con datos/gi, "").replace(/\s+/g, " ").trim(); }
   // ¿La sección/pieza tiene datos ingresados por el usuario? (ámbito propio, sin descender a otras secciones)
@@ -731,7 +749,7 @@
       if (sec && (sec.id === "wSketchUnif" || sec.id === "wPreviewCompuesto")) b.classList.add("nav-plano"); // vínculo a la vista previa: verde
       if (navTieneDatos(sec)) b.classList.add("con-datos");
       b.textContent = (esPieza ? "• " : "") + titulo;
-      b.addEventListener("click", () => irANodo(sec));
+      b.addEventListener("click", () => irANodo(sec, nodo));
       cont.appendChild(b);
     });
     if (!cont.children.length) cont.innerHTML = '<p class="muted small">No hay secciones visibles.</p>';

@@ -304,6 +304,16 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .plano-menu-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 0; }
 .plano-menu-link { font-size: 12px; color: var(--accent); text-decoration: none; border-bottom: 1px dotted transparent; }
 .plano-menu-link:hover { border-bottom-color: var(--accent); }
+/* Resalte del título de destino al navegar: brilla y se apaga ~4 s */
+@keyframes nav-flash {
+  0%   { background-color: transparent; box-shadow: 0 0 0 0 rgba(24,95,165,0); }
+  18%  { background-color: var(--sel); box-shadow: 0 0 0 3px var(--accent), 0 0 14px 2px var(--accent); }
+  50%  { background-color: transparent; box-shadow: 0 0 0 0 rgba(24,95,165,0); }
+  68%  { background-color: var(--sel); box-shadow: 0 0 0 3px var(--accent), 0 0 14px 2px var(--accent); }
+  100% { background-color: transparent; box-shadow: 0 0 0 0 rgba(24,95,165,0); }
+}
+.nav-flash { animation: nav-flash 2s ease-in-out 2; border-radius: 8px; outline: none; }
+
 /* Lupa para ampliar el plano */
 .sketch, .pz-sketch { position: relative; }
 .sketch-zoom-btn { position: absolute; top: 6px; right: 6px; z-index: 5; width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--accent); font-size: 15px; line-height: 1; cursor: zoom-in; box-shadow: 0 1px 5px rgba(0,0,0,0.2); }
