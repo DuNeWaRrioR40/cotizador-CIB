@@ -2443,7 +2443,19 @@
   }
   function openPlanoZoom(svg) {
     const ov = $("planoZoom"), body = $("planoZoomBody"); if (!ov || !body || !svg) return;
-    body.innerHTML = ""; const clone = svg.cloneNode(true); clone.removeAttribute("style"); body.appendChild(clone);
+    body.innerHTML = "";
+    const clone = svg.cloneNode(true); // conserva class "sketch-svg" para los estilos del dibujo
+    // iOS Safari colapsa un SVG con width/height auto → fijamos tamaño en px según el viewBox.
+    const vb = (svg.getAttribute("viewBox") || "").split(/[\s,]+/).map(parseFloat);
+    const vbw = (vb[2] > 0 ? vb[2] : (svg.clientWidth || 700));
+    const vbh = (vb[3] > 0 ? vb[3] : (svg.clientHeight || 500));
+    const aspect = vbw / vbh;
+    const availW = window.innerWidth * 0.94, availH = window.innerHeight * 0.88;
+    let w, h;
+    if (availW / availH > aspect) { h = availH; w = h * aspect; } else { w = availW; h = w / aspect; }
+    clone.removeAttribute("width"); clone.removeAttribute("height");
+    clone.style.cssText = "width:" + Math.round(w) + "px;height:" + Math.round(h) + "px;max-width:none;max-height:none;background:#fff;border-radius:8px;display:block;";
+    body.appendChild(clone);
     ov.classList.remove("hidden");
   }
   function closePlanoZoom() { const ov = $("planoZoom"); if (ov) ov.classList.add("hidden"); const body = $("planoZoomBody"); if (body) body.innerHTML = ""; }
