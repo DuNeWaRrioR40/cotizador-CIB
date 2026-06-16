@@ -217,6 +217,11 @@ button:active { transform: scale(0.98); }
 .sketch-svg .strap-mid { stroke: #d8443a; stroke-width: 0.4; stroke-dasharray: 4 3; opacity: 0.45; }
 .sketch-svg .strap-rem { stroke: #d8443a; stroke-width: 0.7; fill: none; }
 .sketch-svg .strap-lbl { fill: #b3261e; font-size: 6.5px; font-weight: 600; font-family: inherit; }
+/* Rótulo-guía (callout) estilo despiece: gris pizarra, distinto de cotas/cortes/straps */
+.sketch-svg .callout-line { stroke: #455a64; stroke-width: 0.55; fill: none; }
+.sketch-svg .callout-arrow { fill: #455a64; stroke: none; }
+.sketch-svg .callout-dot { fill: #455a64; stroke: none; }
+.sketch-svg .callout-lbl { fill: #37474f; font-size: 6.5px; font-weight: 600; font-family: inherit; }
 .sketch-svg .leyenda-bg { fill: var(--surface); fill-opacity: 0.92; stroke: var(--border, #cdd6e0); stroke-width: 0.5; }
 .sketch-svg .leyenda-tit { fill: var(--text); font-size: 6px; font-weight: 700; font-family: inherit; letter-spacing: 0.5px; }
 .sketch-svg .leyenda-lbl { fill: var(--text); font-size: 6px; font-family: inherit; }
@@ -279,6 +284,9 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .ficha-nav-sub { font-style: italic; opacity: 0.85; }
 .ins-card.anexo-cerrado .ficha-nav-item { color: #8a4b00; }
 .ficha-ocultar-chk { font-size: 12px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; margin: 2px 0 6px; }
+.ficha-rotulo-chk { font-size: 12px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; margin: 2px 0 6px 14px; }
+.ficha-rotulo-chk.auto-on { color: #455a64; font-style: italic; }
+.ficha-rotulo-chk.auto-on input { cursor: not-allowed; }
 /* Ficha oculta del plano/cotización: violeta (gana al ámbar del colapsado) */
 .ins-card.ficha-oculta .ins-head { background: #efe6fb; border: 1px solid #8e44ad; border-radius: 8px; padding: 3px 8px; box-shadow: 0 2px 6px rgba(110,30,150,0.28); }
 .ins-card.ficha-oculta .ins-head .muted, .ins-card.ficha-oculta .anexo-colap { color: #6c2b86; }
@@ -299,6 +307,9 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .plano-menu-oc { font-size: 11px; color: var(--muted); display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
 .plano-menu-row.oculta .plano-menu-link { color: #8e44ad; }
 .plano-menu-row.oculta .plano-menu-oc { color: #8e44ad; }
+/* Navegación de sub-menús de la pieza (bajo el título), mismo estilo que la nav de fichas */
+.pieza-submenu-nav { margin: 2px 0 8px; padding: 5px 0 2px; border-bottom: 1px dashed var(--border); justify-content: flex-start; }
+.pieza-submenu-nav.ficha-nav { margin-left: 0; gap: 2px 12px; }
 /* Factor de diseño: acceso rápido (botón) en la sección Producto */
 .factor-top-btn { display: block; width: 100%; text-align: left; background: #eef4fb; border: 1px solid #c9d6e5; border-radius: 8px; padding: 8px 12px; margin: 8px 0; cursor: pointer; font-size: 0.95em; color: var(--text); box-shadow: 0 1px 3px rgba(20,50,90,0.12); }
 .factor-top-btn.activo { background: #ffe9b8; border-color: #e9a23b; color: #8a4b00; box-shadow: 0 2px 6px rgba(180,110,0,0.30); }
@@ -317,6 +328,11 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .nav-link.nav-pieza { padding-left: 20px; font-size: 0.85em; color: var(--muted); }
 .nav-link.con-datos { background: #ffe9b8; border: 1px solid #e9a23b; color: #8a4b00; font-weight: 600; box-shadow: 0 1px 4px rgba(180,110,0,0.28); margin: 2px 0; }
 .nav-link.con-datos::after { content: " ●"; color: #b35c00; }
+/* Vínculo a la vista previa del plano: verde (idéntico a las tiras de navegación) */
+.nav-link.nav-plano { background: #1f7a3d; color: #fff; font-weight: 700; border: 1px solid #1f7a3d; box-shadow: 0 1px 4px rgba(20,95,46,0.28); margin: 2px 0; }
+.nav-link.nav-plano:hover { background: #155f2e; }
+.nav-link.nav-plano.con-datos { background: #1f7a3d; color: #fff; border-color: #1f7a3d; }
+.nav-link.nav-plano.con-datos::after { content: ""; }
 .oj-l2-panel { margin: 4px 0 2px; padding-left: 6px; border-left: 2px solid var(--border, #d4dde7); }
 /* Vista previa consolidada de planos por pieza (compuesto) */
 .prev-block { border: 1px solid var(--border, #d4dde7); border-radius: 8px; margin: 8px 0; overflow: hidden; }

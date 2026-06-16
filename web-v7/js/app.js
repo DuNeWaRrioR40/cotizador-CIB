@@ -581,6 +581,30 @@
     cb.addEventListener("change", () => { obj._oculto = cb.checked; if (rerender) rerender(); if (onChange) onChange(); });
     lab.appendChild(cb); lab.appendChild(sp); card.appendChild(lab);
   }
+  // Checkbox "Rótulo": fuerza el rótulo-guía (título afuera con flecha) aunque el auto haya
+  // determinado que el título cabía dentro. Queda deshabilitado (y marcado) cuando el auto ya
+  // está generando el rótulo porque el título no cabe. Por defecto desmarcado = automático.
+  function rotuloFichaCtl(card, obj, onChange) {
+    const lab = document.createElement("label"); lab.className = "chk ficha-rotulo-chk";
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.className = "rotulo-chk";
+    cb.dataset.rid = rotId(obj); cb._obj = obj; cb.checked = !!obj.rotulo;
+    const sp = document.createElement("span"); sp.textContent = "Rótulo (mostrar título afuera)";
+    cb.addEventListener("change", () => { obj.rotulo = cb.checked; if (onChange) onChange(); });
+    lab.appendChild(cb); lab.appendChild(sp); card.appendChild(lab);
+    // Estado inicial según la última decisión del auto.
+    const auto = window.SketchCIBSA && window.SketchCIBSA.autoRotulo;
+    if (auto && auto[cb.dataset.rid]) { cb.disabled = true; cb.checked = true; lab.classList.add("auto-on"); }
+  }
+  // Sincroniza el estado deshabilitado/marcado de los checkboxes "Rótulo" tras cada render del plano.
+  function refreshRotuloChks() {
+    const auto = (window.SketchCIBSA && window.SketchCIBSA.autoRotulo) || {};
+    document.querySelectorAll("input.rotulo-chk[data-rid]").forEach((cb) => {
+      const on = !!auto[cb.dataset.rid];
+      cb.disabled = on;
+      cb.checked = on || !!(cb._obj && cb._obj.rotulo);
+      const lab = cb.closest("label"); if (lab) lab.classList.toggle("auto-on", on);
+    });
+  }
   function subColapsar(container, titulo, host, key, hasData) {
     if (!container) return;
     if (!container._subHead) {
@@ -690,6 +714,7 @@
       }
       if (!titulo) return;
       const b = document.createElement("button"); b.type = "button"; b.className = "nav-link" + (esPieza ? " nav-pieza" : "");
+      if (sec && (sec.id === "wSketchUnif" || sec.id === "wPreviewCompuesto")) b.classList.add("nav-plano"); // vínculo a la vista previa: verde
       if (navTieneDatos(sec)) b.classList.add("con-datos");
       b.textContent = (esPieza ? "• " : "") + titulo;
       b.addEventListener("click", () => irANodo(sec));
@@ -1114,6 +1139,7 @@
       orient: base ? base.orient : "largo", union: base ? base.union : "0.045",
       bordeModo: base ? base.bordeModo : "uniforme", bordeValor: base ? base.bordeValor : "0.045",
       bordes: base ? cpB(base.bordes) : defB(),
+      rotulo: base ? !!base.rotulo : false,
     };
   }
   // ---------- Aletas / Solapas / Faldón / Cenefa (paños anexos fusionados; SÍ cotizan) ----------
@@ -1132,6 +1158,7 @@
       bordeModo: "uniforme", bordeValor: base ? base.bordeValor : "0.045", bordes: defB(),
       ojetillos: base ? base.ojetillos : "0",
       complementos: base ? (base.complementos || []).map((c) => Object.assign({}, c, { cantAristas: (c.cantAristas || []).slice() })) : [],
+      rotulo: base ? !!base.rotulo : false,
     };
   }
   // Factor de diseño (1..2): solo afecta el costo de tela (confección).
@@ -1185,9 +1212,11 @@
   function aletasTotal(list, cantidad, valorOj, factor) {
     return visibles(list).reduce((s, a) => { const r = calcAleta(a, cantidad, valorOj, factor); return s + (r ? r.subtotal : 0); }, 0);
   }
+  let ROTSEQ = 0;
+  function rotId(o) { if (o._rid == null) o._rid = ++ROTSEQ; return o._rid; }
   function aletasSpec(list) {
     const ev = window.CalcCIBSA.evalExpr;
-    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), legend: a.legend || "" })).filter((a) => a.largo > 0 && a.ancho > 0);
+    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), legend: a.legend || "", rotulo: !!a.rotulo, id: rotId(a) })).filter((a) => a.largo > 0 && a.ancho > 0);
   }
   function aletasLineasPDF(list, cantidad, valorOj, factor) {
     return visibles(list).map((a) => {
@@ -1429,6 +1458,7 @@
         }
         refresh();
         ocultarFichaCtl(card, a, pintar, onChange);
+        rotuloFichaCtl(card, a, onChange);
         fichaColapsable(card, head, tt, a); // cada Anexo es plegable
         rows.appendChild(card);
       });
@@ -1654,6 +1684,7 @@
         }
         refresh();
         ocultarFichaCtl(card, ins, pintar, onChange);
+        rotuloFichaCtl(card, ins, onChange);
         fichaColapsable(card, head, tt, ins); // cada ventana/paño inscrito es plegable
         rows.appendChild(card);
       });
@@ -2250,6 +2281,7 @@
     if (state.docMode === "preliminar") recomputePrelim();
     else if (state.docMode === "formal" && state.prodMode === "compuesto") recomputeCompuesto();
     else recomputeUniforme();
+    refreshRotuloChks();
     actualizarColapsables();
   }
 
@@ -2635,7 +2667,7 @@
     const a = ev(pz.ancho), l = ev(pz.largo);
     const ventanas = visibles(pz.inscritos).map((ins) => {
       const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
-      return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {} } : null;
+      return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {}, rotulo: !!ins.rotulo, id: rotId(ins) } : null;
     }).filter(Boolean);
     const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }) };
     if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh }; }
@@ -2645,7 +2677,7 @@
   }
   // SVG de vista previa: frontal y, si corresponde, trasera (espejo + calados propios) debajo.
   function sketchDualSVG(spec, trasera, backCortes, backAletas) {
-    let html = window.SketchCIBSA.sketchSVG(spec);
+    let html = window.SketchCIBSA.sketchSVG(spec, { live: true });
     if (spec.volumetrico && (parseFloat(spec.volumetrico.alto) || 0) > 0) return html; // volumétrico: solo vista 3D + desplegado
     if (trasera) {
       const back = Object.assign({}, spec, { espejo: true, vista: "trasera", aletas: backAletas || [] });
@@ -2697,7 +2729,7 @@
     return out;
   }
   // Checkbox global: plano/cotización "de aprobación" (sin cotas ni datos de taller).
-  function suprimeCotas() { const c = $("f_suprimirCotas"); return !!(c && c.checked); }
+  function suprimeCotas() { const a = $("f_suprimirCotas"), b = $("f_suprimirCotas2"); return !!((a && a.checked) || (b && b.checked)); }
   async function descargarSketch(datos) {
     try {
       datos.suprimirCotas = suprimeCotas();
@@ -2946,6 +2978,24 @@
       subColapsar(q(".pz-ins"), "Inscribir paños (ventanas)", pz, "_cIns", () => (pz.inscritos || []).length);
       subColapsar(q(".pz-cortes"), "Cortes / Calados", pz, "_cCut", () => (pz.cortes || []).length);
       subColapsar(q(".pz-aletas"), "Aletas / Solapas / Faldón / Cenefa", pz, "_cAle", () => (pz.aletas || []).length);
+      // Navegación de sub-menús de la pieza (mismo estilo que la nav de fichas), bajo el título.
+      {
+        const subs = [
+          [".pz-oj-wrap", "Ojetillos", "_cOj"], [".pz-borde", "Bordes y uniones", "_cBorde"],
+          [".pz-comp", "Complementos", "_cComp"], [".pz-ins", "Paños inscritos", "_cIns"],
+          [".pz-cortes", "Cortes / Calados", "_cCut"], [".pz-aletas", "Aletas / Anexos", "_cAle"],
+          [".pz-straps", "Straps / cintas", "_cStr"],
+        ];
+        const navS = document.createElement("div"); navS.className = "ficha-nav pieza-submenu-nav";
+        subs.forEach(([sel, titulo, key]) => {
+          const cont = q(sel); if (!cont || !cont._subHead) return;
+          const a = document.createElement("a"); a.className = "ficha-nav-item"; a.href = "#"; a.textContent = titulo;
+          a.addEventListener("click", (e) => { e.preventDefault(); if (pz[key]) cont._subHead.click(); try { cont._subHead.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (_) { cont._subHead.scrollIntoView(); } });
+          navS.appendChild(a);
+        });
+        const ph = q(".pieza-head");
+        if (ph && navS.children.length) ph.insertAdjacentElement("afterend", navS);
+      }
 
       const bindNum = (sel, prop) => {
         q(sel).addEventListener("input", (e) => { pz[prop] = e.target.value; recomputeCompuesto(); });
@@ -3057,6 +3107,13 @@
       const sketchBox = list ? list.querySelector('[data-id="' + pz.id + '"] .pz-sketch') : null;
       if (sketchBox && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
         sketchBox.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas));
+        const refrescarOcPz = () => { renderPiezas(); recompute(); };
+        menuPlano(sketchBox, [
+          { label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
+          { label: "Paños inscritos", items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
+          { label: "Aletas / Anexos", items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
+          { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
+        ], refrescarOcPz);
       }
       const card = list ? list.querySelector('[data-id="' + pz.id + '"] .pieza-sub') : null;
       if (r) {
@@ -3166,7 +3223,7 @@
     const multi = $("telaMulti"); if (multi) multi.querySelectorAll("input:checked").forEach((c) => (c.checked = false));
     { const to = $("telaOpcList"); if (to) to.querySelectorAll("input:checked").forEach((c) => (c.checked = false)); }
     favCatActiva = null; renderCategoriasFav();
-    { const sc = $("f_suprimirCotas"); if (sc) sc.checked = false; }
+    { const sc = $("f_suprimirCotas"); if (sc) sc.checked = false; const sc2 = $("f_suprimirCotas2"); if (sc2) sc2.checked = false; }
     $("telaMultiErr").classList.add("hidden"); state.prelim = [];
     // Reset bordes/unión → mismo borde 0.045
     state.bordeModo = "uniforme"; state.bordeValor = "0.045";
@@ -3182,6 +3239,9 @@
   { const limpiarTodo = () => { limpiarBorrador(); limpiarCampos(); }; const b1 = $("btnLimpiar"); if (b1) b1.addEventListener("click", limpiarTodo); const b2 = $("btnLimpiarCliente"); if (b2) b2.addEventListener("click", limpiarTodo); }
 
   // ---------- Generar ----------
+  // Mantiene sincronizados los dos checkboxes de "Suprimir cotas" (arriba y bajo el botón Generar).
+  { const a = $("f_suprimirCotas"), b = $("f_suprimirCotas2");
+    if (a && b) { a.addEventListener("change", () => { b.checked = a.checked; }); b.addEventListener("change", () => { a.checked = b.checked; }); } }
   $("btnGenerar").addEventListener("click", generar);
   { const b = $("btnDescargarSketch"); if (b) b.addEventListener("click", descargarSketchUnif); }
   { const t = $("f_trasUnif"); if (t) t.addEventListener("change", () => { state.trasUnif = t.checked; recompute(); }); }

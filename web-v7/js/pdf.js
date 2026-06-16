@@ -88,6 +88,19 @@
       page.drawCircle({ x: cx, y: cy, size: r, borderColor: col, borderWidth: 0.4, color: WHITE() });
       page.drawCircle({ x: cx, y: cy, size: r * 0.42, borderColor: col, borderWidth: 0.35 });
     };
+    // Rótulo-guía (callout) estilo despiece: tramo diagonal desde el elemento + horizontal con flecha al título.
+    const cb = T.cb, SLATE = PDFLib.rgb(0.27, 0.35, 0.39);
+    function callout(ax, ay, text, obj) {
+      if (!cb || !cb.slots.has(obj)) return false;
+      const ly = cb.slots.get(obj), lx = cb.x, elbowX = ax + 16;
+      page.drawCircle({ x: ax, y: ay, size: 1.3, color: SLATE });
+      page.drawLine({ start: { x: ax, y: ay }, end: { x: elbowX, y: ly }, thickness: 0.55, color: SLATE });
+      page.drawLine({ start: { x: elbowX, y: ly }, end: { x: lx - 4, y: ly }, thickness: 0.55, color: SLATE });
+      page.drawLine({ start: { x: lx - 1, y: ly }, end: { x: lx - 6, y: ly - 2.4 }, thickness: 0.6, color: SLATE });
+      page.drawLine({ start: { x: lx - 1, y: ly }, end: { x: lx - 6, y: ly + 2.4 }, thickness: 0.6, color: SLATE });
+      page.drawText(san(text), { x: lx, y: ly - 2, size: 6.5, font: font, color: SLATE });
+      return true;
+    }
     // Straps (cintas): banda con relleno suave translúcido + borde fino rojo + línea media + remates + etiqueta.
     (sk.straps || []).forEach((st) => {
       const d = "M " + st.corners.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";
@@ -115,7 +128,8 @@
       } else {
         page.drawRectangle({ x: px(v.x), y: py(v.y + v.h), width: v.w * scale, height: v.h * scale, borderColor: ACC, borderWidth: 0.9, borderDashArray: [3, 2] });
       }
-      if (v.legend) page.drawText(san(v.legend), { x: cx - font.widthOfTextAtSize(san(v.legend), 6.5) / 2, y: cy + 1, size: 6.5, font: font, color: BLACK() });
+      if (v.legend && cb && cb.slots.has(v)) callout(cx, cy, v.legend, v);
+      else if (v.legend) page.drawText(san(v.legend), { x: cx - font.widthOfTextAtSize(san(v.legend), 6.5) / 2, y: cy + 1, size: 6.5, font: font, color: BLACK() });
       const med = v.circ ? (String.fromCharCode(216) + SK.fmt(v.w) + "m") : (SK.fmt(v.w) + "x" + SK.fmt(v.h) + "m");
       page.drawText(med, { x: cx - font.widthOfTextAtSize(med, 5.5) / 2, y: cy - 6, size: 5.5, font: font, color: PDFLib.rgb(0.42, 0.42, 0.42) });
       if (!v.circ && v.fusion) {
@@ -181,7 +195,8 @@
         .forEach((b) => page.drawLine({ start: { x: b.x1, y: b.y1 }, end: { x: b.x2, y: b.y2 }, thickness: 0.9, color: FUS }));
       (a.ojetillos || []).forEach((p) => ojePDF(px(p.x), py(p.y), ACC));
       const lbl = a.nombre || "Aleta";
-      page.drawText(san(lbl), { x: X + Wp / 2 - font.widthOfTextAtSize(san(lbl), 6.5) / 2, y: py(a.y + a.h / 2), size: 6.5, font: font, color: PDFLib.rgb(0.54, 0.34, 0.06) });
+      if (cb && cb.slots.has(a)) callout(X + Wp / 2, py(a.y + a.h / 2), lbl, a);
+      else page.drawText(san(lbl), { x: X + Wp / 2 - font.widthOfTextAtSize(san(lbl), 6.5) / 2, y: py(a.y + a.h / 2), size: 6.5, font: font, color: PDFLib.rgb(0.54, 0.34, 0.06) });
     });
     // Cortes / calados
     (sk.cortes || []).forEach((c) => {
@@ -353,23 +368,41 @@
     const resFilas = SK.strapsResumen(sk);
     const resH = resFilas.length ? (9 + (resFilas.length + 1) * 8 + 4) : 0;
     const bottomH = Math.max(legH, resH);
-    const mTop = ML.top + LBL, mLeft = ML.left + LBL, mRight = ML.right + 18 + LBL;
+    const mTop = ML.top + LBL, mLeft = ML.left + LBL;
     const mBot = ML.bottom + 18 + LBL + bottomH;
-    const availW = box.w - mLeft - mRight, availH = box.h - mTop - mBot;
-    if (availW <= 0 || availH <= 0) return;
+    let mRight = ML.right + 18 + LBL;
     // Bounds del paño (base + aletas) — las cotas se anclan AQUÍ (los straps NO afectan las cotas).
     let pMinX = 0, pMaxX = sk.ancho, pMinY = 0, pMaxY = sk.largo;
     (sk.aletas || []).forEach((a) => { pMinX = Math.min(pMinX, a.x); pMaxX = Math.max(pMaxX, a.x + a.w); pMinY = Math.min(pMinY, a.y); pMaxY = Math.max(pMaxY, a.y + a.h); });
     const minX = pMinX, maxX = pMaxX, minY = pMinY, maxY = pMaxY; // straps no alteran el tamaño del dibujo
     const bw = maxX - minX, bh = maxY - minY;
-    const scale = Math.min(availW / bw, availH / bh);
+    const geomFor = (mR) => {
+      const aW = box.w - mLeft - mR, aH = box.h - mTop - mBot;
+      if (aW <= 0 || aH <= 0) return null;
+      const sc = Math.min(aW / bw, aH / bh);
+      const tW = bw * sc + mLeft + mR, tH = bh * sc + mTop + mBot;
+      const x0r = box.x + (box.w - tW) / 2 + mLeft, tpr = box.top - (box.h - tH) / 2 - mTop;
+      return { sc: sc, x0: x0r - minX * sc, topRect: tpr + minY * sc };
+    };
+    let g = geomFor(mRight); if (!g) return;
+    // Rótulos-guía: detectar los que no caben con la escala actual; reservar franja derecha y re-escalar.
+    const cFits = (text, wpx2, hpx2) => { const est = font.widthOfTextAtSize(san(text || ""), 6.5); return (wpx2 - 4) >= est && hpx2 >= 9.5; };
+    const calloutEls = [];
+    (sk.aletas || []).forEach((a) => { if (a.rotulo || !cFits(a.nombre, a.w * g.sc, a.h * g.sc)) calloutEls.push({ obj: a, sy: a.y + a.h / 2 }); });
+    (sk.ventanas || []).forEach((v) => { if (v.legend && (v.rotulo || !cFits(v.legend, v.w * g.sc, v.h * g.sc))) calloutEls.push({ obj: v, sy: v.y + v.h / 2 }); });
+    if (calloutEls.length) { const g2 = geomFor(mRight + 108); if (g2) { mRight += 108; g = g2; } }
+    const scale = g.sc, x0 = g.x0, topRect = g.topRect;
     const wpx = sk.ancho * scale, hpx = sk.largo * scale;
-    const totalW = bw * scale + mLeft + mRight, totalH = bh * scale + mTop + mBot;
-    const x0region = box.x + (box.w - totalW) / 2 + mLeft;
-    const topRegion = box.top - (box.h - totalH) / 2 - mTop;
-    const x0 = x0region - minX * scale, topRect = topRegion + minY * scale;
     const px = (sx) => x0 + sx * scale;
     const py = (sy) => topRect - sy * scale;
+    let cb = null;
+    if (calloutEls.length) {
+      const midY = topRect - bh * scale / 2;
+      calloutEls.sort((A, B) => py(B.sy) - py(A.sy));
+      const slots = new Map(); const dy = 11; let last = Infinity;
+      calloutEls.forEach((e) => { const ay = py(e.sy); const off = (ay > midY) ? -10 : 10; let ly = ay + off; if (ly > last - dy) ly = last - dy; last = ly; slots.set(e.obj, ly); });
+      cb = { x: px(maxX) + 16, slots: slots };
+    }
     const GRAY = PDFLib.rgb(0.12, 0.12, 0.12);
     const ACC = BLUE();
     const RED = PDFLib.rgb(0.106, 0.369, 0.125); // verde pino
@@ -378,7 +411,7 @@
     page.drawRectangle({ x: x0, y: topRect - hpx, width: wpx, height: hpx, borderColor: GRAY, borderWidth: 1.3 });
     // Elementos del paño (ventanas, bolsillos, ojetillos, aletas, cortes)
     const r = Math.max(0.8, Math.max(1.4, Math.min(2.6, scale * 0.022)) - 0.9); // ojetillos del plano: ~2 puntos más chicos (la leyenda usa su propio radio fijo)
-    elementosPDF(page, sk, { px: px, py: py, scale: scale, x0: x0, topRect: topRect, wpx: wpx, hpx: hpx, r: r }, font);
+    elementosPDF(page, sk, { px: px, py: py, scale: scale, x0: x0, topRect: topRect, wpx: wpx, hpx: hpx, r: r, cb: cb }, font);
     // Cotas (rojo): mayor = paño base; menor = padding / ventanas
     if (conCotas) {
       const ln = (x1, y1, x2, y2, w) => page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: w, color: RED });

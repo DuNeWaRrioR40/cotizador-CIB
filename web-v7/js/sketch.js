@@ -5,6 +5,10 @@
    paño base "desaparece" (queda calado abierto). */
 (function (global) {
   const OFF_MIN0 = 16, OFF_STEP = 18, OFF_GAP = 20, TICK = 3, EXTGAP = 3, EPS = 0.001;
+  // Registro de la decisión "auto" del rótulo-guía por id de elemento (true = el auto generó el
+  // rótulo porque el título no cabía). Se rellena solo en render en vivo (opts.live) para que la UI
+  // pueda deshabilitar el checkbox "Rótulo" cuando el auto ya lo está generando.
+  const AUTOROT = {};
 
   // Distribuye n puntos uniformemente por el perímetro (sentido horario desde 0,0).
   function ojetillosPerimetro(n, ancho, largo) {
@@ -252,7 +256,7 @@
     const ancho = parseFloat(spec.ancho), largo = parseFloat(spec.largo);
     let cortes = (spec.cortes || []).filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte")).map((c) => procesarCorte(c, ancho, largo));
     let ojetillos = Array.isArray(spec.ojetillosPos) ? spec.ojetillosPos : ojetillosPerimetro(spec.ojTotal, ancho, largo);
-    let ventanas = (spec.ventanas || []).filter((v) => v && v.w > 0 && v.h > 0).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, circ: !!v.circ, legend: v.legend || "", fusion: v.fusion || {} }));
+    let ventanas = (spec.ventanas || []).filter((v) => v && v.w > 0 && v.h > 0).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, circ: !!v.circ, legend: v.legend || "", fusion: v.fusion || {}, rotulo: !!v.rotulo, id: (v.id != null ? v.id : null) }));
     let bolsillos = (spec.bolsillos || []).filter((b) => b && (b.arista === "sup" || b.arista === "inf" || b.arista === "izq" || b.arista === "der"));
     // Espejo horizontal (vista trasera): atraviesan/voltean ojetillos, ventanas y calados; materiales NO van en el dibujo.
     if (spec.espejo && ancho > 0) {
@@ -300,7 +304,7 @@
         pts = puntosArista(nOj, p0, p1);
       }
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (NOMARI[a.tipo] || "Aleta");
-      return { x: x, y: y, w: w, h: h, fused: fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts };
+      return { x: x, y: y, w: w, h: h, fused: fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null) };
     });
     // Straps (cintas/webbing): banda RECTA de ancho fijo (del material) y largo del usuario, en cualquier
     // ángulo/posición. Puede iniciar fuera, cruzar y salir del paño. Remates = costuras perpendiculares en
@@ -458,8 +462,10 @@
     return out;
   }
 
+  // ¿El rótulo (texto) cabe dentro del elemento (en px)? Si no, se usa rótulo-guía (callout).
+  function labelCabe(text, wpx, hpx, fs) { fs = fs || 6.5; const est = String(text || "").length * fs * 0.54; return (wpx - 4) >= est && hpx >= (fs + 3); }
   // Dibuja los elementos de un paño (aletas, ventanas, bolsillos, ojetillos, cortes) según una
-  // transformación dada. t = { px, py, scale, r, ojeSVG, ox, oy, w, h }. Reusado por sketchSVG y volSVG.
+  // transformación dada. t = { px, py, scale, r, ojeSVG, ox, oy, w, h, cb? }. Reusado por sketchSVG y volSVG.
   // Puntos de un zigzag de (x1,y1) a (x2,y2) (para remates de strap = costura perpendicular).
   function zigzagPts(x1, y1, x2, y2, amp, seg) {
     const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
@@ -474,6 +480,19 @@
     const ox = t.ox, oy = t.oy, w = t.w, h = t.h;
     const f1 = (n) => n.toFixed(1);
     let s = "";
+    // Rótulo-guía (callout) estilo despiece: rótulos que no caben salen a la derecha, apilados,
+    // con línea guía diagonal→horizontal y punta de flecha al título. cb = { x, y, dy, n }.
+    const cb = t.cb;
+    function callout(anchorX, anchorY, text, obj) {
+      if (!cb) return;
+      const ly = cb.slots.get(obj); if (ly == null) { s += `<text class="callout-lbl" x="${f1(anchorX)}" y="${f1(anchorY)}" text-anchor="middle">${esc(text)}</text>`; return; }
+      // Quiebre claramente diagonal (≠ cotas): tramo corto en diagonal desde el elemento y luego horizontal al título.
+      const lx = cb.x, elbowX = anchorX + 16;
+      s += `<circle class="callout-dot" cx="${f1(anchorX)}" cy="${f1(anchorY)}" r="1.3"/>`;
+      s += `<polyline class="callout-line" points="${f1(anchorX)},${f1(anchorY)} ${f1(elbowX)},${f1(ly)} ${f1(lx - 4)},${f1(ly)}"/>`;
+      s += `<polygon class="callout-arrow" points="${f1(lx - 1)},${f1(ly)} ${f1(lx - 6)},${f1(ly - 2.4)} ${f1(lx - 6)},${f1(ly + 2.4)}"/>`;
+      s += `<text class="callout-lbl" x="${f1(lx)}" y="${f1(ly + 2)}">${esc(text)}</text>`;
+    }
     // Straps (cintas): banda recta + línea media + remates zigzag + etiqueta.
     (sk.straps || []).forEach((st) => {
       const poly = st.corners.map((c) => f1(px(c.x)) + "," + f1(py(c.y))).join(" ");
@@ -500,7 +519,8 @@
       flechaBarbas(fa.x, fa.y, dx / Lf, dy / Lf, 5).concat(flechaBarbas(fb.x, fb.y, -dx / Lf, -dy / Lf, 5))
         .forEach((b) => { s += `<line class="fusion" x1="${f1(b.x1)}" y1="${f1(b.y1)}" x2="${f1(b.x2)}" y2="${f1(b.y2)}"/>`; });
       (a.ojetillos || []).forEach((p) => { s += ojeSVG(px(p.x), py(p.y), "oje"); });
-      s += `<text class="aleta-lbl" x="${f1(X + Wp / 2)}" y="${f1(Y + Hp / 2)}" text-anchor="middle">${esc(a.nombre)}</text>`;
+      if (cb && cb.slots.has(a)) callout(X + Wp / 2, Y + Hp / 2, a.nombre, a);
+      else s += `<text class="aleta-lbl" x="${f1(X + Wp / 2)}" y="${f1(Y + Hp / 2)}" text-anchor="middle">${esc(a.nombre)}</text>`;
     });
     // Ventanas / paños inscritos (rectangulares o circulares) + leyenda, medida y flechas de fusión.
     sk.ventanas.forEach((v) => {
@@ -510,9 +530,9 @@
       } else {
         s += `<rect class="win" x="${f1(px(v.x))}" y="${f1(py(v.y))}" width="${f1(v.w * scale)}" height="${f1(v.h * scale)}"/>`;
       }
-      if (v.legend) s += `<text class="ins-lbl" x="${f1(cx)}" y="${f1(cy - 1)}" text-anchor="middle">${esc(v.legend)}</text>`;
       const med = v.circ ? ("Ø" + fmt(v.w) + "m") : (fmt(v.w) + "×" + fmt(v.h) + "m");
-      s += `<text class="ins-dim" x="${f1(cx)}" y="${f1(cy + 6)}" text-anchor="middle">${med}</text>`;
+      if (v.legend && cb && cb.slots.has(v)) { callout(cx, cy, v.legend, v); s += `<text class="ins-dim" x="${f1(cx)}" y="${f1(cy + 2)}" text-anchor="middle">${med}</text>`; }
+      else { if (v.legend) s += `<text class="ins-lbl" x="${f1(cx)}" y="${f1(cy - 1)}" text-anchor="middle">${esc(v.legend)}</text>`; s += `<text class="ins-dim" x="${f1(cx)}" y="${f1(cy + 6)}" text-anchor="middle">${med}</text>`; }
       if (!v.circ && v.fusion) {
         const X = px(v.x), Y = py(v.y), X2 = px(v.x + v.w), Y2 = py(v.y + v.h);
         const edges = [];
@@ -845,7 +865,33 @@
     const boundsBot = mTop + bh * scale;
     let totalW = bw * scale + mLeft + mRight;
     if (resFilas.length) totalW = Math.max(totalW, 246);
-    const totalH = boundsBot + mBot + bottomH;
+    // Rótulos-guía (callouts): rótulos de aletas/ventanas que no caben → a la DERECHA, pero cada uno
+    // a la ALTURA de su elemento (zona libre más cercana), para que la guía sea corta y no cruce el plano.
+    const calloutEls = [];
+    const live = !!(opts && opts.live);
+    (sk.aletas || []).forEach((a) => {
+      const fits = labelCabe(a.nombre, a.w * scale, a.h * scale);
+      if (live && a.id != null) AUTOROT[a.id] = !fits;
+      if (a.rotulo || !fits) calloutEls.push({ obj: a, ay: py(a.y + a.h / 2) });
+    });
+    (sk.ventanas || []).forEach((v) => {
+      if (!v.legend) return;
+      const fits = labelCabe(v.legend, v.w * scale, v.h * scale);
+      if (live && v.id != null) AUTOROT[v.id] = !fits;
+      if (v.rotulo || !fits) calloutEls.push({ obj: v, ay: py(v.y + v.h / 2) });
+    });
+    let totalH = boundsBot + mBot + bottomH;
+    let cb = null;
+    if (calloutEls.length) {
+      const calloutW = 108; totalW += calloutW;
+      calloutEls.sort((A, B) => A.ay - B.ay);
+      const slots = new Map(); const dy = 11, y0 = mTop + 4, midY = mTop + bh * scale / 2; let last = -1e9;
+      // Empuja el rótulo ~10px lejos del borde más cercano (arriba si está en la mitad baja, abajo si está arriba)
+      // para forzar un primer tramo diagonal; luego se apila evitando solapes.
+      calloutEls.forEach((e) => { const off = (e.ay < midY) ? 10 : -10; let ly = Math.max(y0, Math.min(boundsBot, e.ay + off)); if (ly < last + dy) ly = last + dy; last = ly; slots.set(e.obj, ly); });
+      cb = { x: totalW - calloutW + 26, slots: slots };
+      totalH = Math.max(totalH, last + 8);
+    }
     const rLeg = Math.max(1.7, Math.min(3.0, scale * 0.022)); // tamaño para el recuadro de simbología
     const r = Math.max(0.9, rLeg - 0.9); // ojetillos del PLANO: ~2 puntos (diámetro) más chicos
     const f1 = (n) => n.toFixed(1);
@@ -856,7 +902,7 @@
     // Contorno
     s += `<rect class="edge" x="${f1(ox)}" y="${f1(oy)}" width="${f1(w)}" height="${f1(h)}"/>`;
     // Elementos del paño (aletas, ventanas, bolsillos, ojetillos, cortes)
-    s += elementosSketch(sk, { px: px, py: py, scale: scale, r: r, ojeSVG: ojeSVG, ox: ox, oy: oy, w: w, h: h });
+    s += elementosSketch(sk, { px: px, py: py, scale: scale, r: r, ojeSVG: ojeSVG, ox: ox, oy: oy, w: w, h: h, cb: cb });
     // Cotas (verde) — origen al centro para posición de elementos; 4 lados; eje de referencia.
     if (conCotas) {
       const bTop = py(pMinY), bBot = py(pMaxY), bLeft = px(pMinX), bRight = px(pMaxX);
@@ -915,6 +961,7 @@
     distribuirArista, distribuirParejo, posicionesArista,
     intervalosCalados, segmentosSolidos, posicionesAristaSeg,
     simbologia, strapsResumen, resumenStrapsSVG,
+    autoRotulo: AUTOROT,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   global.SketchCIBSA = API;
