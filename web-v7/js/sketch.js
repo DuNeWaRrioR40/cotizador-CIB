@@ -344,7 +344,7 @@
       const g = aletaGeomRect(a, ancho, largo);
       const pts = aletaOjPuntos(a, ancho, largo);
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (NOMARI[a.tipo] || "Aleta");
-      return { x: g.x, y: g.y, w: g.w, h: g.h, fused: g.fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null) };
+      return { x: g.x, y: g.y, w: g.w, h: g.h, fused: g.fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null), largo: parseFloat(a.largo) || 0, ancho: parseFloat(a.ancho) || 0, offset: parseFloat(a.offset) || 0, dBorde: parseFloat(a.dBorde) || 0 };
     });
     // Straps (cintas/webbing): banda RECTA de ancho fijo (del material) y largo del usuario, en cualquier
     // ángulo/posición. Puede iniciar fuera, cruzar y salir del paño. Remates = costuras perpendiculares en
@@ -392,7 +392,7 @@
         straps.push({ corners: corners, rem0: { a: corners[0], b: corners[3] }, rem1: { a: corners[1], b: corners[2] }, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: ldx, y: ldy }, perp: { x: ux, y: uy }, hw: hw, ancho: W, largo: off + ins, nombre: cc.strapNombre || "Cinta", grupo: (cc.strapNombre && cc.strapNombre.trim()) ? cc.strapNombre.trim() : "Corte", origen: "corte", precioM: cc.strapPrecioM || 0 });
       });
     });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps };
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
@@ -523,7 +523,7 @@
     // Rótulo-guía (callout) estilo despiece: rótulos que no caben salen a la derecha, apilados,
     // con línea guía diagonal→horizontal y punta de flecha al título. cb = { x, y, dy, n }.
     const cb = t.cb;
-    function callout(anchorX, anchorY, text, obj) {
+    function callout(anchorX, anchorY, text, detail, obj) {
       if (!cb) return;
       const ly = cb.slots.get(obj); if (ly == null) { s += `<text class="callout-lbl" x="${f1(anchorX)}" y="${f1(anchorY)}" text-anchor="middle">${esc(text)}</text>`; return; }
       // Quiebre claramente diagonal (≠ cotas): tramo corto en diagonal desde el elemento y luego horizontal al título.
@@ -531,7 +531,31 @@
       s += `<circle class="callout-dot" cx="${f1(anchorX)}" cy="${f1(anchorY)}" r="1.3"/>`;
       s += `<polyline class="callout-line" points="${f1(anchorX)},${f1(anchorY)} ${f1(elbowX)},${f1(ly)} ${f1(lx - 4)},${f1(ly)}"/>`;
       s += `<polygon class="callout-arrow" points="${f1(lx - 1)},${f1(ly)} ${f1(lx - 6)},${f1(ly - 2.4)} ${f1(lx - 6)},${f1(ly + 2.4)}"/>`;
-      s += `<text class="callout-lbl" x="${f1(lx)}" y="${f1(ly + 2)}">${esc(text)}</text>`;
+      s += `<text class="callout-lbl" x="${f1(lx)}" y="${f1(ly + (detail ? 0 : 2))}">${esc(text)}</text>`;
+      if (detail) s += `<text class="callout-dim" x="${f1(lx)}" y="${f1(ly + 6)}">${esc(detail)}</text>`;
+    }
+    // Detalle técnico (dimensiones) de un anexo para el rótulo: ancho × caída + offset + ojetillos.
+    function aletaDetalle(a) {
+      const parts = [fmt(a.ancho || a.w) + "×" + fmt(a.largo || a.h) + " m"];
+      if ((a.offset || 0) > 0) parts.push("offset " + fmt(a.offset));
+      const n = (a.ojetillos || []).length; if (n > 0) parts.push(n + " ojet.");
+      return parts.join(" · ");
+    }
+    // Uniones entre paños: líneas de costura (dashed) donde se unen los rollos, + etiqueta. Solo si el usuario lo activa.
+    const ur = sk.unionesRot;
+    if (ur && ur.mostrar && ur.anchoRollo > 0 && sk.ancho > 0 && sk.largo > 0) {
+      const R = ur.anchoRollo, A = sk.ancho, L = sk.largo, dim = ur.orient === "ancho" ? L : A;
+      const n = Math.ceil(dim / R - 1e-9);
+      for (let i = 1; i < n; i++) {
+        const d = i * R; if (d >= dim - 1e-9) break;
+        if (ur.orient === "ancho") s += `<line class="union-seam" x1="${f1(px(0))}" y1="${f1(py(d))}" x2="${f1(px(A))}" y2="${f1(py(d))}"/>`;
+        else s += `<line class="union-seam" x1="${f1(px(d))}" y1="${f1(py(0))}" x2="${f1(px(d))}" y2="${f1(py(L))}"/>`;
+      }
+      if (n > 1) {
+        const ulbl = "Unión " + fmt(ur.valor) + " m";
+        if (ur.orient === "ancho") s += `<text class="union-lbl" x="${f1(px(A) - 2)}" y="${f1(py(R) - 1.5)}" text-anchor="end">${esc(ulbl)}</text>`;
+        else s += `<text class="union-lbl" x="${f1(px(R) + 1.5)}" y="${f1(py(0) + 7)}">${esc(ulbl)}</text>`;
+      }
     }
     // Straps (cintas): banda recta + línea media + remates zigzag + etiqueta.
     (sk.straps || []).forEach((st) => {
@@ -559,7 +583,7 @@
       flechaBarbas(fa.x, fa.y, dx / Lf, dy / Lf, 5).concat(flechaBarbas(fb.x, fb.y, -dx / Lf, -dy / Lf, 5))
         .forEach((b) => { s += `<line class="fusion" x1="${f1(b.x1)}" y1="${f1(b.y1)}" x2="${f1(b.x2)}" y2="${f1(b.y2)}"/>`; });
       (a.ojetillos || []).forEach((p) => { s += ojeSVG(px(p.x), py(p.y), "oje"); });
-      if (cb && cb.slots.has(a)) callout(X + Wp / 2, Y + Hp / 2, a.nombre, a);
+      if (cb && cb.slots.has(a)) callout(X + Wp / 2, Y + Hp / 2, a.nombre, aletaDetalle(a), a);
       else s += `<text class="aleta-lbl" x="${f1(X + Wp / 2)}" y="${f1(Y + Hp / 2)}" text-anchor="middle">${esc(a.nombre)}</text>`;
     });
     // Ventanas / paños inscritos (rectangulares o circulares) + leyenda, medida y flechas de fusión.
@@ -571,7 +595,7 @@
         s += `<rect class="win" x="${f1(px(v.x))}" y="${f1(py(v.y))}" width="${f1(v.w * scale)}" height="${f1(v.h * scale)}"/>`;
       }
       const med = v.circ ? ("Ø" + fmt(v.w) + "m") : (fmt(v.w) + "×" + fmt(v.h) + "m");
-      if (v.legend && cb && cb.slots.has(v)) { callout(cx, cy, v.legend, v); s += `<text class="ins-dim" x="${f1(cx)}" y="${f1(cy + 2)}" text-anchor="middle">${med}</text>`; }
+      if (v.legend && cb && cb.slots.has(v)) { callout(cx, cy, v.legend, med, v); }
       else { if (v.legend) s += `<text class="ins-lbl" x="${f1(cx)}" y="${f1(cy - 1)}" text-anchor="middle">${esc(v.legend)}</text>`; s += `<text class="ins-dim" x="${f1(cx)}" y="${f1(cy + 6)}" text-anchor="middle">${med}</text>`; }
       if (!v.circ && v.fusion) {
         const X = px(v.x), Y = py(v.y), X2 = px(v.x + v.w), Y2 = py(v.y + v.h);
@@ -925,7 +949,7 @@
     if (calloutEls.length) {
       const calloutW = 108; totalW += calloutW;
       calloutEls.sort((A, B) => A.ay - B.ay);
-      const slots = new Map(); const dy = 11, y0 = mTop + 4, midY = mTop + bh * scale / 2; let last = -1e9;
+      const slots = new Map(); const dy = 16, y0 = mTop + 4, midY = mTop + bh * scale / 2; let last = -1e9;
       // Empuja el rótulo ~10px lejos del borde más cercano (arriba si está en la mitad baja, abajo si está arriba)
       // para forzar un primer tramo diagonal; luego se apila evitando solapes.
       calloutEls.forEach((e) => { const off = (e.ay < midY) ? 10 : -10; let ly = Math.max(y0, Math.min(boundsBot, e.ay + off)); if (ly < last + dy) ly = last + dy; last = ly; slots.set(e.obj, ly); });
@@ -979,11 +1003,16 @@
     // Rótulos de orientación (vista frontal/trasera + lados).
     const esTras = spec.vista === "trasera";
     const cxA = mLeft + bw * scale / 2, lyA = mTop + bh * scale / 2;
+    // Terminación de cada arista (Tipo + medida) anexada a su rótulo de orientación. En la trasera se
+    // invierten izq/der (espejo). Se omite en modo "suprimir cotas" (plano de aprobación limpio).
+    const br = sk.bordesRot || {};
+    const brIzq = esTras ? (br.der || "") : (br.izq || ""), brDer = esTras ? (br.izq || "") : (br.der || "");
+    const tsp = (txt) => txt ? `<tspan class="vista-borde"> · ${esc(txt)}</tspan>` : "";
     s += `<text class="vista-tit" x="${f1(cxA)}" y="10" text-anchor="middle">VISTA ${esTras ? "TRASERA" : "FRONTAL"}</text>`;
-    s += `<text class="vista-lbl" x="${f1(cxA)}" y="20" text-anchor="middle">SUPERIOR</text>`;
-    s += `<text class="vista-lbl" x="${f1(cxA)}" y="${f1(boundsBot + mBot - 8)}" text-anchor="middle">INFERIOR</text>`;
-    s += `<text class="vista-lbl" x="10" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 10 ${f1(lyA)})">LADO IZQUIERDO</text>`;
-    s += `<text class="vista-lbl" x="${f1(totalW - 9)}" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 ${f1(totalW - 9)} ${f1(lyA)})">LADO DERECHO</text>`;
+    s += `<text class="vista-lbl" x="${f1(cxA)}" y="20" text-anchor="middle">SUPERIOR${tsp(br.sup)}</text>`;
+    s += `<text class="vista-lbl" x="${f1(cxA)}" y="${f1(boundsBot + mBot - 8)}" text-anchor="middle">INFERIOR${tsp(br.inf)}</text>`;
+    s += `<text class="vista-lbl" x="10" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 10 ${f1(lyA)})">LADO IZQUIERDO${tsp(brIzq)}</text>`;
+    s += `<text class="vista-lbl" x="${f1(totalW - 9)}" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 ${f1(totalW - 9)} ${f1(lyA)})">LADO DERECHO${tsp(brDer)}</text>`;
     if (esTras) {
       s += `<text class="vista-sub" x="19" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 19 ${f1(lyA)})">(frontal: der.)</text>`;
       s += `<text class="vista-sub" x="${f1(totalW - 18)}" y="${f1(lyA)}" text-anchor="middle" transform="rotate(-90 ${f1(totalW - 18)} ${f1(lyA)})">(frontal: izq.)</text>`;

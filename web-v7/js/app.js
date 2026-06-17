@@ -12,7 +12,7 @@
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [],
     // v4: bordes y unión (uniforme)
-    bordeModo: "uniforme", bordeValor: "0.045",
+    bordeModo: "uniforme", bordeValor: "0.045", bordeRotUnif: false, unionRot: false,
     bordes: {
       sup: { tipo: "borde", valor: "0.045", diam: "" },
       inf: { tipo: "borde", valor: "0.045", diam: "" },
@@ -129,7 +129,7 @@
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
   const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_version"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "bordeModo", "bordeValor", "bordes", "piezas", "factorUnif"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -523,6 +523,23 @@
       if (del) head.insertBefore(nav, del); else head.appendChild(nav);
     });
   }
+  // Tira de navegación INTERNA de una ficha: enlaces a sus sub-bloques (datos, dimensiones, materiales…).
+  // items: [{ label, el }]. Se inserta bajo el encabezado de la ficha. No usa la clase ".ficha-nav"
+  // (que navFichas elimina), sino ".ficha-subnav".
+  function subnavFicha(card, head, items) {
+    if (!card || !head) return;
+    const old = card.querySelector(":scope > .ficha-subnav"); if (old) old.remove();
+    const valid = (items || []).filter((it) => it && it.el);
+    if (valid.length < 2) return;
+    const nav = document.createElement("div"); nav.className = "ficha-subnav";
+    valid.forEach((it) => {
+      it.el.classList.add("ficha-bloque-anchor");
+      const a = document.createElement("a"); a.className = "ficha-nav-item ficha-subnav-item"; a.href = "#"; a.textContent = it.label;
+      a.addEventListener("click", (e) => { e.preventDefault(); const el = it.el; try { el.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { el.scrollIntoView(); } flashTitulo(el); });
+      nav.appendChild(a);
+    });
+    head.insertAdjacentElement("afterend", nav);
+  }
   // Desplaza a la sección del plano del producto (uniforme o compuesto), abriéndola si está colapsada.
   function irAlPlano() {
     const t = (state.prodMode === "compuesto") ? $("wPreviewCompuesto") : $("wSketchUnif");
@@ -547,11 +564,43 @@
       p = p.parentElement;
     }
     if (typeof card._abrir === "function") card._abrir();
-    try { card.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (_) { card.scrollIntoView(); }
+    // Deja la ficha cerca del borde superior (con margen via CSS scroll-margin-top), no centrada.
+    setTimeout(() => { try { card.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { card.scrollIntoView(); } }, 30);
     flashTitulo(card.querySelector(".ins-head") || card);
+    const f1 = card.querySelector(".field"); if (f1) flashTitulo(f1); // primer campo (ej. "Tipo" del anexo)
   }
   // Menú "de capas" bajo un plano: lista los elementos que lo afectan, con enlace a su ficha
   // y un checkbox "ocultar" para excluirlo sin volver al editor. grupos: [{label, items:[{obj,titulo}]}].
+  // Contraparte en el plano para los rótulos de borde activos: aparece solo si hay alguno activo,
+  // con un checkbox por arista para desmarcarlo (quitar el rótulo) desde el plano. host = state | pieza.
+  function menuBordesRot(container, host, onToggle) {
+    if (!container || !host) return;
+    const NOM = { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha" };
+    const rows = [];
+    if (host.bordeModo !== "arista") {
+      if (host.bordeRotUnif) rows.push({ label: "Borde (4 aristas)", off: () => { host.bordeRotUnif = false; } });
+    } else {
+      ["sup", "inf", "izq", "der"].forEach((k) => {
+        const b = host.bordes && host.bordes[k];
+        if (b && b.mostrarRot) rows.push({ label: NOM[k], off: () => { b.mostrarRot = false; } });
+      });
+    }
+    if (host.unionRot) rows.push({ label: "Uniones entre paños", off: () => { host.unionRot = false; } });
+    if (!rows.length) return;
+    const box = document.createElement("div"); box.className = "plano-menu plano-bordes-rot";
+    const cap = document.createElement("div"); cap.className = "plano-menu-cap"; cap.textContent = "Rótulos de borde / unión en el plano (desmarcar para quitar):";
+    box.appendChild(cap);
+    rows.forEach((r) => {
+      const row = document.createElement("div"); row.className = "plano-menu-row";
+      const sp = document.createElement("span"); sp.className = "plano-menu-link"; sp.style.cursor = "default"; sp.textContent = r.label;
+      const lab = document.createElement("label"); lab.className = "plano-menu-oc";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = true;
+      cb.addEventListener("change", () => { if (!cb.checked) { r.off(); if (onToggle) onToggle(); } });
+      lab.appendChild(cb); lab.appendChild(document.createTextNode("rótulo"));
+      row.appendChild(sp); row.appendChild(lab); box.appendChild(row);
+    });
+    container.appendChild(box);
+  }
   function menuPlano(container, grupos, onToggle) {
     if (!container) return;
     const filas = grupos.map((g) => ({ label: g.label, rotulo: !!g.rotulo, items: (g.items || []).filter((it) => it && it.obj) })).filter((g) => g.items.length);
@@ -711,6 +760,22 @@
     if (el._flashT) clearTimeout(el._flashT);
     el._flashT = setTimeout(() => { el.classList.remove("nav-flash"); el._flashT = null; }, 4300);
   }
+  // Navega a un elemento puntual (no sección): abre sus ancestros plegados, desplaza y lo resalta.
+  function irAElemento(el, flashEl) {
+    if (!el) return;
+    let p = el.parentElement;
+    while (p && p !== document.body) {
+      if (p.classList) {
+        if (p.classList.contains("colap") && p.classList.contains("collapsed") && typeof toggleColap === "function") toggleColap(p);
+        if (p.classList.contains("colap-cerrada")) { const ind = p.querySelector(".pz-colap-btn"); if (ind) ind.click(); }
+        if (p._subHead && p.style.display === "none") p._subHead.click();
+      }
+      p = p.parentElement;
+    }
+    setTimeout(() => { try { el.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { el.scrollIntoView(); } }, 30);
+    flashTitulo(flashEl || el);
+    navCerrar();
+  }
   function limpiarTitulo(t) { return (t || "").replace(/[▸▾✂☰✕?]/g, "").replace(/●\s*con datos/gi, "").replace(/\s+/g, " ").trim(); }
   // ¿La sección/pieza tiene datos ingresados por el usuario? (ámbito propio, sin descender a otras secciones)
   function navTieneDatos(sec) {
@@ -731,6 +796,7 @@
     cont.innerHTML = "";
     // Recorre secciones (h2) y piezas en orden de aparición; solo lo visible.
     const nodos = document.querySelectorAll("#formView h2.section, #formView .pieza-head");
+    let telaLinkDone = false;
     nodos.forEach((nodo) => {
       if (nodo.offsetParent === null) return; // oculto
       const esPieza = nodo.classList.contains("pieza-head");
@@ -751,7 +817,51 @@
       b.textContent = (esPieza ? "• " : "") + titulo;
       b.addEventListener("click", () => irANodo(sec, nodo));
       cont.appendChild(b);
+      if (esPieza && sec) {
+        // Sub-botón al selector de tela de la pieza.
+        const pzTela = sec.querySelector(".pz-tela");
+        if (pzTela) {
+          const bt = document.createElement("button"); bt.type = "button"; bt.className = "nav-link nav-pieza nav-tela-sub";
+          bt.textContent = "• 🧵 Tela";
+          bt.addEventListener("click", () => irAElemento(pzTela, pzTela.closest(".field") || pzTela));
+          cont.appendChild(bt);
+        }
+        // Sub-botón a "Generar plano" de la pieza (debajo del de tela).
+        const pzPlano = sec.querySelector(".pz-descargar");
+        if (pzPlano) {
+          const bp = document.createElement("button"); bp.type = "button"; bp.className = "nav-link nav-pieza nav-genplano-sub";
+          bp.textContent = "• 📄 Generar plano";
+          bp.addEventListener("click", () => irAElemento(pzPlano, pzPlano));
+          cont.appendChild(bp);
+        }
+      } else if (!esPieza && sec && !telaLinkDone) {
+        // Vínculo destacado (azul) al selector de telas del producto uniforme (una sola vez).
+        const telaUnif = $("wTelaUnica");
+        if (telaUnif && sec.contains(telaUnif) && telaUnif.offsetParent !== null) {
+          const bt = document.createElement("button"); bt.type = "button"; bt.className = "nav-link nav-tela";
+          bt.textContent = "🧵 Selector de telas";
+          bt.addEventListener("click", () => irAElemento(telaUnif));
+          cont.appendChild(bt);
+          telaLinkDone = true;
+        }
+      }
     });
+    // Penúltimo (uniforme): vínculo a "Generar plano" del producto, destacado en blanco.
+    { const bSketch = $("btnDescargarSketch");
+      if (bSketch && bSketch.offsetParent !== null) {
+        const bp = document.createElement("button"); bp.type = "button"; bp.className = "nav-link nav-genplano";
+        bp.textContent = "📄 Generar plano";
+        bp.addEventListener("click", () => irAElemento(bSketch, bSketch));
+        cont.appendChild(bp);
+      } }
+    // Último (siempre): vínculo a "Generar cotización", destacado en silver.
+    { const bGen = $("btnGenerar");
+      if (bGen && bGen.offsetParent !== null) {
+        const bc = document.createElement("button"); bc.type = "button"; bc.className = "nav-link nav-cotizar";
+        bc.textContent = "🧾 Generar cotización";
+        bc.addEventListener("click", () => irAElemento(bGen, bGen));
+        cont.appendChild(bc);
+      } }
     if (!cont.children.length) cont.innerHTML = '<p class="muted small">No hay secciones visibles.</p>';
   }
   function navAbrir() { construirNav(); const p = $("navPanel"), b = $("navBackdrop"); if (p) p.classList.add("open"); if (b) b.classList.add("open"); }
@@ -1559,6 +1669,12 @@
           dims.innerHTML = html;
         }
         refresh();
+        subnavFicha(card, head, [
+          { label: "Datos", el: card.querySelector(".field") },
+          { label: "Dimensiones", el: grid },
+          { label: "Ojetillos", el: ojWrap },
+          { label: "Materiales", el: mcap },
+        ]);
         ocultarFichaCtl(card, a, pintar, onChange);
         rotuloFichaCtl(card, a, onChange);
         fichaColapsable(card, head, tt, a); // cada Anexo es plegable
@@ -2349,6 +2465,11 @@
   }
   function renderBordes() {
     const c = $("bordeDyn"); if (!c) return; c.innerHTML = "";
+    { const chk = document.createElement("label"); chk.className = "chk borde-rot-chk";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!state.unionRot;
+      cb.addEventListener("change", () => { state.unionRot = cb.checked; recompute(); });
+      chk.appendChild(cb); chk.appendChild(document.createTextNode("Rotular las uniones entre paños en el plano"));
+      c.appendChild(chk); }
     if (state.bordeModo === "uniforme") {
       const lab = document.createElement("label"); lab.className = "field";
       const sp = document.createElement("span"); sp.textContent = "Borde por arista (m)"; lab.appendChild(sp);
@@ -2358,6 +2479,11 @@
       lab.appendChild(inp); c.appendChild(lab);
       const p = document.createElement("p"); p.className = "muted small"; p.textContent = "Se aplica a las 4 aristas (por defecto 0,045 m).";
       c.appendChild(p);
+      const chk = document.createElement("label"); chk.className = "chk borde-rot-chk";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!state.bordeRotUnif;
+      cb.addEventListener("change", () => { state.bordeRotUnif = cb.checked; recompute(); });
+      chk.appendChild(cb); chk.appendChild(document.createTextNode("Rotular el borde en el plano (las 4 aristas)"));
+      c.appendChild(chk);
       return;
     }
     const aristas = [["sup", "Superior (suma al largo)"], ["inf", "Inferior (suma al largo)"], ["izq", "Izquierda (suma al ancho)"], ["der", "Derecha (suma al ancho)"]];
@@ -2383,7 +2509,13 @@
         else state.bordes[key].diam = e.target.value;
         refWarn(); recompute();
       });
-      ctr.appendChild(sel); ctr.appendChild(val); row.appendChild(ctr); row.appendChild(warn); c.appendChild(row);
+      ctr.appendChild(sel); ctr.appendChild(val); row.appendChild(ctr); row.appendChild(warn);
+      const chk = document.createElement("label"); chk.className = "chk borde-rot-chk";
+      const cbR = document.createElement("input"); cbR.type = "checkbox"; cbR.checked = !!b.mostrarRot;
+      cbR.addEventListener("change", () => { state.bordes[key].mostrarRot = cbR.checked; recompute(); });
+      chk.appendChild(cbR); chk.appendChild(document.createTextNode("Rotular en el plano"));
+      row.appendChild(chk);
+      c.appendChild(row);
       refWarn();
     });
   }
@@ -2427,7 +2559,7 @@
     actualizarTraseraUnif();
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
-      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) }, ojSpecUnif());
+      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) }, ojSpecUnif());
       if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif() };
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
       const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); recompute(); };
@@ -2436,6 +2568,7 @@
         { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
         { label: "Straps / cintas", items: (state.strapsUnif || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
       ], refrescarOcUnif);
+      menuBordesRot(sk, state, () => { renderBordes(); recompute(); });
     }
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) {
       cont.innerHTML = '<p class="muted small">Ingresa largo, ancho y tela para ver los montos.</p>';
@@ -2486,7 +2619,7 @@
     const compTotal = compTotalUnit(state.complementosUnif) * N;
     const aleTotal = aletasTotal(state.aletasUnif, N, lote.valorOjetillo, facUnif()) + aletasTotal(state.backAletasUnif, N, lote.valorOjetillo, facUnif());
     const strapTotal = strapsTotal(state.strapsUnif, N, { ancho: ancho || 0, largo: largo || 0 });
-    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) };
+    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) };
     const corteTotal = costoCortesUnit(skSpec, lote.valorOjetillo) * N;
     return o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal;
   }
@@ -2698,6 +2831,8 @@
       union: base ? base.union : "0.045",
       bordeModo: base ? base.bordeModo : "uniforme",
       bordeValor: base ? base.bordeValor : "0.045",
+      bordeRotUnif: base ? !!base.bordeRotUnif : false,
+      unionRot: base ? !!base.unionRot : false,
       bordes: base ? copBordes(base.bordes) : defBordes(),
       complementos: base ? (base.complementos || []).map((c) => Object.assign({}, c, { cantAristas: (c.cantAristas || []).slice() })) : [],
       inscritos: base ? (base.inscritos || []).map((ins) => nuevaInscrito(ins)) : [],
@@ -2714,6 +2849,11 @@
   function renderPiezaBordes(container, pz) {
     container.innerHTML = "";
     const onChange = recomputeCompuesto;
+    { const chk = document.createElement("label"); chk.className = "chk borde-rot-chk";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!pz.unionRot;
+      cb.addEventListener("change", () => { pz.unionRot = cb.checked; onChange(); });
+      chk.appendChild(cb); chk.appendChild(document.createTextNode("Rotular las uniones entre paños en el plano"));
+      container.appendChild(chk); }
     const lu = document.createElement("label"); lu.className = "field";
     const su = document.createElement("span"); su.textContent = "Unión entre paños (m)"; lu.appendChild(su);
     const iu = document.createElement("input"); iu.type = "text"; iu.value = pz.union != null ? pz.union : "0.045";
@@ -2734,6 +2874,11 @@
       ib.addEventListener("input", (e) => { pz.bordeValor = e.target.value; onChange(); });
       ib.addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { pz.bordeValor = window.CalcCIBSA.fmtNum(r); e.target.value = pz.bordeValor; onChange(); } });
       lb.appendChild(ib); container.appendChild(lb);
+      const chk = document.createElement("label"); chk.className = "chk borde-rot-chk";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!pz.bordeRotUnif;
+      cb.addEventListener("change", () => { pz.bordeRotUnif = cb.checked; onChange(); });
+      chk.appendChild(cb); chk.appendChild(document.createTextNode("Rotular el borde en el plano (las 4 aristas)"));
+      container.appendChild(chk);
     } else {
       const aristas = [["sup", "Superior (→ largo)"], ["inf", "Inferior (→ largo)"], ["izq", "Izquierda (→ ancho)"], ["der", "Derecha (→ ancho)"]];
       aristas.forEach(([key, label]) => {
@@ -2752,7 +2897,12 @@
         const refWarn = () => { const t = (b.tipo === "borde_cuerda" || b.tipo === "bolsillo") ? avisoDiamGrande(b.diam) : ""; warn.textContent = t; warn.style.display = t ? "" : "none"; };
         sel.addEventListener("change", (e) => { b.tipo = e.target.value; renderPiezaBordes(container, pz); onChange(); });
         val.addEventListener("input", (e) => { if (b.tipo === "borde") b.valor = e.target.value; else b.diam = e.target.value; refWarn(); onChange(); });
-        ctr.appendChild(sel); ctr.appendChild(val); row.appendChild(ctr); row.appendChild(warn); container.appendChild(row);
+        ctr.appendChild(sel); ctr.appendChild(val); row.appendChild(ctr); row.appendChild(warn);
+        const chkR = document.createElement("label"); chkR.className = "chk borde-rot-chk";
+        const cbR = document.createElement("input"); cbR.type = "checkbox"; cbR.checked = !!b.mostrarRot;
+        cbR.addEventListener("change", () => { b.mostrarRot = cbR.checked; onChange(); });
+        chkR.appendChild(cbR); chkR.appendChild(document.createTextNode("Rotular en el plano"));
+        row.appendChild(chkR); container.appendChild(row);
         refWarn();
       });
     }
@@ -2765,7 +2915,7 @@
   const OJ_DIAM = 0.03; // diámetro del ojetillo (m): la 2da línea suprime 0/n si el inset es menor (se solapan)
   function defOjEdge() { return { on: true, d: "0.5", supr: "", linea2: { on: false, inset: "0.025", supr: "" } }; }
   function ojEdgesDefault() { return { sup: defOjEdge(), inf: defOjEdge(), izq: defOjEdge(), der: defOjEdge() }; }
-  function ojEdgesCopy(e) { const c = {}; ["sup", "inf", "izq", "der"].forEach((k) => { const s = (e && e[k]) || {}; const l2 = s.linea2 || {}; c[k] = { on: s.on !== false, d: s.d != null ? s.d : "0.5", supr: s.supr || "", linea2: { on: !!l2.on, inset: l2.inset != null ? l2.inset : "0.025", supr: l2.supr || "" } }; }); return c; }
+  function ojEdgesCopy(e) { const c = {}; ["sup", "inf", "izq", "der"].forEach((k) => { const s = (e && e[k]) || {}; const l2 = s.linea2 || {}; c[k] = { on: s.on !== false, d: s.d != null ? s.d : "0.5", n: s.n != null ? s.n : "", supr: s.supr || "", linea2: { on: !!l2.on, inset: l2.inset != null ? l2.inset : "0.025", supr: l2.supr || "" } }; }); return c; }
   // Parsea posiciones a suprimir. Acepta enteros sueltos y RANGOS con guión inclusivos.
   // Separadores: "," o "/". Ej.: "4-10" => 4,5,6,7,8,9,10 ; "1,2,5-8,22" => 1,2,5,6,7,8,22.
   function parseSupr(s) {
@@ -2787,9 +2937,16 @@
   // Devuelve { pos:[{x,y}], total, errores:[], detalle:{sup:{n,kept,d,esp}, ...} }
   // Posiciones de una arista, descontando las esquinas que ya colocan las aristas horizontales
   // (las verticales no repiten esquinas: así cada esquina se suprime con UNA sola supresión).
-  function posicionesEdge(k, L, d, parejo, removed, edges) {
+  function posicionesEdge(k, L, d, parejo, removed, edges, nTot) {
     const ev = window.CalcCIBSA.evalExpr;
-    let full = window.SketchCIBSA.posicionesAristaSeg(L, d, !!parejo, removed);
+    let full;
+    if (nTot != null && nTot >= 2) {
+      // Total uniforme: N ojetillos repartidos parejo en toda la arista (incluye las 2 esquinas).
+      const N = Math.max(2, Math.round(nTot));
+      full = []; for (let i = 0; i < N; i++) full.push(L * i / (N - 1));
+    } else {
+      full = window.SketchCIBSA.posicionesAristaSeg(L, d, !!parejo, removed);
+    }
     if (k === "izq" || k === "der") {
       const horizOn = (kk) => { const he = edges && edges[kk]; return !!(he && he.on !== false && ev(he.d) > 0); };
       const supOn = horizOn("sup"), infOn = horizOn("inf");
@@ -2802,10 +2959,11 @@
     const out = [], errs = [], detalle = {};
     const rem = SK.intervalosCalados(ancho, largo, cortes || []); // bordes seccionados por calados
     const proc = (k, L, removed, mapFn) => {
-      const e = (edges && edges[k]) || {}, d = ev(e.d);
-      detalle[k] = { n: 0, kept: 0, d: d > 0 ? d : 0, esp: 0, seccionada: (removed || []).length > 0 };
-      if (e.on === false || !(d > 0) || !(L > 0)) return;
-      const full = posicionesEdge(k, L, d, parejo, removed, edges), n = full.length;
+      const e = (edges && edges[k]) || {}, d = ev(e.d), nTot = ev(e.n);
+      const usaTotal = (nTot != null && nTot >= 2);
+      detalle[k] = { n: 0, kept: 0, d: d > 0 ? d : 0, esp: 0, seccionada: (removed || []).length > 0, total: usaTotal };
+      if (e.on === false || !(L > 0) || (!usaTotal && !(d > 0))) return;
+      const full = posicionesEdge(k, L, d, parejo, removed, edges, usaTotal ? nTot : null), n = full.length;
       detalle[k].n = n; detalle[k].esp = n > 1 ? L / (n - 1) : 0;
       const supr = parseSupr(e.supr), suprSet = new Set(supr);
       supr.forEach((i) => { if (i >= n) errs.push(OJ_NOMBRE[k] + ": posición " + i + " supera el máximo (" + (n - 1) + ")"); });
@@ -2862,7 +3020,7 @@
       const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
       return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {}, rotulo: !!ins.rotulo, id: rotId(ins) } : null;
     }).filter(Boolean);
-    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }) };
+    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((state.telas.find((t) => t.nombre === pz.telaNombre)) || {}).anchoRollo), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }) };
     if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh }; }
     if (pz.ojMode === "arista") spec.ojetillosPos = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes)).pos;
     else spec.ojTotal = ojIntPz(pz.ojetillos);
@@ -2880,6 +3038,31 @@
     return html;
   }
   // Bolsillos por arista (para el dibujo): solo en modo "por arista" y tipo bolsillo.
+  // Etiqueta de terminación por arista para rotular en el plano: { sup, inf, izq, der }.
+  // Solo se incluye la arista cuyo rótulo el usuario activó (mostrarRot por arista, o rotUnif en modo uniforme).
+  function bordesRotuloDe(bordeModo, bordes, bordeValor, rotUnif) {
+    const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
+    const lbl = (b) => {
+      if (!b) return "";
+      if (b.tipo === "bruto") return "Bruto";
+      if (b.tipo === "borde_cuerda") { const d = ev(b.diam); return "Borde + cuerda Ø " + (d > 0 ? f(d) + " m" : "?"); }
+      if (b.tipo === "bolsillo") { const d = ev(b.diam); return "Bolsillo Ø " + (d > 0 ? f(d) + " m" : "?"); }
+      const v = ev(b.valor); return "Borde " + (v != null && !isNaN(v) ? f(v) : "0,045") + " m";
+    };
+    if (bordeModo !== "arista" || !bordes) {
+      if (!rotUnif) return { sup: "", inf: "", izq: "", der: "" };
+      const v = ev(bordeValor); const s = "Borde " + (v != null && !isNaN(v) ? f(v) : "0,045") + " m";
+      return { sup: s, inf: s, izq: s, der: s };
+    }
+    const pick = (b) => (b && b.mostrarRot) ? lbl(b) : "";
+    return { sup: pick(bordes.sup), inf: pick(bordes.inf), izq: pick(bordes.izq), der: pick(bordes.der) };
+  }
+  // Rótulo de uniones entre paños: dibuja las líneas de costura + etiqueta cuando el usuario lo activa.
+  function unionesRotObj(mostrar, valor, orient, anchoRollo) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const v = ev(valor), R = parseFloat(anchoRollo);
+    return { mostrar: !!mostrar, valor: (v != null && !isNaN(v)) ? v : 0.045, orient: orient === "ancho" ? "ancho" : "largo", anchoRollo: (R > 0) ? R : 0 };
+  }
   function bolsillosDe(bordeModo, bordes) {
     if (bordeModo !== "arista" || !bordes) return [];
     const out = [];
@@ -2952,7 +3135,7 @@
       ojetillos: nOjetillos(), unidades: N,
       observaciones: terminacionesTexto(state.orientUnif).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, []).concat(materialesCortes(state.cortesUnif)),
-      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif() } } : {}),
+      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif() } } : {}),
       trasera: state.trasUnif && !(alturaUnif() > 0),
       backExtra: { cortes: cortesSpec(state.backCortesUnif), aletas: aletasSpec(state.backAletasUnif) },
       materialesTrasera: materialesTraseras(state.backCortesUnif, state.backComplementosUnif),
@@ -3036,6 +3219,13 @@
         id.addEventListener("input", (ev2) => { e.d = ev2.target.value; refrescar(); onChange(); });
         id.addEventListener("blur", (ev2) => { const r = ev(ev2.target.value); if (r != null && !isNaN(r)) { e.d = f(r); ev2.target.value = e.d; refrescar(); onChange(); } });
         ld.appendChild(id); agregarCalc(id); addHelpTo(ld, "Separación deseada entre ojetillos en esa arista, en metros. La app pone uno en cada esquina y reparte el resto; si el último tramo supera esta medida, agrega uno al medio.", "OJ-DIST"); grid.appendChild(ld);
+        // Alternativa: total uniforme por arista (≥ 2). Si se define, manda sobre el distanciamiento.
+        const lt = document.createElement("label"); lt.className = "field"; lt.innerHTML = "<span>o Total uniforme (≥ 2)</span>";
+        const it = document.createElement("input"); it.type = "text"; it.inputMode = "numeric"; it.value = e.n != null ? e.n : ""; it.placeholder = "opcional";
+        if (ev(e.n) >= 2) id.disabled = true;
+        it.addEventListener("input", (ev2) => { e.n = ev2.target.value; refrescar(); onChange(); });
+        it.addEventListener("blur", (ev2) => { const r = ev(ev2.target.value); if (r != null && !isNaN(r) && r >= 2) { e.n = String(Math.round(r)); ev2.target.value = e.n; } else { e.n = ""; ev2.target.value = ""; } repintar(); onChange(); });
+        lt.appendChild(it); agregarCalc(it); addHelpTo(lt, "Alternativa al distanciamiento: cuántos ojetillos repartir UNIFORMEMENTE en esta arista. Mínimo 2 (solo las esquinas); 3 o más agregan interiores parejos. Si lo defines, manda sobre el distanciamiento; déjalo vacío para volver al distanciamiento.", "OJ-TOTAL"); grid.appendChild(lt);
         const ls = document.createElement("label"); ls.className = "field"; ls.innerHTML = "<span>Suprimir posiciones (ej. 1, 3, 5-8)</span>";
         const is = document.createElement("input"); is.type = "text"; is.value = e.supr || ""; is.placeholder = "ej. 1, 3, 5-8";
         is.addEventListener("input", (ev2) => { e.supr = ev2.target.value; refrescar(); onChange(); });
@@ -3068,11 +3258,11 @@
         }
         const info = document.createElement("div"); info.className = "muted small oj-edge-info"; card.appendChild(info);
         function refrescar() {
-          const L = getL(), d = ev(e.d);
+          const L = getL(), d = ev(e.d), nTot = ev(e.n), usaTotal = (nTot != null && nTot >= 2);
           const tl = container.querySelector(".pz-oj-total");
-          if (!(L > 0) || !(d > 0)) { info.textContent = "Define dimensiones y distanciamiento."; if (tl) tl.textContent = "Total: " + getTotal(); return; }
+          if (!(L > 0) || (!usaTotal && !(d > 0))) { info.textContent = "Define dimensiones y distanciamiento (o total uniforme)."; if (tl) tl.textContent = "Total: " + getTotal(); return; }
           const removed = getCortes ? (window.SketchCIBSA.intervalosCalados(getAncho(), getLargo(), getCortes())[k] || []) : [];
-          const full = posicionesEdge(k, L, d, host.ojParejo, removed, edges), n = full.length;
+          const full = posicionesEdge(k, L, d, host.ojParejo, removed, edges, usaTotal ? nTot : null), n = full.length;
           const supr = parseSupr(e.supr), kept = n - supr.filter((i) => i < n).length;
           const sinEsq = (k === "izq" || k === "der") && n < window.SketchCIBSA.posicionesAristaSeg(L, d, !!host.ojParejo, removed).length;
           let html = n + " ojetillos (0.." + (n - 1) + ")";
@@ -3312,6 +3502,7 @@
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
         ], refrescarOcPz);
+        menuBordesRot(sketchBox, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); });
       }
       const card = list ? list.querySelector('[data-id="' + pz.id + '"] .pieza-sub') : null;
       if (r) {
@@ -3399,6 +3590,7 @@
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
         ], refrescarOcPz);
+        menuBordesRot(body, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); });
       }
       aplic();
       cont.appendChild(block);
@@ -3513,7 +3705,7 @@
     const o = orientKey === "ancho" ? lote.oAncho : lote.oLargo;
     const N = lote.N;
     const desc = num("f_descuento", 0);
-    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) };
+    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) };
     const ojeTotal = lote.nOjetillos * lote.valorOjetillo * N;
     const compTotal = compTotalUnit(state.complementosUnif) * N;
     const aleTotal = aletasTotal(state.aletasUnif, N, lote.valorOjetillo, facUnif()) + aletasTotal(state.backAletasUnif, N, lote.valorOjetillo, facUnif());

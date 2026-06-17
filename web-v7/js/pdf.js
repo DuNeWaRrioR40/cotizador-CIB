@@ -90,7 +90,7 @@
     };
     // Rótulo-guía (callout) estilo despiece: tramo diagonal desde el elemento + horizontal con flecha al título.
     const cb = T.cb, SLATE = PDFLib.rgb(0.27, 0.35, 0.39);
-    function callout(ax, ay, text, obj) {
+    function callout(ax, ay, text, detail, obj) {
       if (!cb || !cb.slots.has(obj)) return false;
       const ly = cb.slots.get(obj), lx = cb.x, elbowX = ax + 16;
       page.drawCircle({ x: ax, y: ay, size: 1.3, color: SLATE });
@@ -98,8 +98,32 @@
       page.drawLine({ start: { x: elbowX, y: ly }, end: { x: lx - 4, y: ly }, thickness: 0.55, color: SLATE });
       page.drawLine({ start: { x: lx - 1, y: ly }, end: { x: lx - 6, y: ly - 2.4 }, thickness: 0.6, color: SLATE });
       page.drawLine({ start: { x: lx - 1, y: ly }, end: { x: lx - 6, y: ly + 2.4 }, thickness: 0.6, color: SLATE });
-      page.drawText(san(text), { x: lx, y: ly - 2, size: 6.5, font: font, color: SLATE });
+      page.drawText(san(text), { x: lx, y: ly + (detail ? 0 : -2), size: 6.5, font: font, color: SLATE });
+      if (detail) page.drawText(san(detail), { x: lx, y: ly - 6, size: 5, font: font, color: PDFLib.rgb(0.38, 0.49, 0.55) });
       return true;
+    }
+    function aletaDetalle(a) {
+      const f = SK.fmt; const parts = [f(a.ancho || a.w) + "x" + f(a.largo || a.h) + " m"];
+      if ((a.offset || 0) > 0) parts.push("offset " + f(a.offset));
+      const n = (a.ojetillos || []).length; if (n > 0) parts.push(n + " ojet.");
+      return parts.join(" · ");
+    }
+    // Uniones entre paños: líneas de costura (dashed) donde se unen los rollos, + etiqueta. Solo si se activó.
+    const ur = sk.unionesRot;
+    if (ur && ur.mostrar && ur.anchoRollo > 0 && sk.ancho > 0 && sk.largo > 0) {
+      const TEAL = PDFLib.rgb(0.12, 0.62, 0.54);
+      const R = ur.anchoRollo, A = sk.ancho, L = sk.largo, dim = ur.orient === "ancho" ? L : A;
+      const n = Math.ceil(dim / R - 1e-9);
+      for (let i = 1; i < n; i++) {
+        const d = i * R; if (d >= dim - 1e-9) break;
+        if (ur.orient === "ancho") page.drawLine({ start: { x: px(0), y: py(d) }, end: { x: px(A), y: py(d) }, thickness: 0.5, color: TEAL, dashArray: [2.5, 1.5], opacity: 0.7 });
+        else page.drawLine({ start: { x: px(d), y: py(0) }, end: { x: px(d), y: py(L) }, thickness: 0.5, color: TEAL, dashArray: [2.5, 1.5], opacity: 0.7 });
+      }
+      if (n > 1) {
+        const ulbl = san("Unión " + SK.fmt(ur.valor) + " m");
+        if (ur.orient === "ancho") page.drawText(ulbl, { x: px(A) - 2 - font.widthOfTextAtSize(ulbl, 5), y: py(R) - 5, size: 5, font: font, color: TEAL });
+        else page.drawText(ulbl, { x: px(R) + 1.5, y: py(0) - 6, size: 5, font: font, color: TEAL });
+      }
     }
     // Straps (cintas): banda con relleno suave translúcido + borde fino rojo + línea media + remates + etiqueta.
     (sk.straps || []).forEach((st) => {
@@ -128,10 +152,12 @@
       } else {
         page.drawRectangle({ x: px(v.x), y: py(v.y + v.h), width: v.w * scale, height: v.h * scale, borderColor: ACC, borderWidth: 0.9, borderDashArray: [3, 2] });
       }
-      if (v.legend && cb && cb.slots.has(v)) callout(cx, cy, v.legend, v);
-      else if (v.legend) page.drawText(san(v.legend), { x: cx - font.widthOfTextAtSize(san(v.legend), 6.5) / 2, y: cy + 1, size: 6.5, font: font, color: BLACK() });
       const med = v.circ ? (String.fromCharCode(216) + SK.fmt(v.w) + "m") : (SK.fmt(v.w) + "x" + SK.fmt(v.h) + "m");
-      page.drawText(med, { x: cx - font.widthOfTextAtSize(med, 5.5) / 2, y: cy - 6, size: 5.5, font: font, color: PDFLib.rgb(0.42, 0.42, 0.42) });
+      if (v.legend && cb && cb.slots.has(v)) { callout(cx, cy, v.legend, med, v); }
+      else {
+        if (v.legend) page.drawText(san(v.legend), { x: cx - font.widthOfTextAtSize(san(v.legend), 6.5) / 2, y: cy + 1, size: 6.5, font: font, color: BLACK() });
+        page.drawText(med, { x: cx - font.widthOfTextAtSize(med, 5.5) / 2, y: cy - 6, size: 5.5, font: font, color: PDFLib.rgb(0.42, 0.42, 0.42) });
+      }
       if (!v.circ && v.fusion) {
         const X = px(v.x), Y = py(v.y), X2 = px(v.x + v.w), Y2 = py(v.y + v.h);
         const edges = [];
@@ -195,7 +221,7 @@
         .forEach((b) => page.drawLine({ start: { x: b.x1, y: b.y1 }, end: { x: b.x2, y: b.y2 }, thickness: 0.9, color: FUS }));
       (a.ojetillos || []).forEach((p) => ojePDF(px(p.x), py(p.y), ACC));
       const lbl = a.nombre || "Aleta";
-      if (cb && cb.slots.has(a)) callout(X + Wp / 2, py(a.y + a.h / 2), lbl, a);
+      if (cb && cb.slots.has(a)) callout(X + Wp / 2, py(a.y + a.h / 2), lbl, aletaDetalle(a), a);
       else page.drawText(san(lbl), { x: X + Wp / 2 - font.widthOfTextAtSize(san(lbl), 6.5) / 2, y: py(a.y + a.h / 2), size: 6.5, font: font, color: PDFLib.rgb(0.54, 0.34, 0.06) });
     });
     // Cortes / calados
@@ -399,7 +425,7 @@
     if (calloutEls.length) {
       const midY = topRect - bh * scale / 2;
       calloutEls.sort((A, B) => py(B.sy) - py(A.sy));
-      const slots = new Map(); const dy = 11; let last = Infinity;
+      const slots = new Map(); const dy = 16; let last = Infinity;
       calloutEls.forEach((e) => { const ay = py(e.sy); const off = (ay > midY) ? -10 : 10; let ly = ay + off; if (ly > last - dy) ly = last - dy; last = ly; slots.set(e.obj, ly); });
       cb = { x: px(maxX) + 16, slots: slots };
     }
@@ -450,11 +476,15 @@
     const cxA = (px(minX) + px(maxX)) / 2, cyA = (py(minY) + py(maxY)) / 2;
     const ctr = (s, x, y, sz, col) => page.drawText(s, { x: x - font.widthOfTextAtSize(s, sz) / 2, y: y, size: sz, font: font, color: col });
     ctr("VISTA " + (esTras ? "TRASERA" : "FRONTAL"), cxA, py(minY) + ML.top + LBL - 8, 7, ACC);
-    ctr("SUPERIOR", cxA, py(minY) + ML.top + 6, 5.5, MUT);
-    ctr("INFERIOR", cxA, py(maxY) - ML.bottom - 9, 5.5, MUT);
+    // Terminación de cada arista anexada a su rótulo de orientación (swap izq/der en trasera; oculto si suprime cotas).
+    const br = sk.bordesRot || {};
+    const brIzq = esTras ? (br.der || "") : (br.izq || ""), brDer = esTras ? (br.izq || "") : (br.der || "");
+    const bsuf = (txt) => txt ? " · " + san(txt) : "";
+    ctr("SUPERIOR" + bsuf(br.sup), cxA, py(minY) + ML.top + 6, 5.5, MUT);
+    ctr("INFERIOR" + bsuf(br.inf), cxA, py(maxY) - ML.bottom - 9, 5.5, MUT);
     const vlbl = (s, x, sz, col) => page.drawText(s, { x: x, y: cyA - font.widthOfTextAtSize(s, sz) / 2, size: sz, font: font, color: col, rotate: PDFLib.degrees(90) });
-    vlbl("LADO IZQUIERDO", px(minX) - ML.left - 6, 5.5, MUT);
-    vlbl("LADO DERECHO", px(maxX) + ML.right + 14, 5.5, MUT);
+    vlbl("LADO IZQUIERDO" + bsuf(brIzq), px(minX) - ML.left - 6, 5.5, MUT);
+    vlbl("LADO DERECHO" + bsuf(brDer), px(maxX) + ML.right + 14, 5.5, MUT);
     if (esTras) {
       vlbl("(frontal: der.)", px(minX) - ML.left + 1, 4.2, MUT);
       vlbl("(frontal: izq.)", px(maxX) + ML.right + 8, 4.2, MUT);
