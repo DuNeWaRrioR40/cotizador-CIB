@@ -2674,6 +2674,12 @@
     if (e.target.closest && e.target.closest("#planoZoom")) closePlanoZoom();
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePlanoZoom(); });
+  // Auto-reparación: cualquier re-render de un plano (cambiar tela, ocultar, rótulos, etc.) reescribe
+  // su innerHTML y borra la "🔍+". Un observador repone el botón en el siguiente frame, así nunca se
+  // queda sin lupa sin depender de que cada handler llame a addZoomBtns(). Debounced con rAF.
+  let _zoomRaf = 0;
+  function scheduleZoomBtns() { if (_zoomRaf) return; _zoomRaf = (window.requestAnimationFrame || window.setTimeout)(() => { _zoomRaf = 0; addZoomBtns(); }, 0); }
+  try { new MutationObserver(scheduleZoomBtns).observe(document.body, { childList: true, subtree: true }); } catch (e) {}
 
   // Tarjeta de orientación para un grupo de ancho de rollo. Al elegir, se replica a todo el grupo.
   function cardLoteGrupo(groupKey, key, o, head, lote, cur, parent) {
