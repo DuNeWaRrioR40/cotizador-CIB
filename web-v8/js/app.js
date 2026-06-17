@@ -1544,7 +1544,7 @@
           const so = ev(st.off) || 0, se = ev(st.esp) || 0, siRaw = ev(st.inset), si2 = (siRaw != null && siRaw > 0) ? siRaw : 0;
           const c = setCross(st, off, ins); if (c.up + c.down <= 0) return;
           const Bs = B + si2, esqFin = setEsqFin(s.arista || "sup", st.esq || setEsqDefault(s.arista || "sup"));
-          setPosiciones(e.len, cnt, so, se, esqFin).forEach((t) => { out.push({ cx: e.ax + ux * t - sdx * Bs, cy: e.ay + uy * t - sdy * Bs, angulo: e.outAng, offset: c.up, inset: c.down, ancho: ancho, legend: nom, grupo: grp }); });
+          setPosiciones(e.len, cnt, so, se, esqFin).forEach((t) => { out.push({ cx: e.ax + ux * t - sdx * Bs, cy: e.ay + uy * t - sdy * Bs, angulo: e.outAng, offset: c.up, inset: c.down, ancho: ancho, legend: nom, grupo: grp, set: true }); });
         });
       } else {
         const ang = ev(s.angulo) || 0, ar = ang * Math.PI / 180;
@@ -3193,7 +3193,8 @@
         let x, y;
         if (k === "sup") { x = tm; y = ins; } else if (k === "inf") { x = tm; y = largo - ins; }
         else if (k === "izq") { x = ins; y = tm; } else { x = ancho - ins; y = tm; }
-        const det = Math.round(cnt) + " oj · @" + f(esp) + "m · " + setEsqLabel(k, st.esq) + (ins > 0 ? " · inset " + f(ins) : "");
+        // Solo lo que interesa al taller: distanciamiento entre ojetillos y distancia a la arista de origen.
+        const det = "espaciado " + f(esp) + "m · a " + f(ins) + "m de la arista";
         out.push({ x: x, y: y, text: st.nombre || "Set ojetillos", detail: det });
       });
     });
@@ -3212,8 +3213,9 @@
         if (!pts.length) return;
         const tm = pts[Math.floor(pts.length / 2)], Bs = B + ins;
         const x = e.ax + ux * tm - sdx * Bs, y = e.ay + uy * tm - sdy * Bs;
-        const c = setCross(st, pOff, pIns);
-        const det = Math.round(cnt) + " cintas · @" + f(esp) + "m · " + setEsqLabel(s.arista || "sup", st.esq) + " · ↑" + f(c.up) + " ↓" + f(c.down) + (ins > 0 ? " · inset " + f(ins) : "");
+        const c = setCross(st, pOff, pIns), largo = c.up + c.down;
+        // Info de taller: largo total de la cinta + distancia del punto de remate/costura a la arista (= offBorde + inset).
+        const det = Math.round(cnt) + " cintas · largo " + f(largo) + "m · remate a " + f(Bs) + "m de arista · @" + f(esp) + "m · ↑" + f(c.up) + " ↓" + f(c.down);
         out.push({ x: x, y: y, text: st.nombre || "Set straps", detail: det });
       });
     });

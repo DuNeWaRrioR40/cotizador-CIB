@@ -134,10 +134,12 @@
         const zz = SK.zigzagPts(px(rm.a.x), py(rm.a.y), px(rm.b.x), py(rm.b.y), 2.2, 4);
         for (let i = 0; i < zz.length - 1; i++) page.drawLine({ start: { x: zz[i].x, y: zz[i].y }, end: { x: zz[i + 1].x, y: zz[i + 1].y }, thickness: 0.6, color: STRAP });
       });
-      const offpx = st.hw * scale + 8;
-      const lx = px((st.a.x + st.b.x) / 2) + st.perp.x * offpx, ly = py((st.a.y + st.b.y) / 2) - st.perp.y * offpx; // py invertido en PDF
-      const lbl = (st.nombre || "Cinta") + " " + SK.fmt(st.largo) + " m";
-      page.drawText(lbl, { x: lx - font.widthOfTextAtSize(lbl, 6) / 2, y: ly - 2, size: 6, font: font, color: STRAP });
+      if (!st.set) { // las cintas de SET no rotulan inline (se enciman); su rótulo va por el callout del set
+        const offpx = st.hw * scale + 8;
+        const lx = px((st.a.x + st.b.x) / 2) + st.perp.x * offpx, ly = py((st.a.y + st.b.y) / 2) - st.perp.y * offpx; // py invertido en PDF
+        const lbl = (st.nombre || "Cinta") + " " + SK.fmt(st.largo) + " m";
+        page.drawText(lbl, { x: lx - font.widthOfTextAtSize(lbl, 6) / 2, y: ly - 2, size: 6, font: font, color: STRAP });
+      }
     });
     const tijeraPDF = (tx, ty) => {
       const tp = SK.tijeraPrims(tx, ty, 8);

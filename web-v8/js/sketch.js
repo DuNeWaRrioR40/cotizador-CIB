@@ -367,7 +367,7 @@
       const rem0 = { a: { x: ax + px * hw, y: ay + py * hw }, b: { x: ax - px * hw, y: ay - py * hw } };
       const rem1 = { a: { x: bx + px * hw, y: by + py * hw }, b: { x: bx - px * hw, y: by - py * hw } };
       const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : "Strap";
-      return { corners: corners, rem0: rem0, rem1: rem1, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: dx, y: dy }, perp: { x: px, y: py }, hw: hw, ancho: W, largo: Ls, nombre: nom, grupo: s.grupo || "Manual" };
+      return { corners: corners, rem0: rem0, rem1: rem1, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: dx, y: dy }, perp: { x: px, y: py }, hw: hw, ancho: W, largo: Ls, nombre: nom, grupo: s.grupo || "Manual", set: !!s.set };
     });
     // Straps anclados a la arista de un corte: cintas que CRUZAN el corte, repartidas a lo largo de él
     // (como los ojetillos por arista). Cada strap es perpendicular al corte; offset cruza hacia el lado
@@ -570,9 +570,12 @@
         const zz = zigzagPts(px(rm.a.x), py(rm.a.y), px(rm.b.x), py(rm.b.y), 2.2, 4);
         s += `<polyline class="strap-rem" points="${zz.map((p) => f1(p.x) + "," + f1(p.y)).join(" ")}"/>`;
       });
-      const Mx = px((st.a.x + st.b.x) / 2), My = py((st.a.y + st.b.y) / 2), offpx = st.hw * scale + 8;
-      const lbl = st.nombre + " " + fmt(st.largo) + " m";
-      s += `<text class="strap-lbl" x="${f1(Mx + st.perp.x * offpx)}" y="${f1(My + st.perp.y * offpx)}" text-anchor="middle">${esc(lbl)}</text>`;
+      // Las cintas de un SET no rotulan inline (se enciman); su rótulo va por el callout opt-in del set.
+      if (!st.set) {
+        const Mx = px((st.a.x + st.b.x) / 2), My = py((st.a.y + st.b.y) / 2), offpx = st.hw * scale + 8;
+        const lbl = st.nombre + " " + fmt(st.largo) + " m";
+        s += `<text class="strap-lbl" x="${f1(Mx + st.perp.x * offpx)}" y="${f1(My + st.perp.y * offpx)}" text-anchor="middle">${esc(lbl)}</text>`;
+      }
     });
     // Rótulos de sets (ojetillos/straps con rótulo activado): callout a la derecha (nombre + datos técnicos).
     (sk.setsRot || []).forEach((sr) => { callout(px(sr.x), py(sr.y), sr.text, sr.detail, sr); });
