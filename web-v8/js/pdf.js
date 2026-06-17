@@ -224,6 +224,8 @@
       if (cb && cb.slots.has(a)) callout(X + Wp / 2, py(a.y + a.h / 2), lbl, aletaDetalle(a), a);
       else page.drawText(san(lbl), { x: X + Wp / 2 - font.widthOfTextAtSize(san(lbl), 6.5) / 2, y: py(a.y + a.h / 2), size: 6.5, font: font, color: PDFLib.rgb(0.54, 0.34, 0.06) });
     });
+    // Rótulos de sets (ojetillos/straps): callout con nombre + datos técnicos.
+    (sk.setsRot || []).forEach((sr) => { callout(px(sr.x), py(sr.y), sr.text, sr.detail, sr); });
     // Cortes / calados
     (sk.cortes || []).forEach((c) => {
       if (c.fadePoly && c.fadePoly.length >= 3) {
@@ -416,6 +418,7 @@
     const calloutEls = [];
     (sk.aletas || []).forEach((a) => { if (a.rotulo || !cFits(a.nombre, a.w * g.sc, a.h * g.sc)) calloutEls.push({ obj: a, sy: a.y + a.h / 2 }); });
     (sk.ventanas || []).forEach((v) => { if (v.legend && (v.rotulo || !cFits(v.legend, v.w * g.sc, v.h * g.sc))) calloutEls.push({ obj: v, sy: v.y + v.h / 2 }); });
+    (sk.setsRot || []).forEach((sr) => { calloutEls.push({ obj: sr, sy: sr.y }); });
     if (calloutEls.length) { const g2 = geomFor(mRight + 108); if (g2) { mRight += 108; g = g2; } }
     const scale = g.sc, x0 = g.x0, topRect = g.topRect;
     const wpx = sk.ancho * scale, hpx = sk.largo * scale;

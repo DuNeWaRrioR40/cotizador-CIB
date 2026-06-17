@@ -392,7 +392,7 @@
         straps.push({ corners: corners, rem0: { a: corners[0], b: corners[3] }, rem1: { a: corners[1], b: corners[2] }, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: ldx, y: ldy }, perp: { x: ux, y: uy }, hw: hw, ancho: W, largo: off + ins, nombre: cc.strapNombre || "Cinta", grupo: (cc.strapNombre && cc.strapNombre.trim()) ? cc.strapNombre.trim() : "Corte", origen: "corte", precioM: cc.strapPrecioM || 0 });
       });
     });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null };
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)) };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
@@ -574,6 +574,8 @@
       const lbl = st.nombre + " " + fmt(st.largo) + " m";
       s += `<text class="strap-lbl" x="${f1(Mx + st.perp.x * offpx)}" y="${f1(My + st.perp.y * offpx)}" text-anchor="middle">${esc(lbl)}</text>`;
     });
+    // Rótulos de sets (ojetillos/straps con rótulo activado): callout a la derecha (nombre + datos técnicos).
+    (sk.setsRot || []).forEach((sr) => { callout(px(sr.x), py(sr.y), sr.text, sr.detail, sr); });
     // Aletas / solapas / faldón / cenefa (paños anexos) — con su arista fusionada.
     (sk.aletas || []).forEach((a) => {
       const X = px(a.x), Y = py(a.y), Wp = a.w * scale, Hp = a.h * scale;
@@ -948,6 +950,8 @@
       if (live && v.id != null) AUTOROT[v.id] = !fits;
       if (v.rotulo || !fits) calloutEls.push({ obj: v, ay: py(v.y + v.h / 2) });
     });
+    // Rótulos de sets (ojetillos/straps): siempre como callout a la derecha (nombre + datos).
+    (sk.setsRot || []).forEach((sr) => { calloutEls.push({ obj: sr, ay: py(sr.y) }); });
     let totalH = boundsBot + mBot + bottomH;
     let cb = null;
     if (calloutEls.length) {

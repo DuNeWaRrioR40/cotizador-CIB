@@ -671,9 +671,19 @@
       });
     }
     if (host.unionRot) rows.push({ label: "Uniones entre paños", off: () => { host.unionRot = false; } });
+    // Rótulos de SETS activos (ojetillos y straps) — contraparte para quitarlos desde el plano.
+    const ojE = (host.ojMode === "arista") ? host.ojEdges : null;
+    if (ojE) ["sup", "inf", "izq", "der"].forEach((k) => {
+      const e = ojE[k]; if (!e) return;
+      (e.sets || []).forEach((st) => { if (st.rotulo) rows.push({ label: (st.nombre || "Set ojetillos") + " · " + NOM[k], off: () => { st.rotulo = false; } }); });
+    });
+    (host.straps || host.strapsUnif || []).forEach((s) => {
+      if (s.modo !== "arista") return;
+      (s.sets || []).forEach((st) => { if (st.rotulo) rows.push({ label: (st.nombre || "Set straps") + " · " + NOM[s.arista || "sup"], off: () => { st.rotulo = false; } }); });
+    });
     if (!rows.length) return;
     const box = document.createElement("div"); box.className = "plano-menu plano-bordes-rot";
-    const cap = document.createElement("div"); cap.className = "plano-menu-cap"; cap.textContent = "Rótulos de borde / unión en el plano (desmarcar para quitar):";
+    const cap = document.createElement("div"); cap.className = "plano-menu-cap"; cap.textContent = "Rótulos de borde / unión / sets en el plano (desmarcar para quitar):";
     box.appendChild(cap);
     rows.forEach((r) => {
       const row = document.createElement("div"); row.className = "plano-menu-row";
@@ -1513,7 +1523,9 @@
     const ev = window.CalcCIBSA.evalExpr, out = [];
     visibles(list).forEach((s) => {
       const ancho = anchoCintaM(strapMat(s)), off = Math.max(0, ev(s.offset) || 0), ins = Math.max(0, ev(s.inset) || 0);
-      if (!(ancho > 0) || !(off + ins > 0)) return;
+      // El strap procede si tiene crecimiento ↑/↓ propio, o si algún SET tiene su propio crecimiento.
+      const haySetCross = (s.modo === "arista") && (s.sets || []).some((st) => { const c = setCross(st, off, ins); return ev(st.n) >= 2 && (c.up + c.down) > 0; });
+      if (!(ancho > 0) || (!(off + ins > 0) && !haySetCross)) return;
       const nom = s.legend || "";
       // "offset borde": corre el punto de unión hacia ADENTRO del paño (contra el sentido de crecimiento ↑/offset).
       const B = Math.max(0, ev(s.offBorde) != null && !isNaN(ev(s.offBorde)) ? ev(s.offBorde) : 0.01);
@@ -1526,12 +1538,13 @@
         const ux = (e.bx - e.ax) / e.len, uy = (e.by - e.ay) / e.len, supr = new Set(parseSupr(s.supr));
         const ar = e.outAng * Math.PI / 180, sdx = Math.cos(ar), sdy = Math.sin(ar); // dir de crecimiento (hacia afuera)
         if (d > 0) window.SketchCIBSA.posicionesArista(e.len, d, false).forEach((t, i) => { if (supr.has(i)) return; out.push({ cx: e.ax + ux * t - sdx * B, cy: e.ay + uy * t - sdy * B, angulo: e.outAng, offset: off, inset: ins, ancho: ancho, legend: nom, grupo: grp }); });
-        // Sets de straps: grupos (≥2) desde una esquina, con offset, espaciado e inset propio (= offBorde extra).
+        // Sets de straps: grupos (≥2) desde una esquina, con offset, espaciado, inset (= offBorde extra) y ↑/↓ PROPIOS.
         (s.sets || []).forEach((st) => {
           const cnt = ev(st.n); if (!(cnt >= 2)) return;
           const so = ev(st.off) || 0, se = ev(st.esp) || 0, siRaw = ev(st.inset), si2 = (siRaw != null && siRaw > 0) ? siRaw : 0;
+          const c = setCross(st, off, ins); if (c.up + c.down <= 0) return;
           const Bs = B + si2, esqFin = setEsqFin(s.arista || "sup", st.esq || setEsqDefault(s.arista || "sup"));
-          setPosiciones(e.len, cnt, so, se, esqFin).forEach((t) => { out.push({ cx: e.ax + ux * t - sdx * Bs, cy: e.ay + uy * t - sdy * Bs, angulo: e.outAng, offset: off, inset: ins, ancho: ancho, legend: nom, grupo: grp }); });
+          setPosiciones(e.len, cnt, so, se, esqFin).forEach((t) => { out.push({ cx: e.ax + ux * t - sdx * Bs, cy: e.ay + uy * t - sdy * Bs, angulo: e.outAng, offset: c.up, inset: c.down, ancho: ancho, legend: nom, grupo: grp }); });
         });
       } else {
         const ang = ev(s.angulo) || 0, ar = ang * Math.PI / 180;
@@ -1540,12 +1553,33 @@
     });
     return out;
   }
+  // Metros lineales totales de cinta de un strap (reparto normal con ↑/↓ del padre + cada SET con sus ↑/↓ propios).
+  function strapMetros(s, ctx) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const off = Math.max(0, ev(s.offset) || 0), ins = Math.max(0, ev(s.inset) || 0);
+    if (s.modo !== "arista") return off + ins;
+    const e = strapAristaEdge(s.arista || "sup", ctx || {}); if (!e) return 0;
+    let m = 0;
+    const d = ev(s.d) || 0;
+    if (d > 0 && (off + ins) > 0) {
+      const n = window.SketchCIBSA.posicionesArista(e.len, d, false).length;
+      const kept = Math.max(0, n - parseSupr(s.supr).filter((i) => i < n).length);
+      m += kept * (off + ins);
+    }
+    (s.sets || []).forEach((st) => {
+      const cnt = ev(st.n); if (!(cnt >= 2)) return;
+      const c = setCross(st, off, ins), len = c.up + c.down; if (len <= 0) return;
+      const pts = setPosiciones(e.len, cnt, ev(st.off) || 0, ev(st.esp) || 0, setEsqFin(s.arista || "sup", st.esq || setEsqDefault(s.arista || "sup"))).length;
+      m += pts * len;
+    });
+    return m;
+  }
   function strapsTotal(list, N, ctx) {
     const n = Math.max(1, N || 1);
-    return visibles(list).reduce((acc, s) => { const m = strapMat(s); return acc + strapInstancias(s, ctx) * strapLargo(s) * (m && m.precio != null ? m.precio : 0) * n; }, 0);
+    return visibles(list).reduce((acc, s) => { const m = strapMat(s); return acc + strapMetros(s, ctx) * (m && m.precio != null ? m.precio : 0) * n; }, 0);
   }
   function strapsLineasPDF(list, ctx) {
-    return visibles(list).map((s) => { const m = strapMat(s); if (!m) return null; const largo = strapLargo(s), ancho = anchoCintaM(m), inst = strapInstancias(s, ctx); if (!(largo > 0) || !(ancho > 0) || inst <= 0) return null; const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : "Cinta"; const cant = (s.modo === "arista") ? (inst + "× ") : ""; return nom + ": " + cant + m.item + " " + window.CalcCIBSA.fmtNum(largo) + " m × " + window.CalcCIBSA.fmtNum(ancho * 100) + " cm — " + money(inst * largo * (m.precio || 0)) + "/u"; }).filter(Boolean);
+    return visibles(list).map((s) => { const m = strapMat(s); if (!m) return null; const metros = strapMetros(s, ctx), ancho = anchoCintaM(m), inst = strapInstancias(s, ctx); if (!(metros > 0) || !(ancho > 0) || inst <= 0) return null; const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : "Cinta"; const cant = (s.modo === "arista") ? (inst + "× ") : ""; return nom + ": " + cant + m.item + " — " + window.CalcCIBSA.fmtNum(metros) + " m totales × " + window.CalcCIBSA.fmtNum(ancho * 100) + " cm — " + money(metros * (m.precio || 0)) + "/u"; }).filter(Boolean);
   }
   // Editor de straps. ctx: { straps, cantidad(), onChange }
   function renderStraps(container, ctx) {
@@ -1600,7 +1634,7 @@
           grid.appendChild(addHelpTo(numField("Distanciamiento (m)", "d", "0.5", true), "Separación entre straps repartidos a lo largo de la arista. Déjalo en 0 o vacío para NO repartir straps sueltos y usar solo los SETS (grupos independientes) de abajo.", "STRAP-DIST"));
           grid.appendChild(addHelpTo(numField("↑ (m)", "offset", "0", true), "Cuánto crece cada cinta desde el punto de unión hacia AFUERA del paño (cruza la arista). Solo ≥ 0.", "STRAP-OFFSET"));
           grid.appendChild(addHelpTo(numField("↓ (m)", "inset", "0", true), "Cuánto crece cada cinta desde el punto de unión hacia ADENTRO del paño. Solo ≥ 0.", "STRAP-INSET"));
-          grid.appendChild(addHelpTo(numField("Offset borde (m)", "offBorde", "0.01", true), "Corre el PUNTO DE UNIÓN hacia adentro del paño, medido desde la arista (mín. 0.01 m). Desde ahí la cinta crece ↑ y ↓.", "STRAP-OFFBORDE"));
+          grid.appendChild(addHelpTo(numField("Offset borde (m) / d.remate costura", "offBorde", "0.01", true), "Corre el PUNTO DE UNIÓN hacia adentro del paño, medido desde la arista (mín. 0.01 m). Desde ahí la cinta crece ↑ y ↓.", "STRAP-OFFBORDE"));
           card.appendChild(grid);
           const ls = document.createElement("label"); ls.className = "field full"; ls.innerHTML = "<span>Suprimir posiciones (ej. 1, 3, 5-8)</span>";
           const si = document.createElement("input"); si.type = "text"; si.value = s.supr || ""; si.placeholder = "ej. 1, 3, 5-8";
@@ -1620,7 +1654,7 @@
           grid.appendChild(addHelpTo(numField("Ángulo (°)", "angulo", "0"), "Inclinación: 0 = horizontal, 90 = vertical, 45 = diagonal. La banda es siempre recta.", "STRAP-ANG"));
           grid.appendChild(addHelpTo(numField("↑ (m)", "offset", "0", true), "Cuánto crece la cinta hacia un lado del punto de unión (sentido del ángulo). Solo ≥ 0.", "STRAP-OFFSET"));
           grid.appendChild(addHelpTo(numField("↓ (m)", "inset", "0", true), "Cuánto crece la cinta hacia el otro lado del punto de unión. Solo ≥ 0. Va en sentido opuesto a ↑.", "STRAP-INSET"));
-          grid.appendChild(addHelpTo(numField("Offset borde (m)", "offBorde", "0.01", true), "Corre el PUNTO DE UNIÓN hacia adentro (en sentido opuesto a ↑), medido desde el centro indicado (mín. 0.01 m).", "STRAP-OFFBORDE"));
+          grid.appendChild(addHelpTo(numField("Offset borde (m) / d.remate costura", "offBorde", "0.01", true), "Corre el PUNTO DE UNIÓN hacia adentro (en sentido opuesto a ↑), medido desde el centro indicado (mín. 0.01 m).", "STRAP-OFFBORDE"));
           card.appendChild(grid);
           const dimInfo = document.createElement("p"); dimInfo.className = "muted small";
           dimInfo.innerHTML = (A > 0 && L > 0) ? ("Paño base: <b>largo " + f(L) + " m × ancho " + f(A) + " m</b> · X de 0 a " + f(A) + " · Y de 0 a " + f(L)) : "Define largo y ancho del paño base para ubicar el strap.";
@@ -2662,7 +2696,7 @@
     actualizarTraseraUnif();
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
-      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) }, ojSpecUnif());
+      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) }, ojSpecUnif());
       if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif() };
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
       const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); recompute(); };
@@ -3024,9 +3058,20 @@
   const OJ_DIAM = 0.03; // diámetro del ojetillo (m): la 2da línea suprime 0/n si el inset es menor (se solapan)
   function defOjEdge() { return { on: true, d: "0.5", supr: "", linea2: { on: false, inset: "0.025", supr: "" }, sets: [] }; }
   // Set de ojetillos/straps: copia normalizada de los parámetros del usuario.
-  function setCopy(st) { st = st || {}; return { n: st.n != null ? st.n : "2", esq: st.esq || "", off: st.off != null ? st.off : "0.1", esp: st.esp != null ? st.esp : "0.1", inset: st.inset != null ? st.inset : "0" }; }
+  function setCopy(st) { st = st || {}; return { n: st.n != null ? st.n : "2", esq: st.esq || "", off: st.off != null ? st.off : "0.1", esp: st.esp != null ? st.esp : "0.1", inset: st.inset != null ? st.inset : "0", up: st.up != null ? st.up : "", down: st.down != null ? st.down : "", rotulo: !!st.rotulo, nombre: st.nombre || "" }; }
   function setsCopy(arr) { return (arr || []).map(setCopy); }
-  function nuevoSet() { return { n: "2", esq: "", off: "0.1", esp: "0.1", inset: "0" }; }
+  function nuevoSet() { return { n: "2", esq: "", off: "0.1", esp: "0.1", inset: "0", up: "", down: "", rotulo: false, nombre: "" }; }
+  // ↑/↓ propios del set (cuánto cruza la cinta a cada lado). Vacío = hereda el ↑/↓ del strap padre.
+  function setCross(st, pOff, pIns) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const val = (v, fb) => { if (v == null || v === "") return fb; const r = ev(v); return (r != null && !isNaN(r)) ? Math.max(0, r) : fb; };
+    return { up: val(st.up, pOff), down: val(st.down, pIns) };
+  }
+  // Etiqueta de la esquina de referencia de un set (para el rótulo).
+  function setEsqLabel(k, esq) {
+    const e = esq || setEsqDefault(k);
+    return (k === "sup" || k === "inf") ? (e === "der" ? "der." : "izq.") : (e === "inf" ? "abajo" : "arriba");
+  }
   // ¿Desde qué extremo se mide el set? Aristas horizontales: izq=inicio, der=fin. Verticales: sup=inicio, inf=fin.
   function setEsqFin(k, esq) { return (k === "sup" || k === "inf") ? (esq === "der") : (esq === "inf"); }
   function setEsqDefault(k) { return (k === "sup" || k === "inf") ? "izq" : "sup"; }
@@ -3078,9 +3123,9 @@
           sel.addEventListener("change", (e2) => { st.esq = e2.target.value; onChange(); });
           lab.appendChild(sel); grid.appendChild(lab); }
         // off / esp / inset
-        const mkNum = (label, key, def) => {
+        const mkNum = (label, key, def, ph) => {
           const lab = document.createElement("label"); lab.className = "field"; lab.innerHTML = "<span>" + label + "</span>";
-          const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = st[key] != null ? st[key] : def;
+          const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = st[key] != null ? st[key] : def; if (ph) inp.placeholder = ph;
           inp.addEventListener("input", (e2) => { st[key] = e2.target.value; onChange(); });
           inp.addEventListener("blur", (e2) => { const r = ev(e2.target.value); if (r != null && !isNaN(r)) { st[key] = f(r); e2.target.value = st[key]; onChange(); } });
           lab.appendChild(inp); agregarCalc(inp); grid.appendChild(lab);
@@ -3088,7 +3133,21 @@
         mkNum("Distancia a la esquina (m)", "off", "0.1");
         mkNum("Espaciado (m)", "esp", "0.1");
         mkNum("Inset (m)", "inset", "0");
-        row.appendChild(grid); panel.appendChild(row);
+        if (esStrap) { mkNum("↑ del set (m)", "up", "", "hereda del strap"); mkNum("↓ del set (m)", "down", "", "hereda del strap"); }
+        row.appendChild(grid);
+        // Rótulo del set en el plano (opt-in): nombre + 2ª línea técnica (cantidad · espaciado · esquina · inset).
+        const rl = document.createElement("label"); rl.className = "chk";
+        const rc = document.createElement("input"); rc.type = "checkbox"; rc.checked = !!st.rotulo;
+        rc.addEventListener("change", () => { st.rotulo = rc.checked; repintar(); onChange(); });
+        rl.appendChild(rc); rl.appendChild(document.createTextNode("Rótulo en el plano (nombre + datos)"));
+        row.appendChild(rl);
+        if (st.rotulo) {
+          const nl = document.createElement("label"); nl.className = "field full"; nl.innerHTML = "<span>Nombre del set (rótulo)</span>";
+          const ni = document.createElement("input"); ni.type = "text"; ni.value = st.nombre || ""; ni.placeholder = "ej. Set refuerzo";
+          ni.addEventListener("input", (e2) => { st.nombre = e2.target.value; onChange(); });
+          nl.appendChild(ni); row.appendChild(nl);
+        }
+        panel.appendChild(row);
       });
       const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline small"; add.textContent = "+ agregar set";
       add.addEventListener("click", () => { host.sets.push(nuevoSet()); host._setsOpen = true; repintar(); onChange(); });
@@ -3116,6 +3175,49 @@
       }
     });
     return Array.from(new Set(out)).sort((a, b) => a - b);
+  }
+  // Rótulos de sets (ojetillos y straps con rotulo=true) → [{x,y,text,detail}] en coords del paño (m).
+  // Ancla en el punto medio del set; el detalle resume cantidad · espaciado · esquina · inset.
+  function setsRotuloDe(ancho, largo, ojEdges, straps, ctx) {
+    const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum, out = [];
+    if (ojEdges) ["sup", "inf", "izq", "der"].forEach((k) => {
+      const e = ojEdges[k]; if (!e) return;
+      const Ldim = (k === "sup" || k === "inf") ? ancho : largo;
+      (e.sets || []).forEach((st) => {
+        if (!st.rotulo) return;
+        const cnt = ev(st.n); if (!(cnt >= 2)) return;
+        const off = ev(st.off) || 0, esp = ev(st.esp) || 0, insR = ev(st.inset), ins = (insR != null && insR > 0) ? insR : 0;
+        const pts = setPosiciones(Ldim, cnt, off, esp, setEsqFin(k, st.esq || setEsqDefault(k)));
+        if (!pts.length) return;
+        const tm = pts[Math.floor(pts.length / 2)];
+        let x, y;
+        if (k === "sup") { x = tm; y = ins; } else if (k === "inf") { x = tm; y = largo - ins; }
+        else if (k === "izq") { x = ins; y = tm; } else { x = ancho - ins; y = tm; }
+        const det = Math.round(cnt) + " oj · @" + f(esp) + "m · " + setEsqLabel(k, st.esq) + (ins > 0 ? " · inset " + f(ins) : "");
+        out.push({ x: x, y: y, text: st.nombre || "Set ojetillos", detail: det });
+      });
+    });
+    (straps || []).forEach((s) => {
+      if (s.modo !== "arista") return;
+      const e = strapAristaEdge(s.arista || "sup", { ancho: ancho, largo: largo }); if (!e) return;
+      const ux = (e.bx - e.ax) / e.len, uy = (e.by - e.ay) / e.len;
+      const ar = e.outAng * Math.PI / 180, sdx = Math.cos(ar), sdy = Math.sin(ar);
+      const bRaw = ev(s.offBorde), B = Math.max(0, (bRaw != null && !isNaN(bRaw)) ? bRaw : 0.01);
+      const pOff = Math.max(0, ev(s.offset) || 0), pIns = Math.max(0, ev(s.inset) || 0);
+      (s.sets || []).forEach((st) => {
+        if (!st.rotulo) return;
+        const cnt = ev(st.n); if (!(cnt >= 2)) return;
+        const off = ev(st.off) || 0, esp = ev(st.esp) || 0, insR = ev(st.inset), ins = (insR != null && insR > 0) ? insR : 0;
+        const pts = setPosiciones(e.len, cnt, off, esp, setEsqFin(s.arista || "sup", st.esq || setEsqDefault(s.arista || "sup")));
+        if (!pts.length) return;
+        const tm = pts[Math.floor(pts.length / 2)], Bs = B + ins;
+        const x = e.ax + ux * tm - sdx * Bs, y = e.ay + uy * tm - sdy * Bs;
+        const c = setCross(st, pOff, pIns);
+        const det = Math.round(cnt) + " cintas · @" + f(esp) + "m · " + setEsqLabel(s.arista || "sup", st.esq) + " · ↑" + f(c.up) + " ↓" + f(c.down) + (ins > 0 ? " · inset " + f(ins) : "");
+        out.push({ x: x, y: y, text: st.nombre || "Set straps", detail: det });
+      });
+    });
+    return out;
   }
   // Devuelve { pos:[{x,y}], total, errores:[], detalle:{sup:{n,kept,d,esp}, ...} }
   // Posiciones de una arista, descontando las esquinas que ya colocan las aristas horizontales
@@ -3217,7 +3319,7 @@
       const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
       return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {}, rotulo: !!ins.rotulo, id: rotId(ins) } : null;
     }).filter(Boolean);
-    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((state.telas.find((t) => t.nombre === pz.telaNombre)) || {}).anchoRollo), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }) };
+    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((state.telas.find((t) => t.nombre === pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }) };
     if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh }; }
     if (pz.ojMode === "arista") spec.ojetillosPos = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes)).pos;
     else spec.ojTotal = ojIntPz(pz.ojetillos);
@@ -3332,7 +3434,7 @@
       ojetillos: nOjetillos(), unidades: N,
       observaciones: terminacionesTexto(state.orientUnif).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, []).concat(materialesCortes(state.cortesUnif)),
-      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif() } } : {}),
+      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif() } } : {}),
       trasera: state.trasUnif && !(alturaUnif() > 0),
       backExtra: { cortes: cortesSpec(state.backCortesUnif), aletas: aletasSpec(state.backAletasUnif) },
       materialesTrasera: materialesTraseras(state.backCortesUnif, state.backComplementosUnif),
