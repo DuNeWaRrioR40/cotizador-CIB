@@ -241,8 +241,12 @@ button:active { transform: scale(0.98); }
 .btn-outline.small { padding: 4px 12px; font-size: 13px; width: auto; }
 /* Galería (visualizador rápido): últimos 7 días, 5 por página, flechas en los extremos */
 .hist-galeria { display: flex; align-items: stretch; gap: 8px; margin-top: 6px; }
-.hist-gal-track { display: flex; gap: 8px; flex: 1 1 auto; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 2px; }
-.hist-gal-track .hist-chip { flex: 0 0 auto; }
+.hist-gal-track { display: flex; gap: 8px; flex: 1 1 auto; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 2px; }
+/* Las tarjetas de la galería se encogen para que las 5 quepan sin recortar la última. */
+.hist-gal-track .hist-chip { flex: 1 1 0; min-width: 0; max-width: 220px; }
+.hist-gal-track .hist-chip .hist-fecha,
+.hist-gal-track .hist-chip .hist-nom,
+.hist-gal-track .hist-chip .hist-tipo { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hist-gal-arrow { flex: 0 0 auto; width: 36px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); cursor: pointer; font-size: 22px; line-height: 1; padding: 0; }
 .hist-gal-arrow:hover:not(:disabled) { border-color: var(--accent); }
 .hist-gal-arrow:disabled { opacity: 0.35; cursor: default; }
