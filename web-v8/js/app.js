@@ -1597,7 +1597,7 @@
           selE.addEventListener("change", (e) => { s.arista = e.target.value; refresh(); onChange(); });
           le.appendChild(selE); addHelpTo(le, "Arista del paño por la que se reparten los straps. Cada strap queda perpendicular a esta arista.", "STRAP-EDGE"); card.appendChild(le);
           const grid = document.createElement("div"); grid.className = "pieza-grid";
-          grid.appendChild(addHelpTo(numField("Distanciamiento (m)", "d", "0.5", true), "Separación entre straps a lo largo de la arista (igual que los ojetillos por arista).", "STRAP-DIST"));
+          grid.appendChild(addHelpTo(numField("Distanciamiento (m)", "d", "0.5", true), "Separación entre straps repartidos a lo largo de la arista. Déjalo en 0 o vacío para NO repartir straps sueltos y usar solo los SETS (grupos independientes) de abajo.", "STRAP-DIST"));
           grid.appendChild(addHelpTo(numField("↑ (m)", "offset", "0", true), "Cuánto crece cada cinta desde el punto de unión hacia AFUERA del paño (cruza la arista). Solo ≥ 0.", "STRAP-OFFSET"));
           grid.appendChild(addHelpTo(numField("↓ (m)", "inset", "0", true), "Cuánto crece cada cinta desde el punto de unión hacia ADENTRO del paño. Solo ≥ 0.", "STRAP-INSET"));
           grid.appendChild(addHelpTo(numField("Offset borde (m)", "offBorde", "0.01", true), "Corre el PUNTO DE UNIÓN hacia adentro del paño, medido desde la arista (mín. 0.01 m). Desde ahí la cinta crece ↑ y ↓.", "STRAP-OFFBORDE"));
@@ -3145,11 +3145,11 @@
       const e = (edges && edges[k]) || {}, d = ev(e.d), nTot = ev(e.n);
       const usaTotal = (nTot != null && nTot >= 2);
       detalle[k] = { n: 0, kept: 0, d: d > 0 ? d : 0, esp: 0, seccionada: (removed || []).length > 0, total: usaTotal };
-      if (e.on === false || !(L > 0)) return;
+      if (!(L > 0)) return;
       // Vector de inset perpendicular hacia adentro del paño, según la arista.
       const insVec = (ins) => (k === "sup") ? { x: 0, y: ins } : (k === "inf") ? { x: 0, y: -ins } : (k === "izq") ? { x: ins, y: 0 } : { x: -ins, y: 0 };
-      // Distribución normal (distanciamiento o total uniforme). Puede no existir: igual se procesan los sets.
-      if (usaTotal || d > 0) {
+      // Distribución normal: SOLO si la arista está activa y tiene distanciamiento/total. Los sets son independientes.
+      if (e.on !== false && (usaTotal || d > 0)) {
         const full = posicionesEdge(k, L, d, parejo, removed, edges, usaTotal ? nTot : null), n = full.length;
         detalle[k].n = n; detalle[k].esp = n > 1 ? L / (n - 1) : 0;
         const supr = parseSupr(e.supr), suprSet = new Set(supr);
@@ -3428,9 +3428,6 @@
         is.addEventListener("input", (ev2) => { e.supr = ev2.target.value; refrescar(); onChange(); });
         ls.appendChild(is); addHelpTo(ls, "Quita ojetillos puntuales por su número de orden en la arista (empezando en 0 desde la esquina). Acepta unidades sueltas y rangos con guión (inclusivos), ej. \"0, 3\", \"2/5\" o \"5-8\" (= 5,6,7,8).", "OJ-SUPR"); grid.appendChild(ls);
         card.appendChild(grid);
-        // "+SETS": grupos de ojetillos (≥2) que se desplazan por la arista desde una esquina,
-        // con offset de esquina, espaciado constante e inset. Conviven con la distribución normal.
-        renderSetsEditor(card, e, k, "ojetillos", repintar, onChange);
         // 2da línea de ojetillos (inset). Al activarse despliega un sub-menú plegable.
         if (!e.linea2) e.linea2 = { on: false, inset: "0.025", supr: "" };
         const l2lab = document.createElement("label"); l2lab.className = "chk";
@@ -3481,7 +3478,13 @@
           if (tl) tl.textContent = "Total: " + getTotal();
         }
         refrescar();
+      } else {
+        const off = document.createElement("p"); off.className = "muted small"; off.textContent = "Arista sin distribución (0 ojetillos). Puedes agregar SETS independientes abajo.";
+        card.appendChild(off);
       }
+      // "+SETS": grupos de ojetillos (≥2) desde una esquina, INDEPENDIENTES de la distribución normal.
+      // Disponibles aunque la arista esté en 0 / desactivada: así puedes tener solo sets sin ojetillos sueltos.
+      renderSetsEditor(card, e, k, "ojetillos", repintar, onChange);
       container.appendChild(card);
     });
     const tot = document.createElement("div"); tot.className = "oj-total pz-oj-total"; tot.textContent = "Total: " + getTotal();
