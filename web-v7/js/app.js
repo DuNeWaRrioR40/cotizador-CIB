@@ -133,7 +133,9 @@
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
-    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", vendedor: $("f_vendedor") ? $("f_vendedor").value : "", estado: st };
+    // Telas adicionales marcadas (multi-tela uniforme) + categoría FAV activa, para reponer la selección completa.
+    const telaOpc = []; { const cont = $("telaOpcList"); if (cont) cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => telaOpc.push(cb.value)); }
+    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", estado: st };
     try { return JSON.parse(JSON.stringify(snap)); } catch (e) { return null; }
   }
   function setSelectIfOption(id, val) { const sel = $(id); if (!sel || val == null) return; if (Array.from(sel.options).some((o) => o.value === val)) sel.value = val; }
@@ -159,6 +161,9 @@
     Object.keys(snap.campos || {}).forEach((id) => { const el = $(id); if (el) el.value = snap.campos[id]; });
     setSelectIfOption("f_tela", snap.telaUnif);
     setSelectIfOption("f_vendedor", snap.vendedor);
+    // Repone la selección multi-tela (telas adicionales marcadas) y la categoría FAV activa.
+    { const cont = $("telaOpcList"); if (cont) { const sel = new Set(snap.telaOpc || []); cont.querySelectorAll('input[type="checkbox"]').forEach((cb) => { cb.checked = sel.has(cb.value); }); } }
+    favCatActiva = snap.favCat || null; renderCategoriasFav();
     if ($("f_usaAlto")) { $("f_usaAlto").checked = !!snap.usaAlto; if ($("wAltura")) $("wAltura").classList.toggle("hidden", !snap.usaAlto); }
     if ($("f_trasUnif")) $("f_trasUnif").checked = !!state.trasUnif;
     const setRadio = (name, val) => { const r = document.querySelector('input[name="' + name + '"][value="' + val + '"]'); if (r) r.checked = true; };
@@ -573,7 +578,7 @@
   // y un checkbox "ocultar" para excluirlo sin volver al editor. grupos: [{label, items:[{obj,titulo}]}].
   // Contraparte en el plano para los rótulos de borde activos: aparece solo si hay alguno activo,
   // con un checkbox por arista para desmarcarlo (quitar el rótulo) desde el plano. host = state | pieza.
-  function menuBordesRot(container, host, onToggle) {
+  function menuBordesRot(container, host, onToggle, navTarget) {
     if (!container || !host) return;
     const NOM = { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha" };
     const rows = [];
@@ -592,7 +597,8 @@
     box.appendChild(cap);
     rows.forEach((r) => {
       const row = document.createElement("div"); row.className = "plano-menu-row";
-      const sp = document.createElement("span"); sp.className = "plano-menu-link"; sp.style.cursor = "default"; sp.textContent = r.label;
+      const sp = document.createElement("a"); sp.className = "plano-menu-link"; sp.href = "#"; sp.textContent = r.label;
+      sp.addEventListener("click", (e) => { e.preventDefault(); const t = (typeof navTarget === "function") ? navTarget() : null; if (t) irAElemento(t, t); });
       const lab = document.createElement("label"); lab.className = "plano-menu-oc";
       const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = true;
       cb.addEventListener("change", () => { if (!cb.checked) { r.off(); if (onToggle) onToggle(); } });
@@ -2568,7 +2574,7 @@
         { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
         { label: "Straps / cintas", items: (state.strapsUnif || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
       ], refrescarOcUnif);
-      menuBordesRot(sk, state, () => { renderBordes(); recompute(); });
+      menuBordesRot(sk, state, () => { renderBordes(); recompute(); }, () => $("bordeDyn"));
     }
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) {
       cont.innerHTML = '<p class="muted small">Ingresa largo, ancho y tela para ver los montos.</p>';
@@ -3502,7 +3508,7 @@
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
         ], refrescarOcPz);
-        menuBordesRot(sketchBox, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); });
+        menuBordesRot(sketchBox, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'));
       }
       const card = list ? list.querySelector('[data-id="' + pz.id + '"] .pieza-sub') : null;
       if (r) {
@@ -3590,7 +3596,7 @@
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
         ], refrescarOcPz);
-        menuBordesRot(body, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); });
+        menuBordesRot(body, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'));
       }
       aplic();
       cont.appendChild(block);

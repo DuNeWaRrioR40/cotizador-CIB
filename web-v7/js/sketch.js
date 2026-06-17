@@ -418,10 +418,14 @@
       const off = OFF_MIN0 + i * OFF_STEP;
       out.push({ axis: "h", a: v.x, b: v.x + v.w, off: off, value: v.w, side: "top" });
       out.push({ axis: "v", a: v.y, b: v.y + v.h, off: off, value: v.h, side: "left" });
-      const nearX = (v.x + v.w / 2) <= cx ? (v.x + v.w) : v.x;
-      if (Math.abs(cx - nearX) > EPS) out.push({ axis: "h", a: Math.min(cx, nearX), b: Math.max(cx, nearX), off: off, value: Math.abs(cx - nearX), side: "top", desdeCentro: true });
-      const nearY = (v.y + v.h / 2) <= cy ? (v.y + v.h) : v.y;
-      if (Math.abs(cy - nearY) > EPS) out.push({ axis: "v", a: Math.min(cy, nearY), b: Math.max(cy, nearY), off: off, value: Math.abs(cy - nearY), side: "left", desdeCentro: true });
+      // Posición: cota del MARGEN (borde del elemento → borde del paño), del lado más cercano, colineal
+      // con la cota de tamaño. Así el operario ubica el elemento midiendo desde la arista del paño.
+      const izqM = v.x, derM = A - (v.x + v.w);
+      if (izqM <= derM) { if (izqM > EPS) out.push({ axis: "h", a: 0, b: v.x, off: off, value: izqM, side: "top", margen: true }); }
+      else { if (derM > EPS) out.push({ axis: "h", a: v.x + v.w, b: A, off: off, value: derM, side: "top", margen: true }); }
+      const supM = v.y, infM = L - (v.y + v.h);
+      if (supM <= infM) { if (supM > EPS) out.push({ axis: "v", a: 0, b: v.y, off: off, value: supM, side: "left", margen: true }); }
+      else { if (infM > EPS) out.push({ axis: "v", a: v.y + v.h, b: L, off: off, value: infM, side: "left", margen: true }); }
     });
     // Aletas (opción A): ancho propio (lado exterior) + caída (apilada del lado de la base) + total exterior.
     (sk.aletas || []).forEach((a) => {
@@ -970,9 +974,6 @@
     // Cotas (verde) — origen al centro para posición de elementos; 4 lados; eje de referencia.
     if (conCotas) {
       const bTop = py(pMinY), bBot = py(pMaxY), bLeft = px(pMinX), bRight = px(pMaxX);
-      const ccx = px(sk.ancho / 2), ccy = py(sk.largo / 2);
-      s += `<line class="cota-eje" x1="${f1(ccx)}" y1="${f1(bTop)}" x2="${f1(ccx)}" y2="${f1(bBot)}"/>`;
-      s += `<line class="cota-eje" x1="${f1(bLeft)}" y1="${f1(ccy)}" x2="${f1(bRight)}" y2="${f1(ccy)}"/>`;
       cotasDe(sk).forEach((c) => {
         const off = offsetCota(c);
         if (c.axis === "h") {

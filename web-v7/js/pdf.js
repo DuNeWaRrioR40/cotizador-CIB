@@ -444,9 +444,6 @@
       // Líneas de extensión (perpendiculares a la arista): finas, discontinuas y translúcidas.
       const lnExt = (x1, y1, x2, y2) => page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.18, color: RED, dashArray: [1.6, 1.6], opacity: 0.45 });
       const bTopY = py(pMinY), bBotY = py(pMaxY), bLeftX = px(pMinX), bRightX = px(pMaxX);
-      const ccx = px(sk.ancho / 2), ccy = py(sk.largo / 2);
-      page.drawLine({ start: { x: ccx, y: bTopY }, end: { x: ccx, y: bBotY }, thickness: 0.25, color: RED, dashArray: [3, 2], opacity: 0.5 });
-      page.drawLine({ start: { x: bLeftX, y: ccy }, end: { x: bRightX, y: ccy }, thickness: 0.25, color: RED, dashArray: [3, 2], opacity: 0.5 });
       SK.cotasDe(sk).forEach((c) => {
         const off = SK.offsetCota(c), lbl = SK.fmt(c.value) + "m";
         if (c.axis === "h") {
