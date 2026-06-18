@@ -912,9 +912,11 @@
   // y un checkbox "ocultar" para excluirlo sin volver al editor. grupos: [{label, items:[{obj,titulo}]}].
   // Contraparte en el plano para los rótulos de borde activos: aparece solo si hay alguno activo,
   // con un checkbox por arista para desmarcarlo (quitar el rótulo) desde el plano. host = state | pieza.
-  function menuBordesRot(container, host, onToggle, navTarget) {
+  function menuBordesRot(container, host, onToggle, navTarget, ojGoto) {
     if (!container || !host) return;
     const NOM = { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha" };
+    // goto por defecto (borde/unión): va al editor de bordes (navTarget).
+    const gotoBorde = () => { const t = (typeof navTarget === "function") ? navTarget() : null; if (t) irAElemento(t, t); };
     const rows = [];
     if (host.bordeModo !== "arista") {
       if (host.bordeRotUnif) rows.push({ label: "Borde (4 aristas)", off: () => { host.bordeRotUnif = false; } });
@@ -926,14 +928,16 @@
     }
     if (host.unionRot) rows.push({ label: "Uniones entre paños", off: () => { host.unionRot = false; } });
     // Rótulos de SETS activos (ojetillos y straps) — contraparte para quitarlos desde el plano.
+    // Cada SET enlaza a SU PROPIA ficha (no al editor de bordes): los ojetillos al editor de
+    // ojetillos; los straps a la tarjeta del strap correspondiente.
     const ojE = (host.ojMode === "arista") ? host.ojEdges : null;
     if (ojE) ["sup", "inf", "izq", "der"].forEach((k) => {
       const e = ojE[k]; if (!e) return;
-      (e.sets || []).forEach((st) => { if (st.rotulo) rows.push({ label: (st.nombre || "Set ojetillos") + " · " + NOM[k], off: () => { st.rotulo = false; } }); });
+      (e.sets || []).forEach((st) => { if (st.rotulo) rows.push({ label: (st.nombre || "Set ojetillos") + " · " + NOM[k], off: () => { st.rotulo = false; }, goto: (typeof ojGoto === "function") ? ojGoto : gotoBorde }); });
     });
     (host.straps || host.strapsUnif || []).forEach((s) => {
       if (s.modo !== "arista") return;
-      (s.sets || []).forEach((st) => { if (st.rotulo) rows.push({ label: (st.nombre || "Set straps") + " · " + NOM[s.arista || "sup"], off: () => { st.rotulo = false; } }); });
+      (s.sets || []).forEach((st) => { if (st.rotulo) rows.push({ label: (st.nombre || "Set straps") + " · " + NOM[s.arista || "sup"], off: () => { st.rotulo = false; }, goto: () => irAFicha(fidDe(s)) }); });
     });
     if (!rows.length) return;
     const box = document.createElement("div"); box.className = "plano-menu plano-bordes-rot";
@@ -942,7 +946,7 @@
     rows.forEach((r) => {
       const row = document.createElement("div"); row.className = "plano-menu-row";
       const sp = document.createElement("a"); sp.className = "plano-menu-link"; sp.href = "#"; sp.textContent = r.label;
-      sp.addEventListener("click", (e) => { e.preventDefault(); const t = (typeof navTarget === "function") ? navTarget() : null; if (t) irAElemento(t, t); });
+      sp.addEventListener("click", (e) => { e.preventDefault(); (typeof r.goto === "function" ? r.goto : gotoBorde)(); });
       const lab = document.createElement("label"); lab.className = "plano-menu-oc";
       const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = true;
       cb.addEventListener("change", () => { if (!cb.checked) { r.off(); if (onToggle) onToggle(); } });
@@ -2963,7 +2967,7 @@
         { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
         { label: "Straps / cintas", items: (state.strapsUnif || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
       ], refrescarOcUnif);
-      menuBordesRot(sk, state, () => { renderBordes(); recompute(); }, () => $("bordeDyn"));
+      menuBordesRot(sk, state, () => { renderBordes(); recompute(); }, () => $("bordeDyn"), () => irANodo($("wOjetillos")));
     }
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) {
       cont.innerHTML = '<p class="muted small">Ingresa largo, ancho y tela para ver los montos.</p>';
@@ -4067,7 +4071,7 @@
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
         ], refrescarOcPz);
-        menuBordesRot(sketchBox, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'));
+        menuBordesRot(sketchBox, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'), () => { const w = document.querySelector('[data-id="' + pz.id + '"] .pz-oj-wrap'); if (!w) return; if (w._subHead && w.style.display === "none") w._subHead.click(); irAElemento(w._subHead || w, w._subHead || w); });
       }
       const card = list ? list.querySelector('[data-id="' + pz.id + '"] .pieza-sub') : null;
       if (r) {
@@ -4155,7 +4159,7 @@
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
         ], refrescarOcPz);
-        menuBordesRot(body, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'));
+        menuBordesRot(body, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'), () => { const w = document.querySelector('[data-id="' + pz.id + '"] .pz-oj-wrap'); if (!w) return; if (w._subHead && w.style.display === "none") w._subHead.click(); irAElemento(w._subHead || w, w._subHead || w); });
       }
       aplic();
       cont.appendChild(block);
