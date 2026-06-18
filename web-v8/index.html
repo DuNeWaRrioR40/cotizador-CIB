@@ -51,6 +51,7 @@
   <main id="formView" class="view hidden">
     <!-- Navegación lateral: pestaña fija + panel deslizante -->
     <button id="navTab" type="button" aria-label="Abrir navegación" title="Ir a una sección">☰</button>
+    <button id="navTabGranel" type="button" aria-label="Ir a productos a granel" title="Productos a granel">▤</button>
     <div id="navBackdrop"></div>
     <nav id="navPanel" aria-label="Secciones">
       <div class="nav-head"><b>Ir a…</b><button id="navClose" type="button" aria-label="Cerrar">✕</button></div>
@@ -110,6 +111,15 @@
         <button id="histFLimpiar" type="button" class="btn-outline small">Limpiar filtros</button>
       </div>
       <div id="histList" class="hist-list"></div>
+    </div>
+
+    <!-- Productos a granel: catálogo (drill-down) + comparador interno de equivalentes -->
+    <div id="wGranel" class="hidden">
+      <h2 class="section">Productos a granel</h2>
+      <p class="muted small">Productos estándar (venta por metro o unidad). Navega Categoría → Proveedor → Tipo y elige una variedad; abajo aparece el comparador con los equivalentes de otros proveedores (uso interno, no va al PDF).</p>
+      <div id="granelNavCrumb" class="granel-crumb"></div>
+      <div id="granelLevel" class="granel-level"></div>
+      <div id="granelCompare" class="granel-compare"></div>
     </div>
 
     <h2 class="section">Producto</h2>

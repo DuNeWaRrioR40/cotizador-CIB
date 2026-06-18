@@ -160,6 +160,34 @@
     return materiales;
   }
 
+  // Productos a granel: lee la pestaña referenciada en RANGO con ID 'Granel'. No rompe si no existe.
+  async function cargarGranel(token) {
+    const punteros = await leerRango(token);
+    const ptr = punteros.find((p) => p.id.toLowerCase() === CFG.ID_TABLA_GRANEL.toLowerCase());
+    if (!ptr) return [];
+    const { encabezados, registros } = await leerTabla(token, ptr.hoja, ptr.rango);
+    const C = CFG.COL_GRANEL, idx = {};
+    Object.keys(C).forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
+    const get = (r, k) => { const i = idx[k]; return (i !== -1 ? (r[encabezados[i]] || "") : "").trim(); };
+    const out = [];
+    registros.forEach((r) => {
+      const activo = get(r, "activo");
+      if (activo && /^(no|0|false|inactivo)$/i.test(activo)) return;   // fila desactivada
+      const categoria = get(r, "categoria");
+      if (!categoria) return;   // mínimo: categoría
+      out.push({
+        categoria, proveedor: get(r, "proveedor"),                       // proveedor INTERNO
+        tipo: get(r, "tipo"), variedad: get(r, "variedad"), modelo: get(r, "modelo"),
+        equiv: get(r, "equiv"),                                          // clave de equivalencia (interna)
+        unidad: get(r, "unidad") || "unidad",
+        precio: parseNumero(get(r, "precio")),                           // venta neto; null si vacío
+        anchoRollo: parseNumero(get(r, "anchoRollo")),                   // opcional, para $/m²
+        specs: get(r, "specs"), nombreCliente: get(r, "nombreCliente"), notas: get(r, "notas"),
+      });
+    });
+    return out;
+  }
+
   async function cargarVendedores(token) {
     const punteros = await leerRango(token);
     const ptr = punteros.find((p) => p.id.toLowerCase() === CFG.ID_TABLA_VENDEDORES.toLowerCase());
@@ -290,5 +318,5 @@
     return true;
   }
 
-  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, parseNumero };
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);

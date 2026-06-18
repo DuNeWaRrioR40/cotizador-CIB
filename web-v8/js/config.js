@@ -31,6 +31,19 @@
     COL_MAT_UNIDAD: "UNIDAD",
     COL_MAT_PROVEEDOR: "PROVEEDOR",
 
+    // --- Productos a granel (referenciada en RANGO con este ID) ---
+    // Productos estándar que se venden sin transformación (a lo más, corte por metro).
+    // Navegación: Categoria → Proveedor → Tipo → Variedad (niveles vacíos se saltan).
+    // PROVEEDOR y EQUIV son INTERNOS (nunca van al PDF del cliente). El comparador (equivalentes
+    // por la clave EQUIV) es una herramienta interna en pantalla; tampoco va al PDF.
+    ID_TABLA_GRANEL: "Granel",
+    COL_GRANEL: {
+      categoria: "Categoria", proveedor: "Proveedor", tipo: "Tipo", variedad: "Variedad",
+      modelo: "Modelo", equiv: "Equiv", unidad: "Unidad", precio: "Precio",
+      anchoRollo: "AnchoRollo", specs: "Specs", nombreCliente: "NombreCliente",
+      activo: "Activo", notas: "Notas",
+    },
+
     // --- Tabla de vendedores (referenciada en RANGO con este ID) ---
     // El nombre que se muestra se compone de NOMBRE + APELLIDO PATERNO + APELLIDO MATERNO
     // (los apellidos en blanco se omiten). Se muestran solo los teléfonos no vacíos.

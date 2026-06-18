@@ -8,7 +8,7 @@
     telas: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
     ojAristas: [], ojEdges: null, ojParejo: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
-    docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], wikiAyuda: {}, factorUnif: "1",
+    docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [],
     // v4: bordes y unión (uniforme)
@@ -43,6 +43,7 @@
     const comp = f && state.prodMode === "compuesto";
     show("wCliente", f);
     show("wHistorial", f);
+    show("wGranel", f);
     show("wProdToggle", f);
     show("wDimensiones", uni || p);
     show("wCantidad", uni);
@@ -327,6 +328,120 @@
     if (!res.length) { cont.innerHTML = '<p class="muted small">Ningún registro coincide con los filtros.</p>'; return; }
     res.forEach((ent) => cont.appendChild(histChip(ent, (parseInt(ent.version, 10) || 1) === maxVer[histClave(ent)])));
   }
+
+  // ---------- Productos a granel: catálogo (drill-down) + comparador interno ----------
+  const GRANEL_LEVELS = ["categoria", "proveedor", "tipo"];
+  let granelNav = {}, granelSel = null;
+  function granelActivos() { return (state.granel || []).filter((p) => p && p.categoria); }
+  function granelNombre(p) {
+    if (p.nombreCliente && p.nombreCliente.trim()) return p.nombreCliente.trim();
+    return [p.categoria, p.tipo, p.variedad, p.modelo].filter(Boolean).join(" ");
+  }
+  // $/m² de referencia (solo interno): si vende por metro lineal y trae ancho de rollo, o ya es m².
+  function granelPrecioM2(p) {
+    if (p.precio == null) return null;
+    const u = (p.unidad || "").toLowerCase().replace("²", "2");
+    if (/m2|mt2|metro2/.test(u)) return p.precio;
+    if ((/^m(l|t|etro)?$/.test(u) || /lineal/.test(u)) && p.anchoRollo > 0) return p.precio / p.anchoRollo;
+    return null;
+  }
+  function granelDistinct(arr) { const seen = new Set(), out = []; arr.forEach((v) => { const k = v || ""; if (!seen.has(k)) { seen.add(k); out.push(v); } }); return out; }
+  function granelFiltrado() {
+    let sel = granelActivos();
+    GRANEL_LEVELS.forEach((k) => { if (granelNav[k]) sel = sel.filter((p) => p[k] === granelNav[k]); });
+    return sel;
+  }
+  // Próximo nivel a elegir: salta los niveles que están vacíos para todos los productos del filtro.
+  function granelNextLevel(sel) {
+    for (const k of GRANEL_LEVELS) {
+      if (granelNav[k] != null) continue;                 // ya elegido o saltado ("")
+      const vals = granelDistinct(sel.map((p) => p[k]).filter(Boolean));
+      if (vals.length) return { key: k, vals };
+      granelNav[k] = "";                                  // nivel vacío → saltar
+    }
+    return null;                                          // no quedan niveles → listar productos
+  }
+  function renderGranel() {
+    const crumbEl = $("granelNavCrumb"), levelEl = $("granelLevel"), cmpEl = $("granelCompare");
+    if (!levelEl) return;
+    levelEl.innerHTML = ""; if (crumbEl) crumbEl.innerHTML = ""; if (cmpEl) cmpEl.innerHTML = "";
+    const prods = granelActivos();
+    if (!prods.length) { levelEl.innerHTML = '<p class="muted small">No hay productos a granel cargados. Crea la pestaña <b>GRANEL</b> en tu Sheet y agrégala en <b>RANGO</b> (ID «Granel»); luego reinicia sesión.</p>'; return; }
+    // Migas de pan
+    const LBL = { categoria: "Categoría", proveedor: "Proveedor", tipo: "Tipo" };
+    const crumb = document.createElement("div"); crumb.className = "granel-crumb-row";
+    const home = document.createElement("button"); home.type = "button"; home.className = "granel-bc"; home.textContent = "Categorías";
+    home.addEventListener("click", () => { granelNav = {}; granelSel = null; renderGranel(); });
+    crumb.appendChild(home);
+    GRANEL_LEVELS.forEach((k) => {
+      if (!granelNav[k]) return;
+      const sep = document.createElement("span"); sep.className = "granel-bc-sep"; sep.textContent = "›"; crumb.appendChild(sep);
+      const b = document.createElement("button"); b.type = "button"; b.className = "granel-bc"; b.textContent = granelNav[k];
+      b.addEventListener("click", () => { let after = false; GRANEL_LEVELS.forEach((kk) => { if (after) delete granelNav[kk]; if (kk === k) after = true; }); granelSel = null; renderGranel(); });
+      crumb.appendChild(b);
+    });
+    if (crumbEl) crumbEl.appendChild(crumb);
+    const sel = granelFiltrado();
+    const next = granelNextLevel(sel);
+    if (next) {
+      const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = "Elige " + (LBL[next.key] || next.key).toLowerCase() + ":";
+      levelEl.appendChild(cap);
+      const grid = document.createElement("div"); grid.className = "granel-grid";
+      next.vals.sort((a, b) => String(a).localeCompare(String(b))).forEach((v) => {
+        const n = sel.filter((p) => p[next.key] === v).length;
+        const btn = document.createElement("button"); btn.type = "button"; btn.className = "granel-cat";
+        btn.innerHTML = '<span class="granel-cat-nom">' + esc(v) + '</span><span class="granel-cat-n">' + n + '</span>';
+        btn.addEventListener("click", () => { granelNav[next.key] = v; granelSel = null; renderGranel(); });
+        grid.appendChild(btn);
+      });
+      levelEl.appendChild(grid);
+      return;
+    }
+    // Listado de variedades (productos hoja)
+    const lista = sel.slice().sort((a, b) => (a.variedad || "").localeCompare(b.variedad || "") || (a.modelo || "").localeCompare(b.modelo || ""));
+    const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = lista.length + " variedad(es):";
+    levelEl.appendChild(cap);
+    const ul = document.createElement("div"); ul.className = "granel-prods";
+    lista.forEach((p) => {
+      const card = document.createElement("button"); card.type = "button"; card.className = "granel-prod" + (p === granelSel ? " sel" : "");
+      const m2 = granelPrecioM2(p);
+      card.innerHTML = '<div class="granel-prod-top"><span class="granel-prod-nom">' + esc(granelNombre(p)) + '</span><span class="granel-prod-precio">' + (p.precio != null ? money(p.precio) + " / " + esc(p.unidad) : "s/precio") + '</span></div>' +
+        (p.specs ? '<div class="granel-prod-specs">' + esc(p.specs) + '</div>' : '') +
+        '<div class="granel-prod-meta">' + (m2 != null ? "≈ " + money(Math.round(m2)) + "/m² · " : "") + '<span class="granel-prov">prov.: ' + esc(p.proveedor || "—") + '</span></div>';
+      card.addEventListener("click", () => { granelSel = (granelSel === p ? null : p); renderGranel(); });
+      ul.appendChild(card);
+    });
+    levelEl.appendChild(ul);
+    renderGranelComparador();
+  }
+  // Comparador (INTERNO, nunca al PDF): equivalentes por clave EQUIV, ordenados por precio.
+  function renderGranelComparador() {
+    const cmpEl = $("granelCompare"); if (!cmpEl) return;
+    cmpEl.innerHTML = "";
+    if (!granelSel) return;
+    const eq = (granelSel.equiv || "").trim();
+    const box = document.createElement("div"); box.className = "granel-cmp-box";
+    const head = document.createElement("div"); head.className = "granel-cmp-head";
+    head.innerHTML = 'Comparador — equivalentes de <b>' + esc(granelNombre(granelSel)) + '</b> <span class="granel-cmp-int">(uso interno · no va al PDF)</span>';
+    box.appendChild(head);
+    let equivs = eq ? granelActivos().filter((p) => (p.equiv || "").trim() === eq) : [granelSel];
+    if (!eq) { const n = document.createElement("p"); n.className = "muted small"; n.textContent = "Este producto no tiene clave de equivalencia (Equiv); no hay con qué compararlo."; box.appendChild(n); cmpEl.appendChild(box); return; }
+    equivs = equivs.slice().sort((a, b) => (a.precio == null ? Infinity : a.precio) - (b.precio == null ? Infinity : b.precio));
+    const minP = equivs.reduce((m, p) => (p.precio != null && p.precio < m ? p.precio : m), Infinity);
+    const tbl = document.createElement("div"); tbl.className = "granel-cmp-list";
+    equivs.forEach((p) => {
+      const m2 = granelPrecioM2(p), barato = (p.precio != null && p.precio === minP);
+      const row = document.createElement("div"); row.className = "granel-cmp-row" + (p === granelSel ? " sel" : "") + (barato ? " barato" : "");
+      row.innerHTML = '<span class="granel-cmp-prov">' + esc(p.proveedor || "—") + (p.modelo ? ' · ' + esc(p.modelo) : '') + '</span>' +
+        '<span class="granel-cmp-precio">' + (p.precio != null ? money(p.precio) + "/" + esc(p.unidad) : "s/precio") + (m2 != null ? ' <span class="granel-cmp-m2">(' + money(Math.round(m2)) + '/m²)</span>' : '') + (barato ? ' <span class="granel-cmp-tag">más barato</span>' : '') + '</span>';
+      tbl.appendChild(row);
+    });
+    box.appendChild(tbl);
+    cmpEl.appendChild(box);
+  }
+  // 2º menú lateral (otro color): ir directo a productos a granel.
+  { const b = $("navTabGranel"); if (b) b.addEventListener("click", () => { const sec = $("wGranel"); if (!sec) return; if (sec.classList.contains("colap") && sec.classList.contains("collapsed") && typeof toggleColap === "function") toggleColap(sec); try { sec.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { sec.scrollIntoView(); } if (typeof flashTitulo === "function") flashTitulo(sec.querySelector("h2.section")); }); }
+
   function nombreRegistro(ent) {
     const ini = (ent.nombre || "").trim().charAt(0).toUpperCase();
     const ape = (ent.apellido || "").trim().replace(/\s+/g, "");
@@ -514,7 +629,7 @@
   window.addEventListener("scroll", ocultarHelp, true);
 
   // ---------- Secciones colapsables ----------
-  const COLAP_CERRADAS = ["wOjetillos", "wBordes", "wCortesUnif", "wComplementosUnif", "wAletasUnif", "wStrapsUnif", "wFactorUnif", "wCondiciones", "telaMultiWrap"];
+  const COLAP_CERRADAS = ["wGranel", "wOjetillos", "wBordes", "wCortesUnif", "wComplementosUnif", "wAletasUnif", "wStrapsUnif", "wFactorUnif", "wCondiciones", "telaMultiWrap"];
   const COLAP_ABIERTAS = ["wCliente", "wPiezas", "wHistorial", "wSketchUnif", "wOrientFormal", "wPreviewCompuesto"];
   function seccionTieneDatos(sec) {
     const body = sec.querySelector(".colap-body"); if (!body) return false;
@@ -1049,6 +1164,10 @@
     // Materiales (desde RANGO → tabla "Materiales"; si no existe, queda vacío)
     try { state.materiales = await window.SheetsCIBSA.cargarMateriales(token); }
     catch (e) { console.warn("CIBSA: no se pudieron cargar los materiales —", e && e.message ? e.message : e); state.materiales = []; }
+    // Productos a granel (desde RANGO → tabla "Granel"; si no existe, queda vacío)
+    try { state.granel = await window.SheetsCIBSA.cargarGranel(token); }
+    catch (e) { console.warn("CIBSA: no se pudieron cargar los productos a granel —", e && e.message ? e.message : e); state.granel = []; }
+    renderGranel();
     // Re-dibuja los sub-editores que dependen de las telas/materiales recién cargadas
     // (de lo contrario sus botones "+ …" quedan deshabilitados desde el arranque sin telas).
     renderComplementosUnif(); renderAletasUnif(); renderStrapsUnif(); renderTraseraUnif(); renderPiezas();
