@@ -183,6 +183,10 @@
         precio: parseNumero(get(r, "precio")),                           // venta neto; null si vacío
         anchoRollo: parseNumero(get(r, "anchoRollo")),                   // opcional, para $/m²
         specs: get(r, "specs"), nombreCliente: get(r, "nombreCliente"), notas: get(r, "notas"),
+        sku: get(r, "sku"),                                              // llave única por fila (interna)
+        precioBase: parseNumero(get(r, "precioBase")),                   // precio del primer registro (variación)
+        fechaActualizacion: get(r, "fechaActualizacion"),               // dd/mm/aaaa (freshness)
+        fechaBase: get(r, "fechaBase"),                                 // dd/mm/aaaa (origen de la variación)
       });
     });
     return out;

@@ -246,14 +246,21 @@
   // Versión máxima por cotización (cliente+tipo) para marcar la "última versión".
   function histMaxVer(arr) { const m = {}; arr.forEach((e) => { const k = histClave(e), v = parseInt(e.version, 10) || 1; if (!(k in m) || v > m[k]) m[k] = v; }); return m; }
   // Construye una tarjeta (chip) reutilizable para galería y lista.
+  // ¿El registro incluyó productos a granel (líneas con cantidad y precio en su snapshot)?
+  function entTieneGranel(ent) {
+    const ls = ent && ent.snap && ent.snap.estado && ent.snap.estado.granelLineas;
+    if (!Array.isArray(ls)) return false;
+    return ls.some((l) => { const c = window.CalcCIBSA.evalExpr(l && l.cantidad); return c > 0 && l && l.precio != null; });
+  }
   function histChip(ent, esUltima) {
     const nom = ((ent.nombre || "") + " " + (ent.apellido || "")).trim();
     const vtxt = "v" + ("0" + (parseInt(ent.version, 10) || 1)).slice(-2);
+    const granelPref = entTieneGranel(ent) ? '<span class="hist-granel">Granel/</span>' : "";
     const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "");
     const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = "Duplicar para editar (como versión siguiente)";
     main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + (esUltima ? ' · <span class="hist-badge">última versión</span>' : '') + '</span>' +
       '<span class="hist-nom">' + esc(nom) + '</span>' +
-      '<span class="hist-tipo">' + esc(ent.tipo || "") + ' · ' + vtxt + '</span>';
+      '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + '</span>';
     main.addEventListener("click", () => aplicarHistorial(ent));
     const acts = document.createElement("div"); acts.className = "hist-acts";
     const bDl = document.createElement("button"); bDl.type = "button"; bDl.className = "hist-act"; bDl.title = "Descargar respaldo (.json)"; bDl.textContent = "⬇";
@@ -345,6 +352,35 @@
     if ((/^m(l|t|etro)?$/.test(u) || /lineal/.test(u)) && p.anchoRollo > 0) return p.precio / p.anchoRollo;
     return null;
   }
+  // Variación de precio (%) desde el Precio Base. + = subió, − = bajó. null si no hay base.
+  function granelVarPct(p) {
+    if (p.precio == null || !(p.precioBase > 0)) return null;
+    return Math.round((p.precio - p.precioBase) / p.precioBase * 100);
+  }
+  // "dd/mm/aaaa" → "dd/mm" (o "mm/aaaa" con conAnio). "" si no parsea.
+  function granelFechaCorta(s, conAnio) {
+    const m = String(s || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+    if (!m) return "";
+    return conAnio ? (m[2].padStart(2, "0") + "/" + m[3]) : (m[1].padStart(2, "0") + "/" + m[2].padStart(2, "0"));
+  }
+  // 2ª línea de meta (interna): "act. dd/mm · +8% desde mm/aaaa". "" si no hay datos.
+  function granelMetaExtra(p) {
+    const out = [];
+    if (p.fechaActualizacion) { const fa = granelFechaCorta(p.fechaActualizacion); if (fa) out.push("act. " + esc(fa)); }
+    const vp = granelVarPct(p);
+    if (vp != null) {
+      const cls = vp > 0 ? "granel-var-up" : (vp < 0 ? "granel-var-down" : "granel-var-eq");
+      const base = p.fechaBase ? (granelFechaCorta(p.fechaBase, true)) : "";
+      out.push('<span class="' + cls + '">' + (vp > 0 ? "+" : "") + vp + "%</span>" + (base ? (" desde " + esc(base)) : ""));
+    }
+    return out.length ? '<div class="granel-prod-meta2">' + out.join(" · ") + "</div>" : "";
+  }
+  function granelVarChip(p) {
+    const vp = granelVarPct(p);
+    if (vp == null) return "";
+    const cls = vp > 0 ? "granel-var-up" : (vp < 0 ? "granel-var-down" : "granel-var-eq");
+    return ' <span class="' + cls + '">' + (vp > 0 ? "+" : "") + vp + "%</span>";
+  }
   function granelDistinct(arr) { const seen = new Set(), out = []; arr.forEach((v) => { const k = v || ""; if (!seen.has(k)) { seen.add(k); out.push(v); } }); return out; }
   function granelFiltrado() {
     let sel = granelActivos();
@@ -409,9 +445,12 @@
       const info = document.createElement("button"); info.type = "button"; info.className = "granel-prod-info";
       info.innerHTML = '<div class="granel-prod-top"><span class="granel-prod-nom">' + esc(granelNombre(p)) + '</span><span class="granel-prod-precio">' + (p.precio != null ? money(p.precio) + " / " + esc(p.unidad) : "s/precio") + '</span></div>' +
         (p.specs ? '<div class="granel-prod-specs">' + esc(p.specs) + '</div>' : '') +
-        '<div class="granel-prod-meta">' + (m2 != null ? "≈ " + money(Math.round(m2)) + "/m² · " : "") + '<span class="granel-prov">prov.: ' + esc(p.proveedor || "—") + '</span> · <span class="granel-prod-hint">toca para comparar</span></div>';
+        '<div class="granel-prod-meta">' + (m2 != null ? "≈ " + money(Math.round(m2)) + "/m² · " : "") + '<span class="granel-prov">prov.: ' + esc(p.proveedor || "—") + '</span> · <span class="granel-prod-hint">toca para comparar</span></div>' +
+        granelMetaExtra(p);
       info.addEventListener("click", () => { granelSel = (granelSel === p ? null : p); renderGranel(); });
       card.appendChild(info);
+      // SKU (interno) por encima del campo de cantidad: negro, mismo tamaño que el hint.
+      if (p.sku) { const sk = document.createElement("div"); sk.className = "granel-prod-sku"; sk.textContent = p.sku; card.appendChild(sk); }
       // Fila para agregar a la cotización con cantidad (en la unidad del producto).
       const addRow = document.createElement("div"); addRow.className = "granel-add";
       if (p.precio == null) {
@@ -435,21 +474,34 @@
   let granelSeq = 0;
   function granelNombreL(l) { return (l.nombreCliente && l.nombreCliente.trim()) ? l.nombreCliente.trim() : [l.categoria, l.tipo, l.variedad, l.modelo].filter(Boolean).join(" "); }
   function granelAgregar(p, cant) {
-    state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, precio: p.precio, nombreCliente: p.nombreCliente, cantidad: String(cant) });
+    state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, cantidad: String(cant), descPct: "0" });
     renderGranelLineas(); recompute();
   }
-  function granelSubtotal() {
-    return (state.granelLineas || []).reduce((s, l) => { const c = window.CalcCIBSA.evalExpr(l.cantidad); return s + ((l.precio || 0) * (c != null && c > 0 ? c : 0)); }, 0);
+  // Números de una línea a granel: cantidad, % descuento propio (0..100), bruto, descuento y neto.
+  function granelLineaCalc(l) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const c = ev(l.cantidad), cant = (c != null && c > 0) ? c : 0;
+    let dp = ev(l.descPct); dp = (dp != null && dp > 0) ? dp : 0; if (dp > 100) dp = 100;
+    const bruto = Math.round((l.precio || 0) * cant);
+    const desc = Math.round(bruto * dp / 100);
+    return { cant: cant, dp: dp, bruto: bruto, desc: desc, neto: bruto - desc };
   }
-  // Líneas a granel para el PDF (sin proveedor): { cantidad, detalle, precioU, total }.
+  function granelSubtotal() {
+    return (state.granelLineas || []).reduce((s, l) => s + granelLineaCalc(l).neto, 0);
+  }
+  // Líneas a granel para el PDF (sin proveedor). El descuento es PROPIO de cada línea
+  // (no recibe el descuento global de la cotización). total = neto ya con su descuento.
+  // { cantidad, detalle, precioU, bruto, descPct, descuento, total }.
   function granelLineasPDF() {
     const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
     return (state.granelLineas || []).map((l) => {
-      const c = ev(l.cantidad);
-      if (!(c > 0) || l.precio == null) return null;
-      const total = Math.round((l.precio || 0) * c);
-      const detalle = granelNombreL(l) + (l.specs ? " · " + l.specs : "");
-      return { cantidad: f(c) + " " + l.unidad, detalle: detalle, precioU: money(l.precio) + " /" + l.unidad, total: total };
+      const k = granelLineaCalc(l);
+      if (!(k.cant > 0) || l.precio == null) return null;
+      let detalle = granelNombreL(l) + (l.specs ? " · " + l.specs : "");
+      if (k.dp > 0) detalle += " · Desc. " + f(k.dp) + "%";
+      // Si la unidad es genérica ("unidad"), no se imprime en el PDF (ni en cantidad ni en valor unitario).
+      const u = (l.unidad || "").trim(), gen = (u === "" || /^unidad(es)?$/i.test(u) || /^un?$/i.test(u));
+      return { cantidad: gen ? f(k.cant) : f(k.cant) + " " + u, detalle: detalle, precioU: gen ? money(l.precio) : money(l.precio) + " /" + u, bruto: k.bruto, descPct: k.dp, descuento: k.desc, total: k.neto };
     }).filter(Boolean);
   }
   function granelTotalPDF() { return granelLineasPDF().reduce((s, g) => s + g.total, 0); }
@@ -462,23 +514,39 @@
     const box = document.createElement("div"); box.className = "granel-cart";
     const cap = document.createElement("div"); cap.className = "granel-cart-cap"; cap.textContent = "Productos a granel en esta cotización:";
     box.appendChild(cap);
-    let sub = 0;
+    let sub = 0, descTot = 0;
     ls.forEach((l, i) => {
-      const c = window.CalcCIBSA.evalExpr(l.cantidad); const cant = (c != null && c > 0) ? c : 0;
-      const tot = (l.precio || 0) * cant; sub += tot;
-      const row = document.createElement("div"); row.className = "granel-cart-row";
+      if (l.descPct == null) l.descPct = "0";
+      const k = granelLineaCalc(l); sub += k.neto; descTot += k.desc;
+      const item = document.createElement("div"); item.className = "granel-cart-item";
+      // Fila 1: nombre + total neto + quitar
+      const r1 = document.createElement("div"); r1.className = "granel-cart-r1";
       const nom = document.createElement("span"); nom.className = "granel-cart-nom"; nom.textContent = granelNombreL(l);
+      const tt = document.createElement("span"); tt.className = "granel-cart-tot"; tt.textContent = money(k.neto);
+      const del = document.createElement("button"); del.type = "button"; del.className = "granel-cart-del"; del.title = "Quitar"; del.textContent = "✕";
+      del.addEventListener("click", () => { state.granelLineas.splice(i, 1); renderGranelLineas(); recompute(); });
+      r1.appendChild(nom); r1.appendChild(tt); r1.appendChild(del);
+      // Fila 2: [SKU/cantidad] × precio · descuento propio
+      const r2 = document.createElement("div"); r2.className = "granel-cart-r2";
       const ci = document.createElement("input"); ci.type = "text"; ci.inputMode = "decimal"; ci.className = "granel-cart-cant"; ci.value = l.cantidad;
       agregarCalc(ci);
       ci.addEventListener("input", (e) => { l.cantidad = e.target.value; renderGranelLineas(); recompute(); });
+      const cw = document.createElement("div"); cw.className = "granel-cart-cantwrap";
+      if (l.sku) { const sk = document.createElement("span"); sk.className = "granel-cart-sku"; sk.textContent = l.sku; cw.appendChild(sk); }
+      cw.appendChild(ci);
       const u = document.createElement("span"); u.className = "granel-cart-u"; u.textContent = l.unidad + " × " + money(l.precio || 0);
-      const tt = document.createElement("span"); tt.className = "granel-cart-tot"; tt.textContent = money(Math.round(tot));
-      const del = document.createElement("button"); del.type = "button"; del.className = "granel-cart-del"; del.title = "Quitar"; del.textContent = "✕";
-      del.addEventListener("click", () => { state.granelLineas.splice(i, 1); renderGranelLineas(); recompute(); });
-      row.appendChild(nom); row.appendChild(ci); row.appendChild(u); row.appendChild(tt); row.appendChild(del);
-      box.appendChild(row);
+      const dl = document.createElement("label"); dl.className = "granel-cart-dlbl"; dl.textContent = "dcto";
+      const di = document.createElement("input"); di.type = "text"; di.inputMode = "decimal"; di.className = "granel-cart-desc"; di.value = l.descPct; di.title = "Descuento propio de este producto (%)";
+      agregarCalc(di);
+      di.addEventListener("input", (e) => { l.descPct = e.target.value; renderGranelLineas(); recompute(); });
+      const pct = document.createElement("span"); pct.className = "granel-cart-pct"; pct.textContent = "%";
+      r2.appendChild(cw); r2.appendChild(u); r2.appendChild(dl); r2.appendChild(di); r2.appendChild(pct);
+      item.appendChild(r1); item.appendChild(r2);
+      box.appendChild(item);
     });
-    const subEl = document.createElement("div"); subEl.className = "granel-cart-sub"; subEl.innerHTML = "Subtotal a granel (neto): <b>" + money(Math.round(sub)) + "</b>";
+    const subEl = document.createElement("div"); subEl.className = "granel-cart-sub";
+    subEl.innerHTML = (descTot > 0 ? "Descuentos a granel: <b>-" + money(Math.round(descTot)) + "</b><br>" : "") +
+      "Subtotal a granel (neto): <b>" + money(Math.round(sub)) + "</b>";
     box.appendChild(subEl);
     cont.appendChild(box);
   }
@@ -501,7 +569,7 @@
       const m2 = granelPrecioM2(p), barato = (p.precio != null && p.precio === minP);
       const row = document.createElement("div"); row.className = "granel-cmp-row" + (p === granelSel ? " sel" : "") + (barato ? " barato" : "");
       row.innerHTML = '<span class="granel-cmp-prov">' + esc(p.proveedor || "—") + (p.modelo ? ' · ' + esc(p.modelo) : '') + '</span>' +
-        '<span class="granel-cmp-precio">' + (p.precio != null ? money(p.precio) + "/" + esc(p.unidad) : "s/precio") + (m2 != null ? ' <span class="granel-cmp-m2">(' + money(Math.round(m2)) + '/m²)</span>' : '') + (barato ? ' <span class="granel-cmp-tag">más barato</span>' : '') + '</span>';
+        '<span class="granel-cmp-precio">' + (p.precio != null ? money(p.precio) + "/" + esc(p.unidad) : "s/precio") + (m2 != null ? ' <span class="granel-cmp-m2">(' + money(Math.round(m2)) + '/m²)</span>' : '') + granelVarChip(p) + (barato ? ' <span class="granel-cmp-tag">más barato</span>' : '') + '</span>';
       tbl.appendChild(row);
     });
     box.appendChild(tbl);
@@ -4180,20 +4248,19 @@
   async function generarGranelSolo(nombre, apellido) {
     const granelLineas = granelLineasPDF();
     if (!granelLineas.length) return alert("Agrega al menos un producto a granel con cantidad.");
-    const desc = num("f_descuento", 0);
+    // Solo-granel: el descuento global no aplica; cada línea ya trae su propio descuento.
     const subtotal = granelLineas.reduce((s, g) => s + g.total, 0);
-    const descuento = Math.round(subtotal * desc / 100);
-    const neto = subtotal - descuento;
+    const neto = subtotal;
     const iva = Math.round(neto * CFG.IVA_PCT / 100);
     const total = neto + iva;
-    const calc = { subtotal, descuentoPct: desc, descuento, netoConDescuento: neto, ivaPct: CFG.IVA_PCT, iva, total };
+    const calc = { subtotal, descuentoPct: 0, descuento: 0, netoConDescuento: neto, ivaPct: CFG.IVA_PCT, iva, total };
     const datos = {
       soloGranel: true,
       cliente: { nombre, apellido, email: $("f_email").value.trim() },
       version: $("f_version").value.trim() || "01", fecha: new Date(),
       titulo: $("f_titulo").value.trim() || null,
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
-      descuentoLabel: desc > 0 ? `Descuento ${desc}% (pago contado)` : null,
+      descuentoLabel: null,
       vendedor: vendedorSel(),
       observaciones: $("f_observaciones").value.trim() || null,
       complementos: [], aletas: [], granel: granelLineas, calc: calc,
@@ -4243,9 +4310,12 @@
     const aleTotal = aletasTotal(state.aletasUnif, N, lote.valorOjetillo, facUnif()) + aletasTotal(state.backAletasUnif, N, lote.valorOjetillo, facUnif());
     const strapTotal = strapsTotal(state.strapsUnif, N, { ancho: ancho || 0, largo: largo || 0 });
     const corteTotal = costoCortesUnit(skSpec, lote.valorOjetillo) * N;
-    const granelLineas = granelLineasPDF(), granelTotal = granelLineas.reduce((s, g) => s + g.total, 0);
-    const subtotal = o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal + granelTotal;
-    const descuento = Math.round(subtotal * desc / 100);
+    const granelLineas = granelLineasPDF(), granelNeto = granelLineas.reduce((s, g) => s + g.total, 0);
+    // El descuento global (pago contado) aplica SOLO a la carpa. El granel ya viene neto
+    // con su propio descuento por línea y no recibe el descuento global.
+    const carpaSub = o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal;
+    const descuento = Math.round(carpaSub * desc / 100);
+    const subtotal = carpaSub + granelNeto;
     const neto = subtotal - descuento;
     const iva = Math.round(neto * CFG.IVA_PCT / 100);
     const total = neto + iva;

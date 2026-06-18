@@ -42,6 +42,9 @@
       modelo: "Modelo", equiv: "Equiv", unidad: "Unidad", precio: "Precio",
       anchoRollo: "AnchoRollo", specs: "Specs", nombreCliente: "NombreCliente",
       activo: "Activo", notas: "Notas",
+      // Internas / analíticas (opcionales): SKU (llave única por fila), Precio Base + Fecha Base
+      // (para variación de precio) y Fecha Actualización (freshness / carga masiva). Fechas en dd/mm/aaaa.
+      sku: "SKU", precioBase: "Precio Base", fechaActualizacion: "Fecha Actualización", fechaBase: "Fecha Base",
     },
 
     // --- Tabla de vendedores (referenciada en RANGO con este ID) ---

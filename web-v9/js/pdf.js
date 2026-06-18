@@ -540,9 +540,10 @@
     center("COTIZACIÓN FORMAL", 15); y -= 18;
     center("(válido por 15 días)", 11); y -= 26;
 
+    // Solo-granel: sin título (puede haber muchos productos distintos), salvo que el usuario escriba uno.
     const titulo = datos.titulo ||
-      (datos.soloGranel ? "Productos a granel" : `Carpa rectangular ${(+datos.largo)}m x ${(+datos.ancho)}m`);
-    txt(page, `"${titulo}"`, M, y, { f: bold, size: 15 }); y -= 24;
+      (datos.soloGranel ? "" : `Carpa rectangular ${(+datos.largo)}m x ${(+datos.ancho)}m`);
+    if (titulo) { txt(page, `"${titulo}"`, M, y, { f: bold, size: 15 }); y -= 24; }
 
     txt(page, "Contacto: ", M, y, { f: bold });
     txt(page, `${datos.cliente.nombre} ${datos.cliente.apellido}.`,
@@ -990,11 +991,13 @@
       itemRow(String(g.cantidad), [["Producto a granel", true], [g.detalle, false]], g.precioU, money(g.total));
     });
 
-    // Totales
+    // Totales. El descuento global (pago contado) aplica SOLO a las piezas de carpa.
+    // El producto a granel ya viene neto con su propio descuento por línea.
     const granelT = (datos.granel || []).reduce((s, g) => s + g.total, 0);
-    const subtotal = datos.piezas.reduce((s, p) => s + p.valorTotal, 0) + granelT;
+    const carpaSub = datos.piezas.reduce((s, p) => s + p.valorTotal, 0);
+    const subtotal = carpaSub + granelT;
     const descPct = datos.descuentoPct || 0;
-    const descuento = Math.round(subtotal * descPct / 100);
+    const descuento = Math.round(carpaSub * descPct / 100);
     const neto = subtotal - descuento;
     const iva = Math.round(neto * CFG.IVA_PCT / 100);
     const total = neto + iva;
