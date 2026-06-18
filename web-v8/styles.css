@@ -226,7 +226,7 @@ button:active { transform: scale(0.98); }
 .sketch-svg .callout-line { stroke: #455a64; stroke-width: 0.55; fill: none; }
 .sketch-svg .callout-arrow { fill: #455a64; stroke: none; }
 .sketch-svg .callout-dot { fill: #455a64; stroke: none; }
-.sketch-svg .callout-lbl { fill: #37474f; font-size: 6.5px; font-weight: 600; font-family: inherit; }
+.sketch-svg .callout-lbl { fill: #37474f; font-size: 5.5px; font-weight: 600; font-family: inherit; }
 .sketch-svg .callout-dim { fill: #607d8b; font-size: 5px; font-family: inherit; }
 .sketch-svg .leyenda-bg { fill: var(--surface); fill-opacity: 0.92; stroke: var(--border, #cdd6e0); stroke-width: 0.5; }
 .sketch-svg .leyenda-tit { fill: var(--text); font-size: 6px; font-weight: 700; font-family: inherit; letter-spacing: 0.5px; }
@@ -241,9 +241,9 @@ button:active { transform: scale(0.98); }
 .btn-outline.small { padding: 4px 12px; font-size: 13px; width: auto; }
 /* Galería (visualizador rápido): últimos 7 días, 5 por página, flechas en los extremos */
 .hist-galeria { display: flex; align-items: stretch; gap: 8px; margin-top: 6px; }
-.hist-gal-track { display: flex; gap: 8px; flex: 1 1 auto; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 2px; }
-/* Las tarjetas de la galería se encogen para que las 5 quepan sin recortar la última. */
-.hist-gal-track .hist-chip { flex: 1 1 0; min-width: 0; max-width: 220px; }
+/* Carrusel: fila desplazable con "snap"; cada tarjeta de ancho cómodo y legible. */
+.hist-gal-track { display: flex; gap: 8px; flex: 1 1 auto; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 2px; scroll-snap-type: x mandatory; scrollbar-width: thin; }
+.hist-gal-track .hist-chip { flex: 0 0 auto; width: 156px; max-width: 78vw; scroll-snap-align: start; }
 .hist-gal-track .hist-chip .hist-fecha,
 .hist-gal-track .hist-chip .hist-nom,
 .hist-gal-track .hist-chip .hist-tipo { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

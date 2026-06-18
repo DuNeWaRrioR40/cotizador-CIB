@@ -527,16 +527,30 @@
     // Rótulo-guía (callout) estilo despiece: rótulos que no caben salen a la derecha, apilados,
     // con línea guía diagonal→horizontal y punta de flecha al título. cb = { x, y, dy, n }.
     const cb = t.cb;
+    // Parte un texto en líneas de a lo más maxChars caracteres (por palabras) para que no se salga de la columna.
+    function wrapLines(str, maxChars) {
+      const words = String(str == null ? "" : str).split(/\s+/).filter(Boolean), out = []; let cur = "";
+      words.forEach((w) => { if (!cur) cur = w; else if ((cur + " " + w).length <= maxChars) cur += " " + w; else { out.push(cur); cur = w; } });
+      if (cur) out.push(cur);
+      return out.length ? out : [""];
+    }
     function callout(anchorX, anchorY, text, detail, obj) {
       if (!cb) return;
       const ly = cb.slots.get(obj); if (ly == null) { s += `<text class="callout-lbl" x="${f1(anchorX)}" y="${f1(anchorY)}" text-anchor="middle">${esc(text)}</text>`; return; }
-      // Quiebre claramente diagonal (≠ cotas): tramo corto en diagonal desde el elemento y luego horizontal al título.
-      const lx = cb.x, elbowX = anchorX + 16;
+      // Flecha CORTA: el texto arranca pegado al borde derecho del paño y usa todo el ancho disponible
+      // (antes la flecha era larga y el texto quedaba en una columna angosta a la derecha).
+      const panelR = px(sk.ancho), tx = Math.max(panelR + 10, anchorX + 22), elbowX = Math.min(anchorX + 16, tx - 6);
       s += `<circle class="callout-dot" cx="${f1(anchorX)}" cy="${f1(anchorY)}" r="1.3"/>`;
-      s += `<polyline class="callout-line" points="${f1(anchorX)},${f1(anchorY)} ${f1(elbowX)},${f1(ly)} ${f1(lx - 4)},${f1(ly)}"/>`;
-      s += `<polygon class="callout-arrow" points="${f1(lx - 1)},${f1(ly)} ${f1(lx - 6)},${f1(ly - 2.4)} ${f1(lx - 6)},${f1(ly + 2.4)}"/>`;
-      s += `<text class="callout-lbl" x="${f1(lx)}" y="${f1(ly + (detail ? 0 : 2))}">${esc(text)}</text>`;
-      if (detail) s += `<text class="callout-dim" x="${f1(lx)}" y="${f1(ly + 6)}">${esc(detail)}</text>`;
+      s += `<polyline class="callout-line" points="${f1(anchorX)},${f1(anchorY)} ${f1(elbowX)},${f1(ly)} ${f1(tx - 4)},${f1(ly)}"/>`;
+      s += `<polygon class="callout-arrow" points="${f1(tx - 1)},${f1(ly)} ${f1(tx - 6)},${f1(ly - 2.4)} ${f1(tx - 6)},${f1(ly + 2.4)}"/>`;
+      const avail = Math.max(56, cb.rightEdge - tx);
+      const nameLines = wrapLines(text, Math.max(6, Math.floor(avail / 3.0)));   // título 5.5px ≈ 3.0px/char
+      const y0 = ly + (detail ? -1.5 : 2);
+      nameLines.forEach((ln, i) => { s += `<text class="callout-lbl" x="${f1(tx)}" y="${f1(y0 + i * 5.4)}">${esc(ln)}</text>`; });
+      if (detail) {
+        const dy0 = y0 + nameLines.length * 5.4 + 0.6;
+        wrapLines(detail, Math.max(8, Math.floor(avail / 2.5))).forEach((ln, i) => { s += `<text class="callout-dim" x="${f1(tx)}" y="${f1(dy0 + i * 5.2)}">${esc(ln)}</text>`; });
+      }
     }
     // Detalle técnico (dimensiones) de un anexo para el rótulo: ancho × caída + offset + ojetillos.
     function aletaDetalle(a) {
@@ -958,13 +972,13 @@
     let totalH = boundsBot + mBot + bottomH;
     let cb = null;
     if (calloutEls.length) {
-      const calloutW = 108; totalW += calloutW;
+      const calloutW = 130; totalW += calloutW;
       calloutEls.sort((A, B) => A.ay - B.ay);
-      const slots = new Map(); const dy = 16, y0 = mTop + 4, midY = mTop + bh * scale / 2; let last = -1e9;
+      const slots = new Map(); const dy = 19, y0 = mTop + 4, midY = mTop + bh * scale / 2; let last = -1e9;
       // Empuja el rótulo ~10px lejos del borde más cercano (arriba si está en la mitad baja, abajo si está arriba)
-      // para forzar un primer tramo diagonal; luego se apila evitando solapes.
+      // para forzar un primer tramo diagonal; luego se apila evitando solapes (dy mayor por las líneas envueltas).
       calloutEls.forEach((e) => { const off = (e.ay < midY) ? 10 : -10; let ly = Math.max(y0, Math.min(boundsBot, e.ay + off)); if (ly < last + dy) ly = last + dy; last = ly; slots.set(e.obj, ly); });
-      cb = { x: totalW - calloutW + 26, slots: slots };
+      cb = { x: totalW - calloutW + 24, slots: slots, rightEdge: totalW - 14 };
       totalH = Math.max(totalH, last + 8);
     }
     const rLeg = Math.max(1.7, Math.min(3.0, scale * 0.022)); // tamaño para el recuadro de simbología

@@ -239,8 +239,7 @@
     recompute();
   }
   const histClave = (e) => (e.nombre || "").trim().toLowerCase() + "|" + (e.apellido || "").trim().toLowerCase() + "|" + e.tipo;
-  const HIST_GAL_DIAS = 7, HIST_GAL_POR_PAG = 5;
-  let histGalPage = 0;
+  const HIST_GAL_DIAS = 7;
   // Lista (prune + orden: más reciente primero) usada por galería y lista filtrada.
   function histArr() { return histPrune(histLoad()).slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)); }
   // Versión máxima por cotización (cliente+tipo) para marcar la "última versión".
@@ -269,18 +268,16 @@
     renderGaleria();
     renderListaFiltrada();
   }
-  // Galería: solo cotizaciones de los últimos 7 días, de a 5, con flechas en los extremos.
+  // Galería = carrusel: cotizaciones de los últimos 7 días en una fila desplazable (swipe en móvil,
+  // flechas en escritorio); si no hay de la semana, cae a las más recientes del historial.
   function renderGaleria() {
     const track = $("histGalTrack"); if (!track) return;
     const empty = $("histGalEmpty"), prev = $("histGalPrev"), next = $("histGalNext");
     const arr = histArr(), maxVer = histMaxVer(arr);
     const lim = Date.now() - HIST_GAL_DIAS * 86400000;
-    // Preferimos los de la última semana; si no hay ninguno, caemos a todo el historial (últimos 5 primero).
     const semana = arr.filter((e) => e && e.ts >= lim);
     const fallback = semana.length === 0;
     const pool = fallback ? arr : semana;
-    const totalPag = Math.max(1, Math.ceil(pool.length / HIST_GAL_POR_PAG));
-    histGalPage = Math.min(Math.max(0, histGalPage), totalPag - 1);
     track.innerHTML = "";
     if (!pool.length) {
       if (empty) { empty.textContent = "Aún no hay cotizaciones guardadas."; empty.classList.remove("hidden"); }
@@ -291,13 +288,17 @@
       if (fallback) { empty.textContent = "Sin cotizaciones en los últimos 7 días — mostrando las más recientes."; empty.classList.remove("hidden"); }
       else empty.classList.add("hidden");
     }
-    const ini = histGalPage * HIST_GAL_POR_PAG;
-    pool.slice(ini, ini + HIST_GAL_POR_PAG).forEach((ent) => {
-      track.appendChild(histChip(ent, (parseInt(ent.version, 10) || 1) === maxVer[histClave(ent)]));
-    });
-    const hayPag = totalPag > 1;
-    if (prev) { prev.classList.toggle("hidden", !hayPag); prev.disabled = histGalPage <= 0; }
-    if (next) { next.classList.toggle("hidden", !hayPag); next.disabled = histGalPage >= totalPag - 1; }
+    pool.forEach((ent) => track.appendChild(histChip(ent, (parseInt(ent.version, 10) || 1) === maxVer[histClave(ent)])));
+    track.scrollLeft = 0;
+    actualizarFlechasGal();
+  }
+  // Estado de las flechas del carrusel: visibles solo si hay desborde; deshabilitadas en los extremos.
+  function actualizarFlechasGal() {
+    const track = $("histGalTrack"), prev = $("histGalPrev"), next = $("histGalNext"); if (!track) return;
+    const overflow = track.scrollWidth - track.clientWidth > 4;
+    const atStart = track.scrollLeft <= 2, atEnd = track.scrollLeft >= (track.scrollWidth - track.clientWidth - 2);
+    if (prev) { prev.classList.toggle("hidden", !overflow); prev.disabled = atStart; }
+    if (next) { next.classList.toggle("hidden", !overflow); next.disabled = atEnd; }
   }
   // Filtros activos de la lista (nombre, rango de fechas, tipo).
   function histFiltros() {
@@ -366,9 +367,11 @@
   { const b = $("btnLimpiarHist"); if (b) b.addEventListener("click", () => { if (confirm("¿Borrar TODO el historial de este dispositivo? (No borra la hoja HISTORIAL del Sheet; se volverá a leer al reiniciar sesión.)")) { histStore([]); renderHistorial(); } }); }
   { const b = $("btnImportarHist"), inp = $("fileImportarHist");
     if (b && inp) { b.addEventListener("click", () => inp.click()); inp.addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f) importarRegistro(f); e.target.value = ""; }); } }
-  // Galería: flechas de desplazamiento (‹ más recientes / › más antiguas, dentro de la semana).
-  { const p = $("histGalPrev"); if (p) p.addEventListener("click", () => { if (histGalPage > 0) { histGalPage--; renderGaleria(); } }); }
-  { const n = $("histGalNext"); if (n) n.addEventListener("click", () => { histGalPage++; renderGaleria(); }); }
+  // Carrusel: las flechas desplazan la fila ~un ancho visible; el swipe táctil funciona nativo.
+  function galScroll(dir) { const t = $("histGalTrack"); if (t) t.scrollBy({ left: dir * Math.max(160, t.clientWidth * 0.8), behavior: "smooth" }); }
+  { const p = $("histGalPrev"); if (p) p.addEventListener("click", () => galScroll(-1)); }
+  { const n = $("histGalNext"); if (n) n.addEventListener("click", () => galScroll(1)); }
+  { const t = $("histGalTrack"); if (t) t.addEventListener("scroll", () => { if (t._galRaf) return; t._galRaf = requestAnimationFrame(() => { t._galRaf = 0; actualizarFlechasGal(); }); }); }
   // Filtros de la lista: re-renderizan al cambiar (la lista solo aparece con algún filtro activo).
   ["histFNombre", "histFDesde", "histFHasta", "histFTipo"].forEach((id) => { const el = $(id); if (el) ["input", "change"].forEach((ev) => el.addEventListener(ev, renderListaFiltrada)); });
   { const b = $("histFLimpiar"); if (b) b.addEventListener("click", () => { ["histFNombre", "histFDesde", "histFHasta"].forEach((id) => { const e = $(id); if (e) e.value = ""; }); const t = $("histFTipo"); if (t) t.value = ""; renderListaFiltrada(); }); }

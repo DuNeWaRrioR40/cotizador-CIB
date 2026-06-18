@@ -90,16 +90,30 @@
     };
     // Rótulo-guía (callout) estilo despiece: tramo diagonal desde el elemento + horizontal con flecha al título.
     const cb = T.cb, SLATE = PDFLib.rgb(0.27, 0.35, 0.39);
+    function wrapLinesP(str, maxChars) {
+      const words = String(str == null ? "" : str).split(/\s+/).filter(Boolean), out = []; let cur = "";
+      words.forEach((w) => { if (!cur) cur = w; else if ((cur + " " + w).length <= maxChars) cur += " " + w; else { out.push(cur); cur = w; } });
+      if (cur) out.push(cur);
+      return out.length ? out : [""];
+    }
     function callout(ax, ay, text, detail, obj) {
       if (!cb || !cb.slots.has(obj)) return false;
-      const ly = cb.slots.get(obj), lx = cb.x, elbowX = ax + 16;
+      const ly = cb.slots.get(obj);
+      // Flecha corta: el texto arranca pegado al borde derecho del paño y usa el ancho disponible.
+      const panelR = px(sk.ancho), tx = Math.max(panelR + 10, ax + 22), elbowX = Math.min(ax + 16, tx - 6);
       page.drawCircle({ x: ax, y: ay, size: 1.3, color: SLATE });
       page.drawLine({ start: { x: ax, y: ay }, end: { x: elbowX, y: ly }, thickness: 0.55, color: SLATE });
-      page.drawLine({ start: { x: elbowX, y: ly }, end: { x: lx - 4, y: ly }, thickness: 0.55, color: SLATE });
-      page.drawLine({ start: { x: lx - 1, y: ly }, end: { x: lx - 6, y: ly - 2.4 }, thickness: 0.6, color: SLATE });
-      page.drawLine({ start: { x: lx - 1, y: ly }, end: { x: lx - 6, y: ly + 2.4 }, thickness: 0.6, color: SLATE });
-      page.drawText(san(text), { x: lx, y: ly + (detail ? 0 : -2), size: 6.5, font: font, color: SLATE });
-      if (detail) page.drawText(san(detail), { x: lx, y: ly - 6, size: 5, font: font, color: PDFLib.rgb(0.38, 0.49, 0.55) });
+      page.drawLine({ start: { x: elbowX, y: ly }, end: { x: tx - 4, y: ly }, thickness: 0.55, color: SLATE });
+      page.drawLine({ start: { x: tx - 1, y: ly }, end: { x: tx - 6, y: ly - 2.4 }, thickness: 0.6, color: SLATE });
+      page.drawLine({ start: { x: tx - 1, y: ly }, end: { x: tx - 6, y: ly + 2.4 }, thickness: 0.6, color: SLATE });
+      const DIM = PDFLib.rgb(0.38, 0.49, 0.55), avail = Math.max(56, cb.rightEdge - tx);
+      const nameLines = wrapLinesP(text, Math.max(6, Math.floor(avail / 3.0)));
+      const y0 = ly + (detail ? 1 : -2);
+      nameLines.forEach((ln, i) => page.drawText(san(ln), { x: tx, y: y0 - i * 5.4, size: 5.5, font: font, color: SLATE }));
+      if (detail) {
+        const dy0 = y0 - nameLines.length * 5.4 - 0.6;
+        wrapLinesP(detail, Math.max(8, Math.floor(avail / 2.5))).forEach((ln, i) => page.drawText(san(ln), { x: tx, y: dy0 - i * 5.2, size: 5, font: font, color: DIM }));
+      }
       return true;
     }
     function aletaDetalle(a) {
@@ -421,7 +435,7 @@
     (sk.aletas || []).forEach((a) => { if (a.rotulo || !cFits(a.nombre, a.w * g.sc, a.h * g.sc)) calloutEls.push({ obj: a, sy: a.y + a.h / 2 }); });
     (sk.ventanas || []).forEach((v) => { if (v.legend && (v.rotulo || !cFits(v.legend, v.w * g.sc, v.h * g.sc))) calloutEls.push({ obj: v, sy: v.y + v.h / 2 }); });
     (sk.setsRot || []).forEach((sr) => { calloutEls.push({ obj: sr, sy: sr.y }); });
-    if (calloutEls.length) { const g2 = geomFor(mRight + 108); if (g2) { mRight += 108; g = g2; } }
+    if (calloutEls.length) { const g2 = geomFor(mRight + 130); if (g2) { mRight += 130; g = g2; } }
     const scale = g.sc, x0 = g.x0, topRect = g.topRect;
     const wpx = sk.ancho * scale, hpx = sk.largo * scale;
     const px = (sx) => x0 + sx * scale;
@@ -430,9 +444,9 @@
     if (calloutEls.length) {
       const midY = topRect - bh * scale / 2;
       calloutEls.sort((A, B) => py(B.sy) - py(A.sy));
-      const slots = new Map(); const dy = 16; let last = Infinity;
+      const slots = new Map(); const dy = 19; let last = Infinity;
       calloutEls.forEach((e) => { const ay = py(e.sy); const off = (ay > midY) ? -10 : 10; let ly = ay + off; if (ly > last - dy) ly = last - dy; last = ly; slots.set(e.obj, ly); });
-      cb = { x: px(maxX) + 16, slots: slots };
+      cb = { x: px(maxX) + 16, slots: slots, rightEdge: px(maxX) + 118 };
     }
     const GRAY = PDFLib.rgb(0.12, 0.12, 0.12);
     const ACC = BLUE();
