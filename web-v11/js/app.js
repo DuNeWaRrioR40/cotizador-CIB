@@ -522,10 +522,17 @@
     const box = document.createElement("div"); box.className = "granel-cart";
     const cap = document.createElement("div"); cap.className = "granel-cart-cap"; cap.textContent = "Productos a granel en esta cotización:";
     box.appendChild(cap);
-    let sub = 0, descTot = 0;
+    // Subtotal del carrito + recalculadora en vivo (sin reconstruir, para no perder el foco al escribir).
+    const subEl = document.createElement("div"); subEl.className = "granel-cart-sub";
+    function recalcSub() {
+      let s = 0, d = 0;
+      (state.granelLineas || []).forEach((ln) => { const kk = granelLineaCalc(ln); s += kk.neto; d += kk.desc; });
+      subEl.innerHTML = (d > 0 ? "Descuentos a granel: <b>-" + money(Math.round(d)) + "</b><br>" : "") +
+        "Subtotal a granel (neto): <b>" + money(Math.round(s)) + "</b>";
+    }
     ls.forEach((l, i) => {
       if (l.descPct == null) l.descPct = "0";
-      const k = granelLineaCalc(l); sub += k.neto; descTot += k.desc;
+      const k = granelLineaCalc(l);
       const item = document.createElement("div"); item.className = "granel-cart-item";
       // Fila 1: nombre + total neto + quitar
       const r1 = document.createElement("div"); r1.className = "granel-cart-r1";
@@ -534,12 +541,14 @@
       const del = document.createElement("button"); del.type = "button"; del.className = "granel-cart-del"; del.title = "Quitar"; del.textContent = "✕";
       del.addEventListener("click", () => { state.granelLineas.splice(i, 1); renderGranelLineas(); recompute(); });
       r1.appendChild(nom); r1.appendChild(tt); r1.appendChild(del);
+      // Refresca en vivo el total de ESTA línea + el subtotal del carrito + totales generales.
+      const refrescarLinea = () => { tt.textContent = money(granelLineaCalc(l).neto); recalcSub(); recompute(); };
       // Fila 2: [SKU/cantidad] × precio · descuento propio
       const r2 = document.createElement("div"); r2.className = "granel-cart-r2";
       const ci = document.createElement("input"); ci.type = "text"; ci.inputMode = l.divisible ? "decimal" : "numeric"; ci.className = "granel-cart-cant"; ci.value = l.cantidad;
       ci.title = l.divisible ? "Mínimo 1; acepta decimales." : "Producto unitario: cantidad entera, mínimo 1.";
       agregarCalc(ci);
-      ci.addEventListener("input", (e) => { l.cantidad = e.target.value; recompute(); });
+      ci.addEventListener("input", (e) => { l.cantidad = e.target.value; refrescarLinea(); });
       // Al salir del campo: ajusta al mínimo de venta (≥1; entero si es unitario).
       ci.addEventListener("blur", (e) => { let c = window.CalcCIBSA.evalExpr(e.target.value); if (c == null || isNaN(c) || c <= 0) return; const v = granelClampCant(l.divisible, c); if (String(v) !== String(window.CalcCIBSA.evalExpr(l.cantidad))) { l.cantidad = window.CalcCIBSA.fmtNum(v); renderGranelLineas(); recompute(); } });
       const cw = document.createElement("div"); cw.className = "granel-cart-cantwrap";
@@ -549,15 +558,13 @@
       const dl = document.createElement("label"); dl.className = "granel-cart-dlbl"; dl.textContent = "dcto";
       const di = document.createElement("input"); di.type = "text"; di.inputMode = "decimal"; di.className = "granel-cart-desc"; di.value = l.descPct; di.title = "Descuento propio de este producto (%)";
       agregarCalc(di);
-      di.addEventListener("input", (e) => { l.descPct = e.target.value; renderGranelLineas(); recompute(); });
+      di.addEventListener("input", (e) => { l.descPct = e.target.value; refrescarLinea(); });
       const pct = document.createElement("span"); pct.className = "granel-cart-pct"; pct.textContent = "%";
       r2.appendChild(cw); r2.appendChild(u); r2.appendChild(dl); r2.appendChild(di); r2.appendChild(pct);
       item.appendChild(r1); item.appendChild(r2);
       box.appendChild(item);
     });
-    const subEl = document.createElement("div"); subEl.className = "granel-cart-sub";
-    subEl.innerHTML = (descTot > 0 ? "Descuentos a granel: <b>-" + money(Math.round(descTot)) + "</b><br>" : "") +
-      "Subtotal a granel (neto): <b>" + money(Math.round(sub)) + "</b>";
+    recalcSub();
     box.appendChild(subEl);
     cont.appendChild(box);
   }
