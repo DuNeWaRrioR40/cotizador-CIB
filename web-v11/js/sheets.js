@@ -55,7 +55,9 @@
     return punteros;
   }
 
-  function norm(s) { return String(s).replace(/\s+/g, " ").trim().toLowerCase(); }
+  // Normaliza encabezados para comparar: quita acentos/diacríticos, colapsa espacios y baja a minúsculas.
+  // Así "Unidad Mínima" calza con "Unidad Minima", "Categoría" con "Categoria", etc.
+  function norm(s) { return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().toLowerCase(); }
 
   function buscarColumna(encabezados, objetivo) {
     const o = norm(objetivo);
