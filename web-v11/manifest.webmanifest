@@ -1,0 +1,16 @@
+{
+  "name": "Cotizador CIBSA",
+  "short_name": "Cotizador",
+  "description": "Cotizaciones de carpas y lonas CIBSA",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#185FA5",
+  "theme_color": "#185FA5",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
