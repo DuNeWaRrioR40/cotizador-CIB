@@ -78,6 +78,11 @@
     IVA_PCT: 19,
     VALOR_OJETILLO_DEFAULT: 450,
     DIAS_ENTREGA_DEFAULT: 3,
+    // Mínimo de producción de taller (neto), en UF. Si el neto de lo confeccionado (carpa, antes
+    // del descuento) no lo alcanza, se agrega una línea "Mínimo de producción" para completarlo.
+    // La UF del día se obtiene de mindicador.cl (con caché). No aplica a productos a granel.
+    MIN_PRODUCCION_UF: 0.6,
+    UF_API: "https://mindicador.cl/api/uf",
 
     // --- Empresa / vendedor (página 2) ---
     EMPRESA: {

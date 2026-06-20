@@ -20,9 +20,33 @@
       der: { tipo: "borde", valor: "0.045", diam: "" },
     },
     loteUnif: null,
+    ufValor: 0, // valor de la UF del día (mindicador.cl); 0 = aún no cargada → mínimo de producción inactivo
   };
   let piezaSeq = 0;
   const BORDE_DEFAULTS = { borde: 0.045, unionCierre: 0.045 };
+
+  // ---------- UF del día (mínimo de producción) ----------
+  // Trae la UF de mindicador.cl con caché por día en localStorage. Si la red falla, usa el último
+  // valor cacheado (aunque sea de otro día). Si nunca se obtuvo, ufValor=0 → mínimo inactivo.
+  const UF_KEY = "cibsa_uf";
+  async function cargarUF() {
+    const hoy = new Date().toISOString().slice(0, 10);
+    try { const c = JSON.parse(localStorage.getItem(UF_KEY) || "null"); if (c && c.valor > 0) { state.ufValor = c.valor; if (c.fecha === hoy) return; } } catch (e) {}
+    try {
+      const r = await fetch(CFG.UF_API, { cache: "no-store" });
+      const j = await r.json();
+      const v = (j && j.serie && j.serie[0] && j.serie[0].valor) || (j && j.uf && j.uf.valor) || 0;
+      if (v > 0) {
+        state.ufValor = v;
+        try { localStorage.setItem(UF_KEY, JSON.stringify({ valor: v, fecha: hoy })); } catch (e) {}
+        if (typeof recompute === "function") recompute();
+      }
+    } catch (e) { console.warn("CIBSA: no se pudo obtener la UF —", e && e.message ? e.message : e); }
+  }
+  // Mínimo de producción en pesos (0,6 UF) con la UF actual; 0 si no hay UF cargada.
+  function minProduccionPesos() { return state.ufValor > 0 ? Math.round((CFG.MIN_PRODUCCION_UF || 0) * state.ufValor) : 0; }
+  // Calcula el mínimo de producción a sumar a un neto de carpa (antes de descuento). 0 si ya lo alcanza.
+  function minProduccionDe(carpaSubPreDesc) { const piso = minProduccionPesos(); return (piso > 0 && carpaSubPreDesc < piso) ? (piso - carpaSubPreDesc) : 0; }
   // Aviso si un Ø (bolsillo / borde+cuerda) parece estar en cm en vez de metros.
   const avisoDiamGrande = (valor) => {
     const d = window.CalcCIBSA.evalExpr(valor);
@@ -1343,6 +1367,7 @@
     try { state.granel = await window.SheetsCIBSA.cargarGranel(token); }
     catch (e) { console.warn("CIBSA: no se pudieron cargar los productos a granel —", e && e.message ? e.message : e); state.granel = []; }
     renderGranel();
+    cargarUF(); // UF del día para el mínimo de producción (no bloquea la carga)
     // Re-dibuja los sub-editores que dependen de las telas/materiales recién cargadas
     // (de lo contrario sus botones "+ …" quedan deshabilitados desde el arranque sin telas).
     renderComplementosUnif(); renderAletasUnif(); renderStrapsUnif(); renderTraseraUnif(); renderPiezas();
@@ -1706,7 +1731,7 @@
   const ALETA_FUSED = { inf: "t", sup: "b", izq: "r", der: "l" };
   const ALETA_EDGE_NOM = { t: "Arista superior", b: "Arista inferior", l: "Arista izquierda", r: "Arista derecha" };
   // Factor de diseño (1..2): solo afecta el costo de tela (confección).
-  function clampFactor(v) { const n = parseFloat(v); return (n >= 1 && n <= 2) ? n : (n > 2 ? 2 : 1); }
+  function clampFactor(v) { const n = parseFloat(v); return (n >= 1 && n <= 5) ? n : (n > 5 ? 5 : 1); }
   function facUnif() { return clampFactor(state.factorUnif); }
   function facPz(pz) { return facUnif(); } // factor ÚNICO por producto: aplica igual a todas las piezas
   function infoFactorUnif() { const info = $("factorUnifInfo"); if (info) { const fv = facUnif(); info.textContent = fv > 1 ? ("Confección × " + fv + " (recargo por dificultad de diseño).") : "Sin recargo por diseño (×1)."; } }
@@ -4352,7 +4377,10 @@
     const granelLineas = granelLineasPDF(), granelNeto = granelLineas.reduce((s, g) => s + g.total, 0);
     // El descuento global (pago contado) aplica SOLO a la carpa. El granel ya viene neto
     // con su propio descuento por línea y no recibe el descuento global.
-    const carpaSub = o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal;
+    const carpaSub0 = o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal;
+    // Mínimo de producción de taller (0,6 UF neto), sobre el neto de carpa ANTES del descuento.
+    const minProd = minProduccionDe(carpaSub0);
+    const carpaSub = carpaSub0 + minProd;
     const descuento = Math.round(carpaSub * desc / 100);
     const subtotal = carpaSub + granelNeto;
     const neto = subtotal - descuento;
@@ -4364,6 +4392,7 @@
       nOjetillos: lote.nOjetillos, nOjetillosTotal: lote.nOjetillos * N,
       valorOjetillo: lote.valorOjetillo, ojetillosValor: lote.nOjetillos * lote.valorOjetillo,
       ojetillosValorTotal: ojeTotal,
+      minProduccion: minProd,
       subtotal, descuentoPct: desc, descuento, netoConDescuento: neto,
       ivaPct: CFG.IVA_PCT, iva, total, panos: o.panosLote, m2: o.m2Lote,
     };
@@ -4381,6 +4410,7 @@
       complementos: complementosUnifPDF(N),
       aletas: aletasUnifPDF(state.aletasUnif, N).concat(aletasUnifPDF(state.backAletasUnif, N)).concat(strapsUnifPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cortesUnifPDF(skSpec, lote.valorOjetillo, N)),
       granel: granelLineas,
+      minProduccion: minProd, minProdUF: CFG.MIN_PRODUCCION_UF, ufValor: state.ufValor,
       sketch: skSpec,
     };
     return { datos, calc };
@@ -4434,6 +4464,7 @@
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
       descuentoPct: desc,
       descuentoLabel: desc > 0 ? `Descuento ${desc}% (pago contado)` : null,
+      minProdUF: CFG.MIN_PRODUCCION_UF, ufValor: state.ufValor,
       vendedor: vendedorSel(),
       observaciones: $("f_observaciones").value.trim() || null,
       piezas: calcs.map(({ pz, r }) => ({

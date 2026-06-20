@@ -135,9 +135,9 @@
     <div id="wFactorTop">
       <button id="btnFactorTop" type="button" class="factor-top-btn">Factor de diseño: <b id="factorTopVal">1</b> <span class="muted small">· tocar para ajustar</span></button>
       <div id="factorTopPanel" class="hidden factor-top-panel">
-        <p class="muted small">Multiplica <b>solo</b> el valor de la tela (no ojetillos ni materiales). 1 = normal; hasta 2. Es el mismo factor de abajo.</p>
+        <p class="muted small">Multiplica <b>solo</b> el valor de la tela (no ojetillos ni materiales). 1 = normal; hasta 5. Es el mismo factor de abajo.</p>
         <div class="slider-row">
-          <input id="f_factor_top" type="range" min="1" max="2" step="0.1" value="1" />
+          <input id="f_factor_top" type="range" min="1" max="5" step="0.1" value="1" />
           <input id="f_factor_top_num" type="text" inputmode="decimal" autocomplete="off" class="slider-num" value="1" />
         </div>
       </div>
@@ -322,9 +322,9 @@
     <!-- Factor de diseño (sección completa) — justo encima de Generar -->
     <div id="wFactorUnif">
       <h2 class="section">Factor de diseño del producto</h2>
-      <p class="muted small">Un solo factor para todo el producto (todas las piezas), por mayor tiempo y recursos de taller. Multiplica <b>solo</b> el valor de la tela (no ojetillos ni materiales). 1 = normal; hasta 2.</p>
+      <p class="muted small">Un solo factor para todo el producto (todas las piezas), por mayor tiempo y recursos de taller. Multiplica <b>solo</b> el valor de la tela (no ojetillos ni materiales). 1 = normal; hasta 5.</p>
       <div class="slider-row">
-        <input id="f_factor" type="range" min="1" max="2" step="0.1" value="1" />
+        <input id="f_factor" type="range" min="1" max="5" step="0.1" value="1" />
         <input id="f_factor_num" type="text" inputmode="decimal" autocomplete="off" class="slider-num" value="1" />
       </div>
       <div id="factorUnifInfo" class="muted small"></div>
