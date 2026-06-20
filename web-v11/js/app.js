@@ -443,14 +443,29 @@
       const m2 = granelPrecioM2(p);
       const card = document.createElement("div"); card.className = "granel-prod" + (p === granelSel ? " sel" : "");
       const info = document.createElement("button"); info.type = "button"; info.className = "granel-prod-info";
+      const attrs = [p.materialidad].filter(Boolean); // color va aparte (selector); materialidad/largo informativos
+      if (p.largo) attrs.push("largo " + p.largo + " m");
+      const attrHtml = attrs.length ? '<div class="granel-prod-attr">' + esc(attrs.join(" · ")) + '</div>' : '';
       info.innerHTML = '<div class="granel-prod-top"><span class="granel-prod-nom">' + esc(granelNombre(p)) + '</span><span class="granel-prod-precio">' + (p.precio != null ? money(p.precio) + " / " + esc(p.unidad) : "s/precio") + '</span></div>' +
         (p.specs ? '<div class="granel-prod-specs">' + esc(p.specs) + '</div>' : '') +
+        attrHtml +
         '<div class="granel-prod-meta">' + (m2 != null ? "≈ " + money(Math.round(m2)) + "/m² · " : "") + '<span class="granel-prov">prov.: ' + esc(p.proveedor || "—") + '</span> · <span class="granel-prod-hint">toca para comparar</span></div>' +
         granelMetaExtra(p);
       info.addEventListener("click", () => { granelSel = (granelSel === p ? null : p); renderGranel(); });
       card.appendChild(info);
       // SKU (interno) por encima del campo de cantidad: negro, mismo tamaño que el hint.
       if (p.sku) { const sk = document.createElement("div"); sk.className = "granel-prod-sku"; sk.textContent = p.sku; card.appendChild(sk); }
+      // Selector de color: lista desplegable con los colores disponibles (Color separado por comas).
+      const colores = (p.color || "").split(",").map((s) => s.trim()).filter(Boolean);
+      let colorSel = colores.length ? colores[0] : "";
+      if (colores.length) {
+        const cRow = document.createElement("div"); cRow.className = "granel-color-row";
+        const lbl = document.createElement("span"); lbl.className = "granel-color-lbl"; lbl.textContent = "Color:";
+        const sel = document.createElement("select"); sel.className = "granel-color-sel";
+        colores.forEach((c) => { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); });
+        sel.addEventListener("change", (e) => { colorSel = e.target.value; });
+        cRow.appendChild(lbl); cRow.appendChild(sel); card.appendChild(cRow);
+      }
       // Fila para agregar a la cotización con cantidad (en la unidad del producto).
       const addRow = document.createElement("div"); addRow.className = "granel-add";
       if (p.precio == null) {
@@ -461,7 +476,7 @@
         inp.placeholder = "cant. (" + esc(p.unidad) + ")"; inp.title = p.divisible ? "Mínimo 1; acepta decimales." : "Producto unitario: cantidad entera, mínimo 1.";
         agregarCalc(inp);
         const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn-outline small"; btn.textContent = "+ Agregar a la cotización";
-        const add = () => { let c = window.CalcCIBSA.evalExpr(inp.value); if (c == null || isNaN(c) || c <= 0) { inp.focus(); return; } c = granelClampCant(p.divisible, c); granelAgregar(p, c); };
+        const add = () => { let c = window.CalcCIBSA.evalExpr(inp.value); if (c == null || isNaN(c) || c <= 0) { inp.focus(); return; } c = granelClampCant(p.divisible, c); granelAgregar(p, c, colorSel); };
         btn.addEventListener("click", add);
         inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
         addRow.appendChild(inp); addRow.appendChild(btn);
@@ -481,8 +496,9 @@
     if (v < 1) v = 1;
     return v;
   }
-  function granelAgregar(p, cant) {
-    state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, divisible: !!p.divisible, cantidad: String(cant), descPct: "0" });
+  function granelAgregar(p, cant, colorElegido) {
+    const color = (colorElegido != null && colorElegido !== "") ? colorElegido : (p.color || "");
+    state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, divisible: !!p.divisible, color: color, materialidad: p.materialidad, largo: p.largo, cantidad: String(cant), descPct: "0" });
     renderGranelLineas(); recompute();
   }
   // Números de una línea a granel: cantidad, % descuento propio (0..100), bruto, descuento y neto.
@@ -505,7 +521,8 @@
     return (state.granelLineas || []).map((l) => {
       const k = granelLineaCalc(l);
       if (!(k.cant > 0) || l.precio == null) return null;
-      let detalle = granelNombreL(l) + (l.specs ? " · " + l.specs : "");
+      const attrs = [l.color, l.materialidad].filter(Boolean);
+      let detalle = granelNombreL(l) + (attrs.length ? " · " + attrs.join(" · ") : "") + (l.specs ? " · " + l.specs : "");
       if (k.dp > 0) detalle += " · Desc. " + f(k.dp) + "%";
       // Si la unidad es genérica ("unidad"), no se imprime en el PDF (ni en cantidad ni en valor unitario).
       const u = (l.unidad || "").trim(), gen = (u === "" || /^unidad(es)?$/i.test(u) || /^un?$/i.test(u));
@@ -536,7 +553,7 @@
       const item = document.createElement("div"); item.className = "granel-cart-item";
       // Fila 1: nombre + total neto + quitar
       const r1 = document.createElement("div"); r1.className = "granel-cart-r1";
-      const nom = document.createElement("span"); nom.className = "granel-cart-nom"; nom.textContent = granelNombreL(l);
+      const nom = document.createElement("span"); nom.className = "granel-cart-nom"; nom.textContent = granelNombreL(l) + (l.color ? " · " + l.color : "");
       const tt = document.createElement("span"); tt.className = "granel-cart-tot"; tt.textContent = money(k.neto);
       const del = document.createElement("button"); del.type = "button"; del.className = "granel-cart-del"; del.title = "Quitar"; del.textContent = "✕";
       del.addEventListener("click", () => { state.granelLineas.splice(i, 1); renderGranelLineas(); recompute(); });

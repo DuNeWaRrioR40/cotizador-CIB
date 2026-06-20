@@ -48,6 +48,7 @@
       // UNIDAD MINIMA: "UNITARIO" (cantidad entera, mín 1) o "GRANEL" (mín 1, acepta decimales).
       // Vacío/desconocido = UNITARIO (más restrictivo). El mínimo de venta nunca es < 1.
       unidadMinima: "Unidad Minima", formato: "Formato", peso: "Peso",
+      largo: "Largo", color: "Color", materialidad: "Materialidad",
     },
 
     // --- Tabla de vendedores (referenciada en RANGO con este ID) ---

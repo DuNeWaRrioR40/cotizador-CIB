@@ -191,6 +191,8 @@
         fechaBase: get(r, "fechaBase"),                                 // dd/mm/aaaa (origen de la variación)
         formato: get(r, "formato"),                                      // formato de venta (interno)
         peso: get(r, "peso"),                                            // peso/tamaño (interno, opcional)
+        largo: get(r, "largo"),                                          // largo (p. ej. venta por metro)
+        color: get(r, "color"), materialidad: get(r, "materialidad"),    // atributos descriptivos
         // divisible = GRANEL (acepta decimales); por defecto/UNITARIO = false (cantidad entera). Mín 1 siempre.
         divisible: /granel/i.test(get(r, "unidadMinima")),
       });
