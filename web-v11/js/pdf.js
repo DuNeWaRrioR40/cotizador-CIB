@@ -646,10 +646,10 @@
       itemRow(String(g.cantidad), [["Producto a granel", true], [g.detalle, false]],
         g.precioU, money(g.total));
     });
-    // Mínimo de producción de taller: completa el neto confeccionado hasta 0,6 UF.
+    // Mínimo de producción de taller (escalonado por unidad): completa el neto confeccionado.
     if (datos.minProduccion > 0) {
-      const ufTxt = datos.minProdUF ? ` (${String(datos.minProdUF).replace(".", ",")} UF neto de taller)` : "";
-      itemRow("", [["Mínimo de producción", true], ["Completa el valor neto del producto confeccionado al mínimo de taller" + ufTxt + ".", false]], "", money(datos.minProduccion));
+      const ufTxt = datos.minProdUF ? `${String(datos.minProdUF).replace(".", ",")} UF/u` : "mínimo de taller";
+      itemRow("", [["Mínimo de producción", true], ["Completa el neto de lo confeccionado al mínimo de taller (" + ufTxt + ", con descuento escalonado en unidades adicionales).", false]], "", money(datos.minProduccion));
     }
 
     // Filas de totales
@@ -995,11 +995,10 @@
     (datos.granel || []).forEach((g) => {
       itemRow(String(g.cantidad), [["Producto a granel", true], [g.detalle, false]], g.precioU, money(g.total));
     });
-    // Mínimo de producción: sobre el neto de carpa (suma de piezas), antes del descuento.
+    // Mínimo de producción (escalonado por unidad): el monto ya viene calculado desde la app.
     const granelT = (datos.granel || []).reduce((s, g) => s + g.total, 0);
     const carpaSub0 = datos.piezas.reduce((s, p) => s + p.valorTotal, 0);
-    const pisoProd = (datos.minProdUF && datos.ufValor) ? Math.round(datos.minProdUF * datos.ufValor) : 0;
-    const minProd = (pisoProd > 0 && carpaSub0 < pisoProd) ? (pisoProd - carpaSub0) : 0;
+    const minProd = datos.minProduccion || 0;
     if (minProd > 0) {
       const ufTxt = datos.minProdUF ? ` (${String(datos.minProdUF).replace(".", ",")} UF neto de taller)` : "";
       itemRow("", [["Mínimo de producción", true], ["Completa el valor neto del producto confeccionado al mínimo de taller" + ufTxt + ".", false]], "", money(minProd));

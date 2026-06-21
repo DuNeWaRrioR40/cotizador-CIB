@@ -45,8 +45,24 @@
   }
   // Mínimo de producción en pesos (0,6 UF) con la UF actual; 0 si no hay UF cargada.
   function minProduccionPesos() { return state.ufValor > 0 ? Math.round((CFG.MIN_PRODUCCION_UF || 0) * state.ufValor) : 0; }
-  // Calcula el mínimo de producción a sumar a un neto de carpa (antes de descuento). 0 si ya lo alcanza.
-  function minProduccionDe(carpaSubPreDesc) { const piso = minProduccionPesos(); return (piso > 0 && carpaSubPreDesc < piso) ? (piso - carpaSubPreDesc) : 0; }
+  // Descuento sobre el mínimo según la posición de la unidad (1ª = 0; 2ª/3ª/4ª+ = config).
+  function minProdDctoPos(pos) {
+    if (pos <= 1) return 0;
+    const arr = CFG.MIN_PRODUCCION_DCTO || [];
+    return arr.length ? (pos - 2 < arr.length ? arr[pos - 2] : arr[arr.length - 1]) : 0;
+  }
+  // Recargo TOTAL por mínimo de producción, escalonado por unidad. unitNets = netos por unidad
+  // (carpa, antes del descuento). El piso de la unidad k = 0,6 UF × (1 − dcto_k); se cobra el mayor
+  // entre ese piso y el valor real (recargo = piso − neto si el neto no llega). 1ª unidad sin descuento.
+  // Se ordenan de mayor a menor neto: las unidades baratas caen en posiciones con más descuento.
+  function minProduccionEscalonado(unitNets) {
+    const base = state.ufValor > 0 ? (CFG.MIN_PRODUCCION_UF || 0) * state.ufValor : 0;
+    if (base <= 0 || !unitNets || !unitNets.length) return 0;
+    const sorted = unitNets.slice().sort((a, b) => b - a);
+    let total = 0;
+    sorted.forEach((net, i) => { const piso = base * (1 - minProdDctoPos(i + 1)); if (net < piso) total += (piso - net); });
+    return Math.round(total);
+  }
   // Aviso si un Ø (bolsillo / borde+cuerda) parece estar en cm en vez de metros.
   const avisoDiamGrande = (valor) => {
     const d = window.CalcCIBSA.evalExpr(valor);
@@ -4378,8 +4394,9 @@
     // El descuento global (pago contado) aplica SOLO a la carpa. El granel ya viene neto
     // con su propio descuento por línea y no recibe el descuento global.
     const carpaSub0 = o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal;
-    // Mínimo de producción de taller (0,6 UF neto), sobre el neto de carpa ANTES del descuento.
-    const minProd = minProduccionDe(carpaSub0);
+    // Mínimo de producción de taller (0,6 UF neto POR UNIDAD), con descuento escalonado por unidad,
+    // sobre el neto de carpa ANTES del descuento. N unidades idénticas → neto/u = carpaSub0/N.
+    const nU = Math.max(1, N), minProd = minProduccionEscalonado(Array(nU).fill(carpaSub0 / nU));
     const carpaSub = carpaSub0 + minProd;
     const descuento = Math.round(carpaSub * desc / 100);
     const subtotal = carpaSub + granelNeto;
@@ -4481,6 +4498,9 @@
       })),
       granel: granelLineasPDF(),
     };
+    // Mínimo de producción escalonado: TODA la orden en una secuencia (cada unidad de cada pieza).
+    { const unitNets = []; datos.piezas.forEach((p) => { const nP = Math.max(1, p.cantidad), per = (p.valorTotal || 0) / nP; for (let k = 0; k < nP; k++) unitNets.push(per); });
+      datos.minProduccion = minProduccionEscalonado(unitNets); }
     guardarHistorial(nombre, apellido, datos.version);
 
     abrirProgreso();
