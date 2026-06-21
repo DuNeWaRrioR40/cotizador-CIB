@@ -85,7 +85,7 @@
     UF_API: "https://mindicador.cl/api/uf",
     // Descuento escalonado sobre el mínimo por posición de unidad: [2ª, 3ª, 4ª+]. La 1ª nunca se descuenta.
     // Piso de la unidad k = 0,6 UF × (1 − descuento). Se cobra el mayor entre ese piso y el valor real.
-    MIN_PRODUCCION_DCTO: [0.30, 0.40, 0.50],
+    MIN_PRODUCCION_DCTO: [0.30, 0.50, 0.75],
 
     // --- Empresa / vendedor (página 2) ---
     EMPRESA: {
