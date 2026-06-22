@@ -71,7 +71,6 @@
       <h2 class="section">Datos del cliente</h2>
       <label class="field"><span>Nombre</span><input id="f_nombre" type="text" autocomplete="off" /></label>
       <label class="field"><span>Apellido</span><input id="f_apellido" type="text" autocomplete="off" /></label>
-      <div class="empresa-scan-row"><button id="btnEscanearCarne" class="btn-outline" type="button">📷 Escanear carné (RUN/CIE)</button><span class="muted small">Lee Nombre y Apellido del carné por reconocimiento de texto. Dirección y Comuna se ingresan a mano.</span></div>
       <label class="field"><span>Dirección</span><input id="f_dir_cliente" type="text" autocomplete="off" /></label>
       <label class="field"><span>Comuna</span><input id="f_comuna_cliente" type="text" autocomplete="off" /></label>
       <label class="field"><span>E-mail</span><input id="f_email" type="email" autocomplete="off" /></label>
@@ -98,7 +97,6 @@
         <canvas id="qrCanvas" class="hidden"></canvas>
         <p id="qrStatus" class="muted small">Iniciando cámara…</p>
         <div class="qr-modal-btns">
-          <button id="qrCapturar" class="btn-outline hidden" type="button">Capturar y leer</button>
           <button id="qrCerrar" class="btn-outline" type="button">Cerrar</button>
         </div>
       </div>
@@ -219,6 +217,15 @@
       <button id="btnAgregarPieza" class="btn-outline" type="button">+ Agregar pieza</button>
       <p id="piezasErr" class="oj-err hidden"></p>
       <div id="piezasResumen" class="cmp"></div>
+
+      <!-- Selector global de tela (compuesto) -->
+      <div id="wTelaGlobal" class="tela-global-box">
+        <label class="chk"><input id="f_telaGlobalOn" type="checkbox" /> <b>Comparar opciones de tela a nivel global</b></label>
+        <div id="telaGlobalBody" class="hidden">
+          <p class="muted small">Marca una o más telas: se emite una cotización por cada una (versión correlativa 01, 02, 03…) en un único PDF, aplicando esa tela al <b>paño base y a los anexos de todas las piezas</b>. Los paños inscritos (ventanas) conservan su tela. No modifica la tela que elegiste pieza por pieza: solo reemplaza para esta comparación.</p>
+          <div id="telaGlobalList" class="tela-multi"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Vista previa de planos por pieza (compuesto) -->
@@ -427,7 +434,6 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/logos.js"></script>
   <script src="js/calc.js"></script>

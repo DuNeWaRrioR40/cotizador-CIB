@@ -257,17 +257,63 @@
   function toggleEmpresa() { const w = $("wEmpresa"); if (w) w.classList.toggle("hidden", !empresaActiva()); }
   // --- Escaneo QR del e-RUT (JSON: {rut, dv, razonSocial, direccion, ...}) ---
   let qrStream = null, qrRAF = null;
+  // Carga una librería bajo demanda probando varios CDN espejo, por si el <script> del HTML no alcanzó a
+  // cargar (red intermitente, caché del PWA en iPhone, etc.). Resuelve cuando window[globalName] existe.
+  function ensureLib(globalName, urls) {
+    if (typeof window[globalName] !== "undefined") return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      let i = 0;
+      const tryNext = () => {
+        if (typeof window[globalName] !== "undefined") return resolve();
+        if (i >= urls.length) return reject(new Error("No se pudo cargar " + globalName));
+        const s = document.createElement("script");
+        s.src = urls[i++]; s.async = true;
+        s.onload = () => { (typeof window[globalName] !== "undefined") ? resolve() : tryNext(); };
+        s.onerror = tryNext;
+        document.head.appendChild(s);
+      };
+      tryNext();
+    });
+  }
+  const JSQR_CDNS = [
+    "https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js",
+    "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",
+    "https://unpkg.com/jsqr@1.4.0/dist/jsQR.js",
+  ];
   async function abrirQR() {
     const modal = $("qrModal"), video = $("qrVideo"), status = $("qrStatus");
     if (!modal || !video) return;
-    if (typeof jsQR === "undefined") return alert("No se pudo cargar el lector de QR. Revisa tu conexión e inténtalo de nuevo.");
-    { const cap = $("qrCapturar"); if (cap) cap.classList.add("hidden"); }
-    modal.classList.remove("hidden"); status.textContent = "Iniciando cámara…";
+    modal.classList.remove("hidden"); status.textContent = "Cargando lector…";
+    // 1) Asegura jsQR (reintenta desde CDN espejo si el <script> del HTML no cargó).
+    if (typeof jsQR === "undefined") {
+      try { await ensureLib("jsQR", JSQR_CDNS); }
+      catch (e) { cerrarQR(); return alert("No se pudo cargar el lector de QR. Verifica tu conexión a internet e inténtalo nuevamente."); }
+    }
+    // 2) Verifica que el dispositivo permita usar la cámara (requiere HTTPS / contexto seguro).
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      cerrarQR();
+      return alert("Este dispositivo o navegador no permite usar la cámara aquí. En iPhone, ábrela en Safari (no como app instalada) y asegúrate de que el sitio use HTTPS.");
+    }
+    status.textContent = "Iniciando cámara…";
     try {
-      qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      // En teléfonos pide la cámara trasera ("environment"); en laptop/PC (solo cámara frontal)
+      // ese intento puede no devolver dispositivo, así que caemos a cualquier cámara disponible.
+      try {
+        qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+      } catch (e1) {
+        if (e1 && (e1.name === "NotAllowedError" || e1.name === "SecurityError")) throw e1;
+        qrStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
       video.srcObject = qrStream; await video.play();
       status.textContent = "Apunta al QR del e-RUT…"; escanearQR();
-    } catch (e) { status.textContent = "No se pudo abrir la cámara: " + (e.message || e); }
+    } catch (e) {
+      const msg = (e && (e.name === "NotAllowedError" || e.name === "SecurityError"))
+        ? "Permiso de cámara denegado. Habilítalo en el navegador (en iPhone: Ajustes › Safari › Cámara; en PC: el ícono de cámara/candado de la barra de direcciones)."
+        : (e && e.name === "NotFoundError")
+        ? "No se encontró ninguna cámara en este dispositivo."
+        : "No se pudo abrir la cámara: " + (e && (e.message || e.name) || e);
+      status.textContent = msg;
+    }
   }
   function escanearQR() {
     const video = $("qrVideo"), canvas = $("qrCanvas"), status = $("qrStatus");
@@ -289,7 +335,6 @@
     if (qrRAF) { cancelAnimationFrame(qrRAF); qrRAF = null; }
     if (qrStream) { qrStream.getTracks().forEach((t) => t.stop()); qrStream = null; }
     const m = $("qrModal"); if (m) m.classList.add("hidden");
-    const cap = $("qrCapturar"); if (cap) cap.classList.add("hidden");
   }
   // Parsea el e-RUT (JSON) y puebla RUT, Razón Social y Dirección. Devuelve true si pobló algo.
   function poblarDesdeQR(raw) {
@@ -303,52 +348,6 @@
     if (!empresaActiva()) { const c = $("f_empresaOn"); if (c) { c.checked = true; toggleEmpresa(); } }
     recompute();
     return true;
-  }
-
-  // --- Escaneo del carné de identidad (OCR): lee Nombre y Apellido (RUN o CIE) por reconocimiento de texto ---
-  function tituloCase(s) { return String(s || "").toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase()).replace(/\s+/g, " ").trim(); }
-  async function abrirCarne() {
-    const modal = $("qrModal"), video = $("qrVideo"), status = $("qrStatus"), cap = $("qrCapturar");
-    if (!modal || !video) return;
-    if (typeof Tesseract === "undefined") return alert("No se pudo cargar el lector de texto (OCR). Revisa tu conexión e inténtalo de nuevo.");
-    modal.classList.remove("hidden"); if (cap) cap.classList.remove("hidden");
-    status.textContent = "Encuadra el carné y toca «Capturar y leer».";
-    try {
-      qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      video.srcObject = qrStream; await video.play();
-    } catch (e) { status.textContent = "No se pudo abrir la cámara: " + (e.message || e); }
-  }
-  async function capturarCarne() {
-    const video = $("qrVideo"), canvas = $("qrCanvas"), status = $("qrStatus");
-    if (!video || !qrStream) return;
-    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-    if (status) status.textContent = "Leyendo… (puede tardar unos segundos)";
-    try {
-      const res = await Tesseract.recognize(canvas, "spa");
-      const c = parsearCarne((res && res.data && res.data.text) || "");
-      if (!c.nombre && !c.apellido) { if (status) status.textContent = "No se reconoció el carné. Acércalo, mejora la luz e inténtalo de nuevo."; return; }
-      if (c.nombre) $("f_nombre").value = c.nombre;
-      if (c.apellido) $("f_apellido").value = c.apellido;
-      if (status) status.textContent = "✓ Datos leídos.";
-      cerrarQR(); recompute();
-    } catch (e) { if (status) status.textContent = "No se pudo leer: " + (e.message || e); }
-  }
-  // Parser del texto OCR del carné (labels APELLIDOS/NOMBRES + RUN/CIE + zona MRZ del reverso).
-  function parsearCarne(text) {
-    const lines = String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const out = {};
-    const next = (i) => { for (let j = i + 1; j < lines.length; j++) { const v = lines[j].trim(); if (v && v.replace(/[^A-Za-zÑÁÉÍÓÚñáéíóú]/g, "").length >= 3) return v; } return ""; };
-    for (let i = 0; i < lines.length; i++) {
-      const L = lines[i].toUpperCase().replace(/[^A-ZÑÁÉÍÓÚ ]/g, "").trim();
-      if (/^APELLIDOS?$/.test(L)) out.apellido = out.apellido || tituloCase(next(i));
-      if (/^NOMBRES?$/.test(L)) out.nombre = out.nombre || tituloCase(next(i));
-      if (/\b(RUN|CIE)\b|NUMERO DOCUMENTO/.test(L)) { const m = (lines[i] + " " + (lines[i + 1] || "")).match(/(\d{1,3}(?:[.\d]{5,})-?[\dkK])/); if (m) out.run = m[1]; }
-    }
-    // MRZ del reverso: "APELLIDOS<<NOMBRES" (línea solo con letras y '<').
-    const mrz = lines.find((l) => /<</.test(l) && /^[A-Z< ]+$/.test(l));
-    if (mrz) { const p = mrz.replace(/\s/g, "").split("<<"); if (p[0] && !out.apellido) out.apellido = tituloCase(p[0].replace(/</g, " ")); if (p[1] && !out.nombre) out.nombre = tituloCase(p[1].replace(/</g, " ")); }
-    return out;
   }
 
   function guardarHistorial(nombre, apellido, version) {
@@ -1505,7 +1504,7 @@
         multi.appendChild(lab);
       });
     }
-    renderTelaOpc(); renderCategoriasFav();
+    renderTelaOpc(); renderCategoriasFav(); renderTelaGlobal();
     // Materiales (desde RANGO → tabla "Materiales"; si no existe, queda vacío)
     try { state.materiales = await window.SheetsCIBSA.cargarMateriales(token); }
     catch (e) { console.warn("CIBSA: no se pudieron cargar los materiales —", e && e.message ? e.message : e); state.materiales = []; }
@@ -1577,6 +1576,40 @@
       span.appendChild(nm); span.appendChild(document.createElement("br")); span.appendChild(mt);
       lab.appendChild(cb); lab.appendChild(span); cont.appendChild(lab);
     });
+  }
+  // Selector GLOBAL de tela (compuesto): override que reemplaza la tela del paño base y de los anexos
+  // de TODAS las piezas para comparar el total en varias telas. Los paños inscritos conservan su tela.
+  function renderTelaGlobal() {
+    const cont = $("telaGlobalList"); if (!cont) return;
+    const sel = new Set(); cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => sel.add(cb.value));
+    cont.innerHTML = "";
+    state.telas.forEach((t) => {
+      const lab = document.createElement("label"); lab.className = "tela-chk";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.value = t.nombre; cb.dataset.telaglobal = "1";
+      if (sel.has(t.nombre)) cb.checked = true;
+      const span = document.createElement("span");
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = t.nombre;
+      const mt = document.createElement("span"); mt.className = "mt";
+      mt.textContent = `Valor m²: ${money(t.valorM2)} · Rollo: ${t.anchoRollo} m` + (t.proveedor ? ` · Proveedor: ${t.proveedor}` : "");
+      span.appendChild(nm); span.appendChild(document.createElement("br")); span.appendChild(mt);
+      lab.appendChild(cb); lab.appendChild(span); cont.appendChild(lab);
+    });
+  }
+  function toggleTelaGlobal() {
+    const on = $("f_telaGlobalOn") && $("f_telaGlobalOn").checked;
+    const body = $("telaGlobalBody"); if (body) body.classList.toggle("hidden", !on);
+    if (on) renderTelaGlobal();
+  }
+  // Telas globales marcadas (solo si el selector está activo). [] => flujo normal por pieza.
+  function telasGlobalCompuesto() {
+    if (!$("f_telaGlobalOn") || !$("f_telaGlobalOn").checked) return [];
+    const cont = $("telaGlobalList"); if (!cont) return [];
+    const out = [];
+    cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
+      if (out.some((t) => t.nombre === cb.value)) return;
+      const t = state.telas.find((x) => x.nombre === cb.value); if (t) out.push(t);
+    });
+    return out;
   }
   // Categorías FAV (selección rápida). Botones excluyentes bajo el selector de Tela.
   let favCatActiva = null;
@@ -4432,6 +4465,7 @@
     state.orientacionSel = "mayor"; state.orientUnif = "largo"; $("resultHolder").innerHTML = ""; $("formStatus").textContent = "";
     const multi = $("telaMulti"); if (multi) multi.querySelectorAll("input:checked").forEach((c) => (c.checked = false));
     { const to = $("telaOpcList"); if (to) to.querySelectorAll("input:checked").forEach((c) => (c.checked = false)); }
+    { const tg = $("f_telaGlobalOn"); if (tg) tg.checked = false; const tgl = $("telaGlobalList"); if (tgl) tgl.querySelectorAll("input:checked").forEach((c) => (c.checked = false)); const tgb = $("telaGlobalBody"); if (tgb) tgb.classList.add("hidden"); }
     favCatActiva = null; renderCategoriasFav();
     { const sc = $("f_suprimirCotas"); if (sc) sc.checked = false; const sc2 = $("f_suprimirCotas2"); if (sc2) sc2.checked = false; }
     $("telaMultiErr").classList.add("hidden"); state.prelim = [];
@@ -4448,9 +4482,8 @@
   }
   { const limpiarTodo = () => { limpiarBorrador(); limpiarCampos(); }; const b1 = $("btnLimpiar"); if (b1) b1.addEventListener("click", limpiarTodo); const b2 = $("btnLimpiarCliente"); if (b2) b2.addEventListener("click", limpiarTodo); }
   { const c = $("f_empresaOn"); if (c) c.addEventListener("change", toggleEmpresa); }
+  { const c = $("f_telaGlobalOn"); if (c) c.addEventListener("change", toggleTelaGlobal); }
   { const b = $("btnEscanearQR"); if (b) b.addEventListener("click", abrirQR); }
-  { const b = $("btnEscanearCarne"); if (b) b.addEventListener("click", abrirCarne); }
-  { const b = $("qrCapturar"); if (b) b.addEventListener("click", capturarCarne); }
   { const b = $("qrCerrar"); if (b) b.addEventListener("click", cerrarQR); }
 
   // ---------- Generar ----------
@@ -4639,26 +4672,16 @@
   }
 
   // ---------- Generar cotización compuesta ----------
-  async function generarCompuesto() {
-    const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
-    if (!nombre || !apellido) return alert("Ingresa nombre y apellido del cliente.");
-    if (!state.piezas.length) {
-      if (granelLineasPDF().length) return generarGranelSolo(nombre, apellido);
-      return alert("Agrega al menos una pieza (o productos a granel).");
-    }
-    const dup = etiquetasDuplicadas();
-    if (dup.length) return alert("Hay etiquetas de pieza repetidas: " + dup.join(", ") + ". Usa un nombre distinto para cada pieza.");
-    sugerirFactor();
+  // Construye el objeto `datos` del documento compuesto para una versión dada.
+  // Recalcula las piezas (respetando cualquier override de tela ya aplicado en state) y arma las filas.
+  function construirDatosCompuesto(versionStr, cliente) {
     recomputeCompuesto();
     const calcs = (state.compuesto && state.compuesto.calcs) || [];
-    if (!calcs.length) return alert("Ninguna pieza tiene largo, ancho y tela válidos.");
-    if (calcs.length !== state.piezas.length &&
-        !confirm("Algunas piezas están incompletas y no se incluirán en el documento. ¿Continuar?")) return;
-
+    if (!calcs.length) return null;
     const desc = num("f_descuento", 0);
     const datos = {
-      cliente: { nombre, apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente") }, empresa: empresaDatos(),
-      version: $("f_version").value.trim() || "01", fecha: new Date(), suprimirCotas: suprimeCotas(),
+      cliente: { nombre: cliente.nombre, apellido: cliente.apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente") }, empresa: empresaDatos(),
+      version: versionStr, fecha: new Date(), suprimirCotas: suprimeCotas(),
       titulo: $("f_titulo").value.trim() || null,
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
       descuentoPct: desc,
@@ -4683,8 +4706,83 @@
     // Mínimo de producción escalonado: TODA la orden en una secuencia (cada unidad de cada pieza).
     { const unitNets = []; datos.piezas.forEach((p) => { const nP = Math.max(1, p.cantidad), per = (p.valorTotal || 0) / nP; for (let k = 0; k < nP; k++) unitNets.push(per); });
       datos.minProduccion = minProduccionEscalonado(unitNets); }
-    guardarHistorial(nombre, apellido, datos.version);
+    return datos;
+  }
 
+  // Aplica/restaura un override de tela global sobre el paño base y los anexos de todas las piezas
+  // (NO toca los paños inscritos). Devuelve un snapshot para restaurar luego.
+  function snapshotTelasPiezas() {
+    return state.piezas.map((pz) => ({
+      base: pz.telaNombre,
+      aletas: (pz.aletas || []).map((a) => a.telaNombre),
+      backAletas: (pz.backAletas || []).map((a) => a.telaNombre),
+    }));
+  }
+  function aplicarTelaGlobal(nombreTela) {
+    state.piezas.forEach((pz) => {
+      pz.telaNombre = nombreTela;
+      (pz.aletas || []).forEach((a) => { a.telaNombre = nombreTela; });
+      (pz.backAletas || []).forEach((a) => { a.telaNombre = nombreTela; });
+    });
+  }
+  function restaurarTelasPiezas(snap) {
+    state.piezas.forEach((pz, i) => {
+      const s = snap[i]; if (!s) return;
+      pz.telaNombre = s.base;
+      (pz.aletas || []).forEach((a, j) => { a.telaNombre = s.aletas[j]; });
+      (pz.backAletas || []).forEach((a, j) => { a.telaNombre = s.backAletas[j]; });
+    });
+  }
+
+  async function generarCompuesto() {
+    const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
+    if (!nombre || !apellido) return alert("Ingresa nombre y apellido del cliente.");
+    if (!state.piezas.length) {
+      if (granelLineasPDF().length) return generarGranelSolo(nombre, apellido);
+      return alert("Agrega al menos una pieza (o productos a granel).");
+    }
+    const dup = etiquetasDuplicadas();
+    if (dup.length) return alert("Hay etiquetas de pieza repetidas: " + dup.join(", ") + ". Usa un nombre distinto para cada pieza.");
+    sugerirFactor();
+    recomputeCompuesto();
+    const calcs0 = (state.compuesto && state.compuesto.calcs) || [];
+    if (!calcs0.length) return alert("Ninguna pieza tiene largo, ancho y tela válidos.");
+    if (calcs0.length !== state.piezas.length &&
+        !confirm("Algunas piezas están incompletas y no se incluirán en el documento. ¿Continuar?")) return;
+
+    // ----- Selector global de tela: una cotización por tela marcada (versiones correlativas) -----
+    const globales = telasGlobalCompuesto();
+    if (globales.length) {
+      const baseV = parseInt(($("f_version").value.trim() || "01"), 10) || 1;
+      const pad = (n) => String(n).padStart(2, "0");
+      const snap = snapshotTelasPiezas();
+      const datosList = [];
+      try {
+        globales.forEach((tela, i) => {
+          aplicarTelaGlobal(tela.nombre);
+          const d = construirDatosCompuesto(pad(baseV + i), { nombre, apellido });
+          if (d) datosList.push(d);
+        });
+      } finally {
+        restaurarTelasPiezas(snap);
+        recomputeCompuesto();
+      }
+      if (!datosList.length) return alert("Ninguna pieza quedó válida con las telas globales elegidas.");
+      guardarHistorial(nombre, apellido, datosList.length > 1 ? (datosList[0].version + "-" + datosList[datosList.length - 1].version) : datosList[0].version);
+      abrirProgreso();
+      try {
+        const { bytes, filename } = datosList.length > 1
+          ? await window.PDFCotizacion.generarCotizacionCompuestaCombinada(datosList)
+          : await window.PDFCotizacion.generarCotizacionCompuesta(datosList[0]);
+        genListo(new Blob([bytes], { type: "application/pdf" }), filename, null);
+      } catch (e) { cerrarProgreso(); alert("Error al generar el PDF:\n" + (e.message || e)); }
+      return;
+    }
+
+    // ----- Flujo normal: una sola cotización con la tela elegida pieza por pieza -----
+    const datos = construirDatosCompuesto($("f_version").value.trim() || "01", { nombre, apellido });
+    if (!datos) return alert("Ninguna pieza tiene largo, ancho y tela válidos.");
+    guardarHistorial(nombre, apellido, datos.version);
     abrirProgreso();
     try {
       const { bytes, filename } = await window.PDFCotizacion.generarCotizacionCompuesta(datos);

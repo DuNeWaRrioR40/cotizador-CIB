@@ -265,6 +265,8 @@ button:active { transform: scale(0.98); }
 .hist-main .hist-contacto { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
 .hist-main .hist-tipo { font-size: 11px; color: var(--accent); }
 /* Datos Empresa + modal QR */
+.tela-global-box { margin: 10px 0 4px; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: 10px; background: var(--surface); }
+.tela-global-box > .chk { font-size: 14px; }
 .empresa-box { margin: 6px 0 8px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 10px; }
 .empresa-scan-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .qr-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }

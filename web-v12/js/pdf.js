@@ -767,6 +767,28 @@
     return { bytes, filename: nombreArchivoCombinada(datosList) + ".pdf" };
   }
 
+  // Varias telas globales (compuesto): una cotización compuesta por tela, unidas en un solo PDF.
+  function nombreArchivoCompuestaCombinada(datosList) {
+    const base = nombreArchivo(datosList[0]); // C.<etiqueta><vIni>_<fecha>
+    const vIni = datosList[0].version, vFin = datosList[datosList.length - 1].version;
+    // Reemplaza la versión inicial por el rango "vIni-vFin" (justo antes del "_<fecha>").
+    if (datosList.length > 1 && vIni !== vFin) return base.replace(vIni + "_", (vIni + "-" + vFin) + "_");
+    return base;
+  }
+  async function generarCotizacionCompuestaCombinada(datosList) {
+    const { PDFDocument } = PDFLib;
+    if (!datosList || !datosList.length) throw new Error("Sin telas para cotizar.");
+    const master = await PDFDocument.create();
+    for (let i = 0; i < datosList.length; i++) {
+      const { bytes } = await generarCotizacionCompuesta(datosList[i]);
+      const sub = await PDFDocument.load(bytes);
+      const pages = await master.copyPages(sub, sub.getPageIndices());
+      pages.forEach((p) => master.addPage(p));
+    }
+    const bytes = await master.save();
+    return { bytes, filename: nombreArchivoCompuestaCombinada(datosList) + ".pdf" };
+  }
+
   // ---------- Documento "Valor Preliminar (Estimado)" ----------
   function nombreArchivoPreliminar(datos) {
     const f = datos.fecha;
@@ -1251,7 +1273,7 @@
   }
 
   global.PDFCotizacion = {
-    generarCotizacion, generarCotizacionCombinada, generarPreliminar, generarCotizacionCompuesta, generarSketchPDF,
+    generarCotizacion, generarCotizacionCombinada, generarPreliminar, generarCotizacionCompuesta, generarCotizacionCompuestaCombinada, generarSketchPDF,
     generarPlanoCorte,
     nombreArchivo, nombreArchivoPreliminar, money,
   };
