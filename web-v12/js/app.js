@@ -3574,9 +3574,9 @@
   const OJ_DIAM = 0.03; // diámetro del ojetillo (m): la 2da línea suprime 0/n si el inset es menor (se solapan)
   function defOjEdge() { return { on: true, d: "0.5", supr: "", linea2: { on: false, inset: "0.025", supr: "" }, sets: [] }; }
   // Set de ojetillos/straps: copia normalizada de los parámetros del usuario.
-  function setCopy(st) { st = st || {}; return { n: st.n != null ? st.n : "2", esq: st.esq || "", off: st.off != null ? st.off : "0.1", esp: st.esp != null ? st.esp : "0.1", inset: st.inset != null ? st.inset : "0", up: st.up != null ? st.up : "", down: st.down != null ? st.down : "", rotulo: !!st.rotulo, nombre: st.nombre || "" }; }
+  function setCopy(st) { st = st || {}; return { n: st.n != null ? st.n : "2", esq: st.esq || "", off: st.off != null ? st.off : "0.1", esp: st.esp != null ? st.esp : "0.1", inset: st.inset != null ? st.inset : "0", angulo: st.angulo != null ? st.angulo : "0", up: st.up != null ? st.up : "", down: st.down != null ? st.down : "", rotulo: !!st.rotulo, nombre: st.nombre || "" }; }
   function setsCopy(arr) { return (arr || []).map(setCopy); }
-  function nuevoSet() { return { n: "2", esq: "", off: "0.1", esp: "0.1", inset: "0", up: "", down: "", rotulo: false, nombre: "" }; }
+  function nuevoSet() { return { n: "2", esq: "", off: "0.1", esp: "0.1", inset: "0", angulo: "0", up: "", down: "", rotulo: false, nombre: "" }; }
   // ↑/↓ propios del set (cuánto cruza la cinta a cada lado). Vacío = hereda el ↑/↓ del strap padre.
   function setCross(st, pOff, pIns) {
     const ev = window.CalcCIBSA.evalExpr;
@@ -3600,6 +3600,44 @@
       if (t >= -1e-6 && t <= L + 1e-6) out.push(Math.min(L, Math.max(0, t)));
     }
     return out;
+  }
+  // Gira un SET de ojetillos en bloque usando el 1er ojetillo como pivote. angDeg: 0° = sobre la arista,
+  // positivo = hacia adentro del paño. Si el set se saldría del paño, recorta el ángulo al máximo que lo
+  // mantiene dentro (el ojetillo más lejano define el tope; los demás quedan en el segmento, así que basta).
+  function rotarSetPts(pts, k, angDeg, ancho, largo) {
+    const ang = parseFloat(angDeg) || 0;
+    if (!ang || !pts || pts.length < 2) return pts;
+    const P0 = pts[0];
+    const nrm = (k === "sup") ? { x: 0, y: 1 } : (k === "inf") ? { x: 0, y: -1 } : (k === "izq") ? { x: 1, y: 0 } : { x: -1, y: 0 };
+    const last = pts[pts.length - 1];
+    const dx = last.x - P0.x, dy = last.y - P0.y, len = Math.hypot(dx, dy);
+    if (len < 1e-9) return pts;
+    const dHat = { x: dx / len, y: dy / len };
+    const dist = pts.map((p) => Math.hypot(p.x - P0.x, p.y - P0.y));
+    const aMax = dist[dist.length - 1];
+    const dentro = (th) => {
+      const c = Math.cos(th), s = Math.sin(th);
+      const fx = P0.x + aMax * (dHat.x * c + nrm.x * s), fy = P0.y + aMax * (dHat.y * c + nrm.y * s);
+      return fx >= -1e-9 && fx <= ancho + 1e-9 && fy >= -1e-9 && fy <= largo + 1e-9;
+    };
+    let th = ang * Math.PI / 180;
+    if (!dentro(th)) { let lo = 0, hi = th; for (let it = 0; it < 40; it++) { const mid = (lo + hi) / 2; if (dentro(mid)) lo = mid; else hi = mid; } th = lo; }
+    const c = Math.cos(th), s = Math.sin(th);
+    return pts.map((p, i) => ({ x: P0.x + dist[i] * (dHat.x * c + nrm.x * s), y: P0.y + dist[i] * (dHat.y * c + nrm.y * s) }));
+  }
+  // Puntos {x,y} (coords del paño, m) de un SET de ojetillos sobre la arista k, ya con inset y giro aplicados.
+  function ojSetPuntos(k, st, ancho, largo) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const cnt = ev(st.n); if (!(cnt >= 2)) return [];
+    const L = (k === "sup" || k === "inf") ? ancho : largo;
+    const off = ev(st.off) || 0, esp = ev(st.esp) || 0, insRaw = ev(st.inset), ins = (insRaw != null && insRaw > 0) ? insRaw : 0;
+    const insVec = (i) => (k === "sup") ? { x: 0, y: i } : (k === "inf") ? { x: 0, y: -i } : (k === "izq") ? { x: i, y: 0 } : { x: -i, y: 0 };
+    const mapFn = (t) => (k === "sup") ? { x: t, y: 0 } : (k === "inf") ? { x: t, y: largo } : (k === "izq") ? { x: 0, y: t } : { x: ancho, y: t };
+    const offV = insVec(ins), esqFin = setEsqFin(k, st.esq || setEsqDefault(k));
+    let pts = setPosiciones(L, cnt, off, esp, esqFin).map((t) => { const b = mapFn(t); return { x: b.x + offV.x, y: b.y + offV.y }; });
+    const ang = ev(st.angulo) || 0;
+    if (ang) pts = rotarSetPts(pts, k, ang, ancho, largo);
+    return pts;
   }
   // Editor "+SETS" reutilizable (ojetillos y straps). host = arista de ojetillos | strap; lleva host.sets[] y host._setsOpen.
   // k = arista ("sup"/"inf"/"izq"/"der") para etiquetar la esquina de referencia. repintar() re-renderiza el editor.
@@ -3649,6 +3687,8 @@
         mkNum("Distancia a la esquina (m)", "off", "0.1");
         mkNum("Espaciado (m)", "esp", "0.1");
         mkNum("Inset (m)", "inset", "0");
+        // Giro del set en bloque (solo ojetillos): pivote = 1er ojetillo. 0° = sobre la arista, + hacia adentro.
+        if (!esStrap) mkNum("Giro del set (°)", "angulo", "0", "0 = sobre la arista, + hacia adentro");
         if (esStrap) { mkNum("↑ del set (m)", "up", "", "hereda del strap"); mkNum("↓ del set (m)", "down", "", "hereda del strap"); }
         row.appendChild(grid);
         // Rótulo del set en el plano (opt-in): nombre + 2ª línea técnica (cantidad · espaciado · esquina · inset).
@@ -3702,16 +3742,13 @@
       (e.sets || []).forEach((st) => {
         if (!st.rotulo) return;
         const cnt = ev(st.n); if (!(cnt >= 2)) return;
-        const off = ev(st.off) || 0, esp = ev(st.esp) || 0, insR = ev(st.inset), ins = (insR != null && insR > 0) ? insR : 0;
-        const pts = setPosiciones(Ldim, cnt, off, esp, setEsqFin(k, st.esq || setEsqDefault(k)));
+        const esp = ev(st.esp) || 0, insR = ev(st.inset), ins = (insR != null && insR > 0) ? insR : 0, giro = ev(st.angulo) || 0;
+        const pts = ojSetPuntos(k, st, ancho, largo);
         if (!pts.length) return;
         const tm = pts[Math.floor(pts.length / 2)];
-        let x, y;
-        if (k === "sup") { x = tm; y = ins; } else if (k === "inf") { x = tm; y = largo - ins; }
-        else if (k === "izq") { x = ins; y = tm; } else { x = ancho - ins; y = tm; }
-        // Solo lo que interesa al taller: distanciamiento entre ojetillos y distancia a la arista de origen.
-        const det = "espaciado " + f(esp) + "m · a " + f(ins) + "m de la arista";
-        out.push({ x: x, y: y, text: st.nombre || "Set ojetillos", detail: det });
+        // Solo lo que interesa al taller: distanciamiento entre ojetillos, distancia a la arista y giro del set.
+        const det = "espaciado " + f(esp) + "m · a " + f(ins) + "m de la arista" + (giro ? " · giro " + f(giro) + "°" : "");
+        out.push({ x: tm.x, y: tm.y, text: st.nombre || "Set ojetillos", detail: det });
       });
     });
     (straps || []).forEach((s) => {
@@ -3793,14 +3830,9 @@
           detalle[k].l2 = { n: n2, kept: kept2 };
         }
       }
-      // Sets de ojetillos: grupos de N (≥2) desde una esquina, con offset, espaciado e inset. Conviven con lo anterior.
+      // Sets de ojetillos: grupos de N (≥2) desde una esquina, con offset, espaciado, inset y giro opcional (pivote = 1er ojetillo). Conviven con lo anterior.
       let setsN = 0;
-      (e.sets || []).forEach((st) => {
-        const cnt = ev(st.n); if (!(cnt >= 2)) return;
-        const off = ev(st.off) || 0, esp = ev(st.esp) || 0, insRaw = ev(st.inset), ins = (insRaw != null && insRaw > 0) ? insRaw : 0;
-        const offV = insVec(ins), esqFin = setEsqFin(k, st.esq || setEsqDefault(k));
-        setPosiciones(L, cnt, off, esp, esqFin).forEach((t) => { const b = mapFn(t); out.push({ x: b.x + offV.x, y: b.y + offV.y }); setsN++; });
-      });
+      (e.sets || []).forEach((st) => { ojSetPuntos(k, st, ancho, largo).forEach((p) => { out.push(p); setsN++; }); });
       if (setsN) detalle[k].sets = setsN;
     };
     proc("sup", ancho, rem.sup, (p) => ({ x: p, y: 0 }));
