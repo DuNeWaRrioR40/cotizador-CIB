@@ -336,14 +336,26 @@
     if (qrStream) { qrStream.getTracks().forEach((t) => t.stop()); qrStream = null; }
     const m = $("qrModal"); if (m) m.classList.add("hidden");
   }
-  // Parsea el e-RUT (JSON) y puebla RUT, Razón Social y Dirección. Devuelve true si pobló algo.
+  // Separa la "direccion" del e-RUT en Calle+Número (Dirección) y Comuna.
+  // Convención del e-RUT: "<CALLE> <NÚMERO> <COMUNA>" → todo hasta el número (inclusive) es Dirección;
+  // lo que sigue es Comuna. Usa el ÚLTIMO grupo de dígitos como numeración (robusto p. ej. "5 NORTE 460 VIÑA").
+  function partirDireccionERut(raw) {
+    const s = String(raw || "").replace(/\s+/g, " ").trim();
+    if (!s) return { dir: "", comuna: "" };
+    const re = /\d+/g; let m, last = null;
+    while ((m = re.exec(s)) !== null) last = m;
+    if (!last) return { dir: s, comuna: "" }; // sin número: no se puede separar la comuna
+    const end = last.index + last[0].length;
+    return { dir: s.slice(0, end).trim(), comuna: s.slice(end).trim() };
+  }
+  // Parsea el e-RUT (JSON) y puebla RUT, Razón Social, Dirección y Comuna. Devuelve true si pobló algo.
   function poblarDesdeQR(raw) {
     let j = null; try { j = JSON.parse(raw); } catch (e) { j = null; }
     if (!j) { const m = String(raw).match(/(\d{7,8})-?([\dkK])/); if (m) { $("f_emp_rut").value = m[1] + "-" + m[2].toUpperCase(); } else { alert("El QR no tiene el formato del e-RUT (se esperaba JSON con rut/razonSocial)."); return false; } }
     else {
       if (j.rut) $("f_emp_rut").value = j.rut + (j.dv ? "-" + String(j.dv).toUpperCase() : "");
       if (j.razonSocial) $("f_emp_razon").value = j.razonSocial;
-      if (j.direccion) $("f_emp_dir").value = String(j.direccion).replace(/\s+/g, " ").trim();
+      if (j.direccion) { const d = partirDireccionERut(j.direccion); $("f_emp_dir").value = d.dir; if (d.comuna) $("f_emp_comuna").value = d.comuna; }
     }
     if (!empresaActiva()) { const c = $("f_empresaOn"); if (c) { c.checked = true; toggleEmpresa(); } }
     recompute();
