@@ -669,7 +669,8 @@
   function granelAgregar(p, cant, colorElegido) {
     const color = (colorElegido != null && colorElegido !== "") ? colorElegido : (p.color || "");
     state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, divisible: !!p.divisible, color: color, materialidad: p.materialidad, largo: p.largo, cantidad: String(cant), descPct: "0" });
-    renderGranelLineas(); recompute();
+    granelSel = p; // el comparador interno sigue al último producto agregado
+    renderGranelLineas(); renderGranel(); recompute();
   }
   // Números de una línea a granel: cantidad, % descuento propio (0..100), bruto, descuento y neto.
   function granelLineaCalc(l) {
@@ -760,12 +761,15 @@
     const cmpEl = $("granelCompare"); if (!cmpEl) return;
     cmpEl.innerHTML = "";
     if (!granelSel) return;
-    const eq = (granelSel.equiv || "").trim();
+    // Clave de equivalencia normalizada: ignora mayúsculas/minúsculas, espacios, acentos y el símbolo de
+    // multiplicación (×, *), para que "M7X7", "m7x7", "M7 X 7" y "7×7" agrupen igual. Cualquier texto sirve como clave.
+    const eqKey = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[×✕*]/g, "x").replace(/\s+/g, "").toUpperCase();
+    const eq = eqKey(granelSel.equiv);
     const box = document.createElement("div"); box.className = "granel-cmp-box";
     const head = document.createElement("div"); head.className = "granel-cmp-head";
     head.innerHTML = 'Comparador — equivalentes de <b>' + esc(granelNombre(granelSel)) + '</b> <span class="granel-cmp-int">(uso interno · no va al PDF)</span>';
     box.appendChild(head);
-    let equivs = eq ? granelActivos().filter((p) => (p.equiv || "").trim() === eq) : [granelSel];
+    let equivs = eq ? granelActivos().filter((p) => eqKey(p.equiv) === eq) : [granelSel];
     if (!eq) { const n = document.createElement("p"); n.className = "muted small"; n.textContent = "Este producto no tiene clave de equivalencia (Equiv); no hay con qué compararlo."; box.appendChild(n); cmpEl.appendChild(box); return; }
     equivs = equivs.slice().sort((a, b) => (a.precio == null ? Infinity : a.precio) - (b.precio == null ? Infinity : b.precio));
     const minP = equivs.reduce((m, p) => (p.precio != null && p.precio < m ? p.precio : m), Infinity);
@@ -4497,8 +4501,17 @@
   // ---------- Limpiar todos los campos de la App ----------
   // Deja la App como recién abierta. NO toca el historial (que es persistente).
   // Se usa: botón "Limpiar", al abrir/reiniciar la App y antes de aplicar un registro del historial.
-  function limpiarCampos() {
-    ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_observaciones", "f_color"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
+  // mantenerCliente=true: borra toda la cotización pero conserva los datos del cliente (nombre, apellido,
+  // correo, dirección, comuna y los datos de empresa). false: limpia todo, incluido el cliente.
+  function limpiarCampos(mantenerCliente) {
+    ["f_largo", "f_ancho", "f_titulo", "f_observaciones", "f_color"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
+    if (!mantenerCliente) {
+      ["f_nombre", "f_apellido", "f_email", "f_dir_cliente", "f_comuna_cliente",
+       "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
+      const eo = $("f_empresaOn"); if (eo) eo.checked = false; if (typeof toggleEmpresa === "function") toggleEmpresa();
+    }
+    // El carro a granel es parte de la cotización: se borra en ambos casos.
+    state.granelLineas = []; granelSel = null;
     $("f_cantidad").value = "1"; $("f_ojvalor").value = "450"; $("f_dias").value = "3"; $("f_descuento").value = "0"; $("f_version").value = "01";
     $("f_union").value = "0.045";
     $("f_usaAlto").checked = false; $("f_altura").value = ""; $("wAltura").classList.add("hidden");
@@ -4522,9 +4535,12 @@
     state.complementosUnif = [];
     const ru = document.querySelector('input[name="prodmode"][value="uniforme"]'); if (ru) ru.checked = true;
     renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderTraseraUnif(); setFactorUnifUI(); aplicarVis();
-    renderOjetillos(); recompute();
+    renderGranelLineas(); renderGranel(); renderOjetillos(); recompute();
   }
-  { const limpiarTodo = () => { limpiarBorrador(); limpiarCampos(); }; const b1 = $("btnLimpiar"); if (b1) b1.addEventListener("click", limpiarTodo); const b2 = $("btnLimpiarCliente"); if (b2) b2.addEventListener("click", limpiarTodo); }
+  // "Limpiar" (junto a Generar) borra TODO; "Limpiar (mantener cliente)" en Datos del cliente conserva al cliente.
+  { const full = () => { limpiarBorrador(); limpiarCampos(false); };
+    const b1 = $("btnLimpiar"); if (b1) b1.addEventListener("click", full);
+    const bc = $("btnLimpiarCotiz"); if (bc) bc.addEventListener("click", () => { limpiarBorrador(); limpiarCampos(true); }); }
   { const c = $("f_empresaOn"); if (c) c.addEventListener("change", toggleEmpresa); }
   { const c = $("f_telaGlobalOn"); if (c) c.addEventListener("change", toggleTelaGlobal); }
   { const b = $("btnEscanearQR"); if (b) b.addEventListener("click", abrirQR); }
