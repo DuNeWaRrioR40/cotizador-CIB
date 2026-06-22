@@ -1802,7 +1802,10 @@
     try {
       lote = window.CalcCIBSA.calcularLote({ largo: al, ancho: aa, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo, cantidad: N, union: (u == null || isNaN(u)) ? 0.045 : u, defaults: BORDE_DEFAULTS, bordes: bordesDePieza(a), ojetillos: aletaOjN(a, al, aa), valorOjetillo: valorOj, factorTela: clampFactor(factor) });
     } catch (e) { return null; }
-    const o = a.orient === "ancho" ? lote.oAncho : lote.oLargo;
+    // Consumo real del anexo (aleta/faldón/cenefa): se corta del rollo en la orientación MÁS BARATA
+    // (seccionar a lo ancho del rollo suele ganar para piezas largas y angostas). Es el mismo motor
+    // de consumo del paño base, eligiendo el menor de las dos orientaciones.
+    const o = (lote.oAncho.subtotalLote <= lote.oLargo.subtotalLote) ? lote.oAncho : lote.oLargo;
     const compTot = compTotalUnit(a.complementos) * N;
     return { tela, al, aa, lote, o, N, subtotal: o.subtotalLote + compTot };
   }
