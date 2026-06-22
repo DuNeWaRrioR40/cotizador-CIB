@@ -261,7 +261,17 @@ button:active { transform: scale(0.98); }
 .hist-main { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; background: transparent; border: 0; padding: 0; cursor: pointer; color: inherit; width: 100%; }
 .hist-main .hist-fecha { font-size: 11px; color: var(--muted); }
 .hist-main .hist-nom { font-weight: 600; color: var(--text); font-size: 14px; }
+.hist-main .hist-razon { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-main .hist-contacto { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
 .hist-main .hist-tipo { font-size: 11px; color: var(--accent); }
+/* Datos Empresa + modal QR */
+.empresa-box { margin: 6px 0 8px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 10px; }
+.empresa-scan-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.qr-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.qr-modal.hidden { display: none; }
+.qr-modal-box { background: var(--surface); border-radius: 12px; padding: 12px; max-width: 92vw; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.qr-modal-box video { width: 86vw; max-width: 420px; border-radius: 8px; background: #000; }
+.qr-modal-btns { display: flex; gap: 8px; }
 .hist-main .hist-granel { color: #0f6e56; font-weight: 700; }
 .hist-badge { color: #1B5E20; font-weight: 600; }
 .hist-acts { display: flex; gap: 6px; }

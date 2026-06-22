@@ -169,14 +169,14 @@
   function histFechaCorta(d) { return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2); }
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
-  const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_version"];
+  const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email"];
   const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
     // Telas adicionales marcadas (multi-tela uniforme) + categoría FAV activa, para reponer la selección completa.
     const telaOpc = []; { const cont = $("telaOpcList"); if (cont) cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => telaOpc.push(cb.value)); }
-    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", estado: st };
+    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, empresaOn: $("f_empresaOn") ? $("f_empresaOn").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", estado: st };
     try { return JSON.parse(JSON.stringify(snap)); } catch (e) { return null; }
   }
   function setSelectIfOption(id, val) { const sel = $(id); if (!sel || val == null) return; if (Array.from(sel.options).some((o) => o.value === val)) sel.value = val; }
@@ -206,6 +206,7 @@
     { const cont = $("telaOpcList"); if (cont) { const sel = new Set(snap.telaOpc || []); cont.querySelectorAll('input[type="checkbox"]').forEach((cb) => { cb.checked = sel.has(cb.value); }); } }
     favCatActiva = snap.favCat || null; renderCategoriasFav();
     if ($("f_usaAlto")) { $("f_usaAlto").checked = !!snap.usaAlto; if ($("wAltura")) $("wAltura").classList.toggle("hidden", !snap.usaAlto); }
+    if ($("f_empresaOn")) { $("f_empresaOn").checked = !!snap.empresaOn; toggleEmpresa(); }
     if ($("f_trasUnif")) $("f_trasUnif").checked = !!state.trasUnif;
     const setRadio = (name, val) => { const r = document.querySelector('input[name="' + name + '"][value="' + val + '"]'); if (r) r.checked = true; };
     setRadio("docmode", state.docMode); setRadio("prodmode", state.prodMode);
@@ -238,6 +239,118 @@
     return false;
   }
 
+  // ---------- Datos Empresa (e-RUT + escaneo QR) ----------
+  function empresaActiva() { const c = $("f_empresaOn"); return !!(c && c.checked); }
+  function empVal(id) { const e = $(id); return e ? e.value.trim() : ""; }
+  // Empresa si la sección está activa y tiene al menos razón social; si no, null.
+  function empresaDatos() {
+    if (!empresaActiva()) return null;
+    const razon = empVal("f_emp_razon"); if (!razon) return null;
+    return { rut: empVal("f_emp_rut"), razon: razon, giro: empVal("f_emp_giro"), dir: empVal("f_emp_dir"), comuna: empVal("f_emp_comuna"), email: empVal("f_emp_email") };
+  }
+  // Abreviatura de la razón social para el nombre de archivo.
+  function empresaAbrev(razon) {
+    const ws = String(razon || "").replace(/[^A-Za-z0-9 ]/g, "").trim().split(/\s+/).filter(Boolean);
+    const ab = ws.slice(0, 3).map((w) => w.charAt(0).toUpperCase() + w.slice(1, 4).toLowerCase()).join("");
+    return ab.slice(0, 16) || "Empresa";
+  }
+  function toggleEmpresa() { const w = $("wEmpresa"); if (w) w.classList.toggle("hidden", !empresaActiva()); }
+  // --- Escaneo QR del e-RUT (JSON: {rut, dv, razonSocial, direccion, ...}) ---
+  let qrStream = null, qrRAF = null;
+  async function abrirQR() {
+    const modal = $("qrModal"), video = $("qrVideo"), status = $("qrStatus");
+    if (!modal || !video) return;
+    if (typeof jsQR === "undefined") return alert("No se pudo cargar el lector de QR. Revisa tu conexión e inténtalo de nuevo.");
+    { const cap = $("qrCapturar"); if (cap) cap.classList.add("hidden"); }
+    modal.classList.remove("hidden"); status.textContent = "Iniciando cámara…";
+    try {
+      qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = qrStream; await video.play();
+      status.textContent = "Apunta al QR del e-RUT…"; escanearQR();
+    } catch (e) { status.textContent = "No se pudo abrir la cámara: " + (e.message || e); }
+  }
+  function escanearQR() {
+    const video = $("qrVideo"), canvas = $("qrCanvas"), status = $("qrStatus");
+    if (!video || !canvas) return;
+    const loop = () => {
+      if (!qrStream) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d"); ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "attemptBoth" });
+        if (code && code.data && poblarDesdeQR(code.data)) { if (status) status.textContent = "✓ Datos cargados."; cerrarQR(); return; }
+      }
+      qrRAF = requestAnimationFrame(loop);
+    };
+    qrRAF = requestAnimationFrame(loop);
+  }
+  function cerrarQR() {
+    if (qrRAF) { cancelAnimationFrame(qrRAF); qrRAF = null; }
+    if (qrStream) { qrStream.getTracks().forEach((t) => t.stop()); qrStream = null; }
+    const m = $("qrModal"); if (m) m.classList.add("hidden");
+    const cap = $("qrCapturar"); if (cap) cap.classList.add("hidden");
+  }
+  // Parsea el e-RUT (JSON) y puebla RUT, Razón Social y Dirección. Devuelve true si pobló algo.
+  function poblarDesdeQR(raw) {
+    let j = null; try { j = JSON.parse(raw); } catch (e) { j = null; }
+    if (!j) { const m = String(raw).match(/(\d{7,8})-?([\dkK])/); if (m) { $("f_emp_rut").value = m[1] + "-" + m[2].toUpperCase(); } else { alert("El QR no tiene el formato del e-RUT (se esperaba JSON con rut/razonSocial)."); return false; } }
+    else {
+      if (j.rut) $("f_emp_rut").value = j.rut + (j.dv ? "-" + String(j.dv).toUpperCase() : "");
+      if (j.razonSocial) $("f_emp_razon").value = j.razonSocial;
+      if (j.direccion) $("f_emp_dir").value = String(j.direccion).replace(/\s+/g, " ").trim();
+    }
+    if (!empresaActiva()) { const c = $("f_empresaOn"); if (c) { c.checked = true; toggleEmpresa(); } }
+    recompute();
+    return true;
+  }
+
+  // --- Escaneo del carné de identidad (OCR): lee Nombre y Apellido (RUN o CIE) por reconocimiento de texto ---
+  function tituloCase(s) { return String(s || "").toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase()).replace(/\s+/g, " ").trim(); }
+  async function abrirCarne() {
+    const modal = $("qrModal"), video = $("qrVideo"), status = $("qrStatus"), cap = $("qrCapturar");
+    if (!modal || !video) return;
+    if (typeof Tesseract === "undefined") return alert("No se pudo cargar el lector de texto (OCR). Revisa tu conexión e inténtalo de nuevo.");
+    modal.classList.remove("hidden"); if (cap) cap.classList.remove("hidden");
+    status.textContent = "Encuadra el carné y toca «Capturar y leer».";
+    try {
+      qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = qrStream; await video.play();
+    } catch (e) { status.textContent = "No se pudo abrir la cámara: " + (e.message || e); }
+  }
+  async function capturarCarne() {
+    const video = $("qrVideo"), canvas = $("qrCanvas"), status = $("qrStatus");
+    if (!video || !qrStream) return;
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    if (status) status.textContent = "Leyendo… (puede tardar unos segundos)";
+    try {
+      const res = await Tesseract.recognize(canvas, "spa");
+      const c = parsearCarne((res && res.data && res.data.text) || "");
+      if (!c.nombre && !c.apellido) { if (status) status.textContent = "No se reconoció el carné. Acércalo, mejora la luz e inténtalo de nuevo."; return; }
+      if (c.nombre) $("f_nombre").value = c.nombre;
+      if (c.apellido) $("f_apellido").value = c.apellido;
+      if (status) status.textContent = "✓ Datos leídos.";
+      cerrarQR(); recompute();
+    } catch (e) { if (status) status.textContent = "No se pudo leer: " + (e.message || e); }
+  }
+  // Parser del texto OCR del carné (labels APELLIDOS/NOMBRES + RUN/CIE + zona MRZ del reverso).
+  function parsearCarne(text) {
+    const lines = String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const out = {};
+    const next = (i) => { for (let j = i + 1; j < lines.length; j++) { const v = lines[j].trim(); if (v && v.replace(/[^A-Za-zÑÁÉÍÓÚñáéíóú]/g, "").length >= 3) return v; } return ""; };
+    for (let i = 0; i < lines.length; i++) {
+      const L = lines[i].toUpperCase().replace(/[^A-ZÑÁÉÍÓÚ ]/g, "").trim();
+      if (/^APELLIDOS?$/.test(L)) out.apellido = out.apellido || tituloCase(next(i));
+      if (/^NOMBRES?$/.test(L)) out.nombre = out.nombre || tituloCase(next(i));
+      if (/\b(RUN|CIE)\b|NUMERO DOCUMENTO/.test(L)) { const m = (lines[i] + " " + (lines[i + 1] || "")).match(/(\d{1,3}(?:[.\d]{5,})-?[\dkK])/); if (m) out.run = m[1]; }
+    }
+    // MRZ del reverso: "APELLIDOS<<NOMBRES" (línea solo con letras y '<').
+    const mrz = lines.find((l) => /<</.test(l) && /^[A-Z< ]+$/.test(l));
+    if (mrz) { const p = mrz.replace(/\s/g, "").split("<<"); if (p[0] && !out.apellido) out.apellido = tituloCase(p[0].replace(/</g, " ")); if (p[1] && !out.nombre) out.nombre = tituloCase(p[1].replace(/</g, " ")); }
+    return out;
+  }
+
   function guardarHistorial(nombre, apellido, version) {
     const nom = (nombre || "").trim(), ape = (apellido || "").trim();
     if (!nom || !ape) return; // solo cotizaciones formales con cliente
@@ -245,7 +358,8 @@
     const k = (s) => (s || "").trim().toLowerCase();
     let arr = histPrune(histLoad());
     const i = arr.findIndex((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === tipo && (parseInt(e.version, 10) || 1) === vNum);
-    const ent = { ts: Date.now(), fecha: histFechaCorta(new Date()), nombre: nom, apellido: ape, tipo: tipo, modo: state.docMode, prod: state.prodMode, version: vNum, snap: snapshotCotizacion() };
+    const emp = empresaDatos();
+    const ent = { ts: Date.now(), fecha: histFechaCorta(new Date()), nombre: nom, apellido: ape, razonSocial: emp ? emp.razon : "", tipo: tipo, modo: state.docMode, prod: state.prodMode, version: vNum, snap: snapshotCotizacion() };
     if (i >= 0) arr.splice(i, 1); // reemplaza la MISMA versión; versiones distintas conviven como registros separados
     arr.unshift(ent);
     arr = arr.slice(0, HIST_MAX);
@@ -293,13 +407,18 @@
     return ls.some((l) => { const c = window.CalcCIBSA.evalExpr(l && l.cantidad); return c > 0 && l && l.precio != null; });
   }
   function histChip(ent, esUltima) {
-    const nom = ((ent.nombre || "") + " " + (ent.apellido || "")).trim();
+    const contacto = ((ent.nombre || "") + " " + (ent.apellido || "")).trim();
+    const razon = (ent.razonSocial || "").trim();
+    // Con empresa: razón social arriba (truncada por CSS) + contacto debajo, en tamaño de la versión.
+    const tituloHtml = razon
+      ? '<span class="hist-nom hist-razon">' + esc(razon) + '</span><span class="hist-contacto">' + esc(contacto) + '</span>'
+      : '<span class="hist-nom">' + esc(contacto) + '</span>';
     const vtxt = "v" + ("0" + (parseInt(ent.version, 10) || 1)).slice(-2);
     const granelPref = entTieneGranel(ent) ? '<span class="hist-granel">Granel/</span>' : "";
     const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "");
     const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = "Duplicar para editar (como versión siguiente)";
     main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + (esUltima ? ' · <span class="hist-badge">última versión</span>' : '') + '</span>' +
-      '<span class="hist-nom">' + esc(nom) + '</span>' +
+      tituloHtml +
       '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + '</span>';
     main.addEventListener("click", () => aplicarHistorial(ent));
     const acts = document.createElement("div"); acts.className = "hist-acts";
@@ -3770,7 +3889,7 @@
   function nombreBaseArchivo() {
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
     if (!nombre || !apellido) return "Plano";
-    return window.PDFCotizacion.nombreArchivo({ cliente: { nombre, apellido }, version: $("f_version").value.trim() || "01", fecha: new Date() });
+    return window.PDFCotizacion.nombreArchivo({ cliente: { nombre, apellido }, empresa: empresaDatos(), version: $("f_version").value.trim() || "01", fecha: new Date() });
   }
   async function descargarSketchUnif() {
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
@@ -4328,6 +4447,11 @@
     renderOjetillos(); recompute();
   }
   { const limpiarTodo = () => { limpiarBorrador(); limpiarCampos(); }; const b1 = $("btnLimpiar"); if (b1) b1.addEventListener("click", limpiarTodo); const b2 = $("btnLimpiarCliente"); if (b2) b2.addEventListener("click", limpiarTodo); }
+  { const c = $("f_empresaOn"); if (c) c.addEventListener("change", toggleEmpresa); }
+  { const b = $("btnEscanearQR"); if (b) b.addEventListener("click", abrirQR); }
+  { const b = $("btnEscanearCarne"); if (b) b.addEventListener("click", abrirCarne); }
+  { const b = $("qrCapturar"); if (b) b.addEventListener("click", capturarCarne); }
+  { const b = $("qrCerrar"); if (b) b.addEventListener("click", cerrarQR); }
 
   // ---------- Generar ----------
   // Mantiene sincronizados los dos checkboxes de "Suprimir cotas" (arriba y bajo el botón Generar).
@@ -4394,7 +4518,7 @@
     const calc = { subtotal, descuentoPct: 0, descuento: 0, netoConDescuento: neto, ivaPct: CFG.IVA_PCT, iva, total };
     const datos = {
       soloGranel: true,
-      cliente: { nombre, apellido, email: $("f_email").value.trim() },
+      cliente: { nombre, apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente") }, empresa: empresaDatos(),
       version: $("f_version").value.trim() || "01", fecha: new Date(),
       titulo: $("f_titulo").value.trim() || null,
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
@@ -4472,7 +4596,7 @@
       ivaPct: CFG.IVA_PCT, iva, total, panos: o.panosLote, m2: o.m2Lote,
     };
     const datos = {
-      cliente: { nombre, apellido, email: $("f_email").value.trim() },
+      cliente: { nombre, apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente") }, empresa: empresaDatos(),
       version: versionStr, fecha: new Date(), suprimirCotas: suprimeCotas(),
       largo, ancho, tela, calc,
       titulo: $("f_titulo").value.trim() || null,
@@ -4533,7 +4657,7 @@
 
     const desc = num("f_descuento", 0);
     const datos = {
-      cliente: { nombre, apellido, email: $("f_email").value.trim() },
+      cliente: { nombre, apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente") }, empresa: empresaDatos(),
       version: $("f_version").value.trim() || "01", fecha: new Date(), suprimirCotas: suprimeCotas(),
       titulo: $("f_titulo").value.trim() || null,
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),

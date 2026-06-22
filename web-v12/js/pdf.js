@@ -37,14 +37,20 @@
   }
 
   function nombreArchivo(datos) {
-    const c = datos.cliente;
-    const inicial = c.nombre.trim().charAt(0).toUpperCase();
-    let ap = c.apellido.trim();
-    ap = (ap.charAt(0).toUpperCase() + ap.slice(1)).replace(/\s+/g, "");
     const f = datos.fecha;
     const dd = String(f.getDate()).padStart(2, "0");
     const mm = String(f.getMonth() + 1).padStart(2, "0");
-    return `C.${inicial}${ap}${datos.version}_${dd}${mm}${f.getFullYear()}`;
+    let etiqueta;
+    if (datos.empresa && datos.empresa.razon) {
+      const ws = String(datos.empresa.razon).replace(/[^A-Za-z0-9 ]/g, "").trim().split(/\s+/).filter(Boolean);
+      etiqueta = ws.slice(0, 3).map((w) => w.charAt(0).toUpperCase() + w.slice(1, 4).toLowerCase()).join("").slice(0, 16) || "Empresa";
+    } else {
+      const c = datos.cliente;
+      const inicial = c.nombre.trim().charAt(0).toUpperCase();
+      let ap = c.apellido.trim(); ap = (ap.charAt(0).toUpperCase() + ap.slice(1)).replace(/\s+/g, "");
+      etiqueta = inicial + ap;
+    }
+    return `C.${etiqueta}${datos.version}_${dd}${mm}${f.getFullYear()}`;
   }
 
   function wrap(text, font, size, maxWidth) {
@@ -545,9 +551,21 @@
       (datos.soloGranel ? "" : `Carpa rectangular ${(+datos.largo)}m x ${(+datos.ancho)}m`);
     if (titulo) { txt(page, `"${titulo}"`, M, y, { f: bold, size: 15 }); y -= 24; }
 
+    // Si hay datos de empresa, la cotización va dirigida a la empresa (prioridad sobre el contacto).
+    if (datos.empresa && datos.empresa.razon) {
+      const e = datos.empresa, lab = (k) => bold.widthOfTextAtSize(k, 11);
+      txt(page, "Empresa: ", M, y, { f: bold }); txt(page, e.razon, M + lab("Empresa: "), y, { f: bold }); y -= 15;
+      if (e.rut) { txt(page, "RUT: ", M, y, { f: bold }); txt(page, e.rut, M + lab("RUT: "), y); y -= 15; }
+      if (e.giro) { txt(page, "Giro: ", M, y, { f: bold }); wrap(e.giro, font, 11, W - 2 * M - lab("Giro: ")).forEach((ln, i) => { txt(page, ln, M + (i === 0 ? lab("Giro: ") : 0), y); y -= 13; }); y -= 2; }
+      const dirCom = [e.dir, e.comuna].filter(Boolean).join(", ");
+      if (dirCom) { txt(page, "Dirección: ", M, y, { f: bold }); txt(page, dirCom, M + lab("Dirección: "), y); y -= 15; }
+      if (e.email) { txt(page, "e-mail: ", M, y, { f: bold }); txt(page, e.email, M + lab("e-mail: "), y); y -= 15; }
+    }
     txt(page, "Contacto: ", M, y, { f: bold });
     txt(page, `${datos.cliente.nombre} ${datos.cliente.apellido}.`,
       M + bold.widthOfTextAtSize("Contacto: ", 11), y); y -= 15;
+    { const cdir = [datos.cliente.dir, datos.cliente.comuna].filter(Boolean).join(", ");
+      if (!datos.empresa && cdir) { txt(page, "Dirección: ", M, y, { f: bold }); txt(page, cdir, M + bold.widthOfTextAtSize("Dirección: ", 11), y); y -= 15; } }
     txt(page, "e-mail: ", M, y, { f: bold });
     txt(page, datos.cliente.email || "", M + bold.widthOfTextAtSize("e-mail: ", 11), y); y -= 22;
 
@@ -904,8 +922,19 @@
     const titulo = datos.titulo || "Producto compuesto según detalle";
     txt(`"${titulo}"`, M, y, { f: bold, size: 15 }); y -= 24;
 
+    if (datos.empresa && datos.empresa.razon) {
+      const e = datos.empresa, lab = (k) => bold.widthOfTextAtSize(k, 11);
+      txt("Empresa: ", M, y, { f: bold }); txt(e.razon, M + lab("Empresa: "), y, { f: bold }); y -= 15;
+      if (e.rut) { txt("RUT: ", M, y, { f: bold }); txt(e.rut, M + lab("RUT: "), y); y -= 15; }
+      if (e.giro) { txt("Giro: ", M, y, { f: bold }); wrap(e.giro, font, 11, W - 2 * M - lab("Giro: ")).forEach((ln, i) => { txt(ln, M + (i === 0 ? lab("Giro: ") : 0), y); y -= 13; }); y -= 2; }
+      const dirCom = [e.dir, e.comuna].filter(Boolean).join(", ");
+      if (dirCom) { txt("Dirección: ", M, y, { f: bold }); txt(dirCom, M + lab("Dirección: "), y); y -= 15; }
+      if (e.email) { txt("e-mail: ", M, y, { f: bold }); txt(e.email, M + lab("e-mail: "), y); y -= 15; }
+    }
     txt("Contacto: ", M, y, { f: bold });
     txt(`${datos.cliente.nombre} ${datos.cliente.apellido}.`, M + bold.widthOfTextAtSize("Contacto: ", 11), y); y -= 15;
+    { const cdir = [datos.cliente.dir, datos.cliente.comuna].filter(Boolean).join(", ");
+      if (!datos.empresa && cdir) { txt("Dirección: ", M, y, { f: bold }); txt(cdir, M + bold.widthOfTextAtSize("Dirección: ", 11), y); y -= 15; } }
     txt("e-mail: ", M, y, { f: bold });
     txt(datos.cliente.email || "", M + bold.widthOfTextAtSize("e-mail: ", 11), y); y -= 22;
 

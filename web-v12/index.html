@@ -71,8 +71,37 @@
       <h2 class="section">Datos del cliente</h2>
       <label class="field"><span>Nombre</span><input id="f_nombre" type="text" autocomplete="off" /></label>
       <label class="field"><span>Apellido</span><input id="f_apellido" type="text" autocomplete="off" /></label>
+      <div class="empresa-scan-row"><button id="btnEscanearCarne" class="btn-outline" type="button">📷 Escanear carné (RUN/CIE)</button><span class="muted small">Lee Nombre y Apellido del carné por reconocimiento de texto. Dirección y Comuna se ingresan a mano.</span></div>
+      <label class="field"><span>Dirección</span><input id="f_dir_cliente" type="text" autocomplete="off" /></label>
+      <label class="field"><span>Comuna</span><input id="f_comuna_cliente" type="text" autocomplete="off" /></label>
       <label class="field"><span>E-mail</span><input id="f_email" type="email" autocomplete="off" /></label>
+      <label class="chk"><input type="checkbox" id="f_empresaOn" /> <span><b>Datos Empresa</b> — dirigir la cotización a una empresa (tiene prioridad sobre el cliente)</span></label>
+      <div id="wEmpresa" class="hidden empresa-box">
+        <div class="empresa-scan-row">
+          <button id="btnEscanearQR" class="btn-outline" type="button">📷 Escanear QR (e-RUT)</button>
+          <span class="muted small">Apunta la cámara al QR del e-RUT para poblar RUT, Razón Social y Dirección.</span>
+        </div>
+        <label class="field"><span>RUT</span><input id="f_emp_rut" type="text" autocomplete="off" placeholder="96.612.980-8" /></label>
+        <label class="field"><span>Razón Social</span><input id="f_emp_razon" type="text" autocomplete="off" /></label>
+        <label class="field"><span>Giro</span><input id="f_emp_giro" type="text" autocomplete="off" /></label>
+        <label class="field"><span>Dirección</span><input id="f_emp_dir" type="text" autocomplete="off" /></label>
+        <label class="field"><span>Comuna</span><input id="f_emp_comuna" type="text" autocomplete="off" /></label>
+        <label class="field"><span>Correo electrónico</span><input id="f_emp_email" type="email" autocomplete="off" /></label>
+      </div>
       <button id="btnLimpiarCliente" class="btn-outline" type="button">Limpiar</button>
+    </div>
+
+    <!-- Modal cámara QR -->
+    <div id="qrModal" class="qr-modal hidden">
+      <div class="qr-modal-box">
+        <video id="qrVideo" playsinline muted></video>
+        <canvas id="qrCanvas" class="hidden"></canvas>
+        <p id="qrStatus" class="muted small">Iniciando cámara…</p>
+        <div class="qr-modal-btns">
+          <button id="qrCapturar" class="btn-outline hidden" type="button">Capturar y leer</button>
+          <button id="qrCerrar" class="btn-outline" type="button">Cerrar</button>
+        </div>
+      </div>
     </div>
 
     <!-- Historial local de cotizaciones recientes -->
@@ -397,6 +426,8 @@
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/logos.js"></script>
   <script src="js/calc.js"></script>
