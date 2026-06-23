@@ -80,6 +80,12 @@
     IVA_PCT: 19,
     VALOR_OJETILLO_DEFAULT: 450,
     DIAS_ENTREGA_DEFAULT: 3,
+    // Correlativo de cotizaciones: parte cerca de este número y luego avanza con un SALTO ALEATORIO
+    // (entre 1 y CORRELATIVO_SALTO_MAX) en cada nueva cotización, para que la competencia no pueda
+    // inferir el volumen por la diferencia entre números. Estable por cotización (cliente+versión):
+    // regenerar reutiliza el mismo número. Se guarda en el historial (snap) y nunca retrocede ni se repite.
+    CORRELATIVO_INICIAL: 4200,
+    CORRELATIVO_SALTO_MAX: 50,
     // Mínimo de producción de taller (neto), en UF. Si el neto de lo confeccionado (carpa, antes
     // del descuento) no lo alcanza, se agrega una línea "Mínimo de producción" para completarlo.
     // La UF del día se obtiene de mindicador.cl (con caché). No aplica a productos a granel.

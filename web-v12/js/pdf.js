@@ -517,6 +517,13 @@
     resumenStrapsPDF(page, sk, box.x + 3 + 99, legTop, font);
   }
 
+  // Estampa "Cotización N° X" centrado (correlativo). Devuelve la y debajo; sin correlativo no consume espacio.
+  function stampCorrelativo(page, datos, W, y, bold) {
+    if (!datos || datos.correlativo == null || datos.correlativo === "") return y;
+    const s = "Cotización N° " + datos.correlativo;
+    page.drawText(san(s), { x: (W - bold.widthOfTextAtSize(s, 12)) / 2, y: y, size: 12, font: bold, color: BLACK() });
+    return y - 18;
+  }
   async function generarCotizacion(datos) {
     const { PDFDocument, StandardFonts } = PDFLib;
     const doc = await PDFDocument.create();
@@ -544,7 +551,8 @@
       txt(page, s, (W - w) / 2, y, { f, size });
     };
     center("COTIZACIÓN FORMAL", 15); y -= 18;
-    center("(válido por 15 días)", 11); y -= 26;
+    center("(válido por 15 días)", 11); y -= 16;
+    y = stampCorrelativo(page, datos, W, y, bold); y -= 8;
 
     // Solo-granel: sin título (puede haber muchos productos distintos), salvo que el usuario escriba uno.
     const titulo = datos.titulo ||
@@ -939,7 +947,8 @@
 
     const center = (s, size, f = bold) => { txt(s, (W - f.widthOfTextAtSize(s, size)) / 2, y, { f, size }); };
     center("COTIZACIÓN FORMAL", 15); y -= 18;
-    center("(válido por 15 días)", 11); y -= 26;
+    center("(válido por 15 días)", 11); y -= 16;
+    y = stampCorrelativo(page, datos, W, y, bold); y -= 8;
 
     const titulo = datos.titulo || "Producto compuesto según detalle";
     txt(`"${titulo}"`, M, y, { f: bold, size: 15 }); y -= 24;
@@ -1153,7 +1162,8 @@
 
     let y = dibujarEncabezado(page, cibsa, kam, W, M, H - 40);
     tituloCentrado(page, "PLANO DEL PRODUCTO", W, y, bold, 15, BLUE()); y -= 15;
-    tituloCentrado(page, "(plano referencial para taller)", W, y, font, 10, BLUE()); y -= 22;
+    tituloCentrado(page, "(plano referencial para taller)", W, y, font, 10, BLUE()); y -= 14;
+    y = stampCorrelativo(page, datos, W, y, bold); y -= 8;
     if (datos.titulo) { txt(`"${datos.titulo}"`, M, y, { f: bold, size: 12 }); y -= 18; }
 
     // Modo "de aprobación": sin cotas, sin Ojetillos, sin Observaciones ni cuadro de materiales.
@@ -1244,7 +1254,8 @@
     let page = doc.addPage([W, H]);
     let y = dibujarEncabezado(page, cibsa, kam, W, M, H - 40);
     tituloCentrado(page, "PLANO DE CORTE (TALLER)", W, y, bold, 15, BLUE()); y -= 15;
-    tituloCentrado(page, "Layout de corte sobre el rollo · uso interno de taller", W, y, font, 9, BLUE()); y -= 20;
+    tituloCentrado(page, "Layout de corte sobre el rollo · uso interno de taller", W, y, font, 9, BLUE()); y -= 14;
+    y = stampCorrelativo(page, datos, W, y, bold); y -= 6;
     if (datos.titulo) { page.drawText(san('"' + datos.titulo + '"'), { x: M, y: y, size: 12, font: bold, color: BLUE() }); y -= 18; }
     const T = (s, x, yy, o) => page.drawText(san(s), { x: x, y: yy, size: (o && o.size) || 11, font: (o && o.f) || font, color: (o && o.color) || BLACK() });
 

@@ -82,46 +82,36 @@
     return { encabezados, registros };
   }
 
+  // Telas confeccionables: se leen del catálogo (VIGENTES, vía el puntero "Granel") las filas con
+  // Categoria = Tela y Variedad = M.LINEAL. El valor por m² se deriva: Precio (por metro lineal) ÷
+  // ancho de rollo (columna AnchoRollo, ya extraída del Formato). Nombre = Proveedor · Modelo · Formato.
   async function cargarTelas(token) {
     const punteros = await leerRango(token);
-    const ptr = punteros.find((p) => p.id.toLowerCase() === CFG.ID_TABLA_TELAS.toLowerCase());
-    if (!ptr) throw new Error(`No se encontró en RANGO una fila con ID '${CFG.ID_TABLA_TELAS}'.`);
-
+    const ptr = punteros.find((p) => p.id.toLowerCase() === CFG.ID_TABLA_GRANEL.toLowerCase());
+    if (!ptr) throw new Error(`No se encontró en RANGO una fila con ID '${CFG.ID_TABLA_GRANEL}'.`);
     const { encabezados, registros } = await leerTabla(token, ptr.hoja, ptr.rango);
-    const iNom = buscarColumna(encabezados, CFG.COL_NOMBRE_TELA);
-    const iM2 = buscarColumna(encabezados, CFG.COL_VALOR_M2);
-    const iAncho = buscarColumna(encabezados, CFG.COL_ANCHO_ROLLO);
-    const iFicha = buscarColumna(encabezados, CFG.COL_FICHA);
-    const iProv = buscarColumna(encabezados, CFG.COL_PROVEEDOR_TELA);
-    const iFav = buscarColumna(encabezados, CFG.COL_FAV_TELA);
-
-    const faltan = [];
-    if (iNom === -1) faltan.push(CFG.COL_NOMBRE_TELA);
-    if (iM2 === -1) faltan.push(CFG.COL_VALOR_M2);
-    if (iAncho === -1) faltan.push(CFG.COL_ANCHO_ROLLO);
-    if (faltan.length) {
-      throw new Error("Faltan columnas en la tabla de telas: " + faltan.join(", ") +
-        ". Encabezados: " + encabezados.join(" | "));
-    }
-    const cNom = encabezados[iNom], cM2 = encabezados[iM2], cAncho = encabezados[iAncho];
-    const cFicha = iFicha !== -1 ? encabezados[iFicha] : null;
-    const cProv = iProv !== -1 ? encabezados[iProv] : null;
-    const cFav = iFav !== -1 ? encabezados[iFav] : null;
-
-    const telas = [];
+    const C = CFG.COL_GRANEL, idx = {};
+    ["categoria", "variedad", "proveedor", "modelo", "formato", "precio", "anchoRollo", "specs", "fav"].forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
+    const get = (r, k) => { const i = idx[k]; return (i !== -1 ? (r[encabezados[i]] || "") : "").trim(); };
+    const esTela = (s) => norm(s) === "tela";
+    const esMLineal = (s) => /lineal/.test(norm(s));   // "M.LINEAL", "metro lineal", etc.
+    const telas = [], vistos = new Set();
     for (const r of registros) {
-      const nombre = (r[cNom] || "").trim();
-      const valorM2 = parseNumero(r[cM2]);
-      const ancho = parseNumero(r[cAncho]);
-      if (!nombre || valorM2 == null || ancho == null || ancho <= 0) continue;
-      const fichaRaw = cFicha ? (r[cFicha] || "") : "";
-      const ficha = fichaRaw.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
-      const proveedor = cProv ? (r[cProv] || "").trim() : "";   // interno (no va al PDF)
-      // FAV: una o más categorías separadas por "/" (p.ej. "Premium / Económica"). Para selección rápida.
-      const favCats = cFav ? String(r[cFav] || "").split("/").map((s) => s.trim()).filter(Boolean) : [];
-      telas.push({ nombre, valorM2, anchoRollo: ancho, ficha, proveedor, fav: favCats });
+      if (!esTela(get(r, "categoria")) || !esMLineal(get(r, "variedad"))) continue;
+      const proveedor = get(r, "proveedor"), modelo = get(r, "modelo"), formato = get(r, "formato");
+      const nombre = [proveedor, modelo, formato].filter(Boolean).join(" · ");
+      if (!nombre) continue;
+      const precioML = parseNumero(get(r, "precio"));
+      const ancho = parseNumero(get(r, "anchoRollo"));
+      if (precioML == null || ancho == null || ancho <= 0) continue;   // sin precio o sin ancho de rollo: no se puede valorizar por m²
+      const key = nombre.toLowerCase();
+      if (vistos.has(key)) continue;                                   // dedup por nombre (primera ocurrencia)
+      vistos.add(key);
+      const ficha = get(r, "specs").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
+      const favCats = get(r, "fav").split("/").map((s) => s.trim()).filter(Boolean);
+      telas.push({ nombre, valorM2: precioML / ancho, anchoRollo: ancho, ficha, proveedor, fav: favCats });
     }
-    if (!telas.length) throw new Error("La tabla de telas no contiene filas válidas.");
+    if (!telas.length) throw new Error("VIGENTES no tiene filas válidas Categoria=Tela y Variedad=M.LINEAL (con Precio y ancho de rollo). Encabezados: " + encabezados.join(" | "));
     return telas;
   }
 
@@ -331,5 +321,34 @@
     return true;
   }
 
-  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, parseNumero };
+  // --- Correlativo: marca de máximo histórico ("high-water-mark") ---
+  // Vive en H1:I1 de la hoja HISTORIAL (H1 = rótulo, I1 = número), FUERA del rango de datos A:G,
+  // por lo que NUNCA se altera al borrar filas del historial. Solo sube; sobrevive al borrado del
+  // último registro y se concilia entre dispositivos. Best-effort: si la hoja aún no existe, devuelve 0.
+  async function leerCorrelMax(token, hoja) {
+    const rango = `'${hoja}'!I1`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}/values/` +
+      `${encodeURIComponent(rango)}?valueRenderOption=UNFORMATTED_VALUE`;
+    const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) return 0; // 400 = hoja inexistente; cualquier otro error: tratamos como sin marca
+    const data = await r.json();
+    const v = data.values && data.values[0] && data.values[0][0];
+    const n = parseInt(v, 10);
+    return (n && n > 0) ? n : 0;
+  }
+  async function guardarCorrelMax(token, hoja, n) {
+    n = parseInt(n, 10); if (!n || n <= 0) return false;
+    const rango = `'${hoja}'!H1:I1`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}/values/` +
+      `${encodeURIComponent(rango)}?valueInputOption=RAW`;
+    const r = await fetch(url, {
+      method: "PUT",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [["Correl.Máx", n]] }),
+    });
+    if (!r.ok) throw new Error("No se pudo guardar el correlativo máximo (código " + r.status + ").");
+    return true;
+  }
+
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, leerCorrelMax, guardarCorrelMax, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);

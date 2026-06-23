@@ -126,6 +126,7 @@
 
   // ---------- Historial local de cotizaciones (localStorage, últimos 30 días) ----------
   const HIST_KEY = "cibsa_hist_v1", HIST_DIAS = 3650, HIST_MAX = 60; // 3650: con sincronización en la nube no se purga por tiempo
+  const CORREL_KEY = "cibsa_correl_max_v1"; // marca de máximo histórico del correlativo (solo sube; sobrevive al borrado)
   const HIST_HOJA = (CFG.HOJA_HISTORIAL || "HISTORIAL");
   const HIST_ENC = ["Timestamp", "Nombre", "Apellido", "Tipo", "Version", "Fecha", "Datos(JSON)"];
   function entryToRow(e) { return [e.ts, e.nombre || "", e.apellido || "", e.tipo || "", parseInt(e.version, 10) || 1, e.fecha || "", JSON.stringify(e.snap || null)]; }
@@ -363,6 +364,37 @@
     return true;
   }
 
+  // Correlativo de la cotización (cliente + tipo + versión). Estable: si la cotización ya existe en el
+  // historial, reutiliza su número; si no, asigna el siguiente (piso CFG.CORRELATIVO_INICIAL). Se guarda
+  // dentro del snap del historial (se sincroniza al Sheet sin cambiar el esquema de columnas).
+  function correlSnap(e) { const c = e && e.snap && parseInt(e.snap.correlativo, 10); return (c && c > 0) ? c : null; }
+  function correlativoExistente(nombre, apellido, version) {
+    const tipo = histTipo(), vNum = parseInt(version, 10) || 1, k = (s) => (s || "").trim().toLowerCase();
+    const found = histLoad().find((e) => k(e.nombre) === k(nombre) && k(e.apellido) === k(apellido) && e.tipo === tipo && (parseInt(e.version, 10) || 1) === vNum);
+    return found ? correlSnap(found) : null;
+  }
+  // Marca de máximo histórico ("high-water-mark"): el mayor correlativo jamás asignado. SOLO sube,
+  // así que borrar el último registro NO la hace retroceder y el correlativo nunca se reutiliza.
+  function correlMaxLocal() { const n = parseInt(localStorage.getItem(CORREL_KEY), 10); return (n && n > 0) ? n : 0; }
+  function correlMaxBump(n, subirNube) {
+    n = parseInt(n, 10); if (!n || n <= 0) return;
+    if (n <= correlMaxLocal()) return;                // la marca solo crece
+    try { localStorage.setItem(CORREL_KEY, String(n)); } catch (e) {}
+    if (subirNube === false) return;                  // concilia desde la nube sin reescribirla
+    const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+    if (tok) window.SheetsCIBSA.guardarCorrelMax(tok, HIST_HOJA, n).catch(() => {});
+  }
+  // Salto aleatorio entre números (1..N). Despista a la competencia: el delta entre correlativos
+  // ya no revela cuántas cotizaciones se emitieron. Mínimo 1, así nunca se repite ni retrocede.
+  function correlSalto() { const n = parseInt(CFG.CORRELATIVO_SALTO_MAX, 10) || 1; return 1 + Math.floor(Math.random() * Math.max(1, n)); }
+  function correlativoDe(nombre, apellido, version) {
+    const existe = correlativoExistente(nombre, apellido, version);
+    if (existe) return existe;
+    let max = (CFG.CORRELATIVO_INICIAL || 1) - 1;
+    histLoad().forEach((e) => { const c = correlSnap(e); if (c && c > max) max = c; });
+    const wm = correlMaxLocal(); if (wm > max) max = wm; // la marca asegura que no se reutilicen números borrados
+    return max + correlSalto();
+  }
   function guardarHistorial(nombre, apellido, version) {
     const nom = (nombre || "").trim(), ape = (apellido || "").trim();
     if (!nom || !ape) return; // solo cotizaciones formales con cliente
@@ -370,8 +402,11 @@
     const k = (s) => (s || "").trim().toLowerCase();
     let arr = histPrune(histLoad());
     const i = arr.findIndex((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === tipo && (parseInt(e.version, 10) || 1) === vNum);
+    const corr = correlativoDe(nom, ape, version);
+    correlMaxBump(corr); // avanza la marca de máximo histórico (dispositivo + nube), salvo que reuse un número ya existente
     const emp = empresaDatos();
     const ent = { ts: Date.now(), fecha: histFechaCorta(new Date()), nombre: nom, apellido: ape, razonSocial: emp ? emp.razon : "", tipo: tipo, modo: state.docMode, prod: state.prodMode, version: vNum, snap: snapshotCotizacion() };
+    if (ent.snap) ent.snap.correlativo = corr;
     if (i >= 0) arr.splice(i, 1); // reemplaza la MISMA versión; versiones distintas conviven como registros separados
     arr.unshift(ent);
     arr = arr.slice(0, HIST_MAX);
@@ -383,6 +418,7 @@
       window.SheetsCIBSA.escribirHistorial(tok, HIST_HOJA, [entryToRow(ent)], HIST_ENC)
         .catch((e) => console.warn("CIBSA: no se pudo sincronizar el historial al Sheet —", e && e.message ? e.message : e));
     }
+    return corr;
   }
   function aplicarHistorial(ent) {
     if (ent && ent.snap) { // memoria completa: reconstruye toda la cotización
@@ -483,21 +519,23 @@
   function histFiltros() {
     const g = (id) => { const el = $(id); return el ? el.value : ""; };
     const nom = (g("histFNombre") || "").trim().toLowerCase();
+    const correl = (g("histFCorrel") || "").replace(/[^0-9]/g, ""); // solo dígitos del N° de cotización
     const tipo = g("histFTipo") || "";
     const dv = g("histFDesde"), hv = g("histFHasta");
     const desde = dv ? new Date(dv + "T00:00:00").getTime() : null;
     const hasta = hv ? new Date(hv + "T23:59:59").getTime() : null;
-    return { nom, tipo, desde, hasta, activo: !!(nom || tipo || desde != null || hasta != null) };
+    return { nom, correl, tipo, desde, hasta, activo: !!(nom || correl || tipo || desde != null || hasta != null) };
   }
   // Lista filtrada: sin filtros NO muestra nada (ni los de la semana); con filtros muestra todo lo que coincida.
   function renderListaFiltrada() {
     const cont = $("histList"); if (!cont) return;
     cont.innerHTML = "";
     const f = histFiltros();
-    if (!f.activo) { cont.innerHTML = '<p class="muted small">Aplica un filtro (nombre de cliente, rango de fechas o tipo de producto) para ver el resto de los registros.</p>'; return; }
+    if (!f.activo) { cont.innerHTML = '<p class="muted small">Aplica un filtro (nombre de cliente, N° de cotización, rango de fechas o tipo de producto) para ver el resto de los registros.</p>'; return; }
     const arr = histArr(), maxVer = histMaxVer(arr);
     const res = arr.filter((e) => {
       if (f.nom && !(((e.nombre || "") + " " + (e.apellido || "")).trim().toLowerCase().includes(f.nom))) return false;
+      if (f.correl) { const c = correlSnap(e); if (!c || !String(c).includes(f.correl)) return false; }
       if (f.tipo && (e.tipo || "") !== f.tipo) return false;
       if (f.desde != null && (e.ts || 0) < f.desde) return false;
       if (f.hasta != null && (e.ts || 0) > f.hasta) return false;
@@ -849,8 +887,8 @@
   { const n = $("histGalNext"); if (n) n.addEventListener("click", () => galScroll(1)); }
   { const t = $("histGalTrack"); if (t) t.addEventListener("scroll", () => { if (t._galRaf) return; t._galRaf = requestAnimationFrame(() => { t._galRaf = 0; actualizarFlechasGal(); }); }); }
   // Filtros de la lista: re-renderizan al cambiar (la lista solo aparece con algún filtro activo).
-  ["histFNombre", "histFDesde", "histFHasta", "histFTipo"].forEach((id) => { const el = $(id); if (el) ["input", "change"].forEach((ev) => el.addEventListener(ev, renderListaFiltrada)); });
-  { const b = $("histFLimpiar"); if (b) b.addEventListener("click", () => { ["histFNombre", "histFDesde", "histFHasta"].forEach((id) => { const e = $(id); if (e) e.value = ""; }); const t = $("histFTipo"); if (t) t.value = ""; renderListaFiltrada(); }); }
+  ["histFNombre", "histFCorrel", "histFDesde", "histFHasta", "histFTipo"].forEach((id) => { const el = $(id); if (el) ["input", "change"].forEach((ev) => el.addEventListener(ev, renderListaFiltrada)); });
+  { const b = $("histFLimpiar"); if (b) b.addEventListener("click", () => { ["histFNombre", "histFCorrel", "histFDesde", "histFHasta"].forEach((id) => { const e = $(id); if (e) e.value = ""; }); const t = $("histFTipo"); if (t) t.value = ""; renderListaFiltrada(); }); }
   // ----- Exportar historial a CSV / Excel -----
   function histFechaLarga(ts) { const d = new Date(ts || Date.now()); return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2) + "/" + d.getFullYear(); }
   function histStamp() { const d = new Date(); return "" + d.getFullYear() + ("0" + (d.getMonth() + 1)).slice(-2) + ("0" + d.getDate()).slice(-2); }
@@ -1516,7 +1554,7 @@
     sel.innerHTML = "";
     telas.forEach((t) => {
       const o = document.createElement("option");
-      o.value = t.nombre; o.textContent = t.nombre + (t.proveedor ? "  —  " + t.proveedor : "");
+      o.value = t.nombre; o.textContent = t.nombre; // el nombre ya incluye Proveedor · Modelo · Formato
       sel.appendChild(o);
     });
     // Lista de selección múltiple (modo preliminar)
@@ -1573,6 +1611,15 @@
       const remotas = (info && info.existe) ? (info.filas || []).map(rowToEntry).filter(Boolean) : [];
       sincronizarHistorial(token, remotas);
     } catch (e) { console.warn("CIBSA: no se pudo sincronizar el historial —", e && e.message ? e.message : e); }
+    // Correlativo: concilia la marca de máximo histórico. Baja la celda durable del Sheet al dispositivo,
+    // la siembra desde cualquier correlativo del historial (primera vez tras la actualización) y, si lo
+    // local quedó más alto, repara la celda. Así borrar el último registro nunca reutiliza un número.
+    try {
+      const wmNube = await window.SheetsCIBSA.leerCorrelMax(token, HIST_HOJA);
+      if (wmNube) correlMaxBump(wmNube, false);
+      histLoad().forEach((e) => { const c = correlSnap(e); if (c) correlMaxBump(c, false); });
+      if (correlMaxLocal() > (wmNube || 0)) window.SheetsCIBSA.guardarCorrelMax(token, HIST_HOJA, correlMaxLocal()).catch(() => {});
+    } catch (e) { console.warn("CIBSA: no se pudo conciliar el correlativo máximo —", e && e.message ? e.message : e); }
     renderHistorial();
     restaurarBorradorSiCorresponde(); // iPhone: repone el estado si se recargó la pestaña tras descargar un PDF
     mostrarForm();
@@ -3978,6 +4025,8 @@
   async function descargarSketch(datos) {
     try {
       datos.suprimirCotas = suprimeCotas();
+      // El correlativo se estampa en el plano SOLO si esta cotización ya fue generada (existe en el historial).
+      if (datos.correlativo == null) datos.correlativo = correlativoExistente($("f_nombre").value.trim(), $("f_apellido").value.trim(), $("f_version").value.trim() || "01");
       const { bytes, filename } = await window.PDFCotizacion.generarSketchPDF(datos);
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
       descargar(url, filename);
@@ -4048,6 +4097,7 @@
         filenameBase: nombreBaseArchivo(),
         titulo: $("f_titulo").value.trim() || null,
         piezas: piezas,
+        correlativo: correlativoExistente($("f_nombre").value.trim(), $("f_apellido").value.trim(), $("f_version").value.trim() || "01"),
       });
       descargar(URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })), filename);
     } catch (e) { alert("Error al generar el plano de corte:\n" + (e.message || e)); }
@@ -4630,7 +4680,7 @@
     // Una sola tela → cotización individual (comportamiento de siempre).
     if (telas.length <= 1) {
       const { datos, calc } = construirDatosUnif(tela, lote, $("f_version").value.trim() || "01");
-      guardarHistorial(nombre, apellido, datos.version);
+      datos.correlativo = guardarHistorial(nombre, apellido, datos.version);
       abrirProgreso();
       try {
         const { bytes, filename } = await window.PDFCotizacion.generarCotizacion(datos);
@@ -4641,7 +4691,7 @@
     }
     // Varias telas → una cotización por cada una (versión correlativa) en un único PDF combinado.
     const datosList = telas.map((t, i) => construirDatosUnif(t, (i === 0 ? lote : loteParaTela(t, largo, ancho)), pad(baseV + i)).datos);
-    guardarHistorial(nombre, apellido, datosList[0].version + "-" + datosList[datosList.length - 1].version);
+    { const corr = guardarHistorial(nombre, apellido, datosList[0].version + "-" + datosList[datosList.length - 1].version); datosList.forEach((d) => { d.correlativo = corr; }); }
     abrirProgreso();
     try {
       const { bytes, filename } = await window.PDFCotizacion.generarCotizacionCombinada(datosList);
@@ -4670,7 +4720,7 @@
       observaciones: $("f_observaciones").value.trim() || null,
       complementos: [], aletas: [], granel: granelLineas, calc: calc,
     };
-    guardarHistorial(nombre, apellido, datos.version);
+    datos.correlativo = guardarHistorial(nombre, apellido, datos.version);
     abrirProgreso();
     try {
       const { bytes, filename } = await window.PDFCotizacion.generarCotizacion(datos);
@@ -4878,7 +4928,7 @@
         recomputeCompuesto();
       }
       if (!datosList.length) return alert("Ninguna pieza quedó válida con las telas globales elegidas.");
-      guardarHistorial(nombre, apellido, datosList.length > 1 ? (datosList[0].version + "-" + datosList[datosList.length - 1].version) : datosList[0].version);
+      { const corr = guardarHistorial(nombre, apellido, datosList.length > 1 ? (datosList[0].version + "-" + datosList[datosList.length - 1].version) : datosList[0].version); datosList.forEach((d) => { d.correlativo = corr; }); }
       abrirProgreso();
       try {
         const { bytes, filename } = datosList.length > 1
@@ -4892,7 +4942,7 @@
     // ----- Flujo normal: una sola cotización con la tela elegida pieza por pieza -----
     const datos = construirDatosCompuesto($("f_version").value.trim() || "01", { nombre, apellido });
     if (!datos) return alert("Ninguna pieza tiene largo, ancho y tela válidos.");
-    guardarHistorial(nombre, apellido, datos.version);
+    datos.correlativo = guardarHistorial(nombre, apellido, datos.version);
     abrirProgreso();
     try {
       const { bytes, filename } = await window.PDFCotizacion.generarCotizacionCompuesta(datos);
