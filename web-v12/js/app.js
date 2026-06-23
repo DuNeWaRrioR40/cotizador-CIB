@@ -553,12 +553,24 @@
     if (p.nombreCliente && p.nombreCliente.trim()) return p.nombreCliente.trim();
     return [p.categoria, p.tipo, p.variedad, p.modelo].filter(Boolean).join(" ");
   }
+  // Unidad de VENTA (en qué medida está el precio). Se deriva de la VARIEDAD (col D), NO de la columna
+  // "Unidad" (esa es el peso equivalente del proveedor: K/m², K/m, K/cc…). "" = genérico (sin sufijo).
+  function granelUnidadVenta(variedad) {
+    const v = String(variedad || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+    if (!v) return "";
+    if (/lineal/.test(v)) return "m lineal";
+    if (/m2|m²|mt2|metro2/.test(v)) return "m²";
+    if (/rollo/.test(v)) return "rollo";
+    if (/^u\.?$|^un\.?$|unidad/.test(v)) return "";   // unitario genérico: solo el número
+    return String(variedad).trim();                   // otras variedades: se muestran tal cual
+  }
   // $/m² de referencia (solo interno): si vende por metro lineal y trae ancho de rollo, o ya es m².
+  // La medida del precio se determina por la VARIEDAD (no por la columna "Unidad", que es peso).
   function granelPrecioM2(p) {
     if (p.precio == null) return null;
-    const u = (p.unidad || "").toLowerCase().replace("²", "2");
-    if (/m2|mt2|metro2/.test(u)) return p.precio;
-    if ((/^m(l|t|etro)?$/.test(u) || /lineal/.test(u)) && p.anchoRollo > 0) return p.precio / p.anchoRollo;
+    const v = String(p.variedad || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    if (/m2|mt2|metro2|m²/.test(v)) return p.precio;
+    if (/lineal/.test(v) && p.anchoRollo > 0) return p.precio / p.anchoRollo;
     return null;
   }
   // Variación de precio (%) desde el Precio Base. + = subió, − = bajó. null si no hay base.
@@ -682,7 +694,7 @@
         addRow.appendChild(w);
       } else {
         const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = p.divisible ? "decimal" : "numeric"; inp.className = "granel-cant";
-        inp.placeholder = "cant. (" + esc(p.unidad) + ")"; inp.title = p.divisible ? "Mínimo 1; acepta decimales." : "Producto unitario: cantidad entera, mínimo 1.";
+        { const uv = granelUnidadVenta(p.variedad); inp.placeholder = "cant." + (uv ? " (" + esc(uv) + ")" : ""); } inp.title = p.divisible ? "Mínimo 1; acepta decimales." : "Producto unitario: cantidad entera, mínimo 1.";
         agregarCalc(inp);
         const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn-outline small"; btn.textContent = "+ Agregar a la cotización";
         const add = () => { let c = window.CalcCIBSA.evalExpr(inp.value); if (c == null || isNaN(c) || c <= 0) { inp.focus(); return; } c = granelClampCant(p.divisible, c); granelAgregar(p, c, colorSel); };
@@ -707,7 +719,7 @@
   }
   function granelAgregar(p, cant, colorElegido) {
     const color = (colorElegido != null && colorElegido !== "") ? colorElegido : (p.color || "");
-    state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, divisible: !!p.divisible, color: color, materialidad: p.materialidad, largo: p.largo, cantidad: String(cant), descPct: "0", descMonto: false });
+    state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, formato: p.formato, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, divisible: !!p.divisible, color: color, materialidad: p.materialidad, largo: p.largo, cantidad: String(cant), descPct: "0", descMonto: false });
     granelSel = p; // el comparador interno sigue al último producto agregado
     renderGranelLineas(); renderGranel(); recompute();
   }
@@ -737,9 +749,13 @@
       if (!(k.cant > 0) || l.precio == null) return null;
       const attrs = [l.color, l.materialidad].filter(Boolean);
       let detalle = granelNombreL(l) + (attrs.length ? " · " + attrs.join(" · ") : "") + (l.specs ? " · " + l.specs : "");
+      // Formato del rollo: útil en productos vendidos por rollo o por metro lineal (ancho × largo del rollo).
+      const fmt = (l.formato || "").trim(), vNorm = String(l.variedad || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+      if (fmt && /(lineal|rollo)/.test(vNorm)) detalle += " · Formato " + fmt;
       if (k.desc > 0) detalle += k.esMonto ? " · Desc. " + money(k.desc) : " · Desc. " + f(k.dp) + "%";
-      // Si la unidad es genérica ("unidad"), no se imprime en el PDF (ni en cantidad ni en valor unitario).
-      const u = (l.unidad || "").trim(), gen = (u === "" || /^unidad(es)?$/i.test(u) || /^un?$/i.test(u));
+      // La unidad de venta (medida del precio) se deriva de la VARIEDAD, NO de la columna "Unidad".
+      // Si es genérica ("" / unidad), no se imprime sufijo (ni en cantidad ni en valor unitario).
+      const u = granelUnidadVenta(l.variedad), gen = (u === "");
       return { cantidad: gen ? f(k.cant) : f(k.cant) + " " + u, detalle: detalle, precioU: gen ? money(l.precio) : money(l.precio) + " /" + u, bruto: k.bruto, descPct: k.dp, descuento: k.desc, total: k.neto };
     }).filter(Boolean);
   }
@@ -785,7 +801,7 @@
       const cw = document.createElement("div"); cw.className = "granel-cart-cantwrap";
       if (l.sku) { const sk = document.createElement("span"); sk.className = "granel-cart-sku"; sk.textContent = l.sku; cw.appendChild(sk); }
       cw.appendChild(ci);
-      const u = document.createElement("span"); u.className = "granel-cart-u"; u.textContent = l.unidad + " × " + money(l.precio || 0);
+      const u = document.createElement("span"); u.className = "granel-cart-u"; u.textContent = (granelUnidadVenta(l.variedad) || "u") + " × " + money(l.precio || 0);
       const dl = document.createElement("label"); dl.className = "granel-cart-dlbl"; dl.textContent = "dcto";
       const di = document.createElement("input"); di.type = "text"; di.inputMode = "decimal"; di.className = "granel-cart-desc"; di.value = l.descPct;
       di.title = l.descMonto ? "Descuento de este producto en monto $" : "Descuento de este producto (%)";
