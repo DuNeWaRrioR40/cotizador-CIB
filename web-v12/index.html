@@ -305,7 +305,12 @@
     <div id="wCondiciones">
       <h2 class="section">Condiciones</h2>
       <label class="field"><span>Días de entrega (hábiles)</span><input id="f_dias" type="text" inputmode="numeric" autocomplete="off" value="3" /></label>
-      <label class="field"><span>Descuento (%)</span><input id="f_descuento" type="text" inputmode="text" autocomplete="off" value="0" /></label>
+      <div class="field"><span>Descuento</span>
+        <div class="desc-row">
+          <div class="desc-wrap"><input id="f_descuento" type="text" inputmode="decimal" autocomplete="off" value="0" /><span id="descSuffix" class="desc-suffix">%</span></div>
+          <label class="chk desc-monto-chk"><input id="f_descMonto" type="checkbox" /> monto&nbsp;$</label>
+        </div>
+      </div>
       <label class="field"><span>Versión</span><input id="f_version" type="text" value="01" /></label>
     </div>
 

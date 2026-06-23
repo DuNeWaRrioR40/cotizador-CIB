@@ -690,7 +690,7 @@
 
     // Nota amarilla
     let nota = `NOTA: Valores netos. El TOTAL indicado ya incluye IVA (${c.ivaPct}%)`;
-    nota += c.descuentoPct > 0 ? ` y el ${c.descuentoPct}% de descuento por pago contado.` : ".";
+    nota += c.descuentoPct > 0 ? (c.descuentoEsMonto ? " y el descuento por pago contado." : ` y el ${c.descuentoPct}% de descuento por pago contado.`) : ".";
     nota += " Productos sujetos a disponibilidad de stock.";
     const notaLines = wrap(nota, bold, 11, W - 2 * M - 8);
     page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: right - M, height: notaLines.length * 13 + 6, color: YELLOW() });
@@ -1060,7 +1060,8 @@
     const carpaSub = carpaSub0 + minProd;
     const subtotal = carpaSub + granelT;
     const descPct = datos.descuentoPct || 0;
-    const descuento = Math.round(carpaSub * descPct / 100);
+    const descEsMonto = !!datos.descuentoEsMonto;
+    const descuento = descEsMonto ? Math.min(Math.max(0, datos.descuento || 0), carpaSub) : Math.round(carpaSub * descPct / 100);
     const neto = subtotal - descuento;
     const iva = Math.round(neto * CFG.IVA_PCT / 100);
     const total = neto + iva;
@@ -1075,7 +1076,7 @@
       y -= h; hline(y); vsegs(top, y);
     }
     totalRow("Subtotal Neto", money(subtotal));
-    if (descPct > 0) {
+    if (descuento > 0) {
       totalRow(datos.descuentoLabel || `Descuento ${descPct}% (pago contado)`, "-" + money(descuento));
       totalRow("Neto con Descuento", money(neto));
     }
@@ -1085,7 +1086,7 @@
 
     // Nota amarilla
     let nota = `NOTA: Valores netos. El TOTAL indicado ya incluye IVA (${CFG.IVA_PCT}%)`;
-    nota += descPct > 0 ? ` y el ${descPct}% de descuento por pago contado.` : ".";
+    nota += descuento > 0 ? (descEsMonto ? " y el descuento por pago contado." : ` y el ${descPct}% de descuento por pago contado.`) : ".";
     nota += " Productos sujetos a disponibilidad de stock.";
     const notaLines = wrap(nota, bold, 11, W - 2 * M - 8);
     asegurar(notaLines.length * 13 + 10);

@@ -193,6 +193,7 @@
         peso: get(r, "peso"),                                            // peso/tamaño (interno, opcional)
         largo: get(r, "largo"),                                          // largo (p. ej. venta por metro)
         color: get(r, "color"), materialidad: get(r, "materialidad"),    // atributos descriptivos
+        fav: get(r, "fav").split("/").map((s) => s.trim()).filter(Boolean), // categorías FAV (varias con "/")
         // divisible = GRANEL (acepta decimales); por defecto/UNITARIO = false (cantidad entera). Mín 1 siempre.
         divisible: /granel/i.test(get(r, "unidadMinima")),
       });

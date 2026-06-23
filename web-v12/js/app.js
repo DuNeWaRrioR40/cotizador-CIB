@@ -176,7 +176,7 @@
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
     // Telas adicionales marcadas (multi-tela uniforme) + categoría FAV activa, para reponer la selección completa.
     const telaOpc = []; { const cont = $("telaOpcList"); if (cont) cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => telaOpc.push(cb.value)); }
-    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, empresaOn: $("f_empresaOn") ? $("f_empresaOn").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", estado: st };
+    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, empresaOn: $("f_empresaOn") ? $("f_empresaOn").checked : false, descMonto: $("f_descMonto") ? $("f_descMonto").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", estado: st };
     try { return JSON.parse(JSON.stringify(snap)); } catch (e) { return null; }
   }
   function setSelectIfOption(id, val) { const sel = $(id); if (!sel || val == null) return; if (Array.from(sel.options).some((o) => o.value === val)) sel.value = val; }
@@ -207,6 +207,7 @@
     favCatActiva = snap.favCat || null; renderCategoriasFav();
     if ($("f_usaAlto")) { $("f_usaAlto").checked = !!snap.usaAlto; if ($("wAltura")) $("wAltura").classList.toggle("hidden", !snap.usaAlto); }
     if ($("f_empresaOn")) { $("f_empresaOn").checked = !!snap.empresaOn; toggleEmpresa(); }
+    if ($("f_descMonto")) { $("f_descMonto").checked = !!snap.descMonto; actualizarDescSuffix(); }
     if ($("f_trasUnif")) $("f_trasUnif").checked = !!state.trasUnif;
     const setRadio = (name, val) => { const r = document.querySelector('input[name="' + name + '"][value="' + val + '"]'); if (r) r.checked = true; };
     setRadio("docmode", state.docMode); setRadio("prodmode", state.prodMode);
@@ -668,18 +669,22 @@
   }
   function granelAgregar(p, cant, colorElegido) {
     const color = (colorElegido != null && colorElegido !== "") ? colorElegido : (p.color || "");
-    state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, divisible: !!p.divisible, color: color, materialidad: p.materialidad, largo: p.largo, cantidad: String(cant), descPct: "0" });
+    state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, divisible: !!p.divisible, color: color, materialidad: p.materialidad, largo: p.largo, cantidad: String(cant), descPct: "0", descMonto: false });
     granelSel = p; // el comparador interno sigue al último producto agregado
     renderGranelLineas(); renderGranel(); recompute();
   }
-  // Números de una línea a granel: cantidad, % descuento propio (0..100), bruto, descuento y neto.
+  // Números de una línea a granel: cantidad, descuento propio (% o monto $), bruto, descuento y neto.
+  // descPct guarda el valor escrito; descMonto define si ese valor es un % o un monto fijo.
   function granelLineaCalc(l) {
     const ev = window.CalcCIBSA.evalExpr;
     const c = ev(l.cantidad), cant = (c != null && c > 0) ? c : 0;
-    let dp = ev(l.descPct); dp = (dp != null && dp > 0) ? dp : 0; if (dp > 100) dp = 100;
     const bruto = Math.round((l.precio || 0) * cant);
-    const desc = Math.round(bruto * dp / 100);
-    return { cant: cant, dp: dp, bruto: bruto, desc: desc, neto: bruto - desc };
+    const esMonto = !!l.descMonto;
+    let desc;
+    if (esMonto) { let m = ev(l.descPct); m = (m != null && m > 0) ? Math.round(m) : 0; desc = Math.min(m, bruto); }
+    else { let dp = ev(l.descPct); dp = (dp != null && dp > 0) ? dp : 0; if (dp > 100) dp = 100; desc = Math.round(bruto * dp / 100); }
+    const dp = bruto > 0 ? (desc / bruto * 100) : 0;
+    return { cant: cant, dp: dp, bruto: bruto, desc: desc, neto: bruto - desc, esMonto: esMonto };
   }
   function granelSubtotal() {
     return (state.granelLineas || []).reduce((s, l) => s + granelLineaCalc(l).neto, 0);
@@ -694,7 +699,7 @@
       if (!(k.cant > 0) || l.precio == null) return null;
       const attrs = [l.color, l.materialidad].filter(Boolean);
       let detalle = granelNombreL(l) + (attrs.length ? " · " + attrs.join(" · ") : "") + (l.specs ? " · " + l.specs : "");
-      if (k.dp > 0) detalle += " · Desc. " + f(k.dp) + "%";
+      if (k.desc > 0) detalle += k.esMonto ? " · Desc. " + money(k.desc) : " · Desc. " + f(k.dp) + "%";
       // Si la unidad es genérica ("unidad"), no se imprime en el PDF (ni en cantidad ni en valor unitario).
       const u = (l.unidad || "").trim(), gen = (u === "" || /^unidad(es)?$/i.test(u) || /^un?$/i.test(u));
       return { cantidad: gen ? f(k.cant) : f(k.cant) + " " + u, detalle: detalle, precioU: gen ? money(l.precio) : money(l.precio) + " /" + u, bruto: k.bruto, descPct: k.dp, descuento: k.desc, total: k.neto };
@@ -744,10 +749,19 @@
       cw.appendChild(ci);
       const u = document.createElement("span"); u.className = "granel-cart-u"; u.textContent = l.unidad + " × " + money(l.precio || 0);
       const dl = document.createElement("label"); dl.className = "granel-cart-dlbl"; dl.textContent = "dcto";
-      const di = document.createElement("input"); di.type = "text"; di.inputMode = "decimal"; di.className = "granel-cart-desc"; di.value = l.descPct; di.title = "Descuento propio de este producto (%)";
+      const di = document.createElement("input"); di.type = "text"; di.inputMode = "decimal"; di.className = "granel-cart-desc"; di.value = l.descPct;
+      di.title = l.descMonto ? "Descuento de este producto en monto $" : "Descuento de este producto (%)";
       agregarCalc(di);
       di.addEventListener("input", (e) => { l.descPct = e.target.value; refrescarLinea(); });
-      const pct = document.createElement("span"); pct.className = "granel-cart-pct"; pct.textContent = "%";
+      // Botón %/$ : alterna el modo del descuento de ESTA línea (resetea el valor para evitar confundir % con monto).
+      const pct = document.createElement("button"); pct.type = "button"; pct.className = "granel-cart-pct" + (l.descMonto ? " monto" : "");
+      pct.textContent = l.descMonto ? "$" : "%"; pct.title = "Cambiar entre % y monto $";
+      pct.addEventListener("click", () => {
+        l.descMonto = !l.descMonto; l.descPct = "0"; di.value = "0";
+        pct.textContent = l.descMonto ? "$" : "%"; pct.classList.toggle("monto", l.descMonto);
+        di.title = l.descMonto ? "Descuento de este producto en monto $" : "Descuento de este producto (%)";
+        refrescarLinea();
+      });
       r2.appendChild(cw); r2.appendChild(u); r2.appendChild(dl); r2.appendChild(di); r2.appendChild(pct);
       item.appendChild(r1); item.appendChild(r2);
       box.appendChild(item);
@@ -761,16 +775,18 @@
     const cmpEl = $("granelCompare"); if (!cmpEl) return;
     cmpEl.innerHTML = "";
     if (!granelSel) return;
-    // Clave de equivalencia normalizada: ignora mayúsculas/minúsculas, espacios, acentos y el símbolo de
-    // multiplicación (×, *), para que "M7X7", "m7x7", "M7 X 7" y "7×7" agrupen igual. Cualquier texto sirve como clave.
+    // Clave(s) de equivalencia normalizadas: ignora mayúsculas/minúsculas, espacios, acentos y el símbolo de
+    // multiplicación (×, *). Una celda puede traer VARIAS claves separadas por "/" (comparar por más de un
+    // criterio): agrupa si CUALQUIERA coincide. Cualquier texto sirve como clave.
     const eqKey = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[×✕*]/g, "x").replace(/\s+/g, "").toUpperCase();
-    const eq = eqKey(granelSel.equiv);
+    const eqKeys = (s) => String(s || "").split("/").map(eqKey).filter(Boolean);
+    const selKeys = eqKeys(granelSel.equiv);
     const box = document.createElement("div"); box.className = "granel-cmp-box";
     const head = document.createElement("div"); head.className = "granel-cmp-head";
     head.innerHTML = 'Comparador — equivalentes de <b>' + esc(granelNombre(granelSel)) + '</b> <span class="granel-cmp-int">(uso interno · no va al PDF)</span>';
     box.appendChild(head);
-    let equivs = eq ? granelActivos().filter((p) => eqKey(p.equiv) === eq) : [granelSel];
-    if (!eq) { const n = document.createElement("p"); n.className = "muted small"; n.textContent = "Este producto no tiene clave de equivalencia (Equiv); no hay con qué compararlo."; box.appendChild(n); cmpEl.appendChild(box); return; }
+    let equivs = selKeys.length ? granelActivos().filter((p) => eqKeys(p.equiv).some((k) => selKeys.indexOf(k) !== -1)) : [granelSel];
+    if (!selKeys.length) { const n = document.createElement("p"); n.className = "muted small"; n.textContent = "Este producto no tiene clave de equivalencia (Equiv); no hay con qué compararlo."; box.appendChild(n); cmpEl.appendChild(box); return; }
     equivs = equivs.slice().sort((a, b) => (a.precio == null ? Infinity : a.precio) - (b.precio == null ? Infinity : b.precio));
     const minP = equivs.reduce((m, p) => (p.precio != null && p.precio < m ? p.precio : m), Infinity);
     const tbl = document.createElement("div"); tbl.className = "granel-cmp-list";
@@ -4336,16 +4352,33 @@
     const b = { tipo: "borde", valor: pz.bordeValor };
     return { sup: b, inf: b, izq: b, der: b };
   }
+  // Paños inscritos que ATRAVIESAN la pieza (su medida iguala la de la pieza en un eje): dejan de ser
+  // "ventana" y pasan a componer el paño. En ese caso el material base solo cubre el remanente, así que
+  // se descuenta su ancho/largo del paño base (el inscrito ya se cobra aparte en su propia tela).
+  function inscritosThrough(pz, A, L) {
+    const ev = window.CalcCIBSA.evalExpr; let dAncho = 0, dLargo = 0;
+    visibles(pz.inscritos).forEach((ins) => {
+      const w = ev(ins.ancho), h = ev(ins.largo);
+      if (!(w > 0) || !(h > 0)) return;
+      if (Math.abs(h - L) < 1e-6) dAncho += w;        // franja a lo largo → reduce el ancho del base
+      else if (Math.abs(w - A) < 1e-6) dLargo += h;   // franja a lo ancho → reduce el largo del base
+    });
+    return { dAncho, dLargo };
+  }
   function calcPieza(pz) {
     const tela = state.telas.find((t) => t.nombre === pz.telaNombre);
     const largo = window.CalcCIBSA.evalExpr(pz.largo);
     const ancho = window.CalcCIBSA.evalExpr(pz.ancho);
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) return null;
     const u = window.CalcCIBSA.evalExpr(pz.union);
+    // Reduce el paño base por las franjas inscritas que atraviesan (degenerado: si el remanente queda en 0, no reduce).
+    const thr = inscritosThrough(pz, ancho, largo);
+    let anchoB = ancho - thr.dAncho, largoB = largo - thr.dLargo;
+    if (anchoB < 1e-6 || largoB < 1e-6) { anchoB = ancho; largoB = largo; }
     let lote;
     try {
       lote = window.CalcCIBSA.calcularLote({
-        largo, ancho, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo,
+        largo: largoB, ancho: anchoB, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo,
         cantidad: Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1),
         union: (u == null || isNaN(u)) ? 0.045 : u,
         altura: pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0,
@@ -4388,6 +4421,21 @@
     return Object.keys(counts).filter((k) => counts[k] > 1).map((k) => labelOf[k]);
   }
 
+  // Descuento de "Condiciones": por defecto en % (sobre el subtotal de carpa). Si el checkbox "monto"
+  // está marcado, el campo es un monto fijo en $. Devuelve pct equivalente, monto, etiqueta y flag.
+  function descMontoOn() { const c = $("f_descMonto"); return !!(c && c.checked); }
+  function actualizarDescSuffix() { const s = $("descSuffix"); if (s) s.textContent = descMontoOn() ? "$" : "%"; }
+  function descuentoInfo(subtotal) {
+    const sub = Math.max(0, subtotal || 0), raw = num("f_descuento", 0) || 0;
+    if (descMontoOn()) {
+      const monto = Math.min(Math.max(0, Math.round(raw)), sub);
+      const pct = sub > 0 ? (monto / sub * 100) : 0;
+      return { esMonto: true, pct, monto, label: monto > 0 ? `Descuento ${money(monto)} (pago contado)` : null };
+    }
+    let pct = raw > 0 ? raw : 0; if (pct > 100) pct = 100;
+    const monto = Math.round(sub * pct / 100);
+    return { esMonto: false, pct, monto, label: pct > 0 ? `Descuento ${window.CalcCIBSA.fmtNum(pct)}% (pago contado)` : null };
+  }
   function recomputeCompuesto() {
     const list = $("piezasList"), resumen = $("piezasResumen");
     let subtotalGen = 0; const calcs = [];
@@ -4437,8 +4485,8 @@
       if (dup.length) { err.classList.remove("hidden"); err.textContent = "Etiquetas repetidas: " + dup.join(", ") + ". Usa un nombre distinto para cada pieza."; }
       else err.classList.add("hidden");
     }
-    const desc = num("f_descuento", 0);
-    const descuento = Math.round(subtotalGen * desc / 100);
+    const dI = descuentoInfo(subtotalGen);
+    const desc = dI.pct, descuento = dI.monto;
     const neto = subtotalGen - descuento;
     const iva = Math.round(neto * CFG.IVA_PCT / 100);
     const total = neto + iva;
@@ -4448,7 +4496,7 @@
     } else {
       let h = '<div class="cmp-card"><div class="h">Resumen (' + calcs.length + ' pieza' + (calcs.length > 1 ? 's' : '') + ')</div>';
       h += `<div class="muted small">Subtotal neto: ${money(subtotalGen)}</div>`;
-      if (desc > 0) { h += `<div class="muted small">Descuento ${desc}%: -${money(descuento)}</div>`; h += `<div class="muted small">Neto con descuento: ${money(neto)}</div>`; }
+      if (descuento > 0) { h += `<div class="muted small">${dI.esMonto ? "Descuento (monto)" : "Descuento " + window.CalcCIBSA.fmtNum(desc) + "%"}: -${money(descuento)}</div>`; h += `<div class="muted small">Neto con descuento: ${money(neto)}</div>`; }
       h += `<div class="muted small">IVA ${CFG.IVA_PCT}%: ${money(iva)}</div>`;
       h += `<div class="total">${money(total)}</div></div>`;
       resumenHTML = h;
@@ -4513,6 +4561,7 @@
     // El carro a granel es parte de la cotización: se borra en ambos casos.
     state.granelLineas = []; granelSel = null;
     $("f_cantidad").value = "1"; $("f_ojvalor").value = "450"; $("f_dias").value = "3"; $("f_descuento").value = "0"; $("f_version").value = "01";
+    { const dm = $("f_descMonto"); if (dm) dm.checked = false; actualizarDescSuffix(); }
     $("f_union").value = "0.045";
     $("f_usaAlto").checked = false; $("f_altura").value = ""; $("wAltura").classList.add("hidden");
     state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
@@ -4543,6 +4592,7 @@
     const bc = $("btnLimpiarCotiz"); if (bc) bc.addEventListener("click", () => { limpiarBorrador(); limpiarCampos(true); }); }
   { const c = $("f_empresaOn"); if (c) c.addEventListener("change", toggleEmpresa); }
   { const c = $("f_telaGlobalOn"); if (c) c.addEventListener("change", toggleTelaGlobal); }
+  { const c = $("f_descMonto"); if (c) c.addEventListener("change", () => { actualizarDescSuffix(); recompute(); }); actualizarDescSuffix(); }
   { const b = $("btnEscanearQR"); if (b) b.addEventListener("click", abrirQR); }
   { const b = $("qrCerrar"); if (b) b.addEventListener("click", cerrarQR); }
 
@@ -4658,7 +4708,6 @@
     const orientKey = orientDeTela(tela);
     const o = orientKey === "ancho" ? lote.oAncho : lote.oLargo;
     const N = lote.N;
-    const desc = num("f_descuento", 0);
     const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }) };
     const ojeTotal = lote.nOjetillos * lote.valorOjetillo * N;
     const compTotal = compTotalUnit(state.complementosUnif) * N;
@@ -4673,7 +4722,8 @@
     // sobre el neto de carpa ANTES del descuento. N unidades idénticas → neto/u = carpaSub0/N.
     const nU = Math.max(1, N), minProd = minProduccionEscalonado(Array(nU).fill(carpaSub0 / nU));
     const carpaSub = carpaSub0 + minProd;
-    const descuento = Math.round(carpaSub * desc / 100);
+    const dI = descuentoInfo(carpaSub);
+    const descuento = dI.monto;
     const subtotal = carpaSub + granelNeto;
     const neto = subtotal - descuento;
     const iva = Math.round(neto * CFG.IVA_PCT / 100);
@@ -4685,7 +4735,7 @@
       valorOjetillo: lote.valorOjetillo, ojetillosValor: lote.nOjetillos * lote.valorOjetillo,
       ojetillosValorTotal: ojeTotal,
       minProduccion: minProd,
-      subtotal, descuentoPct: desc, descuento, netoConDescuento: neto,
+      subtotal, descuentoPct: dI.pct, descuento, netoConDescuento: neto, descuentoEsMonto: dI.esMonto,
       ivaPct: CFG.IVA_PCT, iva, total, panos: o.panosLote, m2: o.m2Lote,
     };
     const datos = {
@@ -4695,7 +4745,7 @@
       titulo: $("f_titulo").value.trim() || null,
       ojetillosDetalle: ojDetalle(),
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
-      descuentoLabel: desc > 0 ? `Descuento ${desc}% (pago contado)` : null,
+      descuentoLabel: dI.label,
       vendedor: vendedorSel(),
       observaciones: $("f_observaciones").value.trim() || null,
       detalleExtra: terminacionesTexto(state.orientUnif),
@@ -4738,14 +4788,14 @@
     recomputeCompuesto();
     const calcs = (state.compuesto && state.compuesto.calcs) || [];
     if (!calcs.length) return null;
-    const desc = num("f_descuento", 0);
+    const dI = descuentoInfo((state.compuesto && state.compuesto.subtotalGen) || 0);
     const datos = {
       cliente: { nombre: cliente.nombre, apellido: cliente.apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente") }, empresa: empresaDatos(),
       version: versionStr, fecha: new Date(), suprimirCotas: suprimeCotas(),
       titulo: $("f_titulo").value.trim() || null,
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
-      descuentoPct: desc,
-      descuentoLabel: desc > 0 ? `Descuento ${desc}% (pago contado)` : null,
+      descuentoPct: dI.pct, descuentoEsMonto: dI.esMonto, descuento: dI.monto,
+      descuentoLabel: dI.label,
       minProdUF: CFG.MIN_PRODUCCION_UF, ufValor: state.ufValor,
       vendedor: vendedorSel(),
       observaciones: $("f_observaciones").value.trim() || null,

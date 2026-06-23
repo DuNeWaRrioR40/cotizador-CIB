@@ -49,6 +49,8 @@
       // Vacío/desconocido = UNITARIO (más restrictivo). El mínimo de venta nunca es < 1.
       unidadMinima: "Unidad Minima", formato: "Formato", peso: "Peso",
       largo: "Largo", color: "Color", materialidad: "Materialidad",
+      // FAV: una o más categorías (separadas por "/") para selección rápida de telas. Opcional.
+      fav: "FAV",
     },
 
     // --- Tabla de vendedores (referenciada en RANGO con este ID) ---
