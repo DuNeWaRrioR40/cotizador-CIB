@@ -2324,7 +2324,7 @@
         card.appendChild(addHelpTo(txtField("Nombre / leyenda (plano)", "legend", "Ej. Faldón frontal", true), "Nombre del anexo que aparece en el plano y en la cotización. Si lo dejas vacío usa el tipo.", "ALETA-NOMBRE"));
         card.appendChild(addHelpTo(txtField("Descripción de diseño", "descripcion", "Detalle del faldón/cenefa", true, true), "Texto libre para detallar el diseño del faldón/cenefa (colores, leyendas, terminaciones). Aparece en la cotización.", "ALETA-DESC"));
         const lt = document.createElement("label"); lt.className = "field full"; lt.innerHTML = "<span>Tela</span>";
-        const selT = document.createElement("select"); state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre + (t.proveedor ? "  —  " + t.proveedor : ""); selT.appendChild(o); });
+        const selT = document.createElement("select"); state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre; selT.appendChild(o); }); // el nombre ya incluye Proveedor · Modelo · Formato
         selT.value = a.telaNombre || ((state.telas[0] && state.telas[0].nombre) || ""); a.telaNombre = selT.value;
         selT.addEventListener("change", (e) => { a.telaNombre = e.target.value; refresh(); onChange(); });
         lt.appendChild(selT); card.appendChild(lt);
@@ -2527,7 +2527,7 @@
           });
         }
         const lt = document.createElement("label"); lt.className = "field full"; lt.innerHTML = "<span>Tela de la ventana</span>";
-        const selT = document.createElement("select"); state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre + (t.proveedor ? "  —  " + t.proveedor : ""); selT.appendChild(o); });
+        const selT = document.createElement("select"); state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre; selT.appendChild(o); }); // el nombre ya incluye Proveedor · Modelo · Formato
         selT.value = ins.telaNombre || ((state.telas[0] && state.telas[0].nombre) || ""); ins.telaNombre = selT.value;
         selT.addEventListener("change", (e) => { ins.telaNombre = e.target.value; refresh(); onChange(); });
         lt.appendChild(selT); grid.appendChild(lt);
@@ -4302,7 +4302,7 @@
       q(".pz-ancho").value = pz.ancho || "";
       q(".pz-cant").value = pz.cantidad || "1";
       const tsel = q(".pz-tela");
-      state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre + (t.proveedor ? "  —  " + t.proveedor : ""); tsel.appendChild(o); });
+      state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre; tsel.appendChild(o); }); // el nombre ya incluye Proveedor · Modelo · Formato
       if (pz.telaNombre) tsel.value = pz.telaNombre; else pz.telaNombre = tsel.value;
       q(".pz-orient").value = pz.orient || "largo";
       q(".pz-color").value = pz.color || "";

@@ -91,15 +91,15 @@
     if (!ptr) throw new Error(`No se encontró en RANGO una fila con ID '${CFG.ID_TABLA_GRANEL}'.`);
     const { encabezados, registros } = await leerTabla(token, ptr.hoja, ptr.rango);
     const C = CFG.COL_GRANEL, idx = {};
-    ["categoria", "variedad", "proveedor", "modelo", "formato", "precio", "anchoRollo", "specs", "fav"].forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
+    ["categoria", "variedad", "proveedor", "tipo", "modelo", "formato", "precio", "anchoRollo", "specs", "fav"].forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
     const get = (r, k) => { const i = idx[k]; return (i !== -1 ? (r[encabezados[i]] || "") : "").trim(); };
     const esTela = (s) => norm(s) === "tela";
     const esMLineal = (s) => /lineal/.test(norm(s));   // "M.LINEAL", "metro lineal", etc.
     const telas = [], vistos = new Set();
     for (const r of registros) {
       if (!esTela(get(r, "categoria")) || !esMLineal(get(r, "variedad"))) continue;
-      const proveedor = get(r, "proveedor"), modelo = get(r, "modelo"), formato = get(r, "formato");
-      const nombre = [proveedor, modelo, formato].filter(Boolean).join(" · ");
+      const proveedor = get(r, "proveedor"), tipo = get(r, "tipo"), modelo = get(r, "modelo"), formato = get(r, "formato");
+      const nombre = [proveedor, tipo, modelo, formato].filter(Boolean).join(" · ");
       if (!nombre) continue;
       const precioML = parseNumero(get(r, "precio"));
       const ancho = parseNumero(get(r, "anchoRollo"));
@@ -109,7 +109,7 @@
       vistos.add(key);
       const ficha = get(r, "specs").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
       const favCats = get(r, "fav").split("/").map((s) => s.trim()).filter(Boolean);
-      telas.push({ nombre, valorM2: precioML / ancho, anchoRollo: ancho, ficha, proveedor, fav: favCats });
+      telas.push({ nombre, valorM2: precioML / ancho, anchoRollo: ancho, ficha, proveedor, tipo, fav: favCats });
     }
     if (!telas.length) throw new Error("VIGENTES no tiene filas válidas Categoria=Tela y Variedad=M.LINEAL (con Precio y ancho de rollo). Encabezados: " + encabezados.join(" | "));
     return telas;
