@@ -350,5 +350,41 @@
     return true;
   }
 
-  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, leerCorrelMax, guardarCorrelMax, parseNumero };
+  // --- Carga de facturas: lectores de PROVEEDORES y FACTOR + append genérico ---
+  async function cargarProveedores(token) {
+    const hoja = CFG.HOJA_PROVEEDORES || "PROVEEDORES";
+    let res; try { res = await leerTabla(token, hoja, "A:C"); } catch (e) { return []; }
+    const { encabezados, registros } = res;
+    const C = CFG.COL_PROVEEDOR, idx = {};
+    Object.keys(C).forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
+    const get = (r, k) => { const i = idx[k]; return (i !== -1 ? (r[encabezados[i]] || "") : "").trim(); };
+    return registros.map((r) => ({ rut: get(r, "rut"), razon: get(r, "razon"), nombreCorto: get(r, "nombreCorto") }))
+      .filter((p) => p.rut);
+  }
+  async function cargarFactores(token) {
+    const hoja = CFG.HOJA_FACTOR || "FACTOR";
+    let res; try { res = await leerTabla(token, hoja, "A:D"); } catch (e) { return []; }
+    const { encabezados, registros } = res;
+    const C = CFG.COL_FACTOR, idx = {};
+    Object.keys(C).forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
+    const get = (r, k) => { const i = idx[k]; return (i !== -1 ? (r[encabezados[i]] || "") : "").trim(); };
+    return registros.map((r) => ({ categoria: get(r, "categoria"), variedad: get(r, "variedad"), unidadMinima: get(r, "unidadMinima"), factor: parseNumero(get(r, "factor")) }))
+      .filter((f) => f.categoria || f.variedad);
+  }
+  // Append genérico: agrega filas al final de la tabla de una hoja (cualquier ancho). No crea encabezados.
+  async function anexarHoja(token, hoja, filas) {
+    if (!filas || !filas.length) return;
+    const rango = `'${hoja}'!A1`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}/values/` +
+      `${encodeURIComponent(rango)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: filas }),
+    });
+    if (!r.ok) throw new Error("No se pudo escribir en " + hoja + " (código " + r.status + ").");
+    return r.json();
+  }
+
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, anexarHoja, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);

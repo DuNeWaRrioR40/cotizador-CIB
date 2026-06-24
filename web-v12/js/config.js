@@ -51,7 +51,33 @@
       largo: "Largo", color: "Color", materialidad: "Materialidad",
       // FAV: una o más categorías (separadas por "/") para selección rápida de telas. Opcional.
       fav: "FAV",
+      // Columnas de la reestructuración BD (carga de facturas → costo → precio):
+      codMaterialBase: "CodMaterialBase",   // llave que une los estados de un material; link a COSTOS
+      parent: "Parent (SKU rollo)",          // en hijos: SKU del rollo padre
+      rendimiento: "Rendimiento",            // unidades de venta por 1 unidad comprada
+      nombreProveedor: "NombreProveedor",    // nombre(s) tal cual la factura (alias con "/")
+      unidadProveedor: "UnidadProveedor",    // unidad en que vende el proveedor
+      proveedorRUT: "ProveedorRUT",          // RUT del proveedor (link a PROVEEDORES)
     },
+    // Orden REAL de las columnas de la hoja GRANEL maestra (A→AE). Se usa para construir filas nuevas
+    // al cargar facturas. W es una columna auxiliar (OK/DUP) sin encabezado; X es el flag "Vigentes".
+    GRANEL_ORDEN: [
+      "Categoria", "Proveedor", "Tipo", "Variedad", "Formato", "Modelo", "Color", "Largo",
+      "Materialidad", "Peso", "Equiv", "Unidad", "Unidad Minima", "Precio", "Specs", "AnchoRollo",
+      "NombreCliente", "Activo", "Notas", "Fecha Actualización", "Fecha Base", "SKU", "", "Vigentes",
+      "FAV", "CodMaterialBase", "Parent (SKU rollo)", "Rendimiento", "NombreProveedor",
+      "UnidadProveedor", "ProveedorRUT",
+    ],
+
+    // --- Carga de facturas (DTE) → costos / proveedores ---
+    HOJA_GRANEL_MAESTRO: "GRANEL",   // historial maestro (append de productos nuevos)
+    HOJA_PROVEEDORES: "PROVEEDORES",
+    COL_PROVEEDOR: { rut: "RUT", razon: "RazonSocial", nombreCorto: "NombreCorto" },
+    HOJA_COSTOS: "COSTOS",
+    COL_COSTOS: { llave: "Llave", fecha: "Fecha", costo: "Costo", unidadCompra: "UnidadCompra", proveedorRUT: "ProveedorRUT", numFactura: "NumFactura", nota: "Nota" },
+    HOJA_FACTOR: "FACTOR",
+    COL_FACTOR: { categoria: "CATEGORIA", variedad: "VARIEDAD", unidadMinima: "UNIDAD MINIMA", factor: "FACTOR" },
+    RUT_EMPRESA: "96612980-8",   // RUT de CIBSA (receptor esperado en las facturas de compra)
 
     // --- Tabla de vendedores (referenciada en RANGO con este ID) ---
     // El nombre que se muestra se compone de NOMBRE + APELLIDO PATERNO + APELLIDO MATERNO

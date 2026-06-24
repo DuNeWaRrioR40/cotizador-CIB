@@ -84,6 +84,7 @@
     show("wCliente", f);
     show("wHistorial", f);
     show("wGranel", f);
+    show("wFactura", f);
     show("wProdToggle", f);
     show("wDimensiones", uni || p);
     show("wCantidad", uni);
@@ -753,10 +754,9 @@
       const fmt = (l.formato || "").trim(), vNorm = String(l.variedad || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
       if (fmt && /(lineal|rollo)/.test(vNorm)) detalle += " · Formato " + fmt;
       if (k.desc > 0) detalle += k.esMonto ? " · Desc. " + money(k.desc) : " · Desc. " + f(k.dp) + "%";
-      // La unidad de venta (medida del precio) se deriva de la VARIEDAD, NO de la columna "Unidad".
-      // Si es genérica ("" / unidad), no se imprime sufijo (ni en cantidad ni en valor unitario).
-      const u = granelUnidadVenta(l.variedad), gen = (u === "");
-      return { cantidad: gen ? f(k.cant) : f(k.cant) + " " + u, detalle: detalle, precioU: gen ? money(l.precio) : money(l.precio) + " /" + u, bruto: k.bruto, descPct: k.dp, descuento: k.desc, total: k.neto };
+      // En el PDF, Cantidad y Valor unitario van SOLO con el número (sin unidad de medida); la unidad/
+      // formato se entiende por el Detalle (y la Variedad). La unidad se sigue mostrando en pantalla.
+      return { cantidad: f(k.cant), detalle: detalle, precioU: money(l.precio), bruto: k.bruto, descPct: k.dp, descuento: k.desc, total: k.neto };
     }).filter(Boolean);
   }
   function granelTotalPDF() { return granelLineasPDF().reduce((s, g) => s + g.total, 0); }
@@ -1044,7 +1044,7 @@
   window.addEventListener("scroll", ocultarHelp, true);
 
   // ---------- Secciones colapsables ----------
-  const COLAP_CERRADAS = ["wGranel", "wOjetillos", "wBordes", "wCortesUnif", "wComplementosUnif", "wAletasUnif", "wStrapsUnif", "wFactorUnif", "wCondiciones", "telaMultiWrap"];
+  const COLAP_CERRADAS = ["wGranel", "wFactura", "wOjetillos", "wBordes", "wCortesUnif", "wComplementosUnif", "wAletasUnif", "wStrapsUnif", "wFactorUnif", "wCondiciones", "telaMultiWrap"];
   const COLAP_ABIERTAS = ["wCliente", "wPiezas", "wHistorial", "wSketchUnif", "wOrientFormal", "wPreviewCompuesto"];
   function seccionTieneDatos(sec) {
     const body = sec.querySelector(".colap-body"); if (!body) return false;
@@ -5125,6 +5125,283 @@
     $("calcCerrar").addEventListener("click", cerrarCalc);
     m.addEventListener("click", (e) => { if (e.target === m) cerrarCalc(); });
   })();
+
+  // ---------- Carga de facturas (DTE) → costos / proveedores / productos ----------
+  const FC = { prov: [], fact: [], loaded: false, ctx: null };
+  function fe(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+  function fnum(v) { const r = window.CalcCIBSA ? window.CalcCIBSA.evalExpr(v) : parseFloat(v); return (r != null && !isNaN(r)) ? r : null; }
+  function facturaMsg(t, err) { const m = $("facturaMsg"); if (m) { m.textContent = t || ""; m.style.color = err ? "var(--danger,#c0392b)" : ""; } }
+  async function facturaEnsure() {
+    if (FC.loaded) return;
+    const tok = window.AuthCIBSA && window.AuthCIBSA.getToken ? window.AuthCIBSA.getToken() : null;
+    if (!tok) return;
+    try { FC.prov = await window.SheetsCIBSA.cargarProveedores(tok); } catch (e) { FC.prov = []; }
+    try { FC.fact = await window.SheetsCIBSA.cargarFactores(tok); } catch (e) { FC.fact = []; }
+    FC.loaded = true;
+  }
+  function facturaItemInit(src) {
+    const F = window.FacturaCIBSA;
+    const m = F.matchItem(src, granelActivos());
+    return {
+      nombre: src.nombre || "", codigo: src.codigo || "", qty: src.qty != null ? src.qty : 1,
+      unidadProveedor: src.unidadProveedor || "", precioLista: src.precioLista, montoItem: src.montoItem,
+      subDsctos: src.subDsctos || [], descPct: src.descPct, descMonto: src.descMonto,
+      costoSugerido: (src.costoUnitSugerido != null) ? src.costoUnitSugerido : (src.precioLista || 0),
+      match: m, modo: m ? "existente" : "nuevo",
+      costo: (src.costoUnitSugerido != null) ? src.costoUnitSugerido : (src.precioLista || 0),
+      existenteSel: m ? (m.prod.sku || granelNombre(m.prod)) : "",
+      llaveExistente: m ? (m.prod.codMaterialBase || "") : "",
+      prod: {
+        categoria: "", tipo: "", variedad: "", formato: "", modelo: "", color: "", materialidad: "",
+        unidad: "", unidadMinima: "UNITARIO", anchoRollo: "", rendimiento: 1, fav: "",
+        sku: "", codMaterialBase: "",
+      },
+      estados: [],
+    };
+  }
+  function facturaCtxDeDTE(dte) {
+    const F = window.FacturaCIBSA;
+    const prov = F.matchProveedor(dte.emisor.rut, FC.prov);
+    return {
+      manual: false, dte: dte, folio: dte.folio, fecha: F.fechaFactura(dte.fecha),
+      emisor: dte.emisor, receptor: dte.receptor,
+      proveedor: { match: prov, crear: !prov, rut: dte.emisor.rut, razon: dte.emisor.razon, nombreCorto: prov ? prov.nombreCorto : "" },
+      items: (dte.items || []).map(facturaItemInit),
+    };
+  }
+  function facturaCtxManual() {
+    return {
+      manual: true, dte: null, folio: "", fecha: window.FacturaCIBSA.hoyCorta(),
+      emisor: { rut: "", razon: "", giro: "" }, receptor: { rut: CFG.RUT_EMPRESA, razon: "" },
+      proveedor: { match: null, crear: true, rut: "", razon: "", nombreCorto: "" },
+      items: [facturaItemInit({ nombre: "", qty: 1 })],
+    };
+  }
+  async function facturaDesdeXML(text) {
+    await facturaEnsure();
+    const dte = window.DTECIBSA.parseDTE(text);
+    if (!dte.ok) { facturaMsg(dte.error || "XML inválido.", true); return; }
+    if (dte.tipoDTE && dte.tipoDTE !== "33" && dte.tipoDTE !== "34") facturaMsg("Aviso: TipoDTE " + dte.tipoDTE + " (se esperaba factura 33/34). Se carga igual.", false);
+    else if (dte.receptor.rut && window.FacturaCIBSA.soloDigitosRUT(dte.receptor.rut) !== window.FacturaCIBSA.soloDigitosRUT(CFG.RUT_EMPRESA)) facturaMsg("Aviso: el receptor no es CIBSA (" + dte.receptor.rut + ").", false);
+    else facturaMsg("Factura cargada: folio " + dte.folio + " · " + dte.emisor.razon, false);
+    FC.ctx = facturaCtxDeDTE(dte);
+    renderFactura();
+  }
+  function facturaInput(labelTxt, value, on, attrs) {
+    const w = fe("label", "factura-f"); w.appendChild(fe("span", null, labelTxt));
+    const i = document.createElement("input"); i.type = "text"; i.value = (value != null ? value : "");
+    if (attrs && attrs.inputmode) i.inputMode = attrs.inputmode;
+    if (attrs && attrs.ph) i.placeholder = attrs.ph;
+    i.addEventListener("input", (e) => on(e.target.value));
+    w.appendChild(i); return w;
+  }
+  function facturaSelect(labelTxt, opts, value, on) {
+    const w = fe("label", "factura-f"); w.appendChild(fe("span", null, labelTxt));
+    const s = document.createElement("select");
+    opts.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; if (v === value) o.selected = true; s.appendChild(o); });
+    s.addEventListener("change", (e) => on(e.target.value));
+    w.appendChild(s); return w;
+  }
+  function renderFactura() {
+    const cont = $("facturaPanel"), res = $("facturaResumen");
+    if (res) res.innerHTML = "";
+    if (!cont) return; cont.innerHTML = "";
+    const ctx = FC.ctx; if (!ctx) return;
+
+    // --- Proveedor ---
+    const pv = fe("div", "factura-card"); pv.appendChild(fe("h3", "factura-h", "Proveedor"));
+    if (ctx.proveedor.match) {
+      pv.appendChild(fe("p", "muted small", "Registrado: " + ctx.proveedor.match.razon + " · " + ctx.proveedor.rut + (ctx.proveedor.match.nombreCorto ? " (" + ctx.proveedor.match.nombreCorto + ")" : "")));
+    } else {
+      pv.appendChild(fe("p", "factura-new", "Proveedor NUEVO — se creará en PROVEEDORES."));
+      const g = fe("div", "factura-grid");
+      g.appendChild(facturaInput("RUT", ctx.proveedor.rut, (v) => ctx.proveedor.rut = v));
+      g.appendChild(facturaInput("Razón Social", ctx.proveedor.razon, (v) => ctx.proveedor.razon = v));
+      g.appendChild(facturaInput("Nombre corto", ctx.proveedor.nombreCorto, (v) => ctx.proveedor.nombreCorto = v, { ph: "ej. IGENAR" }));
+      pv.appendChild(g);
+    }
+    cont.appendChild(pv);
+
+    // --- Ítems ---
+    ctx.items.forEach((it, i) => cont.appendChild(renderFacturaItem(it, i)));
+
+    if (ctx.manual) {
+      const add = fe("button", "btn-outline small", "+ Agregar ítem"); add.type = "button";
+      add.addEventListener("click", () => { ctx.items.push(facturaItemInit({ nombre: "", qty: 1 })); renderFactura(); });
+      cont.appendChild(add);
+    }
+    const rev = fe("button", "btn-primary factura-rev", "Revisar y confirmar →"); rev.type = "button";
+    rev.addEventListener("click", renderFacturaResumen);
+    cont.appendChild(rev);
+  }
+  function renderFacturaItem(it, idx) {
+    const card = fe("div", "factura-card factura-item");
+    const head = fe("div", "factura-item-head");
+    head.appendChild(fe("b", null, "Ítem " + (idx + 1) + (it.nombre ? ": " + it.nombre : "")));
+    card.appendChild(head);
+    const ctxLine = "código " + (it.codigo || "—") + " · " + (it.qty != null ? it.qty : "?") + " " + (it.unidadProveedor || "") +
+      " · lista " + (it.precioLista != null ? money(it.precioLista) : "—") +
+      (it.descPct != null ? " · desc " + it.descPct + "%" : "") +
+      (it.subDsctos && it.subDsctos.length ? " · subdsctos " + it.subDsctos.map((s) => s.tipo + s.valor).join(",") : "") +
+      " · monto " + (it.montoItem != null ? money(it.montoItem) : "—");
+    card.appendChild(fe("p", "muted small", ctxLine));
+
+    const modos = [["existente", "Producto existente"], ["nuevo", "Producto nuevo"], ["omitir", "Omitir"]];
+    const msel = facturaSelect("Qué hago con este ítem", modos, it.modo, (v) => { it.modo = v; renderFactura(); });
+    card.appendChild(msel);
+    if (it.match && it.modo === "existente") card.appendChild(fe("p", "muted small", "Sugerido por " + it.match.via + (it.match.score < 1 ? " (" + Math.round(it.match.score * 100) + "%)" : "") + " → " + granelNombre(it.match.prod)));
+
+    if (it.modo === "omitir") return card;
+
+    if (it.modo === "existente") {
+      const opts = granelActivos().map((p) => [p.sku || granelNombre(p), granelNombre(p) + (p.sku ? " · " + p.sku : "")]);
+      card.appendChild(facturaSelect("Producto del catálogo", opts, it.existenteSel, (v) => {
+        it.existenteSel = v; const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === v); it.llaveExistente = p ? (p.codMaterialBase || it.llaveExistente) : it.llaveExistente; renderFactura();
+      }));
+      card.appendChild(facturaInput("Llave de costo (CodMaterialBase)", it.llaveExistente, (v) => it.llaveExistente = v, { ph: "código del material" }));
+    } else { // nuevo
+      const g = fe("div", "factura-grid");
+      const P = it.prod;
+      const setSug = () => { P.sku = window.FacturaCIBSA.sugerirSKU(P); P.codMaterialBase = window.FacturaCIBSA.sugerirCodMaterialBase(P); };
+      g.appendChild(facturaInput("Categoría", P.categoria, (v) => P.categoria = v, { ph: "TELA / CARPA…" }));
+      g.appendChild(facturaInput("Tipo", P.tipo, (v) => P.tipo = v, { ph: "PVC / PE…" }));
+      g.appendChild(facturaInput("Variedad (estado comprado)", P.variedad, (v) => P.variedad = v, { ph: "ROLLO / DIMENSIONADA…" }));
+      g.appendChild(facturaInput("Formato", P.formato, (v) => P.formato = v, { ph: "M2X50…" }));
+      g.appendChild(facturaInput("Modelo", P.modelo, (v) => P.modelo = v));
+      g.appendChild(facturaInput("Color", P.color, (v) => P.color = v));
+      g.appendChild(facturaInput("Unidad CIBSA", P.unidad, (v) => P.unidad = v, { ph: "rollo / m2…" }));
+      g.appendChild(facturaSelect("Unidad mínima", [["UNITARIO", "UNITARIO"], ["GRANEL", "GRANEL"]], P.unidadMinima, (v) => P.unidadMinima = v));
+      g.appendChild(facturaInput("Ancho rollo (m)", P.anchoRollo, (v) => P.anchoRollo = v, { inputmode: "decimal" }));
+      g.appendChild(facturaInput("Rendimiento (estado comprado)", P.rendimiento, (v) => P.rendimiento = fnum(v), { inputmode: "decimal" }));
+      card.appendChild(g);
+      const sug = fe("button", "btn-outline small", "Sugerir SKU / CodMaterialBase"); sug.type = "button";
+      sug.addEventListener("click", () => { setSug(); renderFactura(); });
+      card.appendChild(sug);
+      const g2 = fe("div", "factura-grid");
+      g2.appendChild(facturaInput("SKU", P.sku, (v) => P.sku = v));
+      g2.appendChild(facturaInput("CodMaterialBase", P.codMaterialBase, (v) => P.codMaterialBase = v));
+      card.appendChild(g2);
+
+      // Estados de venta (hijos) que derivan del comprado
+      const estWrap = fe("div", "factura-estados");
+      estWrap.appendChild(fe("p", "factura-sub", "Estados de venta derivados (opcional): comparten el CodMaterialBase y su costo; cada uno con su rendimiento."));
+      it.estados.forEach((es, ei) => {
+        const row = fe("div", "factura-grid factura-estado");
+        row.appendChild(facturaInput("Variedad", es.variedad, (v) => es.variedad = v, { ph: "M.LINEAL / CONFECCION" }));
+        row.appendChild(facturaInput("Unidad", es.unidad, (v) => es.unidad = v, { ph: "m / m2…" }));
+        row.appendChild(facturaSelect("U. mínima", [["GRANEL", "GRANEL"], ["UNITARIO", "UNITARIO"]], es.unidadMinima, (v) => es.unidadMinima = v));
+        row.appendChild(facturaInput("Rendimiento", es.rendimiento, (v) => es.rendimiento = fnum(v), { inputmode: "decimal" }));
+        const del = fe("button", "factura-estado-del", "✕"); del.type = "button"; del.title = "Quitar estado";
+        del.addEventListener("click", () => { it.estados.splice(ei, 1); renderFactura(); });
+        row.appendChild(del);
+        estWrap.appendChild(row);
+      });
+      const addEs = fe("button", "btn-outline small", "+ Estado de venta"); addEs.type = "button";
+      addEs.addEventListener("click", () => { it.estados.push({ variedad: "", unidad: "", unidadMinima: "GRANEL", rendimiento: null }); renderFactura(); });
+      estWrap.appendChild(addEs);
+      card.appendChild(estWrap);
+    }
+
+    // Costo efectivo (lo fija el usuario; default = neto unitario de la factura)
+    const cw = fe("div", "factura-costo");
+    cw.appendChild(facturaInput("Costo efectivo (por 1 unidad comprada)", it.costo, (v) => it.costo = fnum(v), { inputmode: "decimal" }));
+    cw.appendChild(fe("span", "muted small", "Sugerido: " + (it.costoSugerido != null ? money(Math.round(it.costoSugerido)) : "—") + " (neto unitario de la factura)"));
+    card.appendChild(cw);
+    return card;
+  }
+  // Construye el plan de escritura + detecta factores faltantes. Devuelve {prov, granel, costos, factorReq}.
+  function facturaPlan() {
+    const F = window.FacturaCIBSA, ctx = FC.ctx;
+    const plan = { prov: [], granel: [], costos: [], factorReq: [], notas: [] };
+    if (ctx.proveedor.crear && ctx.proveedor.rut) plan.prov.push({ rut: ctx.proveedor.rut, razon: ctx.proveedor.razon, nombreCorto: ctx.proveedor.nombreCorto });
+    const provRUT = ctx.proveedor.rut, provCorto = ctx.proveedor.nombreCorto || (ctx.proveedor.match ? ctx.proveedor.match.nombreCorto : "");
+    const factorKey = (c, v, u) => F.norm(c) + "|" + F.norm(v) + "|" + F.norm(u);
+    const reqVistos = {};
+    const pedirFactor = (cat, vari, umin) => {
+      if (F.factorBuscar(FC.fact, cat, vari, umin)) return;
+      const k = factorKey(cat, vari, umin); if (reqVistos[k]) return; reqVistos[k] = true;
+      plan.factorReq.push({ categoria: cat, variedad: vari, unidadMinima: umin });
+    };
+    ctx.items.forEach((it) => {
+      if (it.modo === "omitir") return;
+      if (it.modo === "existente") {
+        plan.costos.push({ llave: it.llaveExistente, fecha: ctx.fecha, costo: it.costo, unidadCompra: it.unidadProveedor, proveedorRUT: provRUT, numFactura: ctx.folio, nota: it.nombre });
+        return;
+      }
+      // nuevo
+      const P = it.prod, cmb = P.codMaterialBase || P.sku || it.nombre;
+      const base = Object.assign({}, P, {
+        codMaterialBase: cmb, parent: "", proveedor: provCorto, proveedorCorto: provCorto, proveedorRUT: provRUT,
+        nombreProveedor: it.nombre, unidadProveedor: it.unidadProveedor, fecha: ctx.fecha,
+      });
+      plan.granel.push(F.filaGranel(base));
+      pedirFactor(P.categoria, P.variedad, P.unidadMinima);
+      it.estados.forEach((es) => {
+        const hijo = Object.assign({}, base, {
+          variedad: es.variedad, unidad: es.unidad, unidadMinima: es.unidadMinima, rendimiento: es.rendimiento,
+          parent: P.sku, sku: (P.sku || cmb) + "-" + F.norm(es.variedad).replace(/[^a-z0-9]/g, "").toUpperCase().slice(0, 4),
+        });
+        plan.granel.push(F.filaGranel(hijo));
+        pedirFactor(P.categoria, es.variedad, es.unidadMinima);
+      });
+      plan.costos.push({ llave: cmb, fecha: ctx.fecha, costo: it.costo, unidadCompra: it.unidadProveedor, proveedorRUT: provRUT, numFactura: ctx.folio, nota: it.nombre });
+    });
+    return plan;
+  }
+  function renderFacturaResumen() {
+    const res = $("facturaResumen"); if (!res) return; res.innerHTML = "";
+    const F = window.FacturaCIBSA, plan = facturaPlan();
+    const box = fe("div", "factura-card factura-resumen");
+    box.appendChild(fe("h3", "factura-h", "Resumen — revisa antes de fijar"));
+
+    const linea = (t) => box.appendChild(fe("p", "factura-res-l", t));
+    if (plan.prov.length) linea("Proveedor nuevo → PROVEEDORES: " + plan.prov.map((p) => p.razon + " (" + p.rut + ")").join("; "));
+    if (plan.granel.length) linea("Productos/estados nuevos → GRANEL: " + plan.granel.length + " fila(s).");
+    linea("Costos → COSTOS: " + plan.costos.length + " fila(s).");
+
+    // Factores faltantes: input por combinación (el usuario fija el valor; default 1)
+    const factorInputs = [];
+    if (plan.factorReq.length) {
+      const fwrap = fe("div", "factura-factores");
+      fwrap.appendChild(fe("p", "factura-sub", "Factores nuevos (margen) que faltan en FACTOR — fija cada uno (default 1):"));
+      plan.factorReq.forEach((fr) => {
+        const row = fe("div", "factura-grid factura-estado");
+        row.appendChild(fe("span", "factura-fk", fr.categoria + " · " + fr.variedad + " · " + fr.unidadMinima));
+        const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = "1"; inp.className = "factura-fnum";
+        row.appendChild(inp); fwrap.appendChild(row);
+        factorInputs.push({ fr: fr, inp: inp });
+      });
+      box.appendChild(fwrap);
+    }
+
+    const msg = fe("p", "factura-res-msg muted small", "");
+    const confirm = fe("button", "btn-primary", "✓ Confirmar y escribir en la base"); confirm.type = "button";
+    confirm.addEventListener("click", async () => {
+      confirm.disabled = true; msg.textContent = "Escribiendo…"; msg.style.color = "";
+      const factores = factorInputs.map((x) => ({ categoria: x.fr.categoria, variedad: x.fr.variedad, unidadMinima: x.fr.unidadMinima, factor: (fnum(x.inp.value) != null ? fnum(x.inp.value) : 1) }));
+      try {
+        await facturaCommit(plan, factores);
+        msg.style.color = ""; msg.textContent = "✓ Listo. Se escribió en el Sheet. Recuerda que el precio se calculará por fórmula cuando esté esa fase activa.";
+        FC.ctx = null; const p = $("facturaPanel"); if (p) p.innerHTML = ""; FC.loaded = false;
+      } catch (e) { confirm.disabled = false; msg.style.color = "var(--danger,#c0392b)"; msg.textContent = "Error al escribir: " + (e && e.message ? e.message : e); }
+    });
+    const volver = fe("button", "btn-outline", "← Volver a editar"); volver.type = "button";
+    volver.addEventListener("click", () => { res.innerHTML = ""; });
+    box.appendChild(confirm); box.appendChild(volver); box.appendChild(msg);
+    res.appendChild(box);
+    try { box.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {}
+  }
+  async function facturaCommit(plan, factores) {
+    const tok = window.AuthCIBSA && window.AuthCIBSA.getToken ? window.AuthCIBSA.getToken() : null;
+    if (!tok) throw new Error("Sesión expirada. Inicia sesión de nuevo.");
+    const F = window.FacturaCIBSA, S = window.SheetsCIBSA;
+    if (plan.prov.length) await S.anexarHoja(tok, CFG.HOJA_PROVEEDORES, plan.prov.map(F.filaProveedor));
+    if (plan.granel.length) await S.anexarHoja(tok, CFG.HOJA_GRANEL_MAESTRO, plan.granel);
+    if (factores && factores.length) await S.anexarHoja(tok, CFG.HOJA_FACTOR, factores.map(F.filaFactor));
+    if (plan.costos.length) await S.anexarHoja(tok, CFG.HOJA_COSTOS, plan.costos.map(F.filaCosto));
+  }
+  { const fi = $("facturaFile"); if (fi) fi.addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => facturaDesdeXML(String(rd.result)); rd.readAsText(f); e.target.value = ""; }); }
+  { const bm = $("facturaManual"); if (bm) bm.addEventListener("click", async () => { await facturaEnsure(); FC.ctx = facturaCtxManual(); facturaMsg("Carga manual.", false); renderFactura(); }); }
 
   // ---------- Inicio ----------
   (function init() {

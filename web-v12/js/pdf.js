@@ -669,7 +669,7 @@
     });
     // Productos a granel (sin proveedor) — una fila por línea
     (datos.granel || []).forEach((g) => {
-      itemRow(String(g.cantidad), [["Producto a granel", true], [g.detalle, false]],
+      itemRow(String(g.cantidad), [[g.detalle, false]],
         g.precioU, money(g.total));
     });
     // Mínimo de producción de taller (escalonado por unidad): completa el neto confeccionado.
@@ -1053,7 +1053,7 @@
     });
     // Productos a granel (sin proveedor)
     (datos.granel || []).forEach((g) => {
-      itemRow(String(g.cantidad), [["Producto a granel", true], [g.detalle, false]], g.precioU, money(g.total));
+      itemRow(String(g.cantidad), [[g.detalle, false]], g.precioU, money(g.total));
     });
     // Mínimo de producción (escalonado por unidad): el monto ya viene calculado desde la app.
     const granelT = (datos.granel || []).reduce((s, g) => s + g.total, 0);

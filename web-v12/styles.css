@@ -569,3 +569,29 @@ body.no-plano .pz-descargar { display: none !important; }
 .pct { font-weight: 700; margin: 4px 0; }
 .done .check { width: 64px; height: 64px; border-radius: 50%; background: #1f9d55; color: #fff; font-size: 34px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin: 8px auto 4px; }
 .done-text { color: #1f9d55; font-weight: 700; margin: 2px 0; }
+
+/* --- Carga de facturas (DTE) --- */
+.factura-entry { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.file-btn { cursor: pointer; display: inline-flex; align-items: center; }
+.factura-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 10px 0; background: var(--field); }
+.factura-card.factura-item { border-left: 3px solid var(--accent, #3b82f6); }
+.factura-h { margin: 0 0 6px; font-size: 15px; }
+.factura-item-head { margin-bottom: 4px; }
+.factura-new { color: #b45309; font-weight: 600; margin: 4px 0; }
+.factura-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 6px 0; }
+.factura-f { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.factura-f input, .factura-f select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg, #fff); color: var(--text); font-size: 13px; }
+.factura-sub { font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+.factura-estados { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 6px; }
+.factura-estado { grid-template-columns: repeat(4, minmax(0,1fr)) auto; align-items: end; }
+.factura-estado-del, .factura-fnum { align-self: center; }
+.factura-estado-del { border: none; background: transparent; color: #c0392b; font-size: 16px; cursor: pointer; }
+.factura-costo { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+.factura-resumen { border: 1px solid var(--accent, #3b82f6); }
+.factura-res-l { margin: 4px 0; font-size: 13px; }
+.factura-factores { margin: 8px 0; }
+.factura-fk { font-size: 12px; align-self: center; }
+.factura-fnum { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; width: 80px; background: var(--bg, #fff); color: var(--text); }
+.factura-rev { margin-top: 10px; }
+.factura-res-msg { margin-top: 8px; }
+@media (max-width: 560px) { .factura-grid { grid-template-columns: 1fr; } .factura-estado { grid-template-columns: 1fr 1fr; } }

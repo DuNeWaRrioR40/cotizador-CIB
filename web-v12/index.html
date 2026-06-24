@@ -152,6 +152,19 @@
       <div id="granelCompare" class="granel-compare"></div>
     </div>
 
+    <!-- Carga de facturas (DTE) → costos / proveedores -->
+    <div id="wFactura" class="hidden">
+      <h2 class="section">Carga de facturas (costos)</h2>
+      <p class="muted small">Sube el XML de una factura electrónica (DTE) o usa carga manual. La App lee el proveedor y los ítems, te pregunta solo lo que falta, y antes de escribir en la base te muestra un <b>resumen para confirmar</b>. No tocas las tablas a mano.</p>
+      <div class="factura-entry">
+        <label class="btn-outline file-btn">📄 Cargar XML de factura<input id="facturaFile" type="file" accept=".xml,text/xml,application/xml" class="hidden" /></label>
+        <button id="facturaManual" type="button" class="btn-outline">✍️ Carga manual</button>
+        <span id="facturaMsg" class="muted small"></span>
+      </div>
+      <div id="facturaPanel"></div>
+      <div id="facturaResumen"></div>
+    </div>
+
     <h2 class="section">Producto</h2>
 
     <!-- Tipo de producto (solo formal) -->
@@ -447,6 +460,8 @@
   <script src="js/sketch.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/sheets.js"></script>
+  <script src="js/dte.js"></script>
+  <script src="js/factura.js"></script>
   <script src="js/pdf.js"></script>
   <script src="js/app.js"></script>
 </body>
