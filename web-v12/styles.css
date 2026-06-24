@@ -582,7 +582,7 @@ body.no-plano .pz-descargar { display: none !important; }
 .factura-f { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
 .factura-f input, .factura-f select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg, #fff); color: var(--text); font-size: 13px; }
 .factura-sub { font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
-.factura-estados { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 6px; }
+.factura-estados, .factura-colores { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 6px; }
 .factura-estado { grid-template-columns: repeat(4, minmax(0,1fr)) auto; align-items: end; }
 .factura-estado-del, .factura-fnum { align-self: center; }
 .factura-estado-del { border: none; background: transparent; color: #c0392b; font-size: 16px; cursor: pointer; }
@@ -605,3 +605,8 @@ body.no-plano .pz-descargar { display: none !important; }
 .factura-merge { border: 1px solid #6d28d9; }
 .factura-merge .factura-h { color: #6d28d9; }
 .factura-merge-out { margin-top: 8px; }
+
+/* Ejemplos bajo los campos + acciones del panel de facturas */
+.factura-ej { font-size: 11px; color: var(--muted); margin-top: 1px; font-style: italic; }
+.factura-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+.factura-warn { color: #c0392b; font-size: 11px; align-self: center; font-weight: 600; }

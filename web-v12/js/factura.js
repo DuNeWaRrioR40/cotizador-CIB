@@ -94,9 +94,26 @@
 
   // ---- Sugerencias ----
   function abbr(s, n) { return norm(s).replace(/[^a-z0-9]/g, "").slice(0, n || 3).toUpperCase(); }
+  // ¿El color trae varios valores ("NEGRO / BLANCO", "AZUL, ROJO", "X Y Z")? Entonces es un producto
+  // multicolor al MISMO precio → el color NO entra al SKU (un solo SKU, un solo costo).
+  function colorMulti(c) { return /[\/,;]| y /i.test(String(c || "")); }
+  // Incluye el COLOR en el SKU SOLO si es un único color (caso en que el color cambia el precio: cada color
+  // queda con su propio SKU y su propio costo, sin chocar). Si hay varios colores (mismo precio), se omite.
   function sugerirSKU(p) {
-    return [abbr(p.categoria, 3), abbr(p.tipo, 2), abbr(p.variedad, 3), abbr(p.formato, 6), abbr(p.modelo, 6), abbr(p.proveedorCorto || p.proveedor, 3)]
+    const col = colorMulti(p.color) ? "" : abbr(p.color, 4);
+    return [abbr(p.categoria, 3), abbr(p.tipo, 2), abbr(p.variedad, 3), abbr(p.formato, 6), abbr(p.modelo, 6), col, abbr(p.proveedorCorto || p.proveedor, 3)]
       .filter(Boolean).join("-");
+  }
+  // Une colores en una lista " / " sin duplicar (acento-insensible). unirColores("NEGRO", "negro", "BLANCO") → "NEGRO / BLANCO".
+  function unirColores() {
+    const out = [], vistos = {};
+    for (let i = 0; i < arguments.length; i++) {
+      String(arguments[i] || "").split(/[\/,;]| y /i).forEach((c) => {
+        const t = c.trim(); if (!t) return; const k = norm(t);
+        if (!vistos[k]) { vistos[k] = 1; out.push(t); }
+      });
+    }
+    return out.join(" / ");
   }
   function sugerirCodMaterialBase(p) {
     return [abbr(p.proveedorCorto || p.proveedor, 3), abbr(p.modelo || p.formato, 6), abbr(p.formato, 6)].filter(Boolean).join("-");
@@ -170,7 +187,7 @@
   const API = {
     norm, soloDigitosRUT, similitud, nombreCatalogo, aliasLista, colLetter, esMaestro, planFusion,
     matchProveedor, matchItem, candidatos, aliasInicial, factorBuscar,
-    sugerirSKU, sugerirCodMaterialBase, hoyCorta, fechaFactura,
+    sugerirSKU, sugerirCodMaterialBase, colorMulti, unirColores, hoyCorta, fechaFactura,
     filaProveedor, filaCosto, filaFactor, filaGranel,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;

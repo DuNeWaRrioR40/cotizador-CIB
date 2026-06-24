@@ -5128,7 +5128,7 @@
   })();
 
   // ---------- Carga de facturas (DTE) → costos / proveedores / productos ----------
-  const FC = { prov: [], fact: [], loaded: false, ctx: null };
+  const FC = { prov: [], fact: [], unid: [], loaded: false, ctx: null };
   function fe(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
   function fnum(v) { const r = window.CalcCIBSA ? window.CalcCIBSA.evalExpr(v) : parseFloat(v); return (r != null && !isNaN(r)) ? r : null; }
   function facturaMsg(t, err) { const m = $("facturaMsg"); if (m) { m.textContent = t || ""; m.style.color = err ? "var(--danger,#c0392b)" : ""; } }
@@ -5138,6 +5138,7 @@
     if (!tok) return;
     try { FC.prov = await window.SheetsCIBSA.cargarProveedores(tok); } catch (e) { FC.prov = []; }
     try { FC.fact = await window.SheetsCIBSA.cargarFactores(tok); } catch (e) { FC.fact = []; }
+    try { FC.unid = await window.SheetsCIBSA.cargarUnidades(tok); } catch (e) { FC.unid = []; }
     FC.loaded = true;
   }
   function facturaItemInit(src) {
@@ -5158,7 +5159,14 @@
         sku: "", codMaterialBase: "",
       },
       estados: [],
+      absorbidos: [],   // otras líneas de la MISMA factura (mismo producto, otro color/precio igual) fundidas aquí
+      absorbidoEn: null, // si esta línea fue fundida en otra, índice de la línea destino
     };
+  }
+  // Color efectivo del producto = color propio + colores de las líneas absorbidas (sin duplicar).
+  function facturaColorEfectivo(it) {
+    const cols = [it.prod ? it.prod.color : ""].concat((it.absorbidos || []).map((a) => a.color));
+    return window.FacturaCIBSA.unirColores.apply(null, cols);
   }
   function facturaCtxDeDTE(dte) {
     const F = window.FacturaCIBSA;
@@ -5193,8 +5201,11 @@
     const i = document.createElement("input"); i.type = "text"; i.value = (value != null ? value : "");
     if (attrs && attrs.inputmode) i.inputMode = attrs.inputmode;
     if (attrs && attrs.ph) i.placeholder = attrs.ph;
+    if (attrs && attrs.ej) i.title = "Ejemplos: " + attrs.ej;
     i.addEventListener("input", (e) => on(e.target.value));
-    w.appendChild(i); return w;
+    w.appendChild(i);
+    if (attrs && attrs.ej) w.appendChild(fe("span", "factura-ej", "ej.: " + attrs.ej));   // ejemplos bajo el campo
+    return w;
   }
   function facturaSelect(labelTxt, opts, value, on) {
     const w = fe("label", "factura-f"); w.appendChild(fe("span", null, labelTxt));
@@ -5202,6 +5213,13 @@
     opts.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; if (v === value) o.selected = true; s.appendChild(o); });
     s.addEventListener("change", (e) => on(e.target.value));
     w.appendChild(s); return w;
+  }
+  // Unidad RESTRINGIDA a la lista UNIDADES (FACTOR!G:I). Si la lista no cargó, cae a texto con ejemplos.
+  function facturaSelectUnidad(label, value, on) {
+    const lista = FC.unid || [];
+    if (!lista.length) return facturaInput(label, value, on, { ej: "m · m2 · kg · gal · un (deben estar en la lista UNIDADES)" });
+    const opts = [["", "— (sin unidad) —"]].concat(lista.map((u) => [u.codigo, u.codigo + (u.nombre ? " · " + u.nombre : "")]));
+    return facturaSelect(label, opts, value, on);
   }
   function renderFactura() {
     const cont = $("facturaPanel"), res = $("facturaResumen");
@@ -5231,9 +5249,20 @@
       add.addEventListener("click", () => { ctx.items.push(facturaItemInit({ nombre: "", qty: 1 })); renderFactura(); });
       cont.appendChild(add);
     }
+    const acc = fe("div", "factura-acciones");
     const rev = fe("button", "btn-primary factura-rev", "Revisar y confirmar →"); rev.type = "button";
     rev.addEventListener("click", renderFacturaResumen);
-    cont.appendChild(rev);
+    const canc = fe("button", "btn-outline", "✕ Cancelar"); canc.type = "button";
+    canc.addEventListener("click", () => { if (confirm("¿Cancelar esta carga? Se descarta lo no confirmado.")) facturaCancelar(); });
+    acc.appendChild(rev); acc.appendChild(canc);
+    cont.appendChild(acc);
+  }
+  // Descarta la carga actual y vuelve al estado inicial (selección de XML / manual).
+  function facturaCancelar() {
+    FC.ctx = null;
+    const p = $("facturaPanel"); if (p) p.innerHTML = "";
+    const r = $("facturaResumen"); if (r) r.innerHTML = "";
+    facturaMsg("Carga cancelada.", false);
   }
   function renderFacturaItem(it, idx) {
     const card = fe("div", "factura-card factura-item");
@@ -5252,7 +5281,19 @@
     card.appendChild(msel);
     if (it.match && it.modo === "existente") card.appendChild(fe("p", "muted small", "Sugerido por " + it.match.via + (it.match.score < 1 ? " (" + Math.round(it.match.score * 100) + "%)" : "") + " → " + granelNombre(it.match.prod)));
 
-    if (it.modo === "omitir") return card;
+    if (it.modo === "omitir") {
+      if (it.absorbidoEn != null) {
+        const nota = fe("p", "muted small", "↳ Sumado como color del Ítem " + (it.absorbidoEn + 1) + " (mismo producto). ");
+        const und = fe("button", "btn-outline small", "Separar"); und.type = "button"; und.title = "Volver a tratarlo como ítem propio";
+        und.addEventListener("click", () => {
+          const dst = FC.ctx.items[it.absorbidoEn];
+          if (dst && dst.absorbidos) dst.absorbidos = dst.absorbidos.filter((a) => a.idx !== idx);
+          it.absorbidoEn = null; it.modo = it.match ? "existente" : "nuevo"; renderFactura();
+        });
+        nota.appendChild(und); card.appendChild(nota);
+      }
+      return card;
+    }
 
     if (it.modo === "existente") {
       const opts = granelActivos().map((p) => [p.sku || granelNombre(p), granelNombre(p) + (p.sku ? " · " + p.sku : "")]);
@@ -5277,37 +5318,76 @@
         });
         card.appendChild(dup);
       }
+      // Mismo producto en OTRA línea de esta misma factura (p. ej. mismo velcro, distinto color).
+      const Fz = window.FacturaCIBSA;
+      const hermanos = (FC.ctx.items || []).map((o, oi) => ({ o: o, oi: oi }))
+        .filter((x) => x.oi !== idx && x.o.modo !== "omitir" && it.nombre && Fz.similitud(it.nombre, x.o.nombre) >= 0.5);
+      if (hermanos.length) {
+        const dup2 = fe("div", "factura-dup");
+        dup2.appendChild(fe("p", "factura-dup-h", "↔ Hay otras líneas de esta factura que parecen el MISMO producto (p. ej. el mismo velcro en otro color). Si el color NO cambia el precio, SÚMALAS aquí: se vuelven un solo producto (un SKU) y los colores se adicionan. Si el color SÍ cambia el precio, déjalas como ítems nuevos (cada SKU lleva su color)."));
+        hermanos.forEach((x) => {
+          const row = fe("div", "factura-dup-row");
+          row.appendChild(fe("span", null, "Ítem " + (x.oi + 1) + ": " + x.o.nombre));
+          const sum = fe("button", "btn-outline small", "➕ Sumar aquí (otro color)"); sum.type = "button";
+          sum.addEventListener("click", () => {
+            it.absorbidos.push({ idx: x.oi, nombre: x.o.nombre, color: (x.o.prod && x.o.prod.color) || "" });
+            x.o.modo = "omitir"; x.o.absorbidoEn = idx; setSug(); renderFactura();
+          });
+          row.appendChild(sum);
+          dup2.appendChild(row);
+        });
+        card.appendChild(dup2);
+      }
       const g = fe("div", "factura-grid");
       const P = it.prod;
-      const setSug = () => { P.sku = window.FacturaCIBSA.sugerirSKU(P); P.codMaterialBase = window.FacturaCIBSA.sugerirCodMaterialBase(P); };
-      g.appendChild(facturaInput("Categoría", P.categoria, (v) => P.categoria = v, { ph: "TELA / CARPA…" }));
-      g.appendChild(facturaInput("Tipo", P.tipo, (v) => P.tipo = v, { ph: "PVC / PE…" }));
-      g.appendChild(facturaInput("Variedad (estado comprado)", P.variedad, (v) => P.variedad = v, { ph: "ROLLO / DIMENSIONADA…" }));
-      g.appendChild(facturaInput("Formato", P.formato, (v) => P.formato = v, { ph: "M2X50…" }));
-      g.appendChild(facturaInput("Modelo", P.modelo, (v) => P.modelo = v));
-      g.appendChild(facturaInput("Color", P.color, (v) => P.color = v));
-      g.appendChild(facturaInput("Unidad CIBSA", P.unidad, (v) => P.unidad = v, { ph: "rollo / m2…" }));
-      g.appendChild(facturaSelect("Unidad mínima", [["UNITARIO", "UNITARIO"], ["GRANEL", "GRANEL"]], P.unidadMinima, (v) => P.unidadMinima = v));
-      g.appendChild(facturaInput("Ancho rollo (m)", P.anchoRollo, (v) => P.anchoRollo = v, { inputmode: "decimal" }));
-      g.appendChild(facturaInput("Rendimiento (estado comprado)", P.rendimiento, (v) => P.rendimiento = fnum(v), { inputmode: "decimal" }));
+      const setSug = () => { const eff = Object.assign({}, P, { color: facturaColorEfectivo(it) }); P.sku = window.FacturaCIBSA.sugerirSKU(eff); P.codMaterialBase = window.FacturaCIBSA.sugerirCodMaterialBase(eff); };
+      g.appendChild(facturaInput("Categoría", P.categoria, (v) => P.categoria = v, { ph: "TELA / CARPA…", ej: "TELA · CARPA · PEGAMENTO · ACCESORIO · CINTA" }));
+      g.appendChild(facturaInput("Tipo", P.tipo, (v) => P.tipo = v, { ph: "PVC / PE…", ej: "PVC · PE · HDPE · NYLON" }));
+      g.appendChild(facturaInput("Variedad (estado comprado)", P.variedad, (v) => P.variedad = v, { ph: "ROLLO / DIMENSIONADA…", ej: "ROLLO · M.LINEAL · DIMENSIONADA · TARRO · UNIDAD" }));
+      g.appendChild(facturaInput("Formato", P.formato, (v) => P.formato = v, { ph: "M2X50…", ej: "M2X50 (2m×50m) · M1,52X50 · GAL025 (1/4 galón)" }));
+      g.appendChild(facturaInput("Modelo", P.modelo, (v) => P.modelo = v, { ej: "G200 · COBKK10000 · NAUTICO600 · MEISTER" }));
+      g.appendChild(facturaInput("Color", P.color, (v) => P.color = v, { ej: "AZUL MARINO · BLANCO · varios: NEGRO / BLANCO", title: "Si hay varios colores al MISMO precio, sepáralos con / (no entran al SKU). Si el color cambia el precio, deja UN color (sí entra al SKU)." }));
+      g.appendChild(facturaSelectUnidad("Unidad (medida del proveedor, de la lista)", P.unidad, (v) => P.unidad = v));
+      g.appendChild(facturaSelect("Unidad mínima", [["UNITARIO", "UNITARIO"], ["GRANEL", "GRANEL"], ["CONFECCION", "CONFECCION"]], P.unidadMinima, (v) => P.unidadMinima = v));
+      g.appendChild(facturaInput("Ancho rollo (m)", P.anchoRollo, (v) => P.anchoRollo = v, { inputmode: "decimal", ej: "2 · 1,52 · 3 (en metros)" }));
+      g.appendChild(facturaInput("Rendimiento (estado comprado)", P.rendimiento, (v) => P.rendimiento = fnum(v), { inputmode: "decimal", ej: "1 (se vende entero) · 50 (m por rollo) · 100" }));
       card.appendChild(g);
+      // Colores adicionales: líneas de la misma factura sumadas a este producto (mismo precio → un solo SKU).
+      if (it.absorbidos && it.absorbidos.length) {
+        const ac = fe("div", "factura-colores");
+        ac.appendChild(fe("p", "factura-sub", "Colores adicionales (otras líneas de esta factura, mismo producto y precio). Se adicionan como colores; NO entran al SKU. Color combinado: " + (facturaColorEfectivo(it) || "—")));
+        it.absorbidos.forEach((a, ai) => {
+          const row = fe("div", "factura-grid factura-estado");
+          row.appendChild(facturaInput("Color (Ítem " + (a.idx + 1) + ")", a.color, (v) => { a.color = v; setSug(); }, { ej: "BLANCO · GRIS", title: a.nombre }));
+          const del = fe("button", "factura-estado-del", "✕"); del.type = "button"; del.title = "Separar: volver a tratarla como ítem propio";
+          del.addEventListener("click", () => {
+            const orig = FC.ctx.items[a.idx];
+            if (orig) { orig.modo = orig.match ? "existente" : "nuevo"; orig.absorbidoEn = null; }
+            it.absorbidos.splice(ai, 1); setSug(); renderFactura();
+          });
+          row.appendChild(del);
+          ac.appendChild(row);
+        });
+        card.appendChild(ac);
+      }
       const sug = fe("button", "btn-outline small", "Sugerir SKU / CodMaterialBase"); sug.type = "button";
       sug.addEventListener("click", () => { setSug(); renderFactura(); });
       card.appendChild(sug);
       const g2 = fe("div", "factura-grid");
-      g2.appendChild(facturaInput("SKU", P.sku, (v) => P.sku = v));
-      g2.appendChild(facturaInput("CodMaterialBase", P.codMaterialBase, (v) => P.codMaterialBase = v));
+      g2.appendChild(facturaInput("SKU", P.sku, (v) => P.sku = v, { ej: "TEL-PVC-ROL-COBKK10000 · PEG-PVC-TAR-GAL025-MEISTER-MAD" }));
+      g2.appendChild(facturaInput("CodMaterialBase", P.codMaterialBase, (v) => P.codMaterialBase = v, { ej: "informativo (la llave del costo es el SKU)" }));
       card.appendChild(g2);
 
       // Estados de venta (hijos) que derivan del comprado
       const estWrap = fe("div", "factura-estados");
-      estWrap.appendChild(fe("p", "factura-sub", "Estados de venta derivados (opcional): comparten el CodMaterialBase y su costo; cada uno con su rendimiento."));
+      estWrap.appendChild(fe("p", "factura-sub", "Estados de venta DERIVADOS (distintos al comprado de arriba). Aquí va lo que se fracciona/transforma: p. ej. M.LINEAL para vender por metro (U.mín GRANEL) o para confección (U.mín CONFECCION). Cada uno deriva del costo del comprado vía Parent, con su propio rendimiento. NO repitas aquí la variedad comprada."));
       it.estados.forEach((es, ei) => {
         const row = fe("div", "factura-grid factura-estado");
-        row.appendChild(facturaInput("Variedad", es.variedad, (v) => es.variedad = v, { ph: "M.LINEAL / CONFECCION" }));
-        row.appendChild(facturaInput("Unidad", es.unidad, (v) => es.unidad = v, { ph: "m / m2…" }));
-        row.appendChild(facturaSelect("U. mínima", [["GRANEL", "GRANEL"], ["UNITARIO", "UNITARIO"]], es.unidadMinima, (v) => es.unidadMinima = v));
-        row.appendChild(facturaInput("Rendimiento", es.rendimiento, (v) => es.rendimiento = fnum(v), { inputmode: "decimal" }));
+        row.appendChild(facturaInput("Variedad", es.variedad, (v) => es.variedad = v, { ph: "M.LINEAL…", ej: "M.LINEAL · CONFECCION · SALDO (≠ a la comprada)" }));
+        if (es.variedad && window.FacturaCIBSA.norm(es.variedad) === window.FacturaCIBSA.norm(P.variedad)) row.appendChild(fe("span", "factura-warn", "⚠ repite la variedad comprada"));
+        row.appendChild(facturaSelectUnidad("Unidad", es.unidad, (v) => es.unidad = v));
+        row.appendChild(facturaSelect("U. mínima", [["GRANEL", "GRANEL"], ["CONFECCION", "CONFECCION"], ["UNITARIO", "UNITARIO"]], es.unidadMinima, (v) => es.unidadMinima = v));
+        row.appendChild(facturaInput("Rendimiento", es.rendimiento, (v) => es.rendimiento = fnum(v), { inputmode: "decimal", ej: "metros por rollo (50 · 100)" }));
         const del = fe("button", "factura-estado-del", "✕"); del.type = "button"; del.title = "Quitar estado";
         del.addEventListener("click", () => { it.estados.splice(ei, 1); renderFactura(); });
         row.appendChild(del);
@@ -5323,6 +5403,27 @@
     const cw = fe("div", "factura-costo");
     cw.appendChild(facturaInput("Costo efectivo (por 1 unidad comprada)", it.costo, (v) => it.costo = fnum(v), { inputmode: "decimal" }));
     cw.appendChild(fe("span", "muted small", "Sugerido: " + (it.costoSugerido != null ? money(Math.round(it.costoSugerido)) : "—") + " (neto unitario de la factura)"));
+    // Aviso de unidad: si la factura tarifa por fracción (Qty>1, p. ej. 40 metros) pero tu base es el PACK
+    // entero (1 ROLLO), el costo de la base es la LÍNEA COMPLETA (Qty × neto), y el rendimiento del estado
+    // que fracciona = Qty. Esto evita dividir dos veces y que el precio salga Qty× más chico.
+    const qty = (it.qty != null && !isNaN(it.qty)) ? Number(it.qty) : null;
+    if (qty && qty > 1 && it.costoSugerido != null && it.modo === "nuevo") {
+      const lineaTotal = Math.round(it.costoSugerido * qty);
+      const av = fe("div", "factura-costo-aviso");
+      av.appendChild(fe("p", "muted small", "Línea completa: " + money(lineaTotal) + "  (= " + qty + " × " + money(Math.round(it.costoSugerido)) + "). Si tu base es el PACK entero (p. ej. 1 ROLLO de " + qty + "), usa el costo de la línea completa y pon rendimiento = " + qty + " en los estados que fraccionan (M.LINEAL)."));
+      const useFull = fe("button", "btn-outline small", "Usar costo de la línea completa (" + money(lineaTotal) + ") y rendimiento " + qty); useFull.type = "button";
+      useFull.addEventListener("click", () => {
+        it.costo = lineaTotal;
+        // a los estados que fraccionan (variedad ≠ a la comprada) con rendimiento vacío o 1, les sugiere Qty.
+        (it.estados || []).forEach((es) => {
+          const frac = es.variedad && window.FacturaCIBSA.norm(es.variedad) !== window.FacturaCIBSA.norm(it.prod.variedad);
+          if (frac && (es.rendimiento == null || es.rendimiento === "" || Number(es.rendimiento) === 1)) es.rendimiento = qty;
+        });
+        renderFactura();
+      });
+      av.appendChild(useFull);
+      cw.appendChild(av);
+    }
     card.appendChild(cw);
     return card;
   }
@@ -5347,10 +5448,15 @@
         return;
       }
       // nuevo: el COSTO se cuelga del SKU; el alias guarda nombre + código del proveedor.
-      const P = it.prod, skuCosto = P.sku || it.nombre, cmb = P.codMaterialBase || P.sku || it.nombre;
+      // Color efectivo = color propio + colores de las líneas absorbidas; los nombres de esas líneas
+      // se suman como alias para que futuras facturas calcen con cualquiera de ellos.
+      const P = it.prod, colorEff = facturaColorEfectivo(it);
+      const skuCosto = P.sku || it.nombre, cmb = P.codMaterialBase || P.sku || it.nombre;
+      const aliasAbs = (it.absorbidos || []).map((a) => a.nombre).filter(Boolean);
+      const alias = [F.aliasInicial(it.nombre, it.codigo)].concat(aliasAbs).join(" | ");
       const base = Object.assign({}, P, {
-        codMaterialBase: cmb, parent: "", proveedor: provCorto, proveedorCorto: provCorto, proveedorRUT: provRUT,
-        nombreProveedor: F.aliasInicial(it.nombre, it.codigo), unidadProveedor: it.unidadProveedor, fecha: ctx.fecha,
+        color: colorEff, codMaterialBase: cmb, parent: "", proveedor: provCorto, proveedorCorto: provCorto, proveedorRUT: provRUT,
+        nombreProveedor: alias, unidadProveedor: it.unidadProveedor, fecha: ctx.fecha,
       });
       plan.granel.push(F.filaGranel(base));
       pedirFactor(P.categoria, P.tipo, P.variedad, P.unidadMinima);
@@ -5404,9 +5510,11 @@
         FC.ctx = null; const p = $("facturaPanel"); if (p) p.innerHTML = ""; FC.loaded = false;
       } catch (e) { confirm.disabled = false; msg.style.color = "var(--danger,#c0392b)"; msg.textContent = "Error al escribir: " + (e && e.message ? e.message : e); }
     });
-    const volver = fe("button", "btn-outline", "← Volver a editar"); volver.type = "button";
-    volver.addEventListener("click", () => { res.innerHTML = ""; });
-    box.appendChild(confirm); box.appendChild(volver); box.appendChild(msg);
+    const volver = fe("button", "btn-outline", "← Retroceder"); volver.type = "button";
+    volver.addEventListener("click", () => { res.innerHTML = ""; });   // vuelve a la edición de ítems
+    const canc = fe("button", "btn-outline", "✕ Cancelar"); canc.type = "button";
+    canc.addEventListener("click", () => { if (confirm("¿Cancelar esta carga? Se descarta lo no confirmado.")) facturaCancelar(); });
+    box.appendChild(confirm); box.appendChild(volver); box.appendChild(canc); box.appendChild(msg);
     res.appendChild(box);
     try { box.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {}
   }

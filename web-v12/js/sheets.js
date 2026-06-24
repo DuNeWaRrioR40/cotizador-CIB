@@ -91,11 +91,14 @@
     if (!ptr) throw new Error(`No se encontró en RANGO una fila con ID '${CFG.ID_TABLA_GRANEL}'.`);
     const { encabezados, registros } = await leerTabla(token, ptr.hoja, ptr.rango);
     const C = CFG.COL_GRANEL, idx = {};
-    ["categoria", "variedad", "proveedor", "tipo", "modelo", "formato", "precio", "anchoRollo", "specs", "fav"].forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
+    ["categoria", "variedad", "proveedor", "tipo", "modelo", "formato", "precio", "anchoRollo", "specs", "fav", "unidadMinima"].forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
     const get = (r, k) => { const i = idx[k]; return (i !== -1 ? (r[encabezados[i]] || "") : "").trim(); };
     const esTela = (s) => norm(s) === "tela";
     const esMLineal = (s) => /lineal/.test(norm(s));   // "M.LINEAL", "metro lineal", etc.
-    const telas = [], vistos = new Set();
+    // Una misma tela puede tener M.LINEAL en GRANEL (venta por metro) y en CONFECCION. El selector de
+    // confección debe usar el precio de CONFECCION; si no existe, cae al M.LINEAL que haya. Dedup por
+    // nombre prefiriendo CONFECCION.
+    const mapa = {};
     for (const r of registros) {
       if (!esTela(get(r, "categoria")) || !esMLineal(get(r, "variedad"))) continue;
       const proveedor = get(r, "proveedor"), tipo = get(r, "tipo"), modelo = get(r, "modelo"), formato = get(r, "formato");
@@ -104,13 +107,14 @@
       const precioML = parseNumero(get(r, "precio"));
       const ancho = parseNumero(get(r, "anchoRollo"));
       if (precioML == null || ancho == null || ancho <= 0) continue;   // sin precio o sin ancho de rollo: no se puede valorizar por m²
-      const key = nombre.toLowerCase();
-      if (vistos.has(key)) continue;                                   // dedup por nombre (primera ocurrencia)
-      vistos.add(key);
       const ficha = get(r, "specs").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
       const favCats = get(r, "fav").split("/").map((s) => s.trim()).filter(Boolean);
-      telas.push({ nombre, valorM2: precioML / ancho, anchoRollo: ancho, ficha, proveedor, tipo, fav: favCats });
+      const umin = norm(get(r, "unidadMinima")), esConf = umin === "confeccion";
+      const tela = { nombre, valorM2: precioML / ancho, anchoRollo: ancho, ficha, proveedor, tipo, fav: favCats, unidadMinima: get(r, "unidadMinima") };
+      const key = nombre.toLowerCase(), prev = mapa[key];
+      if (!prev || (esConf && !prev.esConf)) mapa[key] = { tela: tela, esConf: esConf };   // CONFECCION gana
     }
+    const telas = Object.keys(mapa).map((k) => mapa[k].tela);
     if (!telas.length) throw new Error("VIGENTES no tiene filas válidas Categoria=Tela y Variedad=M.LINEAL (con Precio y ancho de rollo). Encabezados: " + encabezados.join(" | "));
     return telas;
   }
@@ -386,6 +390,15 @@
     return r.json();
   }
 
+  // Lista de UNIDADES de medida válidas (tabla FACTOR!G:I → Código · Nombre · Magnitud).
+  async function cargarUnidades(token) {
+    let res; try { res = await leerTabla(token, CFG.HOJA_FACTOR || "FACTOR", "G:I"); } catch (e) { return []; }
+    const { encabezados, registros } = res;
+    const iCod = buscarColumna(encabezados, "Código"), iNom = buscarColumna(encabezados, "Nombre");
+    const get = (r, i) => (i !== -1 ? (r[encabezados[i]] || "") : "").trim();
+    return registros.map((r) => ({ codigo: get(r, iCod), nombre: get(r, iNom) })).filter((u) => u.codigo);
+  }
+
   // --- Fusión canónica (maestro): leer crudo con números de fila + actualizar celdas puntuales ---
   async function leerHojaRaw(token, hoja, rango) {
     try { return await leerValores(token, `'${hoja}'!${rango}`); } catch (e) { return []; }
@@ -404,5 +417,5 @@
     return r.json();
   }
 
-  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, anexarHoja, leerHojaRaw, actualizarCeldas, parseNumero };
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, cargarUnidades, anexarHoja, leerHojaRaw, actualizarCeldas, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);
