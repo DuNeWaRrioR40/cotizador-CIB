@@ -595,3 +595,13 @@ body.no-plano .pz-descargar { display: none !important; }
 .factura-rev { margin-top: 10px; }
 .factura-res-msg { margin-top: 8px; }
 @media (max-width: 560px) { .factura-grid { grid-template-columns: 1fr; } .factura-estado { grid-template-columns: 1fr 1fr; } }
+
+/* Anti-duplicados en la carga de facturas */
+.factura-dup { border: 1px dashed #b45309; border-radius: 8px; padding: 6px 8px; margin: 6px 0; background: rgba(180,83,9,0.06); }
+.factura-dup-h { margin: 0 0 4px; font-size: 12px; color: #b45309; font-weight: 600; }
+.factura-dup-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; }
+
+/* Fusión canónica (maestro) */
+.factura-merge { border: 1px solid #6d28d9; }
+.factura-merge .factura-h { color: #6d28d9; }
+.factura-merge-out { margin-top: 8px; }

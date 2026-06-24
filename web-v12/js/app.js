@@ -1637,6 +1637,7 @@
       if (correlMaxLocal() > (wmNube || 0)) window.SheetsCIBSA.guardarCorrelMax(token, HIST_HOJA, correlMaxLocal()).catch(() => {});
     } catch (e) { console.warn("CIBSA: no se pudo conciliar el correlativo máximo —", e && e.message ? e.message : e); }
     renderHistorial();
+    if (typeof renderFacturaMerge === "function") renderFacturaMerge(); // herramienta de fusión (solo maestro)
     restaurarBorradorSiCorresponde(); // iPhone: repone el estado si se recargó la pestaña tras descargar un PDF
     mostrarForm();
     renderOjetillos();
@@ -5150,7 +5151,7 @@
       match: m, modo: m ? "existente" : "nuevo",
       costo: (src.costoUnitSugerido != null) ? src.costoUnitSugerido : (src.precioLista || 0),
       existenteSel: m ? (m.prod.sku || granelNombre(m.prod)) : "",
-      llaveExistente: m ? (m.prod.codMaterialBase || "") : "",
+      llaveExistente: m ? (m.prod.sku || "") : "",   // llave del costo = SKU del producto
       prod: {
         categoria: "", tipo: "", variedad: "", formato: "", modelo: "", color: "", materialidad: "",
         unidad: "", unidadMinima: "UNITARIO", anchoRollo: "", rendimiento: 1, fav: "",
@@ -5256,10 +5257,26 @@
     if (it.modo === "existente") {
       const opts = granelActivos().map((p) => [p.sku || granelNombre(p), granelNombre(p) + (p.sku ? " · " + p.sku : "")]);
       card.appendChild(facturaSelect("Producto del catálogo", opts, it.existenteSel, (v) => {
-        it.existenteSel = v; const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === v); it.llaveExistente = p ? (p.codMaterialBase || it.llaveExistente) : it.llaveExistente; renderFactura();
+        it.existenteSel = v; const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === v); it.llaveExistente = p ? (p.sku || it.llaveExistente) : it.llaveExistente; renderFactura();
       }));
-      card.appendChild(facturaInput("Llave de costo (CodMaterialBase)", it.llaveExistente, (v) => it.llaveExistente = v, { ph: "código del material" }));
+      card.appendChild(facturaInput("Llave de costo (SKU)", it.llaveExistente, (v) => it.llaveExistente = v, { ph: "SKU del producto" }));
     } else { // nuevo
+      // Anti-duplicados: muestra posibles coincidencias existentes antes de crear uno nuevo.
+      const cand = window.FacturaCIBSA.candidatos({ nombre: it.nombre, codigo: it.codigo }, granelActivos(), 4)
+        .filter((c) => c.score >= 0.34);
+      if (cand.length) {
+        const dup = fe("div", "factura-dup");
+        dup.appendChild(fe("p", "factura-dup-h", "⚠ ¿No será uno de estos que ya existe? (evita duplicar)"));
+        cand.forEach((c) => {
+          const row = fe("div", "factura-dup-row");
+          row.appendChild(fe("span", null, granelNombre(c.prod) + (c.prod.sku ? " · " + c.prod.sku : "") + "  (" + c.via + (c.score < 1 ? " " + Math.round(c.score * 100) + "%" : "") + ")"));
+          const use = fe("button", "btn-outline small", "Es este"); use.type = "button";
+          use.addEventListener("click", () => { it.modo = "existente"; it.existenteSel = c.prod.sku || granelNombre(c.prod); it.llaveExistente = c.prod.sku || ""; renderFactura(); });
+          row.appendChild(use);
+          dup.appendChild(row);
+        });
+        card.appendChild(dup);
+      }
       const g = fe("div", "factura-grid");
       const P = it.prod;
       const setSug = () => { P.sku = window.FacturaCIBSA.sugerirSKU(P); P.codMaterialBase = window.FacturaCIBSA.sugerirCodMaterialBase(P); };
@@ -5315,36 +5332,38 @@
     const plan = { prov: [], granel: [], costos: [], factorReq: [], notas: [] };
     if (ctx.proveedor.crear && ctx.proveedor.rut) plan.prov.push({ rut: ctx.proveedor.rut, razon: ctx.proveedor.razon, nombreCorto: ctx.proveedor.nombreCorto });
     const provRUT = ctx.proveedor.rut, provCorto = ctx.proveedor.nombreCorto || (ctx.proveedor.match ? ctx.proveedor.match.nombreCorto : "");
-    const factorKey = (c, v, u) => F.norm(c) + "|" + F.norm(v) + "|" + F.norm(u);
+    const factorKey = (c, t, v, u) => F.norm(c) + "|" + F.norm(t) + "|" + F.norm(v) + "|" + F.norm(u);
     const reqVistos = {};
-    const pedirFactor = (cat, vari, umin) => {
-      if (F.factorBuscar(FC.fact, cat, vari, umin)) return;
-      const k = factorKey(cat, vari, umin); if (reqVistos[k]) return; reqVistos[k] = true;
-      plan.factorReq.push({ categoria: cat, variedad: vari, unidadMinima: umin });
+    const pedirFactor = (cat, tipo, vari, umin) => {
+      if (F.factorBuscar(FC.fact, cat, tipo, vari, umin)) return;   // ya existe (específico o general)
+      const k = factorKey(cat, tipo, vari, umin); if (reqVistos[k]) return; reqVistos[k] = true;
+      plan.factorReq.push({ categoria: cat, tipo: tipo, variedad: vari, unidadMinima: umin });
     };
     ctx.items.forEach((it) => {
       if (it.modo === "omitir") return;
       if (it.modo === "existente") {
+        // La llave del costo es el SKU del producto del catálogo (modelo nuevo).
         plan.costos.push({ llave: it.llaveExistente, fecha: ctx.fecha, costo: it.costo, unidadCompra: it.unidadProveedor, proveedorRUT: provRUT, numFactura: ctx.folio, nota: it.nombre });
         return;
       }
-      // nuevo
-      const P = it.prod, cmb = P.codMaterialBase || P.sku || it.nombre;
+      // nuevo: el COSTO se cuelga del SKU; el alias guarda nombre + código del proveedor.
+      const P = it.prod, skuCosto = P.sku || it.nombre, cmb = P.codMaterialBase || P.sku || it.nombre;
       const base = Object.assign({}, P, {
         codMaterialBase: cmb, parent: "", proveedor: provCorto, proveedorCorto: provCorto, proveedorRUT: provRUT,
-        nombreProveedor: it.nombre, unidadProveedor: it.unidadProveedor, fecha: ctx.fecha,
+        nombreProveedor: F.aliasInicial(it.nombre, it.codigo), unidadProveedor: it.unidadProveedor, fecha: ctx.fecha,
       });
       plan.granel.push(F.filaGranel(base));
-      pedirFactor(P.categoria, P.variedad, P.unidadMinima);
+      pedirFactor(P.categoria, P.tipo, P.variedad, P.unidadMinima);
       it.estados.forEach((es) => {
+        // estado que fracciona: NO recibe costo propio, deriva del padre (Parent = SKU del comprado).
         const hijo = Object.assign({}, base, {
           variedad: es.variedad, unidad: es.unidad, unidadMinima: es.unidadMinima, rendimiento: es.rendimiento,
           parent: P.sku, sku: (P.sku || cmb) + "-" + F.norm(es.variedad).replace(/[^a-z0-9]/g, "").toUpperCase().slice(0, 4),
         });
         plan.granel.push(F.filaGranel(hijo));
-        pedirFactor(P.categoria, es.variedad, es.unidadMinima);
+        pedirFactor(P.categoria, P.tipo, es.variedad, es.unidadMinima);
       });
-      plan.costos.push({ llave: cmb, fecha: ctx.fecha, costo: it.costo, unidadCompra: it.unidadProveedor, proveedorRUT: provRUT, numFactura: ctx.folio, nota: it.nombre });
+      plan.costos.push({ llave: skuCosto, fecha: ctx.fecha, costo: it.costo, unidadCompra: it.unidadProveedor, proveedorRUT: provRUT, numFactura: ctx.folio, nota: it.nombre });
     });
     return plan;
   }
@@ -5402,6 +5421,64 @@
   }
   { const fi = $("facturaFile"); if (fi) fi.addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => facturaDesdeXML(String(rd.result)); rd.readAsText(f); e.target.value = ""; }); }
   { const bm = $("facturaManual"); if (bm) bm.addEventListener("click", async () => { await facturaEnsure(); FC.ctx = facturaCtxManual(); facturaMsg("Carga manual.", false); renderFactura(); }); }
+
+  // ---------- Fusión canónica de duplicados (solo usuario maestro) ----------
+  function facturaEsMaestro() {
+    const email = (window.AuthCIBSA && window.AuthCIBSA.getEmail) ? window.AuthCIBSA.getEmail() : "";
+    return window.FacturaCIBSA.esMaestro(email, CFG.CORREOS_MAESTROS || []);
+  }
+  const GIDX_FUSION = { sku: 21, parent: 26, activo: 17, notas: 18, nombreProv: 28 }; // V, AA, R, S, AC (0-based)
+  async function facturaMergePlan(dupSKU, canonSKU) {
+    const tok = window.AuthCIBSA.getToken(), S = window.SheetsCIBSA, F = window.FacturaCIBSA;
+    const granel = await S.leerHojaRaw(tok, CFG.HOJA_GRANEL_MAESTRO, "A:AE");
+    const costos = await S.leerHojaRaw(tok, CFG.HOJA_COSTOS, "A:G");
+    return F.planFusion({ dupSKU: dupSKU, canonSKU: canonSKU, granel: granel, costos: costos, gIdx: GIDX_FUSION, cIdx: { llave: 0 } });
+  }
+  async function facturaMergeCommit(plan) {
+    const tok = window.AuthCIBSA.getToken(), S = window.SheetsCIBSA;
+    if (plan.granel && plan.granel.length) await S.actualizarCeldas(tok, CFG.HOJA_GRANEL_MAESTRO, plan.granel);
+    if (plan.costos && plan.costos.length) await S.actualizarCeldas(tok, CFG.HOJA_COSTOS, plan.costos);
+  }
+  function renderFacturaMerge() {
+    const cont = $("facturaMerge"); if (!cont) return; cont.innerHTML = "";
+    if (!facturaEsMaestro()) return;   // solo maestro
+    const box = fe("div", "factura-card factura-merge");
+    box.appendChild(fe("h3", "factura-h", "Fusionar duplicados (maestro)"));
+    box.appendChild(fe("p", "muted small", "Si dos SKU son el mismo producto, fusiónalos. El canónico sobrevive; el duplicado queda inactivo (no se borra). Se repuntan costos, alias y Parent."));
+    const g = fe("div", "factura-grid");
+    const st = { dup: "", canon: "" };
+    g.appendChild(facturaInput("SKU duplicado (queda inactivo)", "", (v) => st.dup = v.trim()));
+    g.appendChild(facturaInput("SKU canónico (sobrevive)", "", (v) => st.canon = v.trim()));
+    box.appendChild(g);
+    const msg = fe("p", "factura-res-msg muted small", ""), out = fe("div", "factura-merge-out");
+    const setErr = (t) => { msg.style.color = "var(--danger,#c0392b)"; msg.textContent = t; };
+    const prev = fe("button", "btn-outline", "Vista previa"); prev.type = "button";
+    prev.addEventListener("click", async () => {
+      out.innerHTML = ""; msg.style.color = ""; msg.textContent = "";
+      if (!st.dup || !st.canon) return setErr("Indica ambos SKU.");
+      if (st.dup === st.canon) return setErr("Los SKU deben ser distintos.");
+      msg.textContent = "Leyendo…";
+      try {
+        const plan = await facturaMergePlan(st.dup, st.canon), r = plan.resumen;
+        msg.textContent = "";
+        if (r.dupRowNum == null) return setErr("No encontré el SKU duplicado en GRANEL.");
+        if (r.canonRowNum == null) return setErr("No encontré el SKU canónico en GRANEL.");
+        out.appendChild(fe("p", "factura-res-l", "Costos a repuntar (Llave → canónico): " + r.costosRepunt));
+        out.appendChild(fe("p", "factura-res-l", "Hijos (Parent) a repuntar: " + r.parentsRepunt));
+        out.appendChild(fe("p", "factura-res-l", "Duplicado: fila " + r.dupRowNum + " → Activo=No + nota «FUSIONADO»."));
+        if (r.aliasNuevo) out.appendChild(fe("p", "factura-res-l", "Alias del canónico quedará: " + r.aliasNuevo));
+        const conf = fe("button", "btn-primary", "✓ Confirmar fusión"); conf.type = "button";
+        conf.addEventListener("click", async () => {
+          conf.disabled = true; msg.style.color = ""; msg.textContent = "Fusionando…";
+          try { await facturaMergeCommit(plan); msg.textContent = "✓ Fusionado. Recarga para ver el catálogo actualizado."; out.innerHTML = ""; FC.loaded = false; }
+          catch (e) { conf.disabled = false; setErr("Error: " + (e && e.message ? e.message : e)); }
+        });
+        out.appendChild(conf);
+      } catch (e) { setErr("Error al leer: " + (e && e.message ? e.message : e)); }
+    });
+    box.appendChild(prev); box.appendChild(msg); box.appendChild(out);
+    cont.appendChild(box);
+  }
 
   // ---------- Inicio ----------
   (function init() {

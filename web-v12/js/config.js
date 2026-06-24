@@ -76,7 +76,8 @@
     HOJA_COSTOS: "COSTOS",
     COL_COSTOS: { llave: "Llave", fecha: "Fecha", costo: "Costo", unidadCompra: "UnidadCompra", proveedorRUT: "ProveedorRUT", numFactura: "NumFactura", nota: "Nota" },
     HOJA_FACTOR: "FACTOR",
-    COL_FACTOR: { categoria: "CATEGORIA", variedad: "VARIEDAD", unidadMinima: "UNIDAD MINIMA", factor: "FACTOR" },
+    // TIPO (col E) opcional: en blanco aplica a todos los tipos; con valor es excepción para ese tipo.
+    COL_FACTOR: { categoria: "CATEGORIA", variedad: "VARIEDAD", unidadMinima: "UNIDAD MINIMA", factor: "FACTOR", tipo: "TIPO" },
     RUT_EMPRESA: "96612980-8",   // RUT de CIBSA (receptor esperado en las facturas de compra)
 
     // --- Tabla de vendedores (referenciada en RANGO con este ID) ---
@@ -100,6 +101,9 @@
     // --- Control de acceso ---
     DOMINIO_PERMITIDO: "cibsa.cl",
     CORREOS_PERMITIDOS: ["contacto@cibsa.cl"],
+    // Usuarios "maestros": pueden fusionar duplicados (función de administración del catálogo).
+    // La sucesión se cubre por acceso a este correo (esposa / Jefa de Ventas).
+    CORREOS_MAESTROS: ["contacto@cibsa.cl"],
 
     // --- Reglas de cálculo ---
     MARGEN_COSTURA_M: 0.10,

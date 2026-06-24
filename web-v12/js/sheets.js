@@ -363,12 +363,12 @@
   }
   async function cargarFactores(token) {
     const hoja = CFG.HOJA_FACTOR || "FACTOR";
-    let res; try { res = await leerTabla(token, hoja, "A:D"); } catch (e) { return []; }
+    let res; try { res = await leerTabla(token, hoja, "A:E"); } catch (e) { return []; }
     const { encabezados, registros } = res;
     const C = CFG.COL_FACTOR, idx = {};
     Object.keys(C).forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
     const get = (r, k) => { const i = idx[k]; return (i !== -1 ? (r[encabezados[i]] || "") : "").trim(); };
-    return registros.map((r) => ({ categoria: get(r, "categoria"), variedad: get(r, "variedad"), unidadMinima: get(r, "unidadMinima"), factor: parseNumero(get(r, "factor")) }))
+    return registros.map((r) => ({ categoria: get(r, "categoria"), variedad: get(r, "variedad"), unidadMinima: get(r, "unidadMinima"), factor: parseNumero(get(r, "factor")), tipo: get(r, "tipo") }))
       .filter((f) => f.categoria || f.variedad);
   }
   // Append genérico: agrega filas al final de la tabla de una hoja (cualquier ancho). No crea encabezados.
@@ -386,5 +386,23 @@
     return r.json();
   }
 
-  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, anexarHoja, parseNumero };
+  // --- Fusión canónica (maestro): leer crudo con números de fila + actualizar celdas puntuales ---
+  async function leerHojaRaw(token, hoja, rango) {
+    try { return await leerValores(token, `'${hoja}'!${rango}`); } catch (e) { return []; }
+  }
+  // updates = [{ rango: "A5", valores: [["x"]] }, ...]; escribe celdas/rangos puntuales (batch).
+  async function actualizarCeldas(token, hoja, updates) {
+    if (!updates || !updates.length) return;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}/values:batchUpdate`;
+    const data = updates.map((u) => ({ range: `'${hoja}'!${u.rango}`, values: u.valores }));
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ valueInputOption: "USER_ENTERED", data: data }),
+    });
+    if (!r.ok) throw new Error("No se pudieron actualizar celdas en " + hoja + " (código " + r.status + ").");
+    return r.json();
+  }
+
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, anexarHoja, leerHojaRaw, actualizarCeldas, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);
