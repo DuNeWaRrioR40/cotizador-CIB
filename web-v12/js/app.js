@@ -5168,6 +5168,11 @@
     const cols = [it.prod ? it.prod.color : ""].concat((it.absorbidos || []).map((a) => a.color));
     return window.FacturaCIBSA.unirColores.apply(null, cols);
   }
+  // Nombre corto del proveedor del contexto de la factura (para el último token del SKU: SAV, TEX, …).
+  function facturaProvCorto() {
+    const p = FC.ctx && FC.ctx.proveedor; if (!p) return "";
+    return p.nombreCorto || (p.match ? p.match.nombreCorto : "") || "";
+  }
   function facturaCtxDeDTE(dte) {
     const F = window.FacturaCIBSA;
     const prov = F.matchProveedor(dte.emisor.rut, FC.prov);
@@ -5340,7 +5345,7 @@
       }
       const g = fe("div", "factura-grid");
       const P = it.prod;
-      const setSug = () => { const eff = Object.assign({}, P, { color: facturaColorEfectivo(it) }); P.sku = window.FacturaCIBSA.sugerirSKU(eff); P.codMaterialBase = window.FacturaCIBSA.sugerirCodMaterialBase(eff); };
+      const setSug = () => { const eff = Object.assign({}, P, { color: facturaColorEfectivo(it), proveedorCorto: facturaProvCorto() }); P.sku = window.FacturaCIBSA.sugerirSKU(eff); P.codMaterialBase = window.FacturaCIBSA.sugerirCodMaterialBase(eff); };
       g.appendChild(facturaInput("Categoría", P.categoria, (v) => P.categoria = v, { ph: "TELA / CARPA…", ej: "TELA · CARPA · PEGAMENTO · ACCESORIO · CINTA" }));
       g.appendChild(facturaInput("Tipo", P.tipo, (v) => P.tipo = v, { ph: "PVC / PE…", ej: "PVC · PE · HDPE · NYLON" }));
       g.appendChild(facturaInput("Variedad (estado comprado)", P.variedad, (v) => P.variedad = v, { ph: "ROLLO / DIMENSIONADA…", ej: "ROLLO · M.LINEAL · DIMENSIONADA · TARRO · UNIDAD" }));
@@ -5593,6 +5598,7 @@
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
     }
+    try { const av = $("appVersion"); if (av) av.textContent = (CFG.APP_VERSION || ""); } catch (e) {}
     let t = "A";
     try { t = localStorage.getItem("cibsa_tema") || "A"; } catch (e) {}
     aplicarTema(t);
