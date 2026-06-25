@@ -5168,6 +5168,16 @@
     const cols = [it.prod ? it.prod.color : ""].concat((it.absorbidos || []).map((a) => a.color));
     return window.FacturaCIBSA.unirColores.apply(null, cols);
   }
+  // Copia a `dst` los atributos de `src` que en `dst` estén vacíos (no toca el color). Para que, al "Sumar
+  // aquí", el producto sobreviviente conserve la ficha completa aunque hayas sumado desde la tarjeta vacía.
+  function facturaHeredarAtributos(dst, src) {
+    if (!dst || !src) return;
+    ["categoria", "tipo", "variedad", "formato", "modelo", "materialidad", "unidad", "unidadMinima", "anchoRollo", "fav"].forEach((k) => {
+      const vac = dst[k] == null || dst[k] === "" || (k === "unidadMinima" && dst[k] === "UNITARIO");
+      if (vac && src[k] != null && src[k] !== "") dst[k] = src[k];
+    });
+    if ((dst.rendimiento == null || dst.rendimiento === "" || Number(dst.rendimiento) === 1) && src.rendimiento != null && src.rendimiento !== "") dst.rendimiento = src.rendimiento;
+  }
   // Nombre corto del proveedor del contexto de la factura (para el último token del SKU: SAV, TEX, …).
   function facturaProvCorto() {
     const p = FC.ctx && FC.ctx.proveedor; if (!p) return "";
@@ -5335,6 +5345,9 @@
           row.appendChild(fe("span", null, "Ítem " + (x.oi + 1) + ": " + x.o.nombre));
           const sum = fe("button", "btn-outline small", "➕ Sumar aquí (otro color)"); sum.type = "button";
           sum.addEventListener("click", () => {
+            // El sobreviviente HEREDA los atributos del hermano que sí estén llenos (mismo producto, otro
+            // color): así da igual sobre qué tarjeta sumes; nunca se pierde la base por sumar al revés.
+            facturaHeredarAtributos(it.prod, x.o.prod);
             it.absorbidos.push({ idx: x.oi, nombre: x.o.nombre, color: (x.o.prod && x.o.prod.color) || "" });
             x.o.modo = "omitir"; x.o.absorbidoEn = idx; setSug(); renderFactura();
           });
@@ -5435,7 +5448,7 @@
   // Construye el plan de escritura + detecta factores faltantes. Devuelve {prov, granel, costos, factorReq}.
   function facturaPlan() {
     const F = window.FacturaCIBSA, ctx = FC.ctx;
-    const plan = { prov: [], granel: [], costos: [], factorReq: [], notas: [] };
+    const plan = { prov: [], granel: [], costos: [], factorReq: [], notas: [], faltan: [] };
     if (ctx.proveedor.crear && ctx.proveedor.rut) plan.prov.push({ rut: ctx.proveedor.rut, razon: ctx.proveedor.razon, nombreCorto: ctx.proveedor.nombreCorto });
     const provRUT = ctx.proveedor.rut, provCorto = ctx.proveedor.nombreCorto || (ctx.proveedor.match ? ctx.proveedor.match.nombreCorto : "");
     const factorKey = (c, t, v, u) => F.norm(c) + "|" + F.norm(t) + "|" + F.norm(v) + "|" + F.norm(u);
@@ -5451,6 +5464,15 @@
         // La llave del costo es el SKU del producto del catálogo (modelo nuevo).
         plan.costos.push({ llave: it.llaveExistente, fecha: ctx.fecha, costo: it.costo, unidadCompra: it.unidadProveedor, proveedorRUT: provRUT, numFactura: ctx.folio, nota: it.nombre });
         return;
+      }
+      // Guarda: un producto nuevo SIN Categoría/Tipo/Variedad escribiría una fila basura (SKU truncado,
+      // columnas en blanco). Lo registramos como faltante para bloquear el commit con un aviso claro.
+      {
+        const Pp = it.prod || {}, falt = [];
+        if (!Pp.categoria) falt.push("Categoría");
+        if (!Pp.tipo) falt.push("Tipo");
+        if (!Pp.variedad) falt.push("Variedad");
+        if (falt.length) plan.faltan.push({ nombre: it.nombre || "(sin nombre)", campos: falt });
       }
       // nuevo: el COSTO se cuelga del SKU; el alias guarda nombre + código del proveedor.
       // Color efectivo = color propio + colores de las líneas absorbidas; los nombres de esas líneas
@@ -5504,8 +5526,16 @@
       box.appendChild(fwrap);
     }
 
+    // Bloqueo: productos nuevos sin Categoría/Tipo/Variedad → no se puede escribir (evita filas basura).
+    if (plan.faltan && plan.faltan.length) {
+      const warn = fe("div", "factura-warn-box");
+      warn.appendChild(fe("p", "factura-warn", "⚠ No se puede escribir: hay productos nuevos sin datos obligatorios. Vuelve atrás y complétalos:"));
+      plan.faltan.forEach((f) => warn.appendChild(fe("p", "muted small", "• " + f.nombre + " → falta: " + f.campos.join(", "))));
+      box.appendChild(warn);
+    }
     const msg = fe("p", "factura-res-msg muted small", "");
     const confirm = fe("button", "btn-primary", "✓ Confirmar y escribir en la base"); confirm.type = "button";
+    if (plan.faltan && plan.faltan.length) confirm.disabled = true;
     confirm.addEventListener("click", async () => {
       confirm.disabled = true; msg.textContent = "Escribiendo…"; msg.style.color = "";
       const factores = factorInputs.map((x) => ({ categoria: x.fr.categoria, variedad: x.fr.variedad, unidadMinima: x.fr.unidadMinima, factor: (fnum(x.inp.value) != null ? fnum(x.inp.value) : 1) }));
