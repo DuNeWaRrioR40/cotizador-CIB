@@ -79,12 +79,14 @@
 
   // ---- Factor: ¿existe la combinación? (Categoría × Tipo × Variedad × Unidad Mínima) ----
   // Tipo opcional: una fila con Tipo específico GANA; si no hay, vale la general (Tipo en blanco).
+  // "CONF" y "CONFECCION" son el mismo concepto: se canonizan para que el factor calce escriban lo que escriban.
+  function umNorm(s) { const n = norm(s); return (n === "conf" || n === "confeccion") ? "confeccion" : n; }
   function factorBuscar(factores, categoria, tipo, variedad, unidadMinima) {
-    const c = norm(categoria), t = norm(tipo), v = norm(variedad), u = norm(unidadMinima);
+    const c = norm(categoria), t = norm(tipo), v = umNorm(variedad), u = umNorm(unidadMinima);
     let general = null, especifico = null;
     (factores || []).forEach((f) => {
-      if (norm(f.categoria) !== c || norm(f.variedad) !== v) return;
-      if (u !== "" && norm(f.unidadMinima) !== "" && norm(f.unidadMinima) !== u) return;
+      if (norm(f.categoria) !== c || umNorm(f.variedad) !== v) return;
+      if (u !== "" && umNorm(f.unidadMinima) !== "" && umNorm(f.unidadMinima) !== u) return;
       const ft = norm(f.tipo);
       if (ft === "") { general = general || f; }
       else if (ft === t) { especifico = especifico || f; }

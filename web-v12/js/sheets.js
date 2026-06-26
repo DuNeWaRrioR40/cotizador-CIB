@@ -109,7 +109,7 @@
       if (precioML == null || ancho == null || ancho <= 0) continue;   // sin precio o sin ancho de rollo: no se puede valorizar por m²
       const ficha = get(r, "specs").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
       const favCats = get(r, "fav").split("/").map((s) => s.trim()).filter(Boolean);
-      const umin = norm(get(r, "unidadMinima")), esConf = umin === "confeccion";
+      const umin = norm(get(r, "unidadMinima")), esConf = (umin === "confeccion" || umin === "conf");
       const tela = { nombre, valorM2: precioML / ancho, anchoRollo: ancho, ficha, proveedor, tipo, fav: favCats, unidadMinima: get(r, "unidadMinima") };
       const key = nombre.toLowerCase(), prev = mapa[key];
       if (!prev || (esConf && !prev.esConf)) mapa[key] = { tela: tela, esConf: esConf };   // CONFECCION gana

@@ -5430,7 +5430,7 @@
       g.appendChild(facturaInput("Modelo", P.modelo, (v) => P.modelo = v, { ej: "G200 · COBKK10000 · NAUTICO600 · MEISTER" }));
       g.appendChild(facturaInput("Color", P.color, (v) => P.color = v, { ej: "AZUL MARINO · BLANCO · varios: NEGRO / BLANCO", title: "Si hay varios colores al MISMO precio, sepáralos con / (no entran al SKU). Si el color cambia el precio, deja UN color (sí entra al SKU)." }));
       g.appendChild(facturaSelectUnidad("Unidad (medida del proveedor, de la lista)", P.unidad, (v) => P.unidad = v));
-      g.appendChild(facturaSelect("Unidad mínima", [["UNITARIO", "UNITARIO"], ["GRANEL", "GRANEL"], ["CONFECCION", "CONFECCION"]], P.unidadMinima, (v) => P.unidadMinima = v));
+      g.appendChild(facturaSelect("Unidad mínima", [["UNITARIO", "UNITARIO"], ["GRANEL", "GRANEL"], ["CONF", "CONF (confección)"]], (P.unidadMinima === "CONFECCION" ? "CONF" : P.unidadMinima), (v) => P.unidadMinima = v));
       g.appendChild(facturaInput("Ancho rollo (m)", P.anchoRollo, (v) => P.anchoRollo = v, { inputmode: "decimal", ej: "2 · 1,52 · 3 (en metros)" }));
       g.appendChild(facturaInput("Rendimiento (estado comprado)", P.rendimiento, (v) => P.rendimiento = fnum(v), { inputmode: "decimal", ej: "1 (se vende entero) · 50 (m por rollo) · 100" }));
       card.appendChild(g);
@@ -5462,13 +5462,13 @@
 
       // Estados de venta (hijos) que derivan del comprado
       const estWrap = fe("div", "factura-estados");
-      estWrap.appendChild(fe("p", "factura-sub", "Estados de venta DERIVADOS (distintos al comprado de arriba). Aquí va lo que se fracciona/transforma: p. ej. M.LINEAL para vender por metro (U.mín GRANEL) o para confección (U.mín CONFECCION). Cada uno deriva del costo del comprado vía Parent, con su propio rendimiento. NO repitas aquí la variedad comprada."));
+      estWrap.appendChild(fe("p", "factura-sub", "Estados de venta DERIVADOS (distintos al comprado de arriba). Aquí va lo que se fracciona/transforma: p. ej. M.LINEAL para vender por metro (U.mín GRANEL) o para confección (U.mín CONF). Cada uno deriva del costo del comprado vía Parent, con su propio rendimiento. NO repitas aquí la variedad comprada."));
       it.estados.forEach((es, ei) => {
         const row = fe("div", "factura-grid factura-estado");
-        row.appendChild(facturaInput("Variedad", es.variedad, (v) => es.variedad = v, { ph: "M.LINEAL…", ej: "M.LINEAL · CONFECCION · SALDO (≠ a la comprada)" }));
+        row.appendChild(facturaInput("Variedad", es.variedad, (v) => es.variedad = v, { ph: "M.LINEAL…", ej: "M.LINEAL · CONF · SALDO (≠ a la comprada)" }));
         if (es.variedad && window.FacturaCIBSA.norm(es.variedad) === window.FacturaCIBSA.norm(P.variedad)) row.appendChild(fe("span", "factura-warn", "⚠ repite la variedad comprada"));
         row.appendChild(facturaSelectUnidad("Unidad", es.unidad, (v) => es.unidad = v));
-        row.appendChild(facturaSelect("U. mínima", [["GRANEL", "GRANEL"], ["CONFECCION", "CONFECCION"], ["UNITARIO", "UNITARIO"]], es.unidadMinima, (v) => es.unidadMinima = v));
+        row.appendChild(facturaSelect("U. mínima", [["GRANEL", "GRANEL"], ["CONF", "CONF (confección)"], ["UNITARIO", "UNITARIO"]], (es.unidadMinima === "CONFECCION" ? "CONF" : es.unidadMinima), (v) => es.unidadMinima = v));
         row.appendChild(facturaInput("Rendimiento", es.rendimiento, (v) => es.rendimiento = fnum(v), { inputmode: "decimal", ej: "metros por rollo (50 · 100)" }));
         const del = fe("button", "factura-estado-del", "✕"); del.type = "button"; del.title = "Quitar estado";
         del.addEventListener("click", () => { it.estados.splice(ei, 1); renderFactura(); });
@@ -5485,25 +5485,35 @@
     const cw = fe("div", "factura-costo");
     cw.appendChild(facturaInput("Costo efectivo (por 1 unidad comprada)", it.costo, (v) => it.costo = fnum(v), { inputmode: "decimal" }));
     cw.appendChild(fe("span", "muted small", "Sugerido: " + (it.costoSugerido != null ? money(Math.round(it.costoSugerido)) : "—") + " (neto unitario de la factura)"));
-    // Aviso de unidad: si la factura tarifa por fracción (Qty>1, p. ej. 40 metros) pero tu base es el PACK
-    // entero (1 ROLLO), el costo de la base es la LÍNEA COMPLETA (Qty × neto), y el rendimiento del estado
-    // que fracciona = Qty. Esto evita dividir dos veces y que el precio salga Qty× más chico.
+    // Aviso de unidad: la factura tarifa por fracción (Qty>1, p. ej. metros) pero la base es un PACK (rollo).
+    // El costo de 1 pack = total de la línea ÷ N packs; el rendimiento del estado que fracciona = Qty ÷ N.
+    // (N=1 → línea = 1 rollo. N=3 → la línea trae 3 rollos.)
     const qty = (it.qty != null && !isNaN(it.qty)) ? Number(it.qty) : null;
     if (qty && qty > 1 && it.costoSugerido != null && it.modo === "nuevo") {
-      const lineaTotal = Math.round(it.costoSugerido * qty);
+      const neto = it.costoSugerido, lineaTotal = Math.round(neto * qty);
       const av = fe("div", "factura-costo-aviso");
-      av.appendChild(fe("p", "muted small", "Línea completa: " + money(lineaTotal) + "  (= " + qty + " × " + money(Math.round(it.costoSugerido)) + "). Si tu base es el PACK entero (p. ej. 1 ROLLO de " + qty + "), usa el costo de la línea completa y pon rendimiento = " + qty + " en los estados que fraccionan (M.LINEAL)."));
-      const useFull = fe("button", "btn-outline small", "Usar costo de la línea completa (" + money(lineaTotal) + ") y rendimiento " + qty); useFull.type = "button";
-      useFull.addEventListener("click", () => {
-        it.costo = lineaTotal;
-        // a los estados que fraccionan (variedad ≠ a la comprada) con rendimiento vacío o 1, les sugiere Qty.
+      av.appendChild(fe("p", "muted small", "Línea: " + qty + " " + (it.unidadProveedor || "u") + " × " + money(Math.round(neto)) + " = " + money(lineaTotal) + " (total de la línea, neto)."));
+      av.appendChild(fe("p", "muted small", "Si tu base es un PACK (rollo) y la línea trae VARIOS, indica cuántas unidades compradas trae: costo de 1 unidad = total ÷ N, y rendimiento del estado que fracciona = " + qty + " ÷ N."));
+      const nrow = fe("div", "factura-grid factura-estado");
+      nrow.appendChild(fe("span", "factura-fk", "Unidades compradas (rollos/packs) en esta línea:"));
+      const nInp = document.createElement("input"); nInp.type = "text"; nInp.inputMode = "numeric"; nInp.value = "1"; nInp.className = "factura-fnum";
+      nrow.appendChild(nInp); av.appendChild(nrow);
+      const prev = fe("p", "muted small", "");
+      const calcPrev = () => { const N = Math.max(1, Math.round(fnum(nInp.value) || 1)); prev.textContent = "→ 1 unidad: costo " + money(Math.round(lineaTotal / N)) + " · rendimiento del estado que fracciona = " + (qty / N); };
+      nInp.addEventListener("input", calcPrev); calcPrev();
+      av.appendChild(prev);
+      const apply = fe("button", "btn-outline small", "Aplicar costo por unidad + rendimiento"); apply.type = "button";
+      apply.addEventListener("click", () => {
+        const N = Math.max(1, Math.round(fnum(nInp.value) || 1));
+        it.costo = Math.round(lineaTotal / N);
+        const rendUnidad = qty / N;
         (it.estados || []).forEach((es) => {
           const frac = es.variedad && window.FacturaCIBSA.norm(es.variedad) !== window.FacturaCIBSA.norm(it.prod.variedad);
-          if (frac && (es.rendimiento == null || es.rendimiento === "" || Number(es.rendimiento) === 1)) es.rendimiento = qty;
+          if (frac && (es.rendimiento == null || es.rendimiento === "" || Number(es.rendimiento) === 1)) es.rendimiento = rendUnidad;
         });
         renderFactura();
       });
-      av.appendChild(useFull);
+      av.appendChild(apply);
       cw.appendChild(av);
     }
     card.appendChild(cw);
