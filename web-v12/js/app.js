@@ -5140,17 +5140,20 @@
     try { FC.fact = await window.SheetsCIBSA.cargarFactores(tok); } catch (e) { FC.fact = []; }
     try { FC.unid = await window.SheetsCIBSA.cargarUnidades(tok); } catch (e) { FC.unid = []; }
     // Claves de COSTOS ya cargados: detecta facturas/productos ya ingresados (RUT proveedor + folio [+ SKU]).
-    FC.costoSet = {}; FC.facturaSet = {};
+    FC.costoSet = {}; FC.facturaSet = {}; FC.costoFactura = {};
     try {
       const F = window.FacturaCIBSA;
       const filas = await window.SheetsCIBSA.leerHojaRaw(tok, CFG.HOJA_COSTOS, "A:G");
-      (filas || []).slice(1).forEach((r) => {  // [0]=Llave,[4]=ProveedorRUT,[5]=NumFactura
-        const llave = F.norm(r[0] || ""), rut = F.soloDigitosRUT(r[4] || ""), folio = String(r[5] || "").trim();
+      (filas || []).slice(1).forEach((r) => {  // [0]=Llave,[4]=ProveedorRUT,[5]=NumFactura,[6]=Nota
+        const llaveRaw = String(r[0] || "").trim(), llave = F.norm(llaveRaw);
+        const rut = F.soloDigitosRUT(r[4] || ""), folio = String(r[5] || "").trim(), nota = String(r[6] || "").trim();
         if (!rut || !folio) return;
-        FC.facturaSet[rut + "|" + folio] = true;
-        if (llave) FC.costoSet[rut + "|" + folio + "|" + llave] = true;
+        const k = rut + "|" + folio;
+        FC.facturaSet[k] = true;
+        if (llave) FC.costoSet[k + "|" + llave] = true;
+        (FC.costoFactura[k] = FC.costoFactura[k] || []).push({ llave: llaveRaw, nota: nota });
       });
-    } catch (e) { FC.costoSet = {}; FC.facturaSet = {}; }
+    } catch (e) { FC.costoSet = {}; FC.facturaSet = {}; FC.costoFactura = {}; }
     FC.loaded = true;
   }
   // Marca en el contexto los productos de esta factura que YA están en COSTOS (mismo RUT+folio+SKU): los deja
@@ -5159,15 +5162,23 @@
     if (!ctx || ctx.manual) return;
     const F = window.FacturaCIBSA;
     const rut = F.soloDigitosRUT(ctx.proveedor.rut || ""), folio = String(ctx.folio || "").trim();
-    ctx.facturaYaVista = !!(rut && folio && FC.facturaSet && FC.facturaSet[rut + "|" + folio]);
+    const k = rut + "|" + folio;
+    ctx.facturaYaVista = !!(rut && folio && FC.facturaSet && FC.facturaSet[k]);
     ctx.yaCargados = 0;
     if (!rut || !folio) return;
+    const enFactura = (FC.costoFactura && FC.costoFactura[k]) || [];
     (ctx.items || []).forEach((it) => {
+      // 1) por SKU si el ítem calzó con un producto del catálogo
       const sku = it.llaveExistente || (it.match && it.match.prod ? it.match.prod.sku : "");
-      if (!sku) return;
-      if (FC.costoSet && FC.costoSet[rut + "|" + folio + "|" + F.norm(sku)]) {
-        it.yaCargado = true; it.modo = "omitir"; ctx.yaCargados++;
+      let ya = !!(sku && FC.costoSet && FC.costoSet[k + "|" + F.norm(sku)]);
+      // 2) si no, por el NOMBRE del DTE contra la Nota guardada en COSTOS de esta misma factura. Umbral alto
+      // (coincidencia casi exacta) para NO confundir el mismo producto en otro color (NEGRO vs ROJO).
+      if (!ya && it.nombre) {
+        const nIt = F.norm(it.nombre);
+        const m = enFactura.find((e) => e.nota && (F.norm(e.nota) === nIt || F.similitud(it.nombre, e.nota) >= 0.85));
+        if (m) { ya = true; it.llaveCargada = m.llave; }
       }
+      if (ya) { it.yaCargado = true; it.modo = "omitir"; ctx.yaCargados++; }
     });
   }
   function facturaItemInit(src) {
@@ -5346,7 +5357,7 @@
         });
         nota.appendChild(und); card.appendChild(nota);
       } else if (it.yaCargado) {
-        const nota = fe("p", "muted small", "↳ Ya cargado de esta factura (no se vuelve a escribir). ");
+        const nota = fe("p", "muted small", "↳ Ya cargado de esta factura" + (it.llaveCargada ? " (SKU: " + it.llaveCargada + ")" : "") + " — no se vuelve a escribir. ");
         const und = fe("button", "btn-outline small", "Cargar igual"); und.type = "button"; und.title = "Forzar: vuelve a registrar el costo de este producto";
         und.addEventListener("click", () => { it.yaCargado = false; it.modo = it.match ? "existente" : "nuevo"; renderFactura(); });
         nota.appendChild(und); card.appendChild(nota);
