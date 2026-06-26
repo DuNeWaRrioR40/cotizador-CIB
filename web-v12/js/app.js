@@ -5650,7 +5650,18 @@
     if (factores && factores.length) await S.anexarHoja(tok, CFG.HOJA_FACTOR, factores.map(F.filaFactor));
     if (plan.costos.length) await S.anexarHoja(tok, CFG.HOJA_COSTOS, plan.costos.map(F.filaCosto));
   }
-  { const fi = $("facturaFile"); if (fi) fi.addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => facturaDesdeXML(String(rd.result)); rd.readAsText(f); e.target.value = ""; }); }
+  // Decodifica el XML respetando la codificación declarada (DTE del SII suele venir en ISO-8859-1, no UTF-8),
+  // así no se rompen "ñ" y tildes. Lee bytes y los decodifica con la codificación correcta.
+  function facturaDecodificar(buf) {
+    const bytes = new Uint8Array(buf);
+    let head = ""; for (let i = 0; i < Math.min(bytes.length, 250); i++) head += String.fromCharCode(bytes[i]);
+    const m = head.match(/encoding=["']([\w-]+)["']/i);
+    let enc = (m ? m[1] : "utf-8").toLowerCase();
+    if (enc === "latin1" || enc === "iso8859-1") enc = "iso-8859-1";
+    try { return new TextDecoder(enc).decode(buf); }
+    catch (e) { try { return new TextDecoder("iso-8859-1").decode(buf); } catch (e2) { return new TextDecoder("utf-8").decode(buf); } }
+  }
+  { const fi = $("facturaFile"); if (fi) fi.addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => facturaDesdeXML(facturaDecodificar(rd.result)); rd.readAsArrayBuffer(f); e.target.value = ""; }); }
   { const bm = $("facturaManual"); if (bm) bm.addEventListener("click", async () => { await facturaEnsure(); FC.ctx = facturaCtxManual(); facturaMsg("Carga manual.", false); renderFactura(); }); }
 
   // ---------- Fusión canónica de duplicados (solo usuario maestro) ----------
