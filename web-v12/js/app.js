@@ -5161,22 +5161,28 @@
     try { FC.fact = await window.SheetsCIBSA.cargarFactores(tok); } catch (e) { FC.fact = []; }
     try { FC.unid = await window.SheetsCIBSA.cargarUnidades(tok); } catch (e) { FC.unid = []; }
     // Claves de COSTOS ya cargados: detecta facturas/productos ya ingresados (RUT proveedor + folio [+ SKU]).
-    FC.costoSet = {}; FC.facturaSet = {}; FC.costoFactura = {};
+    // costoUlt: último costo registrado por SKU (mayor fecha de factura) → para ver el precio anterior al clonar.
+    FC.costoSet = {}; FC.facturaSet = {}; FC.costoFactura = {}; FC.costoUlt = {};
     try {
       const F = window.FacturaCIBSA;
       const filas = await window.SheetsCIBSA.leerHojaRaw(tok, CFG.HOJA_COSTOS, "A:G");
-      (filas || []).slice(1).forEach((r) => {  // [0]=Llave,[4]=ProveedorRUT,[5]=NumFactura,[6]=Nota
+      (filas || []).slice(1).forEach((r) => {  // [0]=Llave,[1]=Fecha,[2]=Costo,[4]=ProveedorRUT,[5]=NumFactura,[6]=Nota
         const llaveRaw = String(r[0] || "").trim(), llave = F.norm(llaveRaw);
+        const fechaTxt = String(r[1] || "").trim(), costo = fnum(r[2]);
         const rut = F.soloDigitosRUT(r[4] || ""), folio = String(r[5] || "").trim(), nota = String(r[6] || "").trim();
+        // último costo por SKU (no depende de rut/folio): se queda con la mayor fecha de factura.
+        if (llave) { const fv = facturaFechaVal(fechaTxt); const prev = FC.costoUlt[llave]; if (!prev || fv >= prev.fv) FC.costoUlt[llave] = { costo: costo, fecha: fechaTxt, folio: folio, fv: fv }; }
         if (!rut || !folio) return;
         const k = rut + "|" + folio;
         FC.facturaSet[k] = true;
         if (llave) FC.costoSet[k + "|" + llave] = true;
         (FC.costoFactura[k] = FC.costoFactura[k] || []).push({ llave: llaveRaw, nota: nota });
       });
-    } catch (e) { FC.costoSet = {}; FC.facturaSet = {}; FC.costoFactura = {}; }
+    } catch (e) { FC.costoSet = {}; FC.facturaSet = {}; FC.costoFactura = {}; FC.costoUlt = {}; }
     FC.loaded = true;
   }
+  // "dd/mm/aaaa" → número comparable aaaammdd (0 si no parsea). Para elegir el costo más reciente por SKU.
+  function facturaFechaVal(s) { const m = String(s || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (!m) return 0; let a = parseInt(m[3], 10); if (a < 100) a += 2000; return a * 10000 + parseInt(m[2], 10) * 100 + parseInt(m[1], 10); }
   // Marca en el contexto los productos de esta factura que YA están en COSTOS (mismo RUT+folio+SKU): los deja
   // en "Omitir" para que recargar el XML y registrar el RESTO no duplique lo ya cargado. No bloquea nada.
   function facturaMarcarYaCargados(ctx) {
@@ -5275,6 +5281,8 @@
     // el color NO se copia: queda el que tenga el ítem (para que pongas el nuevo). SKU se re-derivará.
     P.skuManual = false; P.cmbManual = false; P.sku = ""; P.codMaterialBase = "";
     it.clonadoDe = base.sku || base.codMaterialBase || "";
+    // Último costo registrado del producto base (para chequear que solo cambia el color y no el precio).
+    it.costoUltBase = (FC.costoUlt && base.sku) ? (FC.costoUlt[F.norm(base.sku)] || null) : null;
   }
   // Nombre corto del proveedor del contexto de la factura (para el último token del SKU: SAV, TEX, …).
   function facturaProvCorto() {
@@ -5493,6 +5501,18 @@
             if (p) { facturaClonar(it, p); setSug(); renderFactura(); }
           }));
           if (it.clonadoDe) cw2.appendChild(fe("p", "muted small", "↳ Clonado de " + it.clonadoDe + " · " + (it.estadosClonados || 0) + " estado(s) derivado(s). Cambia solo el COLOR (y revisa el costo); el SKU se re-deriva con el nuevo color." + (it.estadosClonados ? "" : " (Si esperabas estados M.LINEAL/CONF y no aparecen, las filas del producto original no están vinculadas por Parent/CodMaterialBase — agrégalos abajo a mano.)")));
+          // Último costo registrado del producto base vs el costo de esta factura: detecta subidas de precio.
+          if (it.clonadoDe && it.costoUltBase && it.costoUltBase.costo != null) {
+            const ub = it.costoUltBase, nuevo = (it.costo != null ? it.costo : it.costoSugerido);
+            const dif = (nuevo != null && ub.costo > 0) ? (nuevo - ub.costo) : 0;
+            const pct = (nuevo != null && ub.costo > 0) ? Math.round((nuevo / ub.costo - 1) * 100) : 0;
+            const linea = "Último costo del producto base: " + money(Math.round(ub.costo)) + (ub.fecha ? " (" + ub.fecha + (ub.folio ? ", fact. " + ub.folio : "") + ")" : "") + " · costo de esta factura: " + (nuevo != null ? money(Math.round(nuevo)) : "—");
+            const cambia = (nuevo != null && Math.abs(dif) > 1);
+            const pc = fe("p", cambia ? "factura-warn small" : "muted small", (cambia ? "⚠ " : "") + linea + (cambia ? "  → DIFIERE " + (dif > 0 ? "+" : "") + money(Math.round(dif)) + " (" + (pct > 0 ? "+" : "") + pct + "%). ¿Es solo color o también subió el precio? Revisa antes de confirmar." : "  → igual: es solo un color nuevo."));
+            cw2.appendChild(pc);
+          } else if (it.clonadoDe) {
+            cw2.appendChild(fe("p", "muted small", "Sin costo previo registrado para el producto base (no se puede comparar)."));
+          }
           card.appendChild(cw2);
         }
       }
@@ -5561,6 +5581,15 @@
     const cw = fe("div", "factura-costo");
     cw.appendChild(facturaInput("Costo efectivo (por 1 unidad comprada)", it.costo, (v) => it.costo = fnum(v), { inputmode: "decimal" }));
     cw.appendChild(fe("span", "muted small", "Sugerido: " + (it.costoSugerido != null ? money(Math.round(it.costoSugerido)) : "—") + " (neto unitario de la factura)"));
+    // Producto EXISTENTE: muestra el último costo registrado de ese SKU para ver si esta factura sube el precio.
+    if (it.modo === "existente" && it.llaveExistente && FC.costoUlt) {
+      const ub = FC.costoUlt[window.FacturaCIBSA.norm(it.llaveExistente)];
+      if (ub && ub.costo != null) {
+        const nuevo = (it.costo != null ? it.costo : it.costoSugerido), dif = (nuevo != null && ub.costo > 0) ? (nuevo - ub.costo) : 0;
+        const pct = (nuevo != null && ub.costo > 0) ? Math.round((nuevo / ub.costo - 1) * 100) : 0, cambia = (nuevo != null && Math.abs(dif) > 1);
+        cw.appendChild(fe("p", cambia ? "factura-warn small" : "muted small", (cambia ? "⚠ " : "") + "Último costo registrado: " + money(Math.round(ub.costo)) + (ub.fecha ? " (" + ub.fecha + (ub.folio ? ", fact. " + ub.folio : "") + ")" : "") + (cambia ? "  → esta factura " + (dif > 0 ? "SUBE " : "BAJA ") + money(Math.abs(Math.round(dif))) + " (" + (pct > 0 ? "+" : "") + pct + "%)" : "  → sin cambio de precio")));
+      }
+    }
     // Aviso de unidad: la factura tarifa por fracción (Qty>1, p. ej. metros) pero la base es un PACK (rollo).
     // El costo de 1 pack = total de la línea ÷ N packs; el rendimiento del estado que fracciona = Qty ÷ N.
     // (N=1 → línea = 1 rollo. N=3 → la línea trae 3 rollos.)
