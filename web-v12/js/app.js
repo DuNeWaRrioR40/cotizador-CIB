@@ -856,6 +856,14 @@
   }
   // 2º menú lateral (otro color): ir directo a productos a granel.
   { const b = $("navTabGranel"); if (b) b.addEventListener("click", () => { const sec = $("wGranel"); if (!sec) return; if (sec.classList.contains("colap") && sec.classList.contains("collapsed") && typeof toggleColap === "function") toggleColap(sec); try { sec.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { sec.scrollIntoView(); } if (typeof flashTitulo === "function") flashTitulo(sec.querySelector("h2.section")); }); }
+  // Botón "Facturas" del header: abre y desplaza al cargador de facturas (asegura modo formal donde vive).
+  { const b = $("btnFacturas"); if (b) b.addEventListener("click", () => {
+    const sec = $("wFactura"); if (!sec) return;
+    if (sec.classList.contains("hidden")) { const r = document.querySelector('input[name="docmode"][value="formal"]'); if (r) r.checked = true; aplicarModo("formal"); }
+    if (sec.classList.contains("colap") && sec.classList.contains("collapsed") && typeof toggleColap === "function") toggleColap(sec);
+    try { sec.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { sec.scrollIntoView(); }
+    if (typeof flashTitulo === "function") flashTitulo(sec.querySelector("h2.section"));
+  }); }
 
   function nombreRegistro(ent) {
     const ini = (ent.nombre || "").trim().charAt(0).toUpperCase();
@@ -5218,6 +5226,9 @@
     });
     if ((dst.rendimiento == null || dst.rendimiento === "" || Number(dst.rendimiento) === 1) && src.rendimiento != null && src.rendimiento !== "") dst.rendimiento = src.rendimiento;
   }
+  // El usuario escribe/elige "CONF" (cómodo) pero en el Sheet se guarda "CONFECCION", que es lo que la
+  // fórmula de PrecioCalc y la tabla FACTOR esperan (evita que el factor no calce y PrecioCalc dé 0).
+  function expandConf(s) { return (window.FacturaCIBSA.norm(s) === "conf") ? "CONFECCION" : s; }
   // Nombre corto del proveedor del contexto de la factura (para el último token del SKU: SAV, TEX, …).
   function facturaProvCorto() {
     const p = FC.ctx && FC.ctx.proveedor; if (!p) return "";
@@ -5562,18 +5573,21 @@
       const alias = [F.aliasInicial(it.nombre, it.codigo)].concat(aliasAbs).join(" | ");
       const base = Object.assign({}, P, {
         sku: skuFinal, color: colorEff, codMaterialBase: cmb, parent: "", proveedor: provCorto, proveedorCorto: provCorto, proveedorRUT: provRUT,
+        variedad: expandConf(P.variedad), unidadMinima: expandConf(P.unidadMinima),
         nombreProveedor: alias, unidadProveedor: it.unidadProveedor, fecha: ctx.fecha,
       });
       plan.granel.push(F.filaGranel(base));
-      pedirFactor(P.categoria, P.tipo, P.variedad, P.unidadMinima);
+      pedirFactor(P.categoria, P.tipo, expandConf(P.variedad), expandConf(P.unidadMinima));
       it.estados.forEach((es) => {
         // estado que fracciona: NO recibe costo propio, deriva del padre (Parent = SKU del comprado).
+        // "CONF" se expande a "CONFECCION" al escribir (lo que la fórmula/FACTOR del Sheet esperan).
+        const esVar = expandConf(es.variedad), esUm = expandConf(es.unidadMinima);
         const hijo = Object.assign({}, base, {
-          variedad: es.variedad, unidad: es.unidad, unidadMinima: es.unidadMinima, rendimiento: es.rendimiento,
+          variedad: esVar, unidad: es.unidad, unidadMinima: esUm, rendimiento: es.rendimiento,
           parent: skuFinal, sku: (skuFinal || cmb) + "-" + F.norm(es.variedad).replace(/[^a-z0-9]/g, "").toUpperCase().slice(0, 4),
         });
         plan.granel.push(F.filaGranel(hijo));
-        pedirFactor(P.categoria, P.tipo, es.variedad, es.unidadMinima);
+        pedirFactor(P.categoria, P.tipo, esVar, esUm);
       });
       plan.costos.push({ llave: skuCosto, fecha: ctx.fecha, costo: it.costo, unidadCompra: it.unidadProveedor, proveedorRUT: provRUT, numFactura: ctx.folio, nota: it.nombre });
     });

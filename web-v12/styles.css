@@ -52,6 +52,12 @@ body[data-theme="C"] header { border-bottom: none; }
 .brand-title { font-weight: 700; font-size: 17px; }
 .header-right { display: flex; align-items: center; gap: 8px; }
 .user-email { font-size: 12px; opacity: 0.9; max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Botón limpio del header (Facturas), sin ícono */
+.hdr-btn { background: color-mix(in srgb, var(--header-text) 14%, transparent); color: var(--header-text); border: 1px solid color-mix(in srgb, var(--header-text) 30%, transparent); border-radius: 8px; padding: 5px 12px; font-size: 13px; font-weight: 600; line-height: 1.1; cursor: pointer; white-space: nowrap; }
+.hdr-btn:hover { background: color-mix(in srgb, var(--header-text) 26%, transparent); }
+.hdr-btn:active { transform: translateY(1px); }
+/* Al saltar a una sección (botón del header / navegación), el header sticky NO debe tapar su título. */
+.colap, h2.section { scroll-margin-top: calc(62px + env(safe-area-inset-top)); }
 
 /* Vistas */
 .view { max-width: 640px; margin: 0 auto; padding: 16px; }
