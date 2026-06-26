@@ -5383,19 +5383,28 @@
         .filter((x) => x.oi !== idx && x.o.modo !== "omitir" && it.nombre && Fz.similitud(it.nombre, x.o.nombre) >= 0.5);
       if (hermanos.length) {
         const dup2 = fe("div", "factura-dup");
-        dup2.appendChild(fe("p", "factura-dup-h", "↔ Hay otras líneas de esta factura que parecen el MISMO producto (p. ej. el mismo velcro en otro color). Si el color NO cambia el precio, SÚMALAS aquí: se vuelven un solo producto (un SKU) y los colores se adicionan. Si el color SÍ cambia el precio, déjalas como ítems nuevos (cada SKU lleva su color)."));
+        dup2.appendChild(fe("p", "factura-dup-h", "↔ Hay otras líneas de esta factura que parecen el MISMO producto (p. ej. el mismo velcro en otro color). Mismo precio → puedes SUMARLAS aquí (un solo SKU, colores combinados). Precio distinto → el panel te avisa y debes dejarlas SEPARADAS (cada color su propio SKU)."));
+        const precioDe = (o) => (o.costoSugerido != null ? o.costoSugerido : o.precioLista);
+        const pBase = precioDe(it);
         hermanos.forEach((x) => {
           const row = fe("div", "factura-dup-row");
-          row.appendChild(fe("span", null, "Ítem " + (x.oi + 1) + ": " + x.o.nombre));
-          const sum = fe("button", "btn-outline small", "➕ Sumar aquí (otro color)"); sum.type = "button";
-          sum.addEventListener("click", () => {
-            // El sobreviviente HEREDA los atributos del hermano que sí estén llenos (mismo producto, otro
-            // color): así da igual sobre qué tarjeta sumes; nunca se pierde la base por sumar al revés.
-            facturaHeredarAtributos(it.prod, x.o.prod);
-            it.absorbidos.push({ idx: x.oi, nombre: x.o.nombre, color: (x.o.prod && x.o.prod.color) || "" });
-            x.o.modo = "omitir"; x.o.absorbidoEn = idx; setSug(); renderFactura();
-          });
-          row.appendChild(sum);
+          const pHer = precioDe(x.o);
+          // Mismo precio (±1) → se pueden sumar (mismo producto, otro color). Precio distinto → NO sumar.
+          const mismoPrecio = (pBase != null && pHer != null && Math.abs(Number(pBase) - Number(pHer)) <= 1);
+          row.appendChild(fe("span", null, "Ítem " + (x.oi + 1) + ": " + x.o.nombre + (pHer != null ? " · " + money(Math.round(pHer)) : "")));
+          if (mismoPrecio) {
+            const sum = fe("button", "btn-outline small", "➕ Sumar aquí (mismo precio)"); sum.type = "button";
+            sum.addEventListener("click", () => {
+              // El sobreviviente HEREDA los atributos del hermano que sí estén llenos (mismo producto, otro
+              // color): así da igual sobre qué tarjeta sumes; nunca se pierde la base por sumar al revés.
+              facturaHeredarAtributos(it.prod, x.o.prod);
+              it.absorbidos.push({ idx: x.oi, nombre: x.o.nombre, color: (x.o.prod && x.o.prod.color) || "" });
+              x.o.modo = "omitir"; x.o.absorbidoEn = idx; setSug(); renderFactura();
+            });
+            row.appendChild(sum);
+          } else {
+            row.appendChild(fe("span", "factura-warn", "⚠ PRECIO DISTINTO (" + money(Math.round(pBase || 0)) + " vs " + money(Math.round(pHer || 0)) + ") → déjalos SEPARADOS: cada color su propio SKU. NO sumar."));
+          }
           dup2.appendChild(row);
         });
         card.appendChild(dup2);
@@ -5436,8 +5445,8 @@
       sug.addEventListener("click", () => { setSug(); renderFactura(); });
       card.appendChild(sug);
       const g2 = fe("div", "factura-grid");
-      g2.appendChild(facturaInput("SKU", P.sku, (v) => P.sku = v, { ej: "TEL-PVC-ROL-COBKK10000 · PEG-PVC-TAR-GAL025-MEISTER-MAD" }));
-      g2.appendChild(facturaInput("CodMaterialBase", P.codMaterialBase, (v) => P.codMaterialBase = v, { ej: "informativo (la llave del costo es el SKU)" }));
+      g2.appendChild(facturaInput("SKU", P.sku, (v) => { P.sku = v; P.skuManual = true; }, { ej: "TEL-PVC-ROL-COBKK10000 · PEG-PVC-TAR-GAL025-MEISTER-MAD" }));
+      g2.appendChild(facturaInput("CodMaterialBase", P.codMaterialBase, (v) => { P.codMaterialBase = v; P.cmbManual = true; }, { ej: "informativo (la llave del costo es el SKU)" }));
       card.appendChild(g2);
 
       // Estados de venta (hijos) que derivan del comprado
@@ -5522,11 +5531,16 @@
       // Color efectivo = color propio + colores de las líneas absorbidas; los nombres de esas líneas
       // se suman como alias para que futuras facturas calcen con cualquiera de ellos.
       const P = it.prod, colorEff = facturaColorEfectivo(it);
-      const skuCosto = P.sku || it.nombre, cmb = P.codMaterialBase || P.sku || it.nombre;
+      // SKU/CodMaterialBase SIEMPRE re-derivados de los campos actuales (+color efectivo +proveedor), salvo que
+      // el usuario los haya editado a mano. Evita el SKU "pegado" (stale) que truncaba a "COLOR-PROV".
+      const eff = Object.assign({}, P, { color: colorEff, proveedorCorto: provCorto });
+      const skuFinal = (P.skuManual && P.sku) ? P.sku : F.sugerirSKU(eff);
+      const cmbFinal = (P.cmbManual && P.codMaterialBase) ? P.codMaterialBase : (F.sugerirCodMaterialBase(eff) || skuFinal);
+      const skuCosto = skuFinal || it.nombre, cmb = cmbFinal || skuFinal || it.nombre;
       const aliasAbs = (it.absorbidos || []).map((a) => a.nombre).filter(Boolean);
       const alias = [F.aliasInicial(it.nombre, it.codigo)].concat(aliasAbs).join(" | ");
       const base = Object.assign({}, P, {
-        color: colorEff, codMaterialBase: cmb, parent: "", proveedor: provCorto, proveedorCorto: provCorto, proveedorRUT: provRUT,
+        sku: skuFinal, color: colorEff, codMaterialBase: cmb, parent: "", proveedor: provCorto, proveedorCorto: provCorto, proveedorRUT: provRUT,
         nombreProveedor: alias, unidadProveedor: it.unidadProveedor, fecha: ctx.fecha,
       });
       plan.granel.push(F.filaGranel(base));
@@ -5535,7 +5549,7 @@
         // estado que fracciona: NO recibe costo propio, deriva del padre (Parent = SKU del comprado).
         const hijo = Object.assign({}, base, {
           variedad: es.variedad, unidad: es.unidad, unidadMinima: es.unidadMinima, rendimiento: es.rendimiento,
-          parent: P.sku, sku: (P.sku || cmb) + "-" + F.norm(es.variedad).replace(/[^a-z0-9]/g, "").toUpperCase().slice(0, 4),
+          parent: skuFinal, sku: (skuFinal || cmb) + "-" + F.norm(es.variedad).replace(/[^a-z0-9]/g, "").toUpperCase().slice(0, 4),
         });
         plan.granel.push(F.filaGranel(hijo));
         pedirFactor(P.categoria, P.tipo, es.variedad, es.unidadMinima);
@@ -5554,6 +5568,13 @@
     if (plan.prov.length) linea("Proveedor nuevo → PROVEEDORES: " + plan.prov.map((p) => p.razon + " (" + p.rut + ")").join("; "));
     if (plan.granel.length) linea("Productos/estados nuevos → GRANEL: " + plan.granel.length + " fila(s).");
     linea("Costos → COSTOS: " + plan.costos.length + " fila(s).");
+    // Muestra las llaves (SKU) que se escribirán, para que el usuario las revise antes de confirmar.
+    if (plan.costos.length) {
+      const lk = fe("div", "factura-llaves");
+      lk.appendChild(fe("p", "factura-sub", "Llaves (SKU) que se escribirán en COSTOS — revísalas:"));
+      plan.costos.forEach((c) => lk.appendChild(fe("p", "muted small", "• " + (c.llave || "(vacía)") + "  →  " + money(Math.round(c.costo || 0)) + (c.nota ? "  · " + c.nota : ""))));
+      box.appendChild(lk);
+    }
 
     // Factores faltantes: input por combinación (el usuario fija el valor; default 1)
     const factorInputs = [];
