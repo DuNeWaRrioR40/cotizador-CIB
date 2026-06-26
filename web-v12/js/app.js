@@ -5229,6 +5229,38 @@
   // El usuario escribe/elige "CONF" (cómodo) pero en el Sheet se guarda "CONFECCION", que es lo que la
   // fórmula de PrecioCalc y la tabla FACTOR esperan (evita que el factor no calce y PrecioCalc dé 0).
   function expandConf(s) { return (window.FacturaCIBSA.norm(s) === "conf") ? "CONFECCION" : s; }
+  // Actualización rápida: clona un producto del catálogo en el ítem `it` (mismo producto, otro color).
+  // Copia todos los atributos MENOS el color, y replica sus estados derivados (M.LINEAL/CONF, etc.).
+  function facturaClonar(it, prod) {
+    const F = window.FacturaCIBSA;
+    // si nos pasan un ESTADO (tiene Parent), subimos a su producto base (mismo CodMaterialBase, sin Parent).
+    let base = prod;
+    if (prod.parent && prod.codMaterialBase) {
+      const b = granelActivos().find((p) => p.codMaterialBase === prod.codMaterialBase && !p.parent);
+      if (b) base = b;
+    }
+    const P = it.prod;
+    ["categoria", "tipo", "variedad", "formato", "modelo", "materialidad", "unidad"].forEach((k) => { if (base[k] != null && base[k] !== "") P[k] = base[k]; });
+    if (base.anchoRollo != null && base.anchoRollo !== "") P.anchoRollo = base.anchoRollo;
+    P.unidadMinima = base.unidadMinima || "UNITARIO";
+    if (base.rendimiento != null && base.rendimiento !== "") P.rendimiento = base.rendimiento;
+    P.fav = (base.fav && base.fav.join) ? base.fav.join("/") : (base.fav || "");
+    // estados derivados: filas del catálogo con el mismo CodMaterialBase, variedad ≠ a la base, sin repetir.
+    it.estados = [];
+    if (base.codMaterialBase) {
+      const vistos = {};
+      granelActivos().forEach((h) => {
+        if (h.codMaterialBase !== base.codMaterialBase) return;
+        if (F.norm(h.variedad) === F.norm(base.variedad)) return;   // es otra base/color, no un estado derivado
+        const key = F.norm(h.variedad) + "|" + F.norm(h.unidadMinima);
+        if (vistos[key]) return; vistos[key] = 1;
+        it.estados.push({ variedad: h.variedad, unidad: h.unidad, unidadMinima: h.unidadMinima, rendimiento: h.rendimiento });
+      });
+    }
+    // el color NO se copia: queda el que tenga el ítem (para que pongas el nuevo). SKU se re-derivará.
+    P.skuManual = false; P.cmbManual = false; P.sku = ""; P.codMaterialBase = "";
+    it.clonadoDe = base.sku || base.codMaterialBase || "";
+  }
   // Nombre corto del proveedor del contexto de la factura (para el último token del SKU: SAV, TEX, …).
   function facturaProvCorto() {
     const p = FC.ctx && FC.ctx.proveedor; if (!p) return "";
@@ -5388,13 +5420,16 @@
         .filter((c) => c.score >= 0.34);
       if (cand.length) {
         const dup = fe("div", "factura-dup");
-        dup.appendChild(fe("p", "factura-dup-h", "⚠ ¿No será uno de estos que ya existe? (evita duplicar)"));
+        dup.appendChild(fe("p", "factura-dup-h", "⚠ ¿No será uno de estos que ya existe? «Es este» = mismo producto (solo agrega costo). «Clonar» = producto nuevo que HEREDA todo (atributos + estados) menos el color → actualización rápida para un color nuevo."));
         cand.forEach((c) => {
           const row = fe("div", "factura-dup-row");
           row.appendChild(fe("span", null, granelNombre(c.prod) + (c.prod.sku ? " · " + c.prod.sku : "") + "  (" + c.via + (c.score < 1 ? " " + Math.round(c.score * 100) + "%" : "") + ")"));
           const use = fe("button", "btn-outline small", "Es este"); use.type = "button";
           use.addEventListener("click", () => { it.modo = "existente"; it.existenteSel = c.prod.sku || granelNombre(c.prod); it.llaveExistente = c.prod.sku || ""; renderFactura(); });
           row.appendChild(use);
+          const clo = fe("button", "btn-outline small", "Clonar (otro color)"); clo.type = "button";
+          clo.addEventListener("click", () => { facturaClonar(it, c.prod); setSug(); renderFactura(); });
+          row.appendChild(clo);
           dup.appendChild(row);
         });
         card.appendChild(dup);
@@ -5430,6 +5465,21 @@
           dup2.appendChild(row);
         });
         card.appendChild(dup2);
+      }
+      // Actualización rápida: clonar de CUALQUIER producto del catálogo (hereda atributos + estados, no el color).
+      {
+        const bases = granelActivos().filter((p) => !p.parent);
+        if (bases.length) {
+          const cw2 = fe("div", "factura-clone");
+          const opts = [["", "— Clonar de un producto existente (otro color) —"]]
+            .concat(bases.map((p) => [p.sku || granelNombre(p), granelNombre(p) + (p.sku ? " · " + p.sku : "")]));
+          cw2.appendChild(facturaSelect("Actualización rápida", opts, "", (v) => {
+            if (!v) return; const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === v);
+            if (p) { facturaClonar(it, p); setSug(); renderFactura(); }
+          }));
+          if (it.clonadoDe) cw2.appendChild(fe("p", "muted small", "↳ Clonado de " + it.clonadoDe + ". Cambia solo el COLOR (y revisa el costo). El SKU se re-deriva con el nuevo color."));
+          card.appendChild(cw2);
+        }
       }
       const g = fe("div", "factura-grid");
       const P = it.prod;

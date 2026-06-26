@@ -190,6 +190,9 @@
         fav: get(r, "fav").split("/").map((s) => s.trim()).filter(Boolean), // categorías FAV (varias con "/")
         // divisible = GRANEL (acepta decimales); por defecto/UNITARIO = false (cantidad entera). Mín 1 siempre.
         divisible: /granel/i.test(get(r, "unidadMinima")),
+        // Campos del modelo de costeo (para clonar productos/estados en el panel de facturas):
+        unidadMinima: get(r, "unidadMinima"), parent: get(r, "parent"),
+        rendimiento: parseNumero(get(r, "rendimiento")), codMaterialBase: get(r, "codMaterialBase"),
       });
     });
     return out;
