@@ -5568,11 +5568,23 @@
     if (plan.prov.length) linea("Proveedor nuevo → PROVEEDORES: " + plan.prov.map((p) => p.razon + " (" + p.rut + ")").join("; "));
     if (plan.granel.length) linea("Productos/estados nuevos → GRANEL: " + plan.granel.length + " fila(s).");
     linea("Costos → COSTOS: " + plan.costos.length + " fila(s).");
-    // Muestra las llaves (SKU) que se escribirán, para que el usuario las revise antes de confirmar.
+    // Muestra las llaves (SKU) que se escribirán + avisa si alguna YA existe en COSTOS (mismo RUT+folio+SKU).
     if (plan.costos.length) {
+      const ctx = FC.ctx || {};
+      const rutK = F.soloDigitosRUT(ctx.proveedor ? ctx.proveedor.rut : ""), folioK = String(ctx.folio || "").trim();
+      let dups = 0;
       const lk = fe("div", "factura-llaves");
       lk.appendChild(fe("p", "factura-sub", "Llaves (SKU) que se escribirán en COSTOS — revísalas:"));
-      plan.costos.forEach((c) => lk.appendChild(fe("p", "muted small", "• " + (c.llave || "(vacía)") + "  →  " + money(Math.round(c.costo || 0)) + (c.nota ? "  · " + c.nota : ""))));
+      plan.costos.forEach((c) => {
+        const yaEsta = !!(rutK && folioK && c.llave && FC.costoSet && FC.costoSet[rutK + "|" + folioK + "|" + F.norm(c.llave)]);
+        if (yaEsta) dups++;
+        const p = fe("p", yaEsta ? "factura-warn small" : "muted small", "• " + (c.llave || "(vacía)") + "  →  " + money(Math.round(c.costo || 0)) + (c.nota ? "  · " + c.nota : "") + (yaEsta ? "   ⚠ YA EXISTE en COSTOS (duplicado)" : ""));
+        lk.appendChild(p);
+      });
+      if (dups) {
+        const w = fe("p", "factura-warn", "⚠ " + dups + " costo(s) ya están en COSTOS para esta factura (RUT+folio+SKU). Si confirmas, se ESCRIBIRÁN DUPLICADOS. Para no duplicar, vuelve atrás y deja esos ítems en «Omitir».");
+        lk.insertBefore(w, lk.firstChild.nextSibling);
+      }
       box.appendChild(lk);
     }
 
