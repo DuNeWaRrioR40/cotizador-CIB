@@ -390,6 +390,19 @@
     return r.json();
   }
 
+  // Append a GRANEL SIN tocar la columna de fórmula (PrecioCalc, a la derecha). En vez de values.append con
+  // INSERT_ROWS (que inserta filas en blanco sin la fórmula arrastrada), calcula la primera fila libre
+  // mirando la columna A y ESCRIBE el bloque A{n}:AE{n} con values.batchUpdate. No inserta ni desplaza,
+  // así la fórmula de PrecioCalc (ya arrastrada hacia abajo) queda intacta y se calcula sola.
+  async function anexarGranel(token, filas) {
+    if (!filas || !filas.length) return;
+    const hoja = CFG.HOJA_GRANEL_MAESTRO || "GRANEL";
+    let colA = [];
+    try { colA = await leerValores(token, `'${hoja}'!A:A`); } catch (e) { colA = []; }
+    const nextRow = (colA ? colA.length : 0) + 1;   // values.get omite filas vacías al final → última con datos en A
+    return actualizarCeldas(token, hoja, [{ rango: "A" + nextRow, valores: filas }]);
+  }
+
   // Lista de UNIDADES de medida válidas (tabla FACTOR!G:I → Código · Nombre · Magnitud).
   async function cargarUnidades(token) {
     let res; try { res = await leerTabla(token, CFG.HOJA_FACTOR || "FACTOR", "G:I"); } catch (e) { return []; }
@@ -417,5 +430,5 @@
     return r.json();
   }
 
-  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, cargarUnidades, anexarHoja, leerHojaRaw, actualizarCeldas, parseNumero };
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, cargarUnidades, anexarHoja, anexarGranel, leerHojaRaw, actualizarCeldas, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -5670,7 +5670,7 @@
     if (!tok) throw new Error("Sesión expirada. Inicia sesión de nuevo.");
     const F = window.FacturaCIBSA, S = window.SheetsCIBSA;
     if (plan.prov.length) await S.anexarHoja(tok, CFG.HOJA_PROVEEDORES, plan.prov.map(F.filaProveedor));
-    if (plan.granel.length) await S.anexarHoja(tok, CFG.HOJA_GRANEL_MAESTRO, plan.granel);
+    if (plan.granel.length) await S.anexarGranel(tok, plan.granel);   // escribe sin tocar la fórmula PrecioCalc
     if (factores && factores.length) await S.anexarHoja(tok, CFG.HOJA_FACTOR, factores.map(F.filaFactor));
     if (plan.costos.length) await S.anexarHoja(tok, CFG.HOJA_COSTOS, plan.costos.map(F.filaCosto));
   }

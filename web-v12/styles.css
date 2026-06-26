@@ -42,13 +42,16 @@ body {
 /* Header */
 header {
   position: sticky; top: 0; z-index: 10;
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px 10px; flex-wrap: wrap;
   padding: 10px 14px; padding-top: calc(10px + env(safe-area-inset-top));
   background: var(--header-bg); color: var(--header-text);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 body[data-theme="C"] header { border-bottom: none; }
-.brand { display: flex; align-items: center; gap: 8px; }
+.brand { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.brand .hdr-btn { margin-left: 2px; }
+/* Carga de facturas: va ARRIBA de Vendedor, fuera del flujo de cotización, con separación clara. */
+.wFactura-top { margin: 4px 0 18px; padding-bottom: 10px; border-bottom: 2px dashed color-mix(in srgb, var(--border) 75%, transparent); }
 .brand-title { font-weight: 700; font-size: 17px; }
 .header-right { display: flex; align-items: center; gap: 8px; }
 .user-email { font-size: 12px; opacity: 0.9; max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
