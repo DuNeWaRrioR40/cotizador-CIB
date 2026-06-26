@@ -5139,7 +5139,36 @@
     try { FC.prov = await window.SheetsCIBSA.cargarProveedores(tok); } catch (e) { FC.prov = []; }
     try { FC.fact = await window.SheetsCIBSA.cargarFactores(tok); } catch (e) { FC.fact = []; }
     try { FC.unid = await window.SheetsCIBSA.cargarUnidades(tok); } catch (e) { FC.unid = []; }
+    // Claves de COSTOS ya cargados: detecta facturas/productos ya ingresados (RUT proveedor + folio [+ SKU]).
+    FC.costoSet = {}; FC.facturaSet = {};
+    try {
+      const F = window.FacturaCIBSA;
+      const filas = await window.SheetsCIBSA.leerHojaRaw(tok, CFG.HOJA_COSTOS, "A:G");
+      (filas || []).slice(1).forEach((r) => {  // [0]=Llave,[4]=ProveedorRUT,[5]=NumFactura
+        const llave = F.norm(r[0] || ""), rut = F.soloDigitosRUT(r[4] || ""), folio = String(r[5] || "").trim();
+        if (!rut || !folio) return;
+        FC.facturaSet[rut + "|" + folio] = true;
+        if (llave) FC.costoSet[rut + "|" + folio + "|" + llave] = true;
+      });
+    } catch (e) { FC.costoSet = {}; FC.facturaSet = {}; }
     FC.loaded = true;
+  }
+  // Marca en el contexto los productos de esta factura que YA están en COSTOS (mismo RUT+folio+SKU): los deja
+  // en "Omitir" para que recargar el XML y registrar el RESTO no duplique lo ya cargado. No bloquea nada.
+  function facturaMarcarYaCargados(ctx) {
+    if (!ctx || ctx.manual) return;
+    const F = window.FacturaCIBSA;
+    const rut = F.soloDigitosRUT(ctx.proveedor.rut || ""), folio = String(ctx.folio || "").trim();
+    ctx.facturaYaVista = !!(rut && folio && FC.facturaSet && FC.facturaSet[rut + "|" + folio]);
+    ctx.yaCargados = 0;
+    if (!rut || !folio) return;
+    (ctx.items || []).forEach((it) => {
+      const sku = it.llaveExistente || (it.match && it.match.prod ? it.match.prod.sku : "");
+      if (!sku) return;
+      if (FC.costoSet && FC.costoSet[rut + "|" + folio + "|" + F.norm(sku)]) {
+        it.yaCargado = true; it.modo = "omitir"; ctx.yaCargados++;
+      }
+    });
   }
   function facturaItemInit(src) {
     const F = window.FacturaCIBSA;
@@ -5209,6 +5238,7 @@
     else if (dte.receptor.rut && window.FacturaCIBSA.soloDigitosRUT(dte.receptor.rut) !== window.FacturaCIBSA.soloDigitosRUT(CFG.RUT_EMPRESA)) facturaMsg("Aviso: el receptor no es CIBSA (" + dte.receptor.rut + ").", false);
     else facturaMsg("Factura cargada: folio " + dte.folio + " · " + dte.emisor.razon, false);
     FC.ctx = facturaCtxDeDTE(dte);
+    facturaMarcarYaCargados(FC.ctx);
     renderFactura();
   }
   function facturaInput(labelTxt, value, on, attrs) {
@@ -5255,6 +5285,15 @@
       pv.appendChild(g);
     }
     cont.appendChild(pv);
+
+    // Aviso: esta factura (RUT proveedor + folio) ya fue cargada antes. No bloquea: deja en "Omitir" lo ya
+    // registrado para que puedas agregar solo lo que falta sin duplicar.
+    if (ctx.facturaYaVista) {
+      const av = fe("div", "factura-warn-box");
+      av.appendChild(fe("p", "factura-warn", "⚠ Esta factura (folio " + (ctx.folio || "—") + " de " + (ctx.proveedor.razon || ctx.proveedor.rut || "este proveedor") + ") ya fue cargada antes."));
+      av.appendChild(fe("p", "muted small", ctx.yaCargados ? ("Dejé en «Omitir» " + ctx.yaCargados + " producto(s) ya registrado(s). Revisa/agrega solo los que falten; si necesitas recargar un costo, cámbialo a «Producto…».") : "No detecté qué productos ya están cargados (quizás se cargaron con otra llave). Revisa para no duplicar."));
+      cont.appendChild(av);
+    }
 
     // --- Ítems ---
     ctx.items.forEach((it, i) => cont.appendChild(renderFacturaItem(it, i)));
@@ -5305,6 +5344,11 @@
           if (dst && dst.absorbidos) dst.absorbidos = dst.absorbidos.filter((a) => a.idx !== idx);
           it.absorbidoEn = null; it.modo = it.match ? "existente" : "nuevo"; renderFactura();
         });
+        nota.appendChild(und); card.appendChild(nota);
+      } else if (it.yaCargado) {
+        const nota = fe("p", "muted small", "↳ Ya cargado de esta factura (no se vuelve a escribir). ");
+        const und = fe("button", "btn-outline small", "Cargar igual"); und.type = "button"; und.title = "Forzar: vuelve a registrar el costo de este producto";
+        und.addEventListener("click", () => { it.yaCargado = false; it.modo = it.match ? "existente" : "nuevo"; renderFactura(); });
         nota.appendChild(und); card.appendChild(nota);
       }
       return card;
