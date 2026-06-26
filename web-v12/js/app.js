@@ -656,54 +656,67 @@
       levelEl.appendChild(grid);
       return;
     }
-    // Listado de variedades (productos hoja)
-    const lista = sel.slice().sort((a, b) => (a.modelo || "").localeCompare(b.modelo || "") || (a.formato || "").localeCompare(b.formato || ""));
-    const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = lista.length + " producto(s):";
+    // Listado de productos hoja AGRUPADO por identidad base (mismo modelo/formato/materialidad/largo). Los
+    // colores —de filas separadas (distinto precio/SKU) o de una fila multicolor— se eligen en un desplegable
+    // por tarjeta: una tarjeta por producto, sin repetir; al cambiar el color se actualiza precio y SKU.
+    const gnorm = (s) => String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+    const grupos = [], gmap = {};
+    sel.slice().sort((a, b) => (a.modelo || "").localeCompare(b.modelo || "") || (a.formato || "").localeCompare(b.formato || "")).forEach((p) => {
+      const k = [gnorm(p.modelo), gnorm(p.formato), gnorm(p.materialidad), gnorm(p.largo)].join("|");
+      let g = gmap[k]; if (!g) { g = gmap[k] = { rep: p, colores: [] }; grupos.push(g); }
+      // Separa varios colores por ","  ";"  o " / " (con espacios, como los une "adicionar"). NO parte un
+      // color bicolor escrito sin espacios (p. ej. "AZUL/SILVER" queda como un solo color).
+      const cs = (p.color || "").split(/\s*[,;]\s*|\s+\/\s+/).map((s) => s.trim()).filter(Boolean);
+      if (!cs.length) cs.push("");   // producto sin color → una opción "—"
+      cs.forEach((c) => { if (!g.colores.some((x) => gnorm(x.color) === gnorm(c))) g.colores.push({ color: c, prod: p }); });
+    });
+    const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = grupos.length + " producto(s):";
     levelEl.appendChild(cap);
     const ul = document.createElement("div"); ul.className = "granel-prods";
-    lista.forEach((p) => {
-      const m2 = granelPrecioM2(p);
-      const card = document.createElement("div"); card.className = "granel-prod" + (p === granelSel ? " sel" : "");
+    grupos.forEach((g) => {
+      let cur = g.colores[0].prod, colorSel = g.colores[0].color;
+      const card = document.createElement("div"); card.className = "granel-prod" + (cur === granelSel ? " sel" : "");
       const info = document.createElement("button"); info.type = "button"; info.className = "granel-prod-info";
-      const attrs = [p.materialidad].filter(Boolean); // color va aparte (selector); materialidad/largo informativos
-      if (p.largo) attrs.push("largo " + p.largo + " m");
-      const attrHtml = attrs.length ? '<div class="granel-prod-attr">' + esc(attrs.join(" · ")) + '</div>' : '';
-      info.innerHTML = '<div class="granel-prod-top"><span class="granel-prod-nom">' + esc(granelNombre(p)) + '</span><span class="granel-prod-precio">' + (p.precio != null ? money(p.precio) + " / " + esc(p.unidad) : "s/precio") + '</span></div>' +
-        (p.specs ? '<div class="granel-prod-specs">' + esc(p.specs) + '</div>' : '') +
-        attrHtml +
-        '<div class="granel-prod-meta">' + (m2 != null ? "≈ " + money(Math.round(m2)) + "/m² · " : "") + '<span class="granel-prov">prov.: ' + esc(p.proveedor || "—") + '</span> · <span class="granel-prod-hint">toca para comparar</span></div>' +
-        granelMetaExtra(p);
-      info.addEventListener("click", () => { granelSel = (granelSel === p ? null : p); renderGranel(); });
+      const top = document.createElement("div"); top.className = "granel-prod-top";
+      const nomS = document.createElement("span"); nomS.className = "granel-prod-nom"; nomS.textContent = granelNombre(g.rep);
+      const preS = document.createElement("span"); preS.className = "granel-prod-precio";
+      top.appendChild(nomS); top.appendChild(preS); info.appendChild(top);
+      if (g.rep.specs) { const sp = document.createElement("div"); sp.className = "granel-prod-specs"; sp.textContent = g.rep.specs; info.appendChild(sp); }
+      const attrs = [g.rep.materialidad].filter(Boolean); if (g.rep.largo) attrs.push("largo " + g.rep.largo + " m");
+      if (attrs.length) { const at = document.createElement("div"); at.className = "granel-prod-attr"; at.textContent = attrs.join(" · "); info.appendChild(at); }
+      const meta = document.createElement("div"); meta.className = "granel-prod-meta"; info.appendChild(meta);
+      info.addEventListener("click", () => { granelSel = (granelSel === cur ? null : cur); renderGranel(); });
       card.appendChild(info);
-      // SKU (interno) por encima del campo de cantidad: negro, mismo tamaño que el hint.
-      if (p.sku) { const sk = document.createElement("div"); sk.className = "granel-prod-sku"; sk.textContent = p.sku; card.appendChild(sk); }
-      // Selector de color: lista desplegable con los colores disponibles (Color separado por comas).
-      const colores = (p.color || "").split(",").map((s) => s.trim()).filter(Boolean);
-      let colorSel = colores.length ? colores[0] : "";
-      if (colores.length) {
-        const cRow = document.createElement("div"); cRow.className = "granel-color-row";
-        const lbl = document.createElement("span"); lbl.className = "granel-color-lbl"; lbl.textContent = "Color:";
-        const sel = document.createElement("select"); sel.className = "granel-color-sel";
-        colores.forEach((c) => { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); });
-        sel.addEventListener("change", (e) => { colorSel = e.target.value; });
-        cRow.appendChild(lbl); cRow.appendChild(sel); card.appendChild(cRow);
-      }
-      // Fila para agregar a la cotización con cantidad (en la unidad del producto).
+      const skuD = document.createElement("div"); skuD.className = "granel-prod-sku"; card.appendChild(skuD);
       const addRow = document.createElement("div"); addRow.className = "granel-add";
-      if (p.precio == null) {
-        const w = document.createElement("span"); w.className = "muted small"; w.textContent = "Sin precio en el Sheet: no se puede cotizar.";
-        addRow.appendChild(w);
-      } else {
-        const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = p.divisible ? "decimal" : "numeric"; inp.className = "granel-cant";
-        { const uv = granelUnidadVenta(p.variedad); inp.placeholder = "cant." + (uv ? " (" + esc(uv) + ")" : ""); } inp.title = p.divisible ? "Mínimo 1; acepta decimales." : "Producto unitario: cantidad entera, mínimo 1.";
+      // Pinta precio/SKU/m²/meta y reconstruye la fila de "agregar" según el color seleccionado (cur).
+      const pintar = () => {
+        preS.textContent = (cur.precio != null ? money(cur.precio) + " / " + cur.unidad : "s/precio");
+        skuD.textContent = cur.sku || "";
+        const m2 = granelPrecioM2(cur);
+        meta.innerHTML = (m2 != null ? "≈ " + money(Math.round(m2)) + "/m² · " : "") + '<span class="granel-prov">prov.: ' + esc(cur.proveedor || "—") + '</span> · <span class="granel-prod-hint">toca para comparar</span>' + granelMetaExtra(cur);
+        addRow.innerHTML = "";
+        if (cur.precio == null) { const w = document.createElement("span"); w.className = "muted small"; w.textContent = "Sin precio en el Sheet: no se puede cotizar."; addRow.appendChild(w); return; }
+        const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = cur.divisible ? "decimal" : "numeric"; inp.className = "granel-cant";
+        const uv = granelUnidadVenta(cur.variedad); inp.placeholder = "cant." + (uv ? " (" + uv + ")" : ""); inp.title = cur.divisible ? "Mínimo 1; acepta decimales." : "Producto unitario: cantidad entera, mínimo 1.";
         agregarCalc(inp);
         const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn-outline small"; btn.textContent = "+ Agregar a la cotización";
-        const add = () => { let c = window.CalcCIBSA.evalExpr(inp.value); if (c == null || isNaN(c) || c <= 0) { inp.focus(); return; } c = granelClampCant(p.divisible, c); granelAgregar(p, c, colorSel); };
+        const add = () => { let c = window.CalcCIBSA.evalExpr(inp.value); if (c == null || isNaN(c) || c <= 0) { inp.focus(); return; } c = granelClampCant(cur.divisible, c); granelAgregar(cur, c, colorSel); };
         btn.addEventListener("click", add);
         inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
         addRow.appendChild(inp); addRow.appendChild(btn);
+      };
+      // Desplegable de color (si hay color o varias filas de color).
+      if (g.colores.some((x) => x.color) || g.colores.length > 1) {
+        const cRow = document.createElement("div"); cRow.className = "granel-color-row";
+        const lbl = document.createElement("span"); lbl.className = "granel-color-lbl"; lbl.textContent = "Color:";
+        const selc = document.createElement("select"); selc.className = "granel-color-sel";
+        g.colores.forEach((x, i) => { const o = document.createElement("option"); o.value = String(i); o.textContent = x.color || "—"; selc.appendChild(o); });
+        selc.addEventListener("change", (e) => { const i = parseInt(e.target.value, 10) || 0; cur = g.colores[i].prod; colorSel = g.colores[i].color; pintar(); });
+        cRow.appendChild(lbl); cRow.appendChild(selc); card.appendChild(cRow);
       }
       card.appendChild(addRow);
+      pintar();
       ul.appendChild(card);
     });
     levelEl.appendChild(ul);
@@ -5245,18 +5258,20 @@
     P.unidadMinima = base.unidadMinima || "UNITARIO";
     if (base.rendimiento != null && base.rendimiento !== "") P.rendimiento = base.rendimiento;
     P.fav = (base.fav && base.fav.join) ? base.fav.join("/") : (base.fav || "");
-    // estados derivados: filas del catálogo con el mismo CodMaterialBase, variedad ≠ a la base, sin repetir.
+    // estados derivados: filas del catálogo vinculadas a la base por Parent (= SKU base) o por CodMaterialBase,
+    // con variedad ≠ a la base (las bases de otros colores comparten variedad y se excluyen), sin repetir.
     it.estados = [];
-    if (base.codMaterialBase) {
-      const vistos = {};
-      granelActivos().forEach((h) => {
-        if (h.codMaterialBase !== base.codMaterialBase) return;
-        if (F.norm(h.variedad) === F.norm(base.variedad)) return;   // es otra base/color, no un estado derivado
-        const key = F.norm(h.variedad) + "|" + F.norm(h.unidadMinima);
-        if (vistos[key]) return; vistos[key] = 1;
-        it.estados.push({ variedad: h.variedad, unidad: h.unidad, unidadMinima: h.unidadMinima, rendimiento: h.rendimiento });
-      });
-    }
+    const vistos = {};
+    granelActivos().forEach((h) => {
+      const porParent = base.sku && h.parent && h.parent === base.sku;
+      const porCMB = base.codMaterialBase && h.codMaterialBase && h.codMaterialBase === base.codMaterialBase;
+      if (!porParent && !porCMB) return;
+      if (F.norm(h.variedad) === F.norm(base.variedad)) return;   // es otra base/color, no un estado derivado
+      const key = F.norm(h.variedad) + "|" + F.norm(h.unidadMinima);
+      if (vistos[key]) return; vistos[key] = 1;
+      it.estados.push({ variedad: h.variedad, unidad: h.unidad, unidadMinima: h.unidadMinima, rendimiento: h.rendimiento });
+    });
+    it.estadosClonados = it.estados.length;
     // el color NO se copia: queda el que tenga el ítem (para que pongas el nuevo). SKU se re-derivará.
     P.skuManual = false; P.cmbManual = false; P.sku = ""; P.codMaterialBase = "";
     it.clonadoDe = base.sku || base.codMaterialBase || "";
@@ -5477,7 +5492,7 @@
             if (!v) return; const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === v);
             if (p) { facturaClonar(it, p); setSug(); renderFactura(); }
           }));
-          if (it.clonadoDe) cw2.appendChild(fe("p", "muted small", "↳ Clonado de " + it.clonadoDe + ". Cambia solo el COLOR (y revisa el costo). El SKU se re-deriva con el nuevo color."));
+          if (it.clonadoDe) cw2.appendChild(fe("p", "muted small", "↳ Clonado de " + it.clonadoDe + " · " + (it.estadosClonados || 0) + " estado(s) derivado(s). Cambia solo el COLOR (y revisa el costo); el SKU se re-deriva con el nuevo color." + (it.estadosClonados ? "" : " (Si esperabas estados M.LINEAL/CONF y no aparecen, las filas del producto original no están vinculadas por Parent/CodMaterialBase — agrégalos abajo a mano.)")));
           card.appendChild(cw2);
         }
       }
