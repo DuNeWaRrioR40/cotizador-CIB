@@ -5248,6 +5248,22 @@
   // El usuario escribe/elige "CONF" (cómodo) pero en el Sheet se guarda "CONFECCION", que es lo que la
   // fórmula de PrecioCalc y la tabla FACTOR esperan (evita que el factor no calce y PrecioCalc dé 0).
   function expandConf(s) { return (window.FacturaCIBSA.norm(s) === "conf") ? "CONFECCION" : s; }
+  // Detecta si un SKU ya existe (duplicado exacto) o es MUY parecido a otros del catálogo (mismo producto con
+  // 1–2 tokens distintos: color/formato/proveedor) → para avisar antes de crear un "nuevo" que ya existe.
+  function facturaSkuChequeo(sku, prods) {
+    const F = window.FacturaCIBSA, tk = (s) => F.norm(s).split(/[^a-z0-9]+/).filter(Boolean);
+    const a = tk(sku), an = F.norm(sku); if (!a.length) return { exacto: null, similares: [] };
+    let exacto = null; const sims = [];
+    (prods || []).forEach((p) => {
+      if (!p.sku) return;
+      if (F.norm(p.sku) === an) { exacto = p; return; }
+      const b = tk(p.sku), setB = {}; b.forEach((t) => setB[t] = 1);
+      const comunes = a.filter((t) => setB[t]).length, dif = Math.max(a.length, b.length) - comunes;
+      if (comunes >= 2 && dif >= 1 && dif <= 2) sims.push({ prod: p, dif: dif, comunes: comunes });
+    });
+    sims.sort((x, y) => x.dif - y.dif || y.comunes - x.comunes);
+    return { exacto: exacto, similares: sims.slice(0, 4) };
+  }
   // Actualización rápida: clona un producto del catálogo en el ítem `it` (mismo producto, otro color).
   // Copia todos los atributos MENOS el color, y replica sus estados derivados (M.LINEAL/CONF, etc.).
   function facturaClonar(it, prod) {
@@ -5464,10 +5480,10 @@
       " · monto " + (it.montoItem != null ? money(it.montoItem) : "—");
     card.appendChild(fe("p", "muted small", ctxLine));
 
-    const modos = [["existente", "Producto existente"], ["nuevo", "Producto nuevo"], ["omitir", "Omitir"]];
-    const msel = facturaSelect("Qué hago con este ítem", modos, it.modo, (v) => { it.modo = v; renderFactura(); });
+    const modos = [["existente", "Actualizar producto existente"], ["nuevo", "Producto NUEVO (no existe)"], ["omitir", "Omitir"]];
+    const msel = facturaSelect("¿Qué es este ítem?", modos, it.modo, (v) => { it.modo = v; renderFactura(); });
     card.appendChild(msel);
-    if (it.match && it.modo === "existente") card.appendChild(fe("p", "muted small", "Sugerido por " + it.match.via + (it.match.score < 1 ? " (" + Math.round(it.match.score * 100) + "%)" : "") + " → " + granelNombre(it.match.prod)));
+    if (it.modo === "existente") card.appendChild(fe("p", "muted small", "Ya está en el catálogo. Si solo cambia el PRECIO, deja el producto elegido (escribe el costo). Si cambió el COLOR / FORMATO u otra variable, usa «crear variante» (abajo) — queda con SKU propio heredando el resto." + (it.match ? " · Sugerido por " + it.match.via + (it.match.score < 1 ? " (" + Math.round(it.match.score * 100) + "%)" : "") + " → " + granelNombre(it.match.prod) : "")));
 
     if (it.modo === "omitir") {
       if (it.absorbidoEn != null) {
@@ -5494,6 +5510,14 @@
         it.existenteSel = v; const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === v); it.llaveExistente = p ? (p.sku || it.llaveExistente) : it.llaveExistente; renderFactura();
       }));
       card.appendChild(facturaInput("Llave de costo (SKU)", it.llaveExistente, (v) => it.llaveExistente = v, { ph: "SKU del producto" }));
+      // Puente: el producto cambió en una variable (color/formato…) → crear VARIANTE (clona del elegido).
+      const variante = fe("button", "btn-outline small", "Cambió color/formato/otra variable → crear variante"); variante.type = "button";
+      variante.addEventListener("click", () => {
+        const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === it.existenteSel);
+        if (!p) { facturaMsg("Elige primero el producto del catálogo.", true); return; }
+        it.modo = "nuevo"; facturaClonar(it, p); renderFactura();
+      });
+      card.appendChild(variante);
     } else { // nuevo
       // Anti-duplicados: muestra posibles coincidencias existentes antes de crear uno nuevo.
       const cand = window.FacturaCIBSA.candidatos({ nombre: it.nombre, codigo: it.codigo }, granelActivos(), 4)
@@ -5612,6 +5636,33 @@
       g2.appendChild(facturaInput("SKU", P.sku, (v) => { P.sku = v; P.skuManual = true; }, { ej: "TEL-PVC-ROL-COBKK10000 · PEG-PVC-TAR-GAL025-MEISTER-MAD" }));
       g2.appendChild(facturaInput("CodMaterialBase", P.codMaterialBase, (v) => { P.codMaterialBase = v; P.cmbManual = true; }, { ej: "informativo (la llave del costo es el SKU)" }));
       card.appendChild(g2);
+      // Chequeo de SKU: ¿duplicado exacto o muy parecido a uno existente? (avisa que quizá NO es nuevo).
+      {
+        const skuAct = P.sku || window.FacturaCIBSA.sugerirSKU(Object.assign({}, P, { color: facturaColorEfectivo(it), proveedorCorto: facturaProvCorto() }));
+        const chk = facturaSkuChequeo(skuAct, granelActivos());
+        if (chk.exacto) {
+          const box = fe("div", "factura-warn-box");
+          box.appendChild(fe("p", "factura-warn", "⛔ Este SKU YA EXISTE en el catálogo: " + (chk.exacto.sku || "") + " (" + granelNombre(chk.exacto) + "). Crearlo como NUEVO lo duplicaría."));
+          const b = fe("button", "btn-outline small", "Es este → Actualizar existente"); b.type = "button";
+          b.addEventListener("click", () => { it.modo = "existente"; it.existenteSel = chk.exacto.sku || granelNombre(chk.exacto); it.llaveExistente = chk.exacto.sku || ""; renderFactura(); });
+          box.appendChild(b); card.appendChild(box);
+        } else if (chk.similares.length) {
+          const box = fe("div", "factura-warn-box");
+          box.appendChild(fe("p", "factura-warn", "⚠ SKU muy parecido a producto(s) existente(s) (quizá es el mismo en otro color/formato → conviene «crear variante» o «actualizar», no «nuevo»):"));
+          chk.similares.forEach((s) => {
+            const row = fe("div", "factura-dup-row");
+            row.appendChild(fe("span", null, granelNombre(s.prod) + " · " + (s.prod.sku || "") + "  (difiere en " + s.dif + " parte" + (s.dif > 1 ? "s" : "") + ")"));
+            const bv = fe("button", "btn-outline small", "Crear variante de este"); bv.type = "button";
+            bv.addEventListener("click", () => { facturaClonar(it, s.prod); setSug(); renderFactura(); });
+            row.appendChild(bv);
+            const be = fe("button", "btn-outline small", "Es este (actualizar)"); be.type = "button";
+            be.addEventListener("click", () => { it.modo = "existente"; it.existenteSel = s.prod.sku || granelNombre(s.prod); it.llaveExistente = s.prod.sku || ""; renderFactura(); });
+            row.appendChild(be);
+            box.appendChild(row);
+          });
+          card.appendChild(box);
+        }
+      }
 
       // Estados de venta (hijos) que derivan del comprado
       const estWrap = fe("div", "factura-estados");
