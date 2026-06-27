@@ -72,9 +72,9 @@
     <!-- Carga de facturas (DTE) → costos / proveedores. Fuera del flujo de cotización (arriba de Vendedor). -->
     <div id="wFactura" class="hidden wFactura-top">
       <h2 class="section">Carga de facturas (costos)</h2>
-      <p class="muted small">Sube el XML de una factura electrónica (DTE) o usa carga manual. La App lee el proveedor y los ítems, te pregunta solo lo que falta, y antes de escribir en la base te muestra un <b>resumen para confirmar</b>. No tocas las tablas a mano.</p>
+      <p class="muted small">Sube uno o <b>varios</b> XML de facturas (DTE) — puedes seleccionar toda la tanda del mes — o usa carga manual. Verás una <b>cola con el estado</b> de cada factura (nueva / ya cargada) y procesas solo las pendientes. Antes de escribir en la base te muestra un <b>resumen para confirmar</b>.</p>
       <div class="factura-entry">
-        <label class="btn-outline file-btn">📄 Cargar XML de factura<input id="facturaFile" type="file" accept=".xml,text/xml,application/xml" class="hidden" /></label>
+        <label class="btn-outline file-btn">📄 Cargar XML(s) de factura<input id="facturaFile" type="file" accept=".xml,text/xml,application/xml" multiple class="hidden" /></label>
         <button id="facturaManual" type="button" class="btn-outline">✍️ Carga manual</button>
         <span id="facturaMsg" class="muted small"></span>
       </div>
