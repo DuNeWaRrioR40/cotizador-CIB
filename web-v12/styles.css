@@ -595,6 +595,12 @@ body.no-plano .pz-descargar { display: none !important; }
 .factura-costo-aviso { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 6px; }
 .factura-warn-box { border: 1px solid var(--danger,#c0392b); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
 .factura-clone { margin: 6px 0 4px; padding: 6px 8px; border: 1px dashed var(--accent,#2563a8); border-radius: 8px; background: rgba(37,99,168,0.05); }
+/* Cola de facturas (carga múltiple) */
+.factura-cola-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-top: 1px solid var(--border); }
+.factura-cola-st { flex: 0 0 auto; font-size: 12px; font-weight: 700; min-width: 86px; }
+.factura-cola-ok { color: var(--muted); font-weight: 600; }
+.factura-cola-tx { flex: 1 1 auto; min-width: 0; }
+.factura-cola-nom { font-size: 13px; font-weight: 600; word-break: break-all; }
 .factura-estados, .factura-colores { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 6px; }
 .factura-estado { grid-template-columns: repeat(4, minmax(0,1fr)) auto; align-items: end; }
 .factura-estado-del, .factura-fnum { align-self: center; }

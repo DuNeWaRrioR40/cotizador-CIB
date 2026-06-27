@@ -5307,13 +5307,63 @@
       items: [facturaItemInit({ nombre: "", qty: 1 })],
     };
   }
-  async function facturaDesdeXML(text) {
+  function facturaLeerBuffer(f) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error || new Error("no se pudo leer")); r.readAsArrayBuffer(f); }); }
+  // Lee N archivos XML, decodifica y parsea cada uno, y arma la COLA con su estado. 1 archivo → abre directo.
+  async function facturaDesdeArchivos(files) {
     await facturaEnsure();
-    const dte = window.DTECIBSA.parseDTE(text);
-    if (!dte.ok) { facturaMsg(dte.error || "XML inválido.", true); return; }
-    if (dte.tipoDTE && dte.tipoDTE !== "33" && dte.tipoDTE !== "34") facturaMsg("Aviso: TipoDTE " + dte.tipoDTE + " (se esperaba factura 33/34). Se carga igual.", false);
+    const lista = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i]; let dte = null, err = null;
+      try { const buf = await facturaLeerBuffer(f); const dd = window.DTECIBSA.parseDTE(facturaDecodificar(buf)); if (dd.ok) dte = dd; else err = dd.error || "XML inválido"; }
+      catch (e) { err = (e && e.message) ? e.message : "no se pudo leer"; }
+      lista.push({ name: f.name, dte: dte, error: err, done: false });
+    }
+    FC.cola = lista; FC.colaActual = null;
+    if (lista.length === 1 && lista[0].dte) facturaAbrirCola(0);
+    else { facturaMsg(lista.length + " archivo(s) en cola.", false); renderFacturaCola(); }
+  }
+  // Estado de un ítem de la cola: inválido / ya procesado en esta tanda / ya en la base (RUT+folio) / nuevo.
+  function facturaEstadoCola(item) {
+    if (!item.dte) return { txt: "⚠ inválida", cls: "factura-warn" };
+    if (item.done) return { txt: "✅ procesada", cls: "factura-cola-ok" };
+    const F = window.FacturaCIBSA;
+    const rut = F.soloDigitosRUT(item.dte.emisor.rut || ""), folio = String(item.dte.folio || "").trim();
+    if (rut && folio && FC.facturaSet && FC.facturaSet[rut + "|" + folio]) return { txt: "✓ ya en base", cls: "factura-cola-ok" };
+    return { txt: "🆕 nueva", cls: "factura-new" };
+  }
+  function renderFacturaCola() {
+    const cont = $("facturaPanel"), res = $("facturaResumen"); if (res) res.innerHTML = "";
+    if (!cont) return; cont.innerHTML = "";
+    const cola = FC.cola || []; if (!cola.length) return;
+    const pend = cola.filter((x) => x.dte && !x.done && facturaEstadoCola(x).txt === "🆕 nueva").length;
+    const box = fe("div", "factura-card");
+    box.appendChild(fe("h3", "factura-h", "Cola de facturas (" + cola.length + " · " + pend + " nueva(s))"));
+    box.appendChild(fe("p", "muted small", "Procesa las pendientes. 🆕 = nueva · ✓ ya en base · ✅ procesada ahora · ⚠ inválida."));
+    cola.forEach((item, i) => {
+      const row = fe("div", "factura-cola-row");
+      const st = facturaEstadoCola(item);
+      row.appendChild(fe("span", "factura-cola-st " + st.cls, st.txt));
+      const tx = fe("div", "factura-cola-tx");
+      tx.appendChild(fe("div", "factura-cola-nom", item.name));
+      const info = item.dte ? ((item.dte.emisor.razon || item.dte.emisor.rut || "") + " · folio " + (item.dte.folio || "—") + (item.dte.totales && item.dte.totales.mntTotal != null ? " · " + money(item.dte.totales.mntTotal) : "")) : (item.error || "no válida");
+      tx.appendChild(fe("div", "muted small", info));
+      row.appendChild(tx);
+      if (item.dte) { const b = fe("button", "btn-outline small", item.done ? "Ver" : "Procesar"); b.type = "button"; b.addEventListener("click", () => facturaAbrirCola(i)); row.appendChild(b); }
+      box.appendChild(row);
+    });
+    const vac = fe("button", "btn-outline small", "✕ Vaciar cola"); vac.type = "button";
+    vac.addEventListener("click", () => { FC.cola = []; FC.colaActual = null; cont.innerHTML = ""; facturaMsg("Cola vaciada.", false); });
+    box.appendChild(vac);
+    cont.appendChild(box);
+    try { box.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {}
+  }
+  function facturaAbrirCola(i) {
+    const item = (FC.cola || [])[i]; if (!item || !item.dte) return;
+    FC.colaActual = i;
+    const dte = item.dte;
+    if (dte.tipoDTE && dte.tipoDTE !== "33" && dte.tipoDTE !== "34") facturaMsg("Aviso: TipoDTE " + dte.tipoDTE + " (se esperaba 33/34). Se carga igual.", false);
     else if (dte.receptor.rut && window.FacturaCIBSA.soloDigitosRUT(dte.receptor.rut) !== window.FacturaCIBSA.soloDigitosRUT(CFG.RUT_EMPRESA)) facturaMsg("Aviso: el receptor no es CIBSA (" + dte.receptor.rut + ").", false);
-    else facturaMsg("Factura cargada: folio " + dte.folio + " · " + dte.emisor.razon, false);
+    else facturaMsg("Factura: folio " + dte.folio + " · " + dte.emisor.razon, false);
     FC.ctx = facturaCtxDeDTE(dte);
     facturaMarcarYaCargados(FC.ctx);
     renderFactura();
@@ -5386,11 +5436,18 @@
     const canc = fe("button", "btn-outline", "✕ Cancelar"); canc.type = "button";
     canc.addEventListener("click", () => { if (confirm("¿Cancelar esta carga? Se descarta lo no confirmado.")) facturaCancelar(); });
     acc.appendChild(rev); acc.appendChild(canc);
+    // Si venimos de una cola de varios archivos, botón para volver al listado sin perder la cola.
+    if (FC.cola && FC.cola.length > 1) {
+      const vol = fe("button", "btn-outline", "← Volver a la cola"); vol.type = "button";
+      vol.addEventListener("click", () => { FC.ctx = null; FC.colaActual = null; renderFacturaCola(); });
+      acc.appendChild(vol);
+    }
     cont.appendChild(acc);
   }
-  // Descarta la carga actual y vuelve al estado inicial (selección de XML / manual).
+  // Descarta la carga actual. Si hay cola de varios, vuelve a la cola; si no, al estado inicial.
   function facturaCancelar() {
     FC.ctx = null;
+    if (FC.cola && FC.cola.length > 1) { FC.colaActual = null; renderFacturaCola(); facturaMsg("Carga cancelada.", false); return; }
     const p = $("facturaPanel"); if (p) p.innerHTML = "";
     const r = $("facturaResumen"); if (r) r.innerHTML = "";
     facturaMsg("Carga cancelada.", false);
@@ -5587,27 +5644,32 @@
       if (ub && ub.costo != null) {
         const nuevo = (it.costo != null ? it.costo : it.costoSugerido), dif = (nuevo != null && ub.costo > 0) ? (nuevo - ub.costo) : 0;
         const pct = (nuevo != null && ub.costo > 0) ? Math.round((nuevo / ub.costo - 1) * 100) : 0, cambia = (nuevo != null && Math.abs(dif) > 1);
-        cw.appendChild(fe("p", cambia ? "factura-warn small" : "muted small", (cambia ? "⚠ " : "") + "Último costo registrado: " + money(Math.round(ub.costo)) + (ub.fecha ? " (" + ub.fecha + (ub.folio ? ", fact. " + ub.folio : "") + ")" : "") + (cambia ? "  → esta factura " + (dif > 0 ? "SUBE " : "BAJA ") + money(Math.abs(Math.round(dif))) + " (" + (pct > 0 ? "+" : "") + pct + "%)" : "  → sin cambio de precio")));
+        cw.appendChild(fe("p", cambia ? "factura-warn small" : "muted small", (cambia ? "⚠ " : "") + "Último costo registrado: " + money(Math.round(ub.costo)) + (ub.fecha ? " (" + ub.fecha + (ub.folio ? ", fact. " + ub.folio : "") + ")" : "") + (cambia ? "  → vs el costo del campo: " + (dif > 0 ? "SUBE " : "BAJA ") + money(Math.abs(Math.round(dif))) + " (" + (pct > 0 ? "+" : "") + pct + "%)" : "  → sin cambio de precio")));
+        // Diferencia enorme (típico de unidad mal puesta: per-metro vs rollo entero). Avisa y guía al botón.
+        if (Math.abs(pct) >= 60) cw.appendChild(fe("p", "factura-warn small", "↳ Diferencia muy grande: probablemente el costo del campo está en otra unidad (p. ej. POR METRO en vez del ROLLO entero). Si la factura tarifa por metro y el producto es 1 rollo, usa el botón «Usar este costo (línea ÷ N)» de abajo con N = nº de rollos."));
       }
     }
     // Aviso de unidad: la factura tarifa por fracción (Qty>1, p. ej. metros) pero la base es un PACK (rollo).
     // El costo de 1 pack = total de la línea ÷ N packs; el rendimiento del estado que fracciona = Qty ÷ N.
     // (N=1 → línea = 1 rollo. N=3 → la línea trae 3 rollos.)
+    // Vale para producto NUEVO y EXISTENTE: en existente, p. ej. actualizar el costo de un ROLLO cuya factura
+    // viene por metro → el costo debe ser el del rollo entero, no el del metro.
     const qty = (it.qty != null && !isNaN(it.qty)) ? Number(it.qty) : null;
-    if (qty && qty > 1 && it.costoSugerido != null && it.modo === "nuevo") {
+    const hayEstados = (it.estados && it.estados.length > 0);
+    if (qty && qty > 1 && it.costoSugerido != null && (it.modo === "nuevo" || it.modo === "existente")) {
       const neto = it.costoSugerido, lineaTotal = Math.round(neto * qty);
       const av = fe("div", "factura-costo-aviso");
       av.appendChild(fe("p", "muted small", "Línea: " + qty + " " + (it.unidadProveedor || "u") + " × " + money(Math.round(neto)) + " = " + money(lineaTotal) + " (total de la línea, neto)."));
-      av.appendChild(fe("p", "muted small", "Si tu base es un PACK (rollo) y la línea trae VARIOS, indica cuántas unidades compradas trae: costo de 1 unidad = total ÷ N, y rendimiento del estado que fracciona = " + qty + " ÷ N."));
+      av.appendChild(fe("p", "muted small", "Si el producto es un PACK (rollo) y la línea trae VARIOS, indica cuántas unidades compradas trae: costo de 1 unidad = total ÷ N" + (hayEstados ? ", y rendimiento del estado que fracciona = " + qty + " ÷ N" : "") + "."));
       const nrow = fe("div", "factura-grid factura-estado");
       nrow.appendChild(fe("span", "factura-fk", "Unidades compradas (rollos/packs) en esta línea:"));
       const nInp = document.createElement("input"); nInp.type = "text"; nInp.inputMode = "numeric"; nInp.value = "1"; nInp.className = "factura-fnum";
       nrow.appendChild(nInp); av.appendChild(nrow);
       const prev = fe("p", "muted small", "");
-      const calcPrev = () => { const N = Math.max(1, Math.round(fnum(nInp.value) || 1)); prev.textContent = "→ 1 unidad: costo " + money(Math.round(lineaTotal / N)) + " · rendimiento del estado que fracciona = " + (qty / N); };
+      const calcPrev = () => { const N = Math.max(1, Math.round(fnum(nInp.value) || 1)); prev.textContent = "→ 1 unidad: costo " + money(Math.round(lineaTotal / N)) + (hayEstados ? " · rendimiento del estado que fracciona = " + (qty / N) : ""); };
       nInp.addEventListener("input", calcPrev); calcPrev();
       av.appendChild(prev);
-      const apply = fe("button", "btn-outline small", "Aplicar costo por unidad + rendimiento"); apply.type = "button";
+      const apply = fe("button", "btn-outline small", hayEstados ? "Aplicar costo por unidad + rendimiento" : "Usar este costo (línea ÷ N)"); apply.type = "button";
       apply.addEventListener("click", () => {
         const N = Math.max(1, Math.round(fnum(nInp.value) || 1));
         it.costo = Math.round(lineaTotal / N);
@@ -5746,9 +5808,21 @@
       confirm.disabled = true; msg.textContent = "Escribiendo…"; msg.style.color = "";
       const factores = factorInputs.map((x) => ({ categoria: x.fr.categoria, variedad: x.fr.variedad, unidadMinima: x.fr.unidadMinima, factor: (fnum(x.inp.value) != null ? fnum(x.inp.value) : 1) }));
       try {
+        const ctxRut = (FC.ctx && FC.ctx.proveedor) ? F.soloDigitosRUT(FC.ctx.proveedor.rut || "") : "";
+        const ctxFolio = FC.ctx ? String(FC.ctx.folio || "").trim() : "";
         await facturaCommit(plan, factores);
-        msg.style.color = ""; msg.textContent = "✓ Listo. Se escribió en el Sheet. Recuerda que el precio se calculará por fórmula cuando esté esa fase activa.";
-        FC.ctx = null; const p = $("facturaPanel"); if (p) p.innerHTML = ""; FC.loaded = false;
+        // Marca esta factura como ya-en-base (para la cola y futuras detecciones) sin recargar todo.
+        if (ctxRut && ctxFolio) { FC.facturaSet = FC.facturaSet || {}; FC.facturaSet[ctxRut + "|" + ctxFolio] = true; }
+        if (FC.cola && FC.cola.length > 1 && FC.colaActual != null && FC.cola[FC.colaActual]) {
+          // Venimos de una cola: marca el ítem como procesado y vuelve al listado.
+          FC.cola[FC.colaActual].done = true; FC.colaActual = null; FC.ctx = null;
+          const pend = FC.cola.filter((x) => x.dte && !x.done && facturaEstadoCola(x).txt === "🆕 nueva").length;
+          facturaMsg("✓ Factura escrita. Quedan " + pend + " nueva(s) en la cola.", false);
+          renderFacturaCola();
+        } else {
+          msg.style.color = ""; msg.textContent = "✓ Listo. Se escribió en el Sheet. Recuerda que el precio se calculará por fórmula cuando esté esa fase activa.";
+          FC.ctx = null; const p = $("facturaPanel"); if (p) p.innerHTML = ""; FC.loaded = false;
+        }
       } catch (e) { confirm.disabled = false; msg.style.color = "var(--danger,#c0392b)"; msg.textContent = "Error al escribir: " + (e && e.message ? e.message : e); }
     });
     const volver = fe("button", "btn-outline", "← Retroceder"); volver.type = "button";
@@ -5779,7 +5853,7 @@
     try { return new TextDecoder(enc).decode(buf); }
     catch (e) { try { return new TextDecoder("iso-8859-1").decode(buf); } catch (e2) { return new TextDecoder("utf-8").decode(buf); } }
   }
-  { const fi = $("facturaFile"); if (fi) fi.addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => facturaDesdeXML(facturaDecodificar(rd.result)); rd.readAsArrayBuffer(f); e.target.value = ""; }); }
+  { const fi = $("facturaFile"); if (fi) fi.addEventListener("change", (e) => { const fs = e.target.files; if (!fs || !fs.length) return; facturaDesdeArchivos(Array.prototype.slice.call(fs)); e.target.value = ""; }); }
   { const bm = $("facturaManual"); if (bm) bm.addEventListener("click", async () => { await facturaEnsure(); FC.ctx = facturaCtxManual(); facturaMsg("Carga manual.", false); renderFactura(); }); }
 
   // ---------- Fusión canónica de duplicados (solo usuario maestro) ----------
