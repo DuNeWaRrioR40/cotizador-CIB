@@ -5864,6 +5864,12 @@
         await facturaCommit(plan, factores);
         // Marca esta factura como ya-en-base (para la cola y futuras detecciones) sin recargar todo.
         if (ctxRut && ctxFolio) { FC.facturaSet = FC.facturaSet || {}; FC.facturaSet[ctxRut + "|" + ctxFolio] = true; }
+        // Agrega el/los proveedor(es) recién creado(s) al catálogo EN MEMORIA, para que las siguientes
+        // facturas de la cola NO lo propongan de nuevo como "nuevo" (y no se dupliquen en PROVEEDORES).
+        (plan.prov || []).forEach((p) => {
+          FC.prov = FC.prov || [];
+          if (!FC.prov.some((x) => F.soloDigitosRUT(x.rut) === F.soloDigitosRUT(p.rut))) FC.prov.push({ rut: p.rut, razon: p.razon, nombreCorto: p.nombreCorto });
+        });
         if (FC.cola && FC.cola.length > 1 && FC.colaActual != null && FC.cola[FC.colaActual]) {
           // Venimos de una cola: marca el ítem como procesado y vuelve al listado.
           FC.cola[FC.colaActual].done = true; FC.colaActual = null; FC.ctx = null;
