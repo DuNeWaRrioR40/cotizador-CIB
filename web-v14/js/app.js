@@ -1281,14 +1281,23 @@
     return out;
   }
   let cotasPanelOpen = false; // estado (colapsado/expandido) del submenú "Cotas", compartido entre planos
-  function menuPlano(container, grupos, onToggle, cotasCtl) {
+  function menuPlano(container, grupos, onToggle, cotasCtl, numOjCtl) {
     if (!container) return;
     const filas = grupos.map((g) => ({ label: g.label, rotulo: !!g.rotulo, items: (g.items || []).filter((it) => it && it.obj) })).filter((g) => g.items.length);
     const tieneCotas = !!(cotasCtl && cotasCtl.cotas && cotasCtl.cotas.length);
-    if (!filas.length && !tieneCotas) return;
+    if (!filas.length && !tieneCotas && !numOjCtl) return;
     const box = document.createElement("div"); box.className = "plano-menu";
     const cap = document.createElement("div"); cap.className = "plano-menu-cap"; cap.textContent = "Elementos en este plano (ir a editar · ocultar · rótulo):";
     box.appendChild(cap);
+    // Chip rápido "NumOj.": activa/desactiva la numeración de ojetillos (1er/último por arista) en el plano.
+    if (numOjCtl) {
+      const chip = document.createElement("button"); chip.type = "button";
+      chip.className = "plano-menu-numoj" + (numOjCtl.on ? " on" : "");
+      chip.textContent = (numOjCtl.on ? "✓ " : "") + "NumOj.";
+      chip.title = "Mostrar numeración del 1er y último ojetillo por arista (con flecha)";
+      chip.addEventListener("click", () => { if (numOjCtl.toggle) numOjCtl.toggle(); });
+      box.appendChild(chip);
+    }
     filas.forEach((g) => {
       g.items.forEach((it) => {
         const row = document.createElement("div"); row.className = "plano-menu-row" + (it.obj._oculto ? " oculta" : "");
@@ -1326,6 +1335,22 @@
       sec.appendChild(hdr);
       if (cotasPanelOpen) {
         const lst = document.createElement("div"); lst.className = "plano-menu-cotas-lst";
+        // Fila "Todas": ocultar o activar TODAS las cotas de golpe.
+        {
+          const todasOcultas = cotasCtl.cotas.every((c) => ocultas[c.key]);
+          const rowA = document.createElement("div"); rowA.className = "plano-menu-cota todas" + (todasOcultas ? " oculta" : "");
+          const lbA = document.createElement("span"); lbA.className = "plano-menu-cota-lbl"; lbA.innerHTML = "<b>Todas</b>";
+          const btnA = document.createElement("button"); btnA.type = "button";
+          btnA.className = "plano-menu-cota-btn " + (todasOcultas ? "show" : "hide");
+          btnA.textContent = todasOcultas ? "✓" : "✕";
+          btnA.title = todasOcultas ? "Mostrar todas las cotas" : "Ocultar todas las cotas";
+          btnA.addEventListener("click", () => {
+            if (todasOcultas) cotasCtl.cotas.forEach((c) => { delete ocultas[c.key]; });
+            else cotasCtl.cotas.forEach((c) => { ocultas[c.key] = true; });
+            if (cotasCtl.onChange) cotasCtl.onChange();
+          });
+          rowA.appendChild(lbA); rowA.appendChild(btnA); lst.appendChild(rowA);
+        }
         cotasCtl.cotas.forEach((c) => {
           const oculta = !!ocultas[c.key];
           const row = document.createElement("div"); row.className = "plano-menu-cota" + (oculta ? " oculta" : "");
@@ -3255,6 +3280,42 @@
     const partes = ["sup", "inf", "izq", "der"].filter((k) => e[k] && e[k].on !== false && ev(e[k].d) > 0).map((k) => OJ_NOMBRE[k].slice(0, 3) + " @" + window.CalcCIBSA.fmtNum(ev(e[k].d)) + "m");
     return `${n} ojetillos en total (distanciamiento: ${partes.join(", ")}${state.ojParejo ? "; pareja" : ""}).`;
   }
+  // Detalle por arista para el plano de taller: cantidad instalada + espaciado real entre ojetillos.
+  // (Las esquinas se cuentan en las aristas horizontales, para que la suma sea el total sin duplicar.)
+  function ojDetalleAristas(ancho, largo, edges, parejo, cortes) {
+    if (!window.SketchCIBSA || !(ancho > 0) || !(largo > 0)) return [];
+    const r = ojetillosPosiciones(ancho, largo, edges, parejo, cortes);
+    const f = window.CalcCIBSA.fmtNum, out = [];
+    ["sup", "inf", "izq", "der"].forEach((k) => {
+      const d = r.detalle && r.detalle[k]; if (!d) return;
+      const cnt = d.kept || 0; if (cnt <= 0) return;
+      let s = OJ_NOMBRE[k] + ": " + cnt + " ojetillo" + (cnt === 1 ? "" : "s");
+      if (d.esp > 0 && cnt > 1) s += " · cada " + f(d.esp) + " m";
+      if (d.seccionada) s += " (arista seccionada por corte)";
+      out.push(s);
+    });
+    return out;
+  }
+  // Detalle de straps por arista para el plano de taller: cantidad de cintas + espaciado entre ellas.
+  function strapsDetalleAristas(list, ctx) {
+    const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum, out = [];
+    const EDGELBL = { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha" };
+    visibles(list || []).forEach((s, idx) => {
+      if (s.modo !== "arista") return;
+      const e = strapAristaEdge(s.arista || "sup", ctx || {}); if (!e) return;
+      const inst = strapInstancias(s, ctx || {}); if (inst <= 0) return;
+      const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : ("Strap " + (idx + 1));
+      let line = nom + " (" + (EDGELBL[s.arista || "sup"] || "Arista") + "): " + inst + " cinta" + (inst === 1 ? "" : "s");
+      const d = ev(s.d) || 0;
+      if (d > 0 && inst > 1 && window.SketchCIBSA) {
+        const n = window.SketchCIBSA.posicionesArista(e.len, d, false).length;
+        const esp = n > 1 ? e.len / (n - 1) : 0;
+        if (esp > 0) line += " · cada " + f(esp) + " m";
+      }
+      out.push(line);
+    });
+    return out;
+  }
 
   function renderOjetillos() {
     const c = $("ojDyn"); c.innerHTML = "";
@@ -3404,7 +3465,8 @@
         { label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
         { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
         { label: "Straps / cintas", items: (state.strapsUnif || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
-      ], refrescarOcUnif, { cotas: cotasDeSpec(especUnif), ocultas: state.cotasOcultas, onChange: refrescarOcUnif });
+      ], refrescarOcUnif, { cotas: cotasDeSpec(especUnif), ocultas: state.cotasOcultas, onChange: refrescarOcUnif },
+        state.ojMode === "arista" ? { on: !!state.ojNumerar, toggle: () => { state.ojNumerar = !state.ojNumerar; refrescarOcUnif(); } } : null);
       menuBordesRot(sk, state, () => { renderBordes(); recompute(); }, () => $("bordeDyn"), () => irANodo($("wOjetillos")));
     }
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) {
@@ -3963,23 +4025,23 @@
   // Devuelve { pos:[{x,y}], total, errores:[], detalle:{sup:{n,kept,d,esp}, ...} }
   // Posiciones de una arista, descontando las esquinas que ya colocan las aristas horizontales
   // (las verticales no repiten esquinas: así cada esquina se suprime con UNA sola supresión).
-  function posicionesEdge(k, L, d, parejo, removed, edges, nTot) {
+  function posicionesEdge(k, L, d, parejo, removed, edges, nTot, splits) {
     const ev = window.CalcCIBSA.evalExpr;
     let full;
     if (nTot != null && nTot >= 2) {
       const N = Math.max(2, Math.round(nTot));
-      if (removed && removed.length) {
-        // Arista seccionada por un corte: el "número" no se mantiene fijo; se respeta el DISTANCIAMIENTO
-        // que ese número implica en la arista completa (d = L/(N-1)) y se redistribuye sobre los tramos
-        // que quedan, poniendo ojetillo en cada esquina nueva.
+      if ((removed && removed.length) || (splits && splits.length)) {
+        // Arista seccionada por un corte o dividida por una guía/corte-línea: el "número" no se mantiene
+        // fijo; se respeta el DISTANCIAMIENTO que ese número implica (d = L/(N-1)) y se redistribuye sobre
+        // los tramos resultantes, poniendo ojetillo en cada esquina nueva.
         const dImp = L / (N - 1);
-        full = window.SketchCIBSA.posicionesAristaSeg(L, dImp, !!parejo, removed);
+        full = window.SketchCIBSA.posicionesAristaSeg(L, dImp, !!parejo, removed, splits);
       } else {
-        // Sin seccionar: N ojetillos repartidos parejo en toda la arista (incluye las 2 esquinas).
+        // Sin seccionar ni dividir: N ojetillos repartidos parejo en toda la arista (incluye las 2 esquinas).
         full = []; for (let i = 0; i < N; i++) full.push(L * i / (N - 1));
       }
     } else {
-      full = window.SketchCIBSA.posicionesAristaSeg(L, d, !!parejo, removed);
+      full = window.SketchCIBSA.posicionesAristaSeg(L, d, !!parejo, removed, splits);
     }
     if (k === "izq" || k === "der") {
       const horizOn = (kk) => { const he = edges && edges[kk]; return !!(he && he.on !== false && ev(he.d) > 0); };
@@ -3992,16 +4054,17 @@
     const SK = window.SketchCIBSA, ev = window.CalcCIBSA.evalExpr;
     const out = [], errs = [], detalle = {}, numeros = [];
     const rem = SK.intervalosCalados(ancho, largo, cortes || []); // bordes seccionados por calados
-    const proc = (k, L, removed, mapFn) => {
+    const spl = SK.puntosSplitAristas(ancho, largo, cortes || []); // esquinas nuevas por guía / corte-línea
+    const proc = (k, L, removed, splits, mapFn) => {
       const e = (edges && edges[k]) || {}, d = ev(e.d), nTot = ev(e.n);
       const usaTotal = (nTot != null && nTot >= 2);
-      detalle[k] = { n: 0, kept: 0, d: d > 0 ? d : 0, esp: 0, seccionada: (removed || []).length > 0, total: usaTotal };
+      detalle[k] = { n: 0, kept: 0, d: d > 0 ? d : 0, esp: 0, seccionada: (removed || []).length > 0 || (splits || []).length > 0, total: usaTotal };
       if (!(L > 0)) return;
       // Vector de inset perpendicular hacia adentro del paño, según la arista.
       const insVec = (ins) => (k === "sup") ? { x: 0, y: ins } : (k === "inf") ? { x: 0, y: -ins } : (k === "izq") ? { x: ins, y: 0 } : { x: -ins, y: 0 };
       // Distribución normal: SOLO si la arista está activa y tiene distanciamiento/total. Los sets son independientes.
       if (e.on !== false && (usaTotal || d > 0)) {
-        const full = posicionesEdge(k, L, d, parejo, removed, edges, usaTotal ? nTot : null), n = full.length;
+        const full = posicionesEdge(k, L, d, parejo, removed, edges, usaTotal ? nTot : null, splits), n = full.length;
         detalle[k].n = n; detalle[k].esp = n > 1 ? L / (n - 1) : 0;
         // Marcadores de numeración (1er y último ojetillo de la arista) con flecha hacia donde crece
         // el conjunto. Índices 0..n-1 sobre la distribución COMPLETA (los que usa "Suprimir posiciones").
@@ -4037,10 +4100,10 @@
       (e.sets || []).forEach((st) => { ojSetPuntos(k, st, ancho, largo).forEach((p) => { out.push(p); setsN++; }); });
       if (setsN) detalle[k].sets = setsN;
     };
-    proc("sup", ancho, rem.sup, (p) => ({ x: p, y: 0 }));
-    proc("inf", ancho, rem.inf, (p) => ({ x: p, y: largo }));
-    proc("izq", largo, rem.izq, (p) => ({ x: 0, y: p }));
-    proc("der", largo, rem.der, (p) => ({ x: ancho, y: p }));
+    proc("sup", ancho, rem.sup, spl.sup, (p) => ({ x: p, y: 0 }));
+    proc("inf", ancho, rem.inf, spl.inf, (p) => ({ x: p, y: largo }));
+    proc("izq", largo, rem.izq, spl.izq, (p) => ({ x: 0, y: p }));
+    proc("der", largo, rem.der, spl.der, (p) => ({ x: ancho, y: p }));
     const seen = new Set(), pos = [];
     out.forEach((p) => { const key = Math.round(p.x * 1000) + "_" + Math.round(p.y * 1000); if (!seen.has(key)) { seen.add(key); pos.push(p); } });
     return { pos: pos, total: pos.length, errores: errs, detalle: detalle, numeros: numeros };
@@ -4189,6 +4252,8 @@
       color: $("f_color").value.trim(),
       largo: largo, ancho: ancho,
       ojetillos: nOjetillos(), unidades: N,
+      ojetillosAristas: state.ojMode === "arista" ? ojDetalleAristas(ancho, largo, state.ojEdges, state.ojParejo, cortesSpec(state.cortesUnif)) : [],
+      strapsAristas: strapsDetalleAristas(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }),
       observaciones: terminacionesTexto(state.orientUnif).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, []).concat(materialesCortes(state.cortesUnif)),
       sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif() } } : {}),
@@ -4255,6 +4320,8 @@
       color: pz.color || "",
       largo: largo, ancho: ancho,
       ojetillos: ojTotalPieza(pz), unidades: N,
+      ojetillosAristas: pz.ojMode === "arista" ? ojDetalleAristas(window.CalcCIBSA.evalExpr(pz.ancho), window.CalcCIBSA.evalExpr(pz.largo), pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes)) : [],
+      strapsAristas: strapsDetalleAristas(pz.straps, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 }),
       observaciones: terminacionesPieza(pz).concat(obsComplementos(pz.complementos)).concat(obsVentanas(pz)).concat(obsCortes(pz.cortes)),
       materiales: materialesResumen(ojTotalPieza(pz), pz.complementos, pz.inscritos).concat(materialesCortes(pz.cortes)),
       sketch: sketchPieza(pz),
@@ -4368,13 +4435,16 @@
           const tl = container.querySelector(".pz-oj-total");
           if (!(L > 0) || (!usaTotal && !(d > 0))) { info.textContent = "Define dimensiones y distanciamiento (o total uniforme)."; if (tl) tl.textContent = "Total: " + getTotal(); return; }
           const removed = getCortes ? (window.SketchCIBSA.intervalosCalados(getAncho(), getLargo(), getCortes())[k] || []) : [];
-          const full = posicionesEdge(k, L, d, host.ojParejo, removed, edges, usaTotal ? nTot : null), n = full.length;
+          const splits = getCortes ? (window.SketchCIBSA.puntosSplitAristas(getAncho(), getLargo(), getCortes())[k] || []) : [];
+          const full = posicionesEdge(k, L, d, host.ojParejo, removed, edges, usaTotal ? nTot : null, splits), n = full.length;
           const supr = parseSupr(e.supr), kept = n - supr.filter((i) => i < n).length;
-          const sinEsq = (k === "izq" || k === "der") && n < window.SketchCIBSA.posicionesAristaSeg(L, d, !!host.ojParejo, removed).length;
+          const sinEsq = (k === "izq" || k === "der") && n < window.SketchCIBSA.posicionesAristaSeg(L, d, !!host.ojParejo, removed, splits).length;
           let html = n + " ojetillos (0.." + (n - 1) + ")";
           if (sinEsq) html += " · <span style=\"color:var(--accent)\">esquinas las pone la arista horizontal</span>";
           if (removed.length) {
             html += " · <span style=\"color:var(--accent)\">borde seccionado por calado (ojetillo en cada esquina nueva)</span>";
+          } else if (splits.length) {
+            html += " · <span style=\"color:var(--accent)\">arista dividida por guía/corte (ojetillo en cada esquina nueva)</span>";
           } else {
             const esp = n > 1 ? L / (n - 1) : 0;
             html += " · espaciado " + f(esp) + "m";
@@ -4645,7 +4715,8 @@
           { label: "Paños inscritos", rotulo: true, items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
-        ], refrescarOcPz, { cotas: cotasDeSpec(sketchPieza(pz)), ocultas: pz.cotasOcultas, onChange: refrescarOcPz });
+        ], refrescarOcPz, { cotas: cotasDeSpec(sketchPieza(pz)), ocultas: pz.cotasOcultas, onChange: refrescarOcPz },
+          pz.ojMode === "arista" ? { on: !!pz.ojNumerar, toggle: () => { pz.ojNumerar = !pz.ojNumerar; refrescarOcPz(); } } : null);
         menuBordesRot(sketchBox, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'), () => { const w = document.querySelector('[data-id="' + pz.id + '"] .pz-oj-wrap'); if (!w) return; if (w._subHead && w.style.display === "none") w._subHead.click(); irAElemento(w._subHead || w, w._subHead || w); });
       }
       const card = list ? list.querySelector('[data-id="' + pz.id + '"] .pieza-sub') : null;
@@ -4733,7 +4804,8 @@
           { label: "Paños inscritos", rotulo: true, items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
-        ], refrescarOcPz, { cotas: cotasDeSpec(sketchPieza(pz)), ocultas: pz.cotasOcultas, onChange: refrescarOcPz });
+        ], refrescarOcPz, { cotas: cotasDeSpec(sketchPieza(pz)), ocultas: pz.cotasOcultas, onChange: refrescarOcPz },
+          pz.ojMode === "arista" ? { on: !!pz.ojNumerar, toggle: () => { pz.ojNumerar = !pz.ojNumerar; refrescarOcPz(); } } : null);
         menuBordesRot(body, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'), () => { const w = document.querySelector('[data-id="' + pz.id + '"] .pz-oj-wrap'); if (!w) return; if (w._subHead && w.style.display === "none") w._subHead.click(); irAElemento(w._subHead || w, w._subHead || w); });
       }
       aplic();

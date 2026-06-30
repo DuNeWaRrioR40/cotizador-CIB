@@ -1199,6 +1199,18 @@
       txt(v, M + bold.widthOfTextAtSize(k + ": ", 11), y, { color: BLACK() });
       y -= 15;
     });
+    // Detalle de ojetillos por arista (cantidad instalada + espaciado) — solo plano de taller.
+    if (!limpio && datos.ojetillosAristas && datos.ojetillosAristas.length) {
+      txt("Ojetillos por arista:", M, y, { f: bold }); y -= 13;
+      datos.ojetillosAristas.forEach((ln) => { txt("- " + ln, M + 6, y, { size: 9.5, color: BLACK() }); y -= 12; });
+      y -= 4;
+    }
+    // Detalle de straps por arista (cantidad de cintas + espaciado) — solo plano de taller.
+    if (!limpio && datos.strapsAristas && datos.strapsAristas.length) {
+      txt("Straps por arista:", M, y, { f: bold }); y -= 13;
+      datos.strapsAristas.forEach((ln) => { txt("- " + ln, M + 6, y, { size: 9.5, color: BLACK() }); y -= 12; });
+      y -= 4;
+    }
     let detalleBottom;
     if (limpio) {
       detalleBottom = y - 8;

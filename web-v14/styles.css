@@ -354,6 +354,9 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 /* Menú de capas bajo cada plano: ir a editar + ocultar */
 .plano-menu { margin: 8px 0 2px; border-top: 1px dashed var(--border); padding-top: 6px; }
 .plano-menu-cap { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.plano-menu-numoj { font-size: 11px; line-height: 1; padding: 3px 8px; margin: 0 0 5px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; }
+.plano-menu-numoj.on { border-color: #c0392b; color: #c0392b; font-weight: 600; }
+.plano-menu-numoj:hover { border-color: currentColor; }
 .plano-menu-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 0; }
 .plano-menu-link { font-size: 12px; color: var(--accent); text-decoration: none; border-bottom: 1px dotted transparent; }
 .plano-menu-link:hover { border-bottom-color: var(--accent); }
@@ -415,6 +418,8 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .plano-menu-cota { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 1px 0 1px 8px; }
 .plano-menu-cota-lbl { font-size: 11px; color: var(--ink, #222); }
 .plano-menu-cota.oculta .plano-menu-cota-lbl { color: var(--muted); text-decoration: line-through; }
+.plano-menu-cota.todas { border-bottom: 1px dotted var(--border); padding-bottom: 3px; margin-bottom: 2px; }
+.plano-menu-cota.todas.oculta .plano-menu-cota-lbl { text-decoration: none; }
 .plano-menu-cota-btn { font-size: 11px; line-height: 1; width: 20px; height: 20px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; padding: 0; }
 .plano-menu-cota-btn.hide { color: #c0392b; }
 .plano-menu-cota-btn.show { color: #1e8a4c; }

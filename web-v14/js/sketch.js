@@ -126,14 +126,49 @@
   // Posiciones a lo largo de un borde de longitud L, seccionado por 'removed'. Cada segmento
   // resultante recibe la convención (esquinas + penúltimo/último), poniendo ojetillo en cada
   // esquina nueva creada por el calado. Sin calados → idéntico a posicionesArista.
-  function posicionesAristaSeg(L, d, parejo, removed) {
-    if (!removed || !removed.length) return posicionesArista(L, d, parejo);
-    const segs = segmentosSolidos(L, removed);
+  function posicionesAristaSeg(L, d, parejo, removed, splits) {
+    const hayRem = removed && removed.length, haySplit = splits && splits.length;
+    if (!hayRem && !haySplit) return posicionesArista(L, d, parejo);
+    let segs = segmentosSolidos(L, removed || []);
+    // Puntos de división (guía / corte-línea que intersecta la arista sin remover): parten el segmento
+    // en sub-tramos, poniendo un ojetillo en el punto y reiniciando el reparto en cada sub-tramo.
+    if (haySplit) {
+      const pts = splits.map(Number).filter((v) => v > 1e-6 && v < L - 1e-6).sort((a, b) => a - b);
+      const nseg = [];
+      segs.forEach((sg) => {
+        let cur = sg[0];
+        pts.forEach((p) => { if (p > sg[0] + 1e-6 && p < sg[1] - 1e-6) { nseg.push([cur, p]); cur = p; } });
+        nseg.push([cur, sg[1]]);
+      });
+      segs = nseg;
+    }
     let out = [];
     segs.forEach((sg) => { const len = sg[1] - sg[0]; if (len <= 1e-6) return; posicionesArista(len, d, parejo).forEach((p) => out.push(sg[0] + p)); });
     out.sort((a, b) => a - b);
     const dd = []; out.forEach((p) => { if (!dd.length || p - dd[dd.length - 1] > 1e-6) dd.push(p); });
     return dd;
+  }
+  // Puntos donde una guía o un corte-línea INTERSECTA cada arista del paño (esquinas nuevas, sin remover).
+  // Los calados (área) no entran aquí; ellos remueven vía intervalosCalados. Devuelve {sup,inf,izq,der}.
+  function puntosSplitAristas(ancho, largo, cortes) {
+    const sp = { sup: [], inf: [], izq: [], der: [] };
+    if (!(ancho > 0) || !(largo > 0)) return sp;
+    (cortes || []).forEach((c) => {
+      if (!c || !(c.tipo === "corte" || c.tipo === "guia")) return;
+      if (c.h > 0 || !(c.w > 0)) return; // solo líneas (calado tiene h>0)
+      const x = c.x, y = c.y, w = c.w;
+      const rad = (parseFloat(c.angulo) || 0) * Math.PI / 180, co = Math.cos(rad), si = Math.sin(rad);
+      const Px = x + (c.pivX != null ? c.pivX : 0) * w, Py = y;
+      const rot = (p) => ({ x: Px + (p.x - Px) * co - (p.y - Py) * si, y: Py + (p.x - Px) * si + (p.y - Py) * co });
+      [rot({ x: x, y: y }), rot({ x: x + w, y: y })].forEach((p) => {
+        const interior = (val, hi) => val > EPS && val < hi - EPS; // estrictamente interior: las esquinas ya son esquinas
+        if (Math.abs(p.y) <= EPS && interior(p.x, ancho)) sp.sup.push(p.x);
+        if (Math.abs(p.y - largo) <= EPS && interior(p.x, ancho)) sp.inf.push(p.x);
+        if (Math.abs(p.x) <= EPS && interior(p.y, largo)) sp.izq.push(p.y);
+        if (Math.abs(p.x - ancho) <= EPS && interior(p.y, largo)) sp.der.push(p.y);
+      });
+    });
+    return sp;
   }
 
   // Distribuye 'count' puntos a lo largo de un segmento p0→p1 (extremos incluidos si count>=2).
@@ -1098,7 +1133,7 @@
     cotasDe, offsetCota, margenCotas, margenCotasLados, centroProducto, fmt, esc, tijeraPrims, tijerasEn, flechaBarbas, zigzagPts,
     distribuirArista, distribuirParejo, posicionesArista,
     aletaGeomRect, aletaOjArista, aletaOjPuntos,
-    intervalosCalados, segmentosSolidos, posicionesAristaSeg,
+    intervalosCalados, segmentosSolidos, posicionesAristaSeg, puntosSplitAristas,
     simbologia, strapsResumen, resumenStrapsSVG,
     autoRotulo: AUTOROT,
   };
