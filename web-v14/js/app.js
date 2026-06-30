@@ -4242,9 +4242,9 @@
     } catch (e) { alert("Error al generar el plano:\n" + (e.message || e)); }
   }
   function nombreBaseArchivo() {
-    const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
-    if (!nombre || !apellido) return "Plano";
-    return window.PDFCotizacion.nombreArchivo({ cliente: { nombre, apellido }, empresa: empresaDatos(), version: $("f_version").value.trim() || "01", fecha: new Date() });
+    const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim(), emp = empresaDatos();
+    if ((!nombre || !apellido) && !emp) return "Plano";
+    return window.PDFCotizacion.nombreArchivo({ cliente: { nombre, apellido }, empresa: emp, version: $("f_version").value.trim() || "01", fecha: new Date() });
   }
   async function descargarSketchUnif() {
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
@@ -4891,7 +4891,8 @@
     if (state.docMode === "formal" && state.prodMode === "compuesto") return generarCompuesto();
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
     const largo = num("f_largo", null), ancho = num("f_ancho", null), tela = telaActual();
-    if (!nombre || !apellido) return alert("Ingresa nombre y apellido del cliente.");
+    // Basta con identificar al destinatario: el contacto (nombre+apellido) O la empresa (razón social).
+    if ((!nombre || !apellido) && !empresaDatos()) return alert("Ingresa el nombre y apellido del cliente, o al menos la razón social de la empresa.");
     // Sin carpa válida: si hay productos a granel, se genera una cotización SOLO de granel.
     const hayCarpa = !!tela && largo != null && ancho != null && largo > 0 && ancho > 0;
     if (!hayCarpa) {
@@ -5126,7 +5127,7 @@
 
   async function generarCompuesto() {
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
-    if (!nombre || !apellido) return alert("Ingresa nombre y apellido del cliente.");
+    if ((!nombre || !apellido) && !empresaDatos()) return alert("Ingresa el nombre y apellido del cliente, o al menos la razón social de la empresa.");
     if (!state.piezas.length) {
       if (granelLineasPDF().length) return generarGranelSolo(nombre, apellido);
       return alert("Agrega al menos una pieza (o productos a granel).");

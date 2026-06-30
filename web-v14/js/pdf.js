@@ -587,13 +587,12 @@
       if (dirCom) { txt(page, "Dirección: ", M, y, { f: bold }); txt(page, dirCom, M + lab("Dirección: "), y); y -= 15; }
       if (e.email) { txt(page, "e-mail: ", M, y, { f: bold }); txt(page, e.email, M + lab("e-mail: "), y); y -= 15; }
     }
-    txt(page, "Contacto: ", M, y, { f: bold });
-    txt(page, `${datos.cliente.nombre} ${datos.cliente.apellido}.`,
-      M + bold.widthOfTextAtSize("Contacto: ", 11), y); y -= 15;
+    const cNom = `${datos.cliente.nombre || ""} ${datos.cliente.apellido || ""}`.trim();
+    if (cNom) { txt(page, "Contacto: ", M, y, { f: bold }); txt(page, cNom + ".", M + bold.widthOfTextAtSize("Contacto: ", 11), y); y -= 15; }
     { const cdir = [datos.cliente.dir, datos.cliente.comuna].filter(Boolean).join(", ");
       if (!datos.empresa && cdir) { txt(page, "Dirección: ", M, y, { f: bold }); txt(page, cdir, M + bold.widthOfTextAtSize("Dirección: ", 11), y); y -= 15; } }
-    txt(page, "e-mail: ", M, y, { f: bold });
-    txt(page, datos.cliente.email || "", M + bold.widthOfTextAtSize("e-mail: ", 11), y); y -= 22;
+    if (datos.cliente.email) { txt(page, "e-mail: ", M, y, { f: bold }); txt(page, datos.cliente.email, M + bold.widthOfTextAtSize("e-mail: ", 11), y); y -= 22; }
+    else { y -= 7; }
 
     txt(page, "PROPUESTA:", M, y, { f: bold }); y -= 15;
     const propuesta = datos.propuesta || (datos.soloGranel
@@ -980,12 +979,12 @@
       if (dirCom) { txt("Dirección: ", M, y, { f: bold }); txt(dirCom, M + lab("Dirección: "), y); y -= 15; }
       if (e.email) { txt("e-mail: ", M, y, { f: bold }); txt(e.email, M + lab("e-mail: "), y); y -= 15; }
     }
-    txt("Contacto: ", M, y, { f: bold });
-    txt(`${datos.cliente.nombre} ${datos.cliente.apellido}.`, M + bold.widthOfTextAtSize("Contacto: ", 11), y); y -= 15;
+    const cNomC = `${datos.cliente.nombre || ""} ${datos.cliente.apellido || ""}`.trim();
+    if (cNomC) { txt("Contacto: ", M, y, { f: bold }); txt(cNomC + ".", M + bold.widthOfTextAtSize("Contacto: ", 11), y); y -= 15; }
     { const cdir = [datos.cliente.dir, datos.cliente.comuna].filter(Boolean).join(", ");
       if (!datos.empresa && cdir) { txt("Dirección: ", M, y, { f: bold }); txt(cdir, M + bold.widthOfTextAtSize("Dirección: ", 11), y); y -= 15; } }
-    txt("e-mail: ", M, y, { f: bold });
-    txt(datos.cliente.email || "", M + bold.widthOfTextAtSize("e-mail: ", 11), y); y -= 22;
+    if (datos.cliente.email) { txt("e-mail: ", M, y, { f: bold }); txt(datos.cliente.email, M + bold.widthOfTextAtSize("e-mail: ", 11), y); y -= 22; }
+    else { y -= 7; }
 
     txt("PROPUESTA:", M, y, { f: bold }); y -= 15;
     const propuesta = datos.propuesta ||
