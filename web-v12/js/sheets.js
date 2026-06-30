@@ -102,7 +102,9 @@
     for (const r of registros) {
       if (!esTela(get(r, "categoria")) || !esMLineal(get(r, "variedad"))) continue;
       const proveedor = get(r, "proveedor"), tipo = get(r, "tipo"), modelo = get(r, "modelo"), formato = get(r, "formato");
+      // nombre: incluye el proveedor (USO INTERNO en la App). nombreCliente: SIN proveedor (es el que va al PDF).
       const nombre = [proveedor, tipo, modelo, formato].filter(Boolean).join(" · ");
+      const nombreCliente = [tipo, modelo, formato].filter(Boolean).join(" · ");
       if (!nombre) continue;
       const precioML = parseNumero(get(r, "precio"));
       const ancho = parseNumero(get(r, "anchoRollo"));
@@ -110,7 +112,7 @@
       const ficha = get(r, "specs").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
       const favCats = get(r, "fav").split("/").map((s) => s.trim()).filter(Boolean);
       const umin = norm(get(r, "unidadMinima")), esConf = (umin === "confeccion" || umin === "conf");
-      const tela = { nombre, valorM2: precioML / ancho, anchoRollo: ancho, ficha, proveedor, tipo, fav: favCats, unidadMinima: get(r, "unidadMinima") };
+      const tela = { nombre, nombreCliente, valorM2: precioML / ancho, anchoRollo: ancho, ficha, proveedor, tipo, fav: favCats, unidadMinima: get(r, "unidadMinima") };
       const key = nombre.toLowerCase(), prev = mapa[key];
       if (!prev || (esConf && !prev.esConf)) mapa[key] = { tela: tela, esConf: esConf };   // CONFECCION gana
     }

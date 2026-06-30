@@ -1679,6 +1679,16 @@
   function telaActual() {
     return state.telas.find((t) => t.nombre === $("f_tela").value) || null;
   }
+  // Nombre de la tela PARA EL CLIENTE (sin proveedor). El proveedor es interno y NUNCA va al PDF/plano.
+  function telaCli(t) {
+    if (!t) return "";
+    if (typeof t === "string") return t;   // ya es texto cliente (modo preliminar / plano)
+    if (t.nombreCliente && String(t.nombreCliente).trim()) return String(t.nombreCliente).trim();
+    let n = String(t.nombre || "");
+    const prov = String(t.proveedor || "").trim();
+    if (prov && n.toUpperCase().indexOf(prov.toUpperCase()) === 0) n = n.slice(prov.length).replace(/^\s*·\s*/, "");
+    return n;
+  }
   // Checkboxes de telas adicionales para cotizar (uniforme). La tela del selector es la principal.
   function renderTelaOpc() {
     const cont = $("telaOpcList"); if (!cont) return;
@@ -1779,7 +1789,7 @@
     });
     return out;
   }
-  function telasConsideradasTxt(telas) { return (telas || []).map((t) => t.nombre).join(" o "); }
+  function telasConsideradasTxt(telas) { return (telas || []).map((t) => telaCli(t)).join(" o "); }
   // Lote (motor v4) para una tela arbitraria con los mismos parámetros del formulario uniforme.
   function loteParaTela(tela, largo, ancho) {
     return window.CalcCIBSA.calcularLote({
@@ -2104,7 +2114,7 @@
     return visibles(list).map((a) => {
       const r = calcAleta(a, cantidad, valorOj, factor); if (!r) return null;
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (ALETA_NOM[a.tipo] || "Aleta");
-      let t = nom + " en " + r.tela.nombre + " " + window.CalcCIBSA.fmtNum(r.al) + "×" + window.CalcCIBSA.fmtNum(r.aa) + " m — " + money(r.subtotal / r.N) + "/u";
+      let t = nom + " en " + telaCli(r.tela) + " " + window.CalcCIBSA.fmtNum(r.al) + "×" + window.CalcCIBSA.fmtNum(r.aa) + " m — " + money(r.subtotal / r.N) + "/u";
       if (a.descripcion && a.descripcion.trim()) t += " · " + a.descripcion.trim();
       return t;
     }).filter(Boolean);
@@ -2484,7 +2494,7 @@
       const r = calcInscrito(pz, ins); if (!r || !r.o) return null;
       const dim = ins.forma === "circ" ? `circular Ø${r.winAncho} m` : `${r.winLargo}×${r.winAncho} m`;
       const nom = (ins.legend && ins.legend.trim()) ? ins.legend.trim() : "Paño inscrito";
-      return `${nom} en ${r.tela.nombre} ${dim} — ${money(r.o.subtotalLote / r.N)}/u`;
+      return `${nom} en ${telaCli(r.tela)} ${dim} — ${money(r.o.subtotalLote / r.N)}/u`;
     }).filter(Boolean);
   }
   // Centra la ventana en el paño base: padding = (base − ventana)/2 por eje.
@@ -3108,7 +3118,7 @@
     return visibles(list).map((a) => {
       const r = calcAleta(a, N, valorOjUnif(), facUnif()); if (!r) return null;
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (ALETA_NOM[a.tipo] || "Aleta");
-      let det = nom + " en " + r.tela.nombre + " " + f(r.al) + "×" + f(r.aa) + " m";
+      let det = nom + " en " + telaCli(r.tela) + " " + f(r.al) + "×" + f(r.aa) + " m";
       if (a.descripcion && a.descripcion.trim()) det += " · " + a.descripcion.trim();
       return { cantidad: r.N, detalle: det, precio: Math.round(r.subtotal / r.N), totalNeto: r.subtotal };
     }).filter(Boolean);
@@ -4080,7 +4090,7 @@
     if (largo == null || ancho == null || largo <= 0 || ancho <= 0) return alert("Ingresa largo y ancho para descargar el plano.");
     const telasC = telasParaCotizar();
     const tela = telaActual();
-    const telaPlano = telasC.length > 1 ? telasConsideradasTxt(telasC) : (tela ? tela.nombre : "N/A");
+    const telaPlano = telasC.length > 1 ? telasConsideradasTxt(telasC) : (tela ? telaCli(tela) : "N/A");
     const N = Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1);
     await descargarSketch({
       filenameBase: nombreBaseArchivo(),
@@ -4151,7 +4161,7 @@
       filenameBase: nombreBaseArchivo(),
       etiquetaArchivo: etq || null,
       titulo: (etq ? etq + " — " : "Pieza ") + f(largo) + "m x " + f(ancho) + "m",
-      tela: tela ? tela.nombre : "N/A",
+      tela: tela ? telaCli(tela) : "N/A",
       color: pz.color || "",
       largo: largo, ancho: ancho,
       ojetillos: ojTotalPieza(pz), unidades: N,
@@ -5153,10 +5163,12 @@
   function fe(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
   function fnum(v) { const r = window.CalcCIBSA ? window.CalcCIBSA.evalExpr(v) : parseFloat(v); return (r != null && !isNaN(r)) ? r : null; }
   function facturaMsg(t, err) { const m = $("facturaMsg"); if (m) { m.textContent = t || ""; m.style.color = err ? "var(--danger,#c0392b)" : ""; } }
-  async function facturaEnsure() {
-    if (FC.loaded) return;
+  async function facturaEnsure(forzar) {
     const tok = window.AuthCIBSA && window.AuthCIBSA.getToken ? window.AuthCIBSA.getToken() : null;
     if (!tok) return;
+    // Recarga el catálogo si: nunca se cargó, cambió el token (re-login → datos nuevos en el Sheet), o se fuerza.
+    // Evita usar el catálogo viejo en memoria cuando el navegador mantiene la página viva entre sesiones.
+    if (FC.loaded && FC.tokenAtLoad === tok && !forzar) return;
     try { FC.prov = await window.SheetsCIBSA.cargarProveedores(tok); } catch (e) { FC.prov = []; }
     try { FC.fact = await window.SheetsCIBSA.cargarFactores(tok); } catch (e) { FC.fact = []; }
     try { FC.unid = await window.SheetsCIBSA.cargarUnidades(tok); } catch (e) { FC.unid = []; }
@@ -5179,7 +5191,7 @@
         (FC.costoFactura[k] = FC.costoFactura[k] || []).push({ llave: llaveRaw, nota: nota });
       });
     } catch (e) { FC.costoSet = {}; FC.facturaSet = {}; FC.costoFactura = {}; FC.costoUlt = {}; }
-    FC.loaded = true;
+    FC.tokenAtLoad = tok; FC.loaded = true;
   }
   // "dd/mm/aaaa" → número comparable aaaammdd (0 si no parsea). Para elegir el costo más reciente por SKU.
   function facturaFechaVal(s) { const m = String(s || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (!m) return 0; let a = parseInt(m[3], 10); if (a < 100) a += 2000; return a * 10000 + parseInt(m[2], 10) * 100 + parseInt(m[1], 10); }
@@ -5912,6 +5924,7 @@
   }
   { const fi = $("facturaFile"); if (fi) fi.addEventListener("change", (e) => { const fs = e.target.files; if (!fs || !fs.length) return; facturaDesdeArchivos(Array.prototype.slice.call(fs)); e.target.value = ""; }); }
   { const bm = $("facturaManual"); if (bm) bm.addEventListener("click", async () => { await facturaEnsure(); FC.ctx = facturaCtxManual(); facturaMsg("Carga manual.", false); renderFactura(); }); }
+  { const br = $("facturaRefrescar"); if (br) br.addEventListener("click", async () => { facturaMsg("Actualizando catálogo…", false); try { await facturaEnsure(true); facturaMsg("Catálogo actualizado (PROVEEDORES, COSTOS, FACTOR).", false); if (FC.ctx) renderFactura(); else if (FC.cola && FC.cola.length) renderFacturaCola(); } catch (e) { facturaMsg("No se pudo actualizar: " + (e && e.message ? e.message : e), true); } }); }
 
   // ---------- Fusión canónica de duplicados (solo usuario maestro) ----------
   function facturaEsMaestro() {

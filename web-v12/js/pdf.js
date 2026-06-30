@@ -4,6 +4,17 @@
   const CFG = global.CONFIG;
   const LOGOS = global.LOGOS;
 
+  // Nombre de tela para el CLIENTE: NUNCA incluye el proveedor. Usa nombreCliente si existe; si no, quita el
+  // proveedor del nombre interno ("PROV · tipo · modelo · formato" → "tipo · modelo · formato").
+  function telaCli(t) {
+    if (!t) return "";
+    if (typeof t === "string") return t;   // ya es texto cliente (modo preliminar / plano)
+    if (t.nombreCliente && String(t.nombreCliente).trim()) return String(t.nombreCliente).trim();
+    let n = String(t.nombre || "");
+    const prov = String(t.proveedor || "").trim();
+    if (prov && n.toUpperCase().indexOf(prov.toUpperCase()) === 0) n = n.slice(prov.length).replace(/^\s*·\s*/, "");
+    return n;
+  }
   const BLUE = () => PDFLib.rgb(0.18, 0.325, 0.549);     // #2E538C
   const HEADERBLUE = () => PDFLib.rgb(0.357, 0.482, 0.706); // #5B7BB4
   const WHITE = () => PDFLib.rgb(1, 1, 1);
@@ -580,7 +591,7 @@
     txt(page, "PROPUESTA:", M, y, { f: bold }); y -= 15;
     const propuesta = datos.propuesta || (datos.soloGranel
       ? "Presupuesto de productos a granel según el detalle (venta por metro/unidad; corte de tela por metro cuando aplica)."
-      : `Presupuesto en ${datos.tela.nombre} para carpa rectangular de ` +
+      : `Presupuesto en ${telaCli(datos.tela)} para carpa rectangular de ` +
         `${(+datos.largo)}m x ${(+datos.ancho)}m según diseño (incluye confección y refuerzos perimetrales).`);
     for (const ln of wrap(propuesta, font, 11, W - 2 * M)) { txt(page, ln, M, y); y -= 14; }
     y -= 6;
@@ -644,7 +655,7 @@
 
     // Filas de la carpa (tela + ojetillos). En cotización SOLO de granel no van.
     if (!datos.soloGranel) {
-      const detTela = [[datos.tela.nombre, true]].concat((datos.tela.ficha || []).map((s) => [s, false]));
+      const detTela = [[telaCli(datos.tela), true]].concat((datos.tela.ficha || []).map((s) => [s, false]));
       if (!datos.suprimirCotas) {
         detTela.push(["", false, 0]);
         detTela.push(["Diseño aprobado", true, 11.5]);
@@ -876,7 +887,7 @@
     datos.items.forEach((item) => {
       const c = item.calc;
       const lines = [];
-      [[item.tela.nombre, true]]
+      [[telaCli(item.tela), true]]
         .concat((item.tela.ficha || []).map((s) => [s, false]))
         .concat([[`Incluye material + ${oj}`, false]])
         .forEach(([s, b]) => wrap(s, b ? bold : font, 10.5, colW[0] - 2 * pad)
@@ -1037,8 +1048,8 @@
     datos.piezas.forEach((pz) => {
       const etq = (pz.etiqueta || "").trim();
       const orientTxt = pz.orientTxt || "uniones a lo largo";
-      const detail = [[etq || pz.tela.nombre, true]];
-      if (etq) detail.push([pz.tela.nombre, false]);
+      const detail = [[etq || telaCli(pz.tela), true]];
+      if (etq) detail.push([telaCli(pz.tela), false]);
       (pz.tela.ficha || []).forEach((s) => detail.push([s, false]));
       if (!datos.suprimirCotas) {
         detail.push(["", false, 0]);
