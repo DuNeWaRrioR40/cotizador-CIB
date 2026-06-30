@@ -2926,7 +2926,12 @@
           const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = c.largo || "";
           inp.addEventListener("input", (e) => { c.largo = e.target.value; refresh(); onChange(); });
           inp.addEventListener("blur", (e) => { const rr = window.CalcCIBSA.evalExpr(e.target.value); if (rr != null && !isNaN(rr)) { c.largo = window.CalcCIBSA.fmtNum(rr); e.target.value = c.largo; refresh(); onChange(); } });
-          l.appendChild(inp); agregarCalc(inp); addHelpTo(l, "Longitud de la línea (en metros). Se dibuja horizontal desde la posición X/Y y se inclina con el ángulo.", "CORTE-LINEA-LARGO"); grid.appendChild(l);
+          l.appendChild(inp); agregarCalc(inp); addHelpTo(l, "Longitud de la línea (en metros). Se dibuja horizontal desde la posición X/Y y se inclina con el ángulo.", "CORTE-LINEA-LARGO");
+          { const bL = ctx.baseLargo(), bA = ctx.baseAncho(), fN = window.CalcCIBSA.fmtNum;
+            const note = document.createElement("span"); note.className = "muted small"; note.style.display = "block"; note.style.marginTop = "2px";
+            note.textContent = (bL > 0 && bA > 0) ? ("Paño base: " + fN(bL) + " × " + fN(bA) + " m (largo × ancho).") : "Define el largo y ancho del paño base para ver su medida.";
+            l.appendChild(note); }
+          grid.appendChild(l);
         } else if (esCirc) {
           const l = document.createElement("label"); l.className = "field full"; l.innerHTML = "<span>Diámetro (m)</span>";
           const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = c.largo || "";
@@ -3320,8 +3325,11 @@
   function renderOjetillos() {
     const c = $("ojDyn"); c.innerHTML = "";
     if (state.ojMode === "total") {
+      const bL = num("f_largo", null), bA = num("f_ancho", null), fN = window.CalcCIBSA.fmtNum;
+      const nota = (bL > 0 && bA > 0) ? ("Paño base: " + fN(bL) + " × " + fN(bA) + " m (largo × ancho).") : "Define el largo y ancho del paño base.";
       c.innerHTML = `<label class="field"><span>Cantidad total</span>
-        <input id="oj_total_in" type="text" inputmode="numeric" step="1" value="${state.ojTotal}" /></label>`;
+        <input id="oj_total_in" type="text" inputmode="numeric" step="1" value="${state.ojTotal}" />
+        <span class="muted small" style="display:block;margin-top:2px">${nota}</span></label>`;
       $("oj_total_in").addEventListener("input", (e) => { state.ojTotal = e.target.value; recompute(); });
       $("oj_total_in").addEventListener("blur", (e) => {
         const r = window.CalcCIBSA.evalExpr(e.target.value);
@@ -4391,7 +4399,12 @@
         const id = document.createElement("input"); id.type = "text"; id.inputMode = "decimal"; id.value = e.d != null ? e.d : "0.5";
         id.addEventListener("input", (ev2) => { e.d = ev2.target.value; refrescar(); onChange(); });
         id.addEventListener("blur", (ev2) => { const r = ev(ev2.target.value); if (r != null && !isNaN(r)) { e.d = f(r); ev2.target.value = e.d; refrescar(); onChange(); } });
-        ld.appendChild(id); agregarCalc(id); addHelpTo(ld, "Separación deseada entre ojetillos en esa arista, en metros. La app pone uno en cada esquina y reparte el resto; si el último tramo supera esta medida, agrega uno al medio.", "OJ-DIST"); grid.appendChild(ld);
+        ld.appendChild(id); agregarCalc(id); addHelpTo(ld, "Separación deseada entre ojetillos en esa arista, en metros. La app pone uno en cada esquina y reparte el resto; si el último tramo supera esta medida, agrega uno al medio.", "OJ-DIST");
+        { const Lar = getL(), fN = window.CalcCIBSA.fmtNum;
+          const note = document.createElement("span"); note.className = "muted small"; note.style.display = "block"; note.style.marginTop = "2px";
+          note.textContent = (Lar > 0) ? ("Largo de esta arista: " + fN(Lar) + " m.") : "Define las dimensiones del paño base.";
+          ld.appendChild(note); }
+        grid.appendChild(ld);
         // Alternativa: total uniforme por arista (≥ 2). Si se define, manda sobre el distanciamiento.
         const lt = document.createElement("label"); lt.className = "field"; lt.innerHTML = "<span>o Total uniforme (≥ 2)</span>";
         const it = document.createElement("input"); it.type = "text"; it.inputMode = "numeric"; it.value = e.n != null ? e.n : ""; it.placeholder = "opcional";
