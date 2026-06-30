@@ -4073,7 +4073,7 @@
       // Distribución normal: SOLO si la arista está activa y tiene distanciamiento/total. Los sets son independientes.
       if (e.on !== false && (usaTotal || d > 0)) {
         const full = posicionesEdge(k, L, d, parejo, removed, edges, usaTotal ? nTot : null, splits), n = full.length;
-        detalle[k].n = n; detalle[k].esp = n > 1 ? L / (n - 1) : 0;
+        detalle[k].n = n; // el espaciado real (esp) se calcula abajo desde las posiciones instaladas
         // Marcadores de numeración (1er y último ojetillo de la arista) con flecha hacia donde crece
         // el conjunto. Índices 0..n-1 sobre la distribución COMPLETA (los que usa "Suprimir posiciones").
         if (numerar && n >= 1) {
@@ -4086,6 +4086,13 @@
         supr.forEach((i) => { if (i >= n) errs.push(OJ_NOMBRE[k] + ": posición " + i + " supera el máximo (" + (n - 1) + ")"); });
         const kept = full.filter((_, i) => !suprSet.has(i));
         detalle[k].kept = kept.length;
+        // Espaciado REAL = mediana de las separaciones entre ojetillos instalados (en metros a lo largo de
+        // la arista). Robusto a secciones/divisiones/supresión; antes usaba L/(n-1) con el largo COMPLETO,
+        // lo que inflaba el valor cuando la arista estaba seccionada (ej. 0,91 en vez de 0,50).
+        if (kept.length > 1) {
+          const gaps = []; for (let i = 1; i < kept.length; i++) gaps.push(kept[i] - kept[i - 1]);
+          gaps.sort((a, b) => a - b); detalle[k].esp = gaps[Math.floor(gaps.length / 2)];
+        }
         kept.forEach((p) => out.push(mapFn(p)));
         // 2da línea: paralela a la arista, hacia adentro (inset). 0 y n se suprimen solos si se solapan con el perímetro.
         const l2 = e.linea2;
