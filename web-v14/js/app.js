@@ -2042,10 +2042,10 @@
   function cantUnif() { return Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1); }
   function valorOjUnif() { return num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT); }
   function renderAletasUnif() {
-    const c = $("aletasUnif"); if (c) renderAletas(c, { aletas: state.aletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, factor: facUnif, onChange: recompute });
+    const c = $("aletasUnif"); if (c) renderAletas(c, { aletas: state.aletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, factor: facUnif, onChange: recompute, telaBase: () => $("f_tela").value, baseListo: () => (num("f_largo", null) > 0 && num("f_ancho", null) > 0 && !!$("f_tela").value) });
   }
   function renderBackAletasUnif() {
-    const c = $("backAletasUnif"); if (c) renderAletas(c, { aletas: state.backAletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, factor: facUnif, onChange: recompute });
+    const c = $("backAletasUnif"); if (c) renderAletas(c, { aletas: state.backAletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, factor: facUnif, onChange: recompute, telaBase: () => $("f_tela").value, baseListo: () => (num("f_largo", null) > 0 && num("f_ancho", null) > 0 && !!$("f_tela").value) });
   }
   function renderStrapsUnif() {
     const c = $("strapsUnif"); if (c) renderStraps(c, { straps: state.strapsUnif, cantidad: cantUnif, getAncho: () => num("f_ancho", null), getLargo: () => num("f_largo", null), onChange: recompute });
@@ -2454,9 +2454,9 @@
         card.appendChild(addHelpTo(txtField("Descripción de diseño", "descripcion", "Detalle del faldón/cenefa", true, true), "Texto libre para detallar el diseño del faldón/cenefa (colores, leyendas, terminaciones). Aparece en la cotización.", "ALETA-DESC"));
         const lt = document.createElement("label"); lt.className = "field full"; lt.innerHTML = "<span>Tela</span>";
         const selT = document.createElement("select"); state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre; selT.appendChild(o); }); // el nombre ya incluye Proveedor · Modelo · Formato
-        selT.value = a.telaNombre || ((state.telas[0] && state.telas[0].nombre) || ""); a.telaNombre = selT.value;
+        selT.value = a.telaNombre || (ctx.telaBase && ctx.telaBase()) || ((state.telas[0] && state.telas[0].nombre) || ""); a.telaNombre = selT.value;
         selT.addEventListener("change", (e) => { a.telaNombre = e.target.value; refresh(); onChange(); });
-        lt.appendChild(selT); card.appendChild(lt);
+        lt.appendChild(selT); card.appendChild(addHelpTo(lt, "Tela del anexo. Por defecto es la del paño base; puedes cambiarla. En cotización multi-tela, si mantienes la del paño base, el anexo sigue a cada tela; si eliges otra distinta, se conserva fija en todas las variantes.", "ALETA-TELA"));
         const grid = document.createElement("div"); grid.className = "pieza-grid";
         grid.appendChild(addHelpTo(selField("Cuelga del borde", [["inf", "Inferior"], ["sup", "Superior"], ["izq", "Izquierda"], ["der", "Derecha"]], "baseEdge", false, () => pintarOjArista()), "Borde del paño base del que se fusiona y cuelga el anexo (desde ahí se extiende hacia afuera).", "ALETA-BORDE-BASE"));
         grid.appendChild(addHelpTo(numField("Distancia al borde (m, ≥ unión)", "dBorde"), "A qué distancia del borde elegido se cose el anexo. Debe ser ≥ la unión (típico 0,045 m).", "ALETA-DIST"));
@@ -2532,10 +2532,17 @@
       navFichas(rows, (ctx.aletas || []).map((a, i) => ({ titulo: "Anexo " + (i + 1), nombre: a.legend || "", oculto: !!a._oculto })));
     }
     pintar();
+    // No se puede diseñar anexos antes de definir el paño base (tela + largo + ancho).
+    const baseOK = !ctx.baseListo || ctx.baseListo();
     const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline"; add.textContent = "+ Aleta / solapa / faldón / cenefa";
-    add.disabled = state.telas.length === 0;
-    add.addEventListener("click", () => { ctx.aletas.push(nuevaAleta()); pintar(); onChange(); });
+    add.disabled = state.telas.length === 0 || !baseOK;
+    add.addEventListener("click", () => {
+      const a = nuevaAleta();
+      const tb = ctx.telaBase && ctx.telaBase(); if (tb) a.telaNombre = tb; // por defecto: la tela del paño base
+      ctx.aletas.push(a); pintar(); onChange();
+    });
     container.appendChild(add);
+    if (!baseOK) { const h = document.createElement("p"); h.className = "muted small"; h.textContent = "Define primero el paño base (tela, largo y ancho) para diseñar anexos."; container.appendChild(h); }
   }
   // Calcula un paño inscrito: dimensiones propias (las ingresa el usuario); se confecciona como pieza.
   function calcInscrito(pz, ins) {
@@ -4572,7 +4579,7 @@
       renderComplementos(q(".pz-comp"), pz.complementos, recomputeCompuesto);
       renderInscritos(q(".pz-ins"), pz);
       renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
-      renderAletas(q(".pz-aletas"), { aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto });
+      renderAletas(q(".pz-aletas"), { aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto, telaBase: () => pz.telaNombre, baseListo: () => (window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0 && !!pz.telaNombre) });
       renderStraps(q(".pz-straps"), { straps: (pz.straps || (pz.straps = [])), cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
       subColapsar(q(".pz-oj-wrap"), "Ojetillos", pz, "_cOj", () => (pz.ojMode === "arista") || (parseInt(pz.ojetillos || 0, 10) > 0));
       subColapsar(q(".pz-straps"), "Straps / cintas", pz, "_cStr", () => (pz.straps || []).length);
@@ -4633,7 +4640,7 @@
         const backC = q(".pz-back"), trasHint = q(".pz-tras-hint"), trasCb = q(".pz-tras");
         backC.innerHTML = '<div class="pz-back-cortes"></div><div class="pz-back-aletas"></div><div class="pz-back-comp"></div>';
         renderTraseraDiseno(backC.querySelector(".pz-back-cortes"), backC.querySelector(".pz-back-comp"), () => pz.backCortes, () => pz.backComplementos, () => window.CalcCIBSA.evalExpr(pz.largo), () => window.CalcCIBSA.evalExpr(pz.ancho), recomputeCompuesto);
-        renderAletas(backC.querySelector(".pz-back-aletas"), { aletas: pz.backAletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto });
+        renderAletas(backC.querySelector(".pz-back-aletas"), { aletas: pz.backAletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto, telaBase: () => pz.telaNombre, baseListo: () => (window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0 && !!pz.telaNombre) });
         trasCb.checked = !!pz.trasera;
         const actualizarTrasPz = () => {
           const ok = window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0;
@@ -5008,16 +5015,25 @@
     return out;
   }
   // Arma el objeto `datos` (y `calc`) de una cotización uniforme para una tela y versión dadas.
+  // Anexos (aletas/solapas/faldón/cenefa) con la tela EFECTIVA de la variante: los anexos que usan la tela
+  // del paño base (la principal, f_tela) siguen a la tela de esta variante; los que tienen tela propia
+  // distinta la conservan. En la variante principal (o tela igual) no cambia nada.
+  function aletasEfectivas(list, telaVariante) {
+    const principal = $("f_tela") ? $("f_tela").value : "";
+    if (!telaVariante || telaVariante === principal) return list || [];
+    return (list || []).map((a) => (a.telaNombre === principal) ? Object.assign({}, a, { telaNombre: telaVariante }) : a);
+  }
   function construirDatosUnif(tela, lote, versionStr) {
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
     const orientKey = orientDeTela(tela);
     const o = orientKey === "ancho" ? lote.oAncho : lote.oLargo;
     const N = lote.N;
-    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas };
+    const aletasEf = aletasEfectivas(state.aletasUnif, tela && tela.nombre), backAletasEf = aletasEfectivas(state.backAletasUnif, tela && tela.nombre);
+    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(aletasEf), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas };
     const ojeTotal = lote.nOjetillos * lote.valorOjetillo * N;
     const compTotal = compTotalUnit(state.complementosUnif) * N;
-    const aleTotal = aletasTotal(state.aletasUnif, N, lote.valorOjetillo, facUnif()) + aletasTotal(state.backAletasUnif, N, lote.valorOjetillo, facUnif());
+    const aleTotal = aletasTotal(aletasEf, N, lote.valorOjetillo, facUnif()) + aletasTotal(backAletasEf, N, lote.valorOjetillo, facUnif());
     const strapTotal = strapsTotal(state.strapsUnif, N, { ancho: ancho || 0, largo: largo || 0 });
     const corteTotal = costoCortesUnit(skSpec, lote.valorOjetillo) * N;
     const granelLineas = granelLineasPDF(), granelNeto = granelLineas.reduce((s, g) => s + g.total, 0);
@@ -5056,7 +5072,7 @@
       observaciones: $("f_observaciones").value.trim() || null,
       detalleExtra: terminacionesTexto(state.orientUnif),
       complementos: complementosUnifPDF(N),
-      aletas: aletasUnifPDF(state.aletasUnif, N).concat(aletasUnifPDF(state.backAletasUnif, N)).concat(strapsUnifPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cortesUnifPDF(skSpec, lote.valorOjetillo, N)),
+      aletas: aletasUnifPDF(aletasEf, N).concat(aletasUnifPDF(backAletasEf, N)).concat(strapsUnifPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cortesUnifPDF(skSpec, lote.valorOjetillo, N)),
       granel: granelLineas,
       minProduccion: minProd, minProdUF: CFG.MIN_PRODUCCION_UF, ufValor: state.ufValor,
       sketch: skSpec,

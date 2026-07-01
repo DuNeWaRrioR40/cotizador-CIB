@@ -730,12 +730,15 @@
     let ny = y - 12;
     notaLines.forEach((ln) => { txt(page, ln, M + 4, ny, { f: bold, color: BLACK() }); ny -= 13; });
 
-    // Observaciones (si las hay)
+    // Observaciones (si las hay) — paginan si no caben: se agrega hoja antes de la de Condiciones.
     if (datos.observaciones) {
-      let oy = ny - 18;
-      txt(page, "OBSERVACIONES:", M, oy, { f: bold }); oy -= 14;
+      const BOT = 54;
+      let obsPage = page, oy = ny - 18;
+      const ensure = () => { if (oy < BOT) { obsPage = doc.addPage([W, H]); oy = H - 50; } };
+      ensure();
+      txt(obsPage, "OBSERVACIONES:", M, oy, { f: bold }); oy -= 14;
       String(datos.observaciones).split(/\r?\n/).forEach((par) => {
-        wrap(par || " ", font, 10.5, W - 2 * M).forEach((ln) => { txt(page, ln, M, oy, { size: 10.5, color: BLACK() }); oy -= 13; });
+        wrap(par || " ", font, 10.5, W - 2 * M).forEach((ln) => { ensure(); txt(obsPage, ln, M, oy, { size: 10.5, color: BLACK() }); oy -= 13; });
       });
     }
 
@@ -1128,15 +1131,15 @@
     let ny = y - 12;
     notaLines.forEach((ln) => { txt(ln, M + 4, ny, { f: bold, color: BLACK() }); ny -= 13; });
 
-    // Observaciones (si las hay), con salto de página si no caben
+    // Observaciones (si las hay) — paginan línea a línea si no caben (incluso si superan una página).
     if (datos.observaciones) {
-      const obsParr = String(datos.observaciones).split(/\r?\n/);
-      const obsLines = [];
-      obsParr.forEach((par) => wrap(par || " ", font, 10.5, W - 2 * M).forEach((ln) => obsLines.push(ln)));
       let oy = ny - 18;
-      if (oy - (obsLines.length * 13 + 16) < 60) { nuevaPagina(false); oy = y - 12; }
+      const ensure = () => { if (oy < 54) { nuevaPagina(false); oy = y - 12; } };
+      ensure();
       txt("OBSERVACIONES:", M, oy, { f: bold }); oy -= 14;
-      obsLines.forEach((ln) => { txt(ln, M, oy, { size: 10.5, color: BLACK() }); oy -= 13; });
+      String(datos.observaciones).split(/\r?\n/).forEach((par) => {
+        wrap(par || " ", font, 10.5, W - 2 * M).forEach((ln) => { ensure(); txt(ln, M, oy, { size: 10.5, color: BLACK() }); oy -= 13; });
+      });
     }
 
     // (La representación gráfica / plano de las piezas se entrega como archivo aparte, no va en la cotización.)
