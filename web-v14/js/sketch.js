@@ -278,6 +278,17 @@
     }
     return out;
   }
+  // ¿El punto p está dentro del polígono poly? (ray casting). Para recortar ojetillos de guías/cortes
+  // contra la parte separada (fade) de un corte que secciona.
+  function puntoEnPoligono(p, poly) {
+    let dentro = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+      const cruza = ((yi > p.y) !== (yj > p.y)) && (p.x < (xj - xi) * (p.y - yi) / (yj - yi) + xi);
+      if (cruza) dentro = !dentro;
+    }
+    return dentro;
+  }
   // Etiqueta cardinal del lado hacia el que apunta la normal (coords pantalla, y hacia abajo).
   function cardinalLado(nx, ny) {
     if (Math.abs(nx) >= Math.abs(ny)) return nx >= 0 ? "Este (der.)" : "Oeste (izq.)";
@@ -397,6 +408,24 @@
     }
     if (spec.extraVentanas && spec.extraVentanas.length) {
       ventanas = ventanas.concat(spec.extraVentanas.filter((v) => v && v.w > 0 && v.h > 0).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, circ: !!v.circ, legend: v.legend || "", fusion: v.fusion || {} })));
+    }
+    // Recorta los ojetillos de cortes/guías: quita los que caen FUERA del paño base (nunca debieron
+    // existir) o dentro de la PARTE SEPARADA (fade) de OTRO corte que secciona (quedan en el pedazo que
+    // se va). Afecta dibujo y conteo ("Ojetillos sobre cortes/calados"). No recorta con su propio fade.
+    if (cortes.length) {
+      const fades = cortes.map((c) => (c.fadePoly && c.fadePoly.length >= 3) ? c.fadePoly : null);
+      const dentroRect = (p) => p.x >= -EPS && p.x <= ancho + EPS && p.y >= -EPS && p.y <= largo + EPS;
+      cortes.forEach((c, ci) => {
+        if (!c.ojetillos || !c.ojetillos.length) return;
+        c.ojetillos = c.ojetillos.filter((p) => {
+          if (!dentroRect(p)) return false;
+          for (let j = 0; j < fades.length; j++) {
+            if (j === ci || !fades[j]) continue;
+            if (puntoEnPoligono(p, fades[j])) return false;
+          }
+          return true;
+        });
+      });
     }
     // Aletas / solapas / faldón / cenefa: paño anexo que cuelga de un borde del base (puede extenderse fuera).
     const NOMARI = { aleta: "Aleta", solapa: "Solapa", faldon: "Faldón", cenefa: "Cenefa" };

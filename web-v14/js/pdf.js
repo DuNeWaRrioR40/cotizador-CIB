@@ -263,7 +263,8 @@
     (sk.cortes || []).forEach((c) => {
       if (c.fadePoly && c.fadePoly.length >= 3) {
         const d = "M " + c.fadePoly.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";
-        page.drawSvgPath(d, { color: WHITE(), opacity: c.fadeKill ? 1 : 0.82, borderWidth: 0 });
+        // Difuminar: gris visible (la parte se separa). Eliminar: blanco opaco (desaparece).
+        page.drawSvgPath(d, { color: c.fadeKill ? WHITE() : PDFLib.rgb(0.42, 0.46, 0.52), opacity: c.fadeKill ? 1 : 0.5, borderWidth: 0 });
       }
       (c.hatch || []).forEach((sg) => {
         page.drawLine({ start: { x: px(sg.a.x), y: py(sg.a.y) }, end: { x: px(sg.b.x), y: py(sg.b.y) }, thickness: 0.35, color: PURPLE, opacity: 0.32 });

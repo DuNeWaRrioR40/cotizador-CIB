@@ -211,7 +211,9 @@ button:active { transform: scale(0.98); }
 .sketch-svg .cut-oje { fill: var(--surface); stroke: #8e44ad; stroke-width: 1.1; }
 .sketch-svg .cut-lbl { fill: #8e44ad; font-size: 8px; font-family: inherit; }
 .sketch-svg .cut-hatch { stroke: #8e44ad; stroke-width: 0.4; opacity: 0.32; }
-.sketch-svg .cut-fade { fill: var(--surface, #ffffff); fill-opacity: 0.82; stroke: none; }
+/* Difuminar: sombreado GRIS visible (marca la parte que se separa). Eliminar: relleno del fondo,
+   opaco al 100% (la parte "desaparece"). Antes ambos eran blancos y no se distinguían sobre fondo blanco. */
+.sketch-svg .cut-fade { fill: #6b7480; fill-opacity: 0.5; stroke: none; }
 .sketch-svg .cut-kill { fill: var(--surface, #ffffff); fill-opacity: 1; stroke: none; }
 .sketch-svg .cut-piv { stroke: #8e44ad; stroke-width: 0.8; fill: none; }
 .sketch-svg .ins-lbl { fill: var(--text); font-size: 6.5px; font-family: inherit; }
