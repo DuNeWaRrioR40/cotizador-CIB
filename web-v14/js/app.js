@@ -5775,6 +5775,15 @@
       const rellenar = () => {
         const cat = catFiltrado(); selEl.innerHTML = "";
         cat.forEach((p) => { const o = document.createElement("option"); o.value = p.sku || granelNombre(p); o.textContent = granelNombre(p) + (p.sku ? " · " + p.sku : ""); if (o.value === it.existenteSel) o.selected = true; selEl.appendChild(o); });
+        // Sincroniza el estado con la opción que el select realmente MUESTRA: si estaba vacío o la selección
+        // previa quedó fuera del filtro, el navegador muestra la 1ª opción pero no dispara "change". Sin esto,
+        // "crear variante" no encontraba el producto y no hacía nada.
+        const enLista = cat.some((p) => (p.sku || granelNombre(p)) === it.existenteSel);
+        if (cat.length && !enLista) {
+          it.existenteSel = selEl.value;
+          const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === it.existenteSel);
+          if (p) it.llaveExistente = p.sku || it.llaveExistente;
+        }
         cnt.textContent = cat.length + " producto(s)" + (cat.length ? "" : " · afloja los filtros para ver más");
       };
       rellenar();
@@ -5792,9 +5801,10 @@
       // Puente: el producto cambió en una variable (color/formato…) → crear VARIANTE (clona del elegido).
       const variante = fe("button", "btn-outline small", "Cambió color/formato/otra variable → crear variante"); variante.type = "button";
       variante.addEventListener("click", () => {
-        const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === it.existenteSel);
+        const val = it.existenteSel || selEl.value; // respaldo: la opción visible del desplegable
+        const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === val);
         if (!p) { facturaMsg("Elige primero el producto del catálogo.", true); return; }
-        it.modo = "nuevo"; facturaClonar(it, p); renderFactura();
+        it.existenteSel = val; it.modo = "nuevo"; facturaClonar(it, p); renderFactura();
       });
       card.appendChild(variante);
     } else { // nuevo
