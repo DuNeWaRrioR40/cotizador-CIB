@@ -416,7 +416,8 @@
     // Sincroniza esta cotización a la hoja HISTORIAL del Sheet (mejor esfuerzo; no bloquea el PDF).
     const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
     if (tok) {
-      window.SheetsCIBSA.escribirHistorial(tok, HIST_HOJA, [entryToRow(ent)], HIST_ENC)
+      // Reemplaza en la nube (borra filas de la misma clave y anexa la nueva) para NO acumular duplicados.
+      window.SheetsCIBSA.reemplazarHistorial(tok, HIST_HOJA, ent, entryToRow(ent), HIST_ENC)
         .catch((e) => console.warn("CIBSA: no se pudo sincronizar el historial al Sheet —", e && e.message ? e.message : e));
     }
     return corr;
@@ -894,10 +895,13 @@
     if (!confirm("ÚLTIMA CONFIRMACIÓN: esta acción NO se puede deshacer.\n\n¿Borrar definitivamente «" + nom + " " + vtxt + "»?")) return;
     const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
     if (tok) {
-      try { await window.SheetsCIBSA.borrarFilaHistorial(tok, HIST_HOJA, ent.ts); }
+      // Borra TODAS las filas de esta cotización en la nube (no solo el ts visible): cada generación apendía
+      // una fila, y borrar solo una dejaba duplicados que reaparecían al sincronizar.
+      try { await window.SheetsCIBSA.borrarFilasHistorialClave(tok, HIST_HOJA, ent); }
       catch (e) { return alert("No se pudo borrar de la nube (" + (e.message || e) + ").\nEl registro NO se borró; inténtalo con conexión."); }
     }
-    histStore(histLoad().filter((x) => x.ts !== ent.ts));
+    const k = (s) => (s || "").trim().toLowerCase(), ver = (v) => parseInt(v, 10) || 1;
+    histStore(histLoad().filter((x) => !(k(x.nombre) === k(ent.nombre) && k(x.apellido) === k(ent.apellido) && k(x.tipo) === k(ent.tipo) && ver(x.version) === ver(ent.version))));
     renderHistorial();
   }
   function importarRegistro(file) {

@@ -329,6 +329,37 @@
     if (!r.ok) throw new Error("No se pudo eliminar la fila del historial (código " + r.status + ").");
     return true;
   }
+  // Borra TODAS las filas cuyo cliente+apellido+tipo+versión coincidan con `ent` (no solo un ts).
+  // Necesario porque cada generación APENDE una fila: una misma cotización puede tener varias filas.
+  // Devuelve cuántas borró. Elimina de mayor a menor índice para no desplazar las anteriores.
+  async function borrarFilasHistorialClave(token, hoja, ent) {
+    const info = await leerHistorialRaw(token, hoja);
+    if (!info.existe) return 0;
+    const filas = info.filas || [];
+    const norm = (s) => (s == null ? "" : String(s)).trim().toLowerCase();
+    const ver = (v) => parseInt(v, 10) || 1;
+    const idxs = [];
+    for (let i = 0; i < filas.length; i++) {
+      const r = filas[i] || [];
+      if (r[0] == null || isNaN(parseInt(r[0], 10))) continue; // salta encabezado / filas vacías
+      if (norm(r[1]) === norm(ent.nombre) && norm(r[2]) === norm(ent.apellido) &&
+          norm(r[3]) === norm(ent.tipo) && ver(r[4]) === ver(ent.version)) idxs.push(i);
+    }
+    if (!idxs.length) return 0;
+    const sheetId = await obtenerSheetId(token, hoja);
+    if (sheetId == null) return 0;
+    const requests = idxs.sort((a, b) => b - a).map((i) => ({ deleteDimension: { range: { sheetId: sheetId, dimension: "ROWS", startIndex: i, endIndex: i + 1 } } }));
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}:batchUpdate`;
+    const r = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ requests: requests }) });
+    if (!r.ok) throw new Error("No se pudo eliminar del historial (código " + r.status + ").");
+    return idxs.length;
+  }
+  // "Reemplaza" en el Sheet: borra las filas de la misma clave de `ent` y anexa la fila nueva.
+  // Así el historial en la nube guarda UNA fila por cotización (cliente+tipo+versión), sin acumular.
+  async function reemplazarHistorial(token, hoja, ent, filaRow, encabezados) {
+    try { await borrarFilasHistorialClave(token, hoja, ent); } catch (e) { /* best-effort: si falla, igual anexa */ }
+    return escribirHistorial(token, hoja, [filaRow], encabezados);
+  }
 
   // --- Correlativo: marca de máximo histórico ("high-water-mark") ---
   // Vive en H1:I1 de la hoja HISTORIAL (H1 = rótulo, I1 = número), FUERA del rango de datos A:G,
@@ -435,5 +466,5 @@
     return r.json();
   }
 
-  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, cargarUnidades, anexarHoja, anexarGranel, leerHojaRaw, actualizarCeldas, parseNumero };
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, borrarFilasHistorialClave, reemplazarHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, cargarUnidades, anexarHoja, anexarGranel, leerHojaRaw, actualizarCeldas, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);
