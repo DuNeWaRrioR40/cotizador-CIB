@@ -261,32 +261,34 @@
     (sk.setsRot || []).forEach((sr) => { callout(px(sr.x), py(sr.y), sr.text, sr.detail, sr); });
     // Cortes / calados
     (sk.cortes || []).forEach((c) => {
-      if (c.fadePoly && c.fadePoly.length >= 3) {
+      // Difuminar: gris visible. Eliminar: la parte se va del CONTORNO (no se rellena ni se dibuja su línea).
+      if (c.fadePoly && c.fadePoly.length >= 3 && !c.fadeKill) {
         const d = "M " + c.fadePoly.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";
-        // Difuminar: gris visible (la parte se separa). Eliminar: blanco opaco (desaparece).
-        page.drawSvgPath(d, { color: c.fadeKill ? WHITE() : PDFLib.rgb(0.42, 0.46, 0.52), opacity: c.fadeKill ? 1 : 0.5, borderWidth: 0 });
+        page.drawSvgPath(d, { color: PDFLib.rgb(0.42, 0.46, 0.52), opacity: 0.5, borderWidth: 0 });
       }
       (c.hatch || []).forEach((sg) => {
         page.drawLine({ start: { x: px(sg.a.x), y: py(sg.a.y) }, end: { x: px(sg.b.x), y: py(sg.b.y) }, thickness: 0.35, color: PURPLE, opacity: 0.32 });
       });
-      (c.segments || []).forEach((sg) => {
-        const a = px(sg.a.x), b = py(sg.a.y), d = px(sg.b.x), e = py(sg.b.y);
-        if (c.guia) {
-          page.drawLine({ start: { x: a, y: b }, end: { x: d, y: e }, thickness: 0.8, color: TEAL, dashArray: [2, 2] });
-        } else {
-          page.drawLine({ start: { x: a, y: b }, end: { x: d, y: e }, thickness: 1, color: PURPLE, dashArray: [5, 3] });
-          if (!c.tijeras) SK.tijerasEn(a, b, d, e).forEach((t) => tijeraPDF(t.x, t.y));
-        }
-      });
-      if (c.tijeras) c.tijeras.forEach((t) => tijeraPDF(px(t.x), py(t.y)));
+      if (!c.fadeKill) {   // en "Eliminar", la línea del corte es el nuevo borde (lo pinta el contorno del paño)
+        (c.segments || []).forEach((sg) => {
+          const a = px(sg.a.x), b = py(sg.a.y), d = px(sg.b.x), e = py(sg.b.y);
+          if (c.guia) {
+            page.drawLine({ start: { x: a, y: b }, end: { x: d, y: e }, thickness: 0.8, color: TEAL, dashArray: [2, 2] });
+          } else {
+            page.drawLine({ start: { x: a, y: b }, end: { x: d, y: e }, thickness: 1, color: PURPLE, dashArray: [5, 3] });
+            if (!c.tijeras) SK.tijerasEn(a, b, d, e).forEach((t) => tijeraPDF(t.x, t.y));
+          }
+        });
+        if (c.tijeras) c.tijeras.forEach((t) => tijeraPDF(px(t.x), py(t.y)));
+      }
       (c.ojetillos || []).forEach((p) => ojePDF(px(p.x), py(p.y), PURPLE));
-      if (c.rotated && c.pivote) {
+      if (!c.fadeKill && c.rotated && c.pivote) {
         const cx = px(c.pivote.x), cy = py(c.pivote.y);
         page.drawCircle({ x: cx, y: cy, size: 2.6, borderColor: PURPLE, borderWidth: 0.7 });
         page.drawLine({ start: { x: cx - 5, y: cy }, end: { x: cx + 5, y: cy }, thickness: 0.6, color: PURPLE });
         page.drawLine({ start: { x: cx, y: cy - 5 }, end: { x: cx, y: cy + 5 }, thickness: 0.6, color: PURPLE });
       }
-      if (c.rotated && c.segments && c.segments.length) {
+      if (!c.fadeKill && c.rotated && c.segments && c.segments.length) {
         const sg = c.segments[0], mx = px((sg.a.x + sg.b.x) / 2), my = py((sg.a.y + sg.b.y) / 2);
         page.drawText(SK.fmt(c.angulo) + "°", { x: mx + 4, y: my + 3, size: 8, font: font, color: PURPLE });
       }
@@ -476,8 +478,13 @@
     const ACC = BLUE();
     const RED = PDFLib.rgb(0.106, 0.369, 0.125); // verde pino
     const TICK = 3, EXTGAP = 3;
-    // Contorno
-    page.drawRectangle({ x: x0, y: topRect - hpx, width: wpx, height: hpx, borderColor: GRAY, borderWidth: 1.3 });
+    // Contorno del paño: rectángulo, o el polígono recortado si hay cortes "Eliminar" (la parte se va).
+    if (sk.panoPoly && sk.panoPoly.length >= 3) {
+      const dEdge = "M " + sk.panoPoly.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";
+      page.drawSvgPath(dEdge, { borderColor: GRAY, borderWidth: 1.3 });
+    } else {
+      page.drawRectangle({ x: x0, y: topRect - hpx, width: wpx, height: hpx, borderColor: GRAY, borderWidth: 1.3 });
+    }
     // Elementos del paño (ventanas, bolsillos, ojetillos, aletas, cortes)
     const r = Math.max(0.8, Math.max(1.4, Math.min(2.6, scale * 0.022)) - 0.9); // ojetillos del plano: ~2 puntos más chicos (la leyenda usa su propio radio fijo)
     elementosPDF(page, sk, { px: px, py: py, scale: scale, x0: x0, topRect: topRect, wpx: wpx, hpx: hpx, r: r, cb: cb }, font);

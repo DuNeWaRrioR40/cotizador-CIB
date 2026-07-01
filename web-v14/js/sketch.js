@@ -329,7 +329,7 @@
             if (posA.length >= 1) { aristaNum.push(mkN(posA[0], 0)); if (posA.length > 1) aristaNum.push(mkN(posA[posA.length - 1], posA.length - 1)); }
           }
         }
-        return { x: x, y: y, w: w, h: 0, corte: true, guia: esGuia, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, ojNum: aristaNum, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, fadePoly: fadePoly, fadeKill: !esGuia && !!c.fadeKill, strapAncho: parseFloat(c.strapAncho) || 0, strapPrecioM: parseFloat(c.strapPrecioM) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
+        return { x: x, y: y, w: w, h: 0, corte: true, guia: esGuia, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, ojNum: aristaNum, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, fadePoly: fadePoly, fadeKill: !esGuia && !!c.fadeKill, fade: esGuia ? "" : (c.fade || ""), strapAncho: parseFloat(c.strapAncho) || 0, strapPrecioM: parseFloat(c.strapPrecioM) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
       }
       // --- Corte circular: se recorta al paño base; lo que sale, desaparece. ---
       if (c.circ) {
@@ -490,11 +490,25 @@
         straps.push({ corners: corners, rem0: { a: corners[0], b: corners[3] }, rem1: { a: corners[1], b: corners[2] }, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: ldx, y: ldy }, perp: { x: ux, y: uy }, hw: hw, ancho: W, largo: off + ins, nombre: cc.strapNombre || "Cinta", grupo: (cc.strapNombre && cc.strapNombre.trim()) ? cc.strapNombre.trim() : "Corte", origen: "corte", precioM: cc.strapPrecioM || 0 });
       });
     });
+    // Contorno del paño para "Eliminar": si hay cortes con fadeKill, el contorno pasa a ser el rectángulo
+    // recortado por el lado que se ELIMINA de cada uno → la parte seccionada desaparece del plano (contorno
+    // incluido) y queda la forma real. El precio sigue usando la envolvente rectangular (solo es visual).
+    let panoPoly = null;
+    const killed = cortes.filter((c) => c.fadeKill && (c.fade === "A" || c.fade === "B") && c.segments && c.segments[0] && c.segments[0].a && c.segments[0].b);
+    if (killed.length && ancho > 0 && largo > 0) {
+      let poly = [{ x: 0, y: 0 }, { x: ancho, y: 0 }, { x: ancho, y: largo }, { x: 0, y: largo }];
+      killed.forEach((c) => {
+        if (poly.length < 3) return;
+        const a = c.segments[0].a, b = c.segments[0].b;
+        poly = clipPolyHalfPlane(poly, a.x, a.y, b.x, b.y, c.fade === "A"); // conserva el lado que NO se elimina
+      });
+      if (poly.length >= 3) panoPoly = poly;
+    }
     // Numeración NumOj: si está activa (spec.ojNumeros != null), suma los marcadores de las aristas de
     // cortes/guías (1er/último de sus ojetillos) a los del perímetro base.
     let ojNumeros = spec.ojNumeros || null;
     if (ojNumeros != null) cortes.forEach((c) => { if (c.ojNum && c.ojNum.length) ojNumeros = ojNumeros.concat(c.ojNum); });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null };
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
@@ -778,30 +792,33 @@
       return out;
     };
     sk.cortes.forEach((c) => {
-      if (c.fadePoly && c.fadePoly.length >= 3) {
-        s += `<polygon class="${c.fadeKill ? "cut-kill" : "cut-fade"}" points="${c.fadePoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
+      // Difuminar: sombreado gris. Eliminar: la parte se va del CONTORNO (no se rellena ni se dibuja su línea).
+      if (c.fadePoly && c.fadePoly.length >= 3 && !c.fadeKill) {
+        s += `<polygon class="cut-fade" points="${c.fadePoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
       }
       (c.hatch || []).forEach((sg) => {
         s += `<line class="cut-hatch" x1="${f1(px(sg.a.x))}" y1="${f1(py(sg.a.y))}" x2="${f1(px(sg.b.x))}" y2="${f1(py(sg.b.y))}"/>`;
       });
-      c.segments.forEach((sg) => {
-        const a = px(sg.a.x), b = py(sg.a.y), d = px(sg.b.x), e = py(sg.b.y);
-        if (c.guia) {
-          s += `<line class="cut-guia" x1="${f1(a)}" y1="${f1(b)}" x2="${f1(d)}" y2="${f1(e)}"/>`;
-        } else {
-          s += `<line class="cut" x1="${f1(a)}" y1="${f1(b)}" x2="${f1(d)}" y2="${f1(e)}"/>`;
-          if (!c.tijeras) tijerasEn(a, b, d, e).forEach((tp) => { s += tijeraSVG(tp.x, tp.y); });
-        }
-      });
-      if (c.tijeras) c.tijeras.forEach((tp) => { s += tijeraSVG(px(tp.x), py(tp.y)); });
+      if (!c.fadeKill) {   // en "Eliminar", la línea del corte pasa a ser el nuevo borde (lo pinta el contorno)
+        c.segments.forEach((sg) => {
+          const a = px(sg.a.x), b = py(sg.a.y), d = px(sg.b.x), e = py(sg.b.y);
+          if (c.guia) {
+            s += `<line class="cut-guia" x1="${f1(a)}" y1="${f1(b)}" x2="${f1(d)}" y2="${f1(e)}"/>`;
+          } else {
+            s += `<line class="cut" x1="${f1(a)}" y1="${f1(b)}" x2="${f1(d)}" y2="${f1(e)}"/>`;
+            if (!c.tijeras) tijerasEn(a, b, d, e).forEach((tp) => { s += tijeraSVG(tp.x, tp.y); });
+          }
+        });
+        if (c.tijeras) c.tijeras.forEach((tp) => { s += tijeraSVG(px(tp.x), py(tp.y)); });
+      }
       c.ojetillos.forEach((p) => { s += ojeSVG(px(p.x), py(p.y), "cut-oje"); });
-      if (c.rotated && c.pivote) {
+      if (!c.fadeKill && c.rotated && c.pivote) {
         const cx = px(c.pivote.x), cy = py(c.pivote.y);
         s += `<circle class="cut-piv" cx="${f1(cx)}" cy="${f1(cy)}" r="2.6"/>`;
         s += `<line class="cut-piv" x1="${f1(cx - 5)}" y1="${f1(cy)}" x2="${f1(cx + 5)}" y2="${f1(cy)}"/>`;
         s += `<line class="cut-piv" x1="${f1(cx)}" y1="${f1(cy - 5)}" x2="${f1(cx)}" y2="${f1(cy + 5)}"/>`;
       }
-      if (c.rotated && c.segments.length) {
+      if (!c.fadeKill && c.rotated && c.segments.length) {
         const sg = c.segments[0], mx = px((sg.a.x + sg.b.x) / 2), my = py((sg.a.y + sg.b.y) / 2);
         s += `<text class="cut-lbl" x="${f1(mx + 4)}" y="${f1(my - 4)}">${fmt(c.angulo)}°</text>`;
       }
@@ -831,11 +848,11 @@
     has.win = (sk.ventanas || []).length > 0;
     has.aleta = (sk.aletas || []).length > 0;
     has.pocket = (sk.bolsillos || []).length > 0;
-    has.cut = (sk.cortes || []).some((c) => !c.guia);
+    has.cut = (sk.cortes || []).some((c) => !c.guia && !c.fadeKill); // un corte "eliminado" no dibuja su línea
     has.guia = (sk.cortes || []).some((c) => c.guia);
     // Fusión: las aletas siempre llevan arista fusionada; las ventanas, si tienen algún lado fusionado.
     has.fusion = has.aleta || (sk.ventanas || []).some((v) => v.fusion && (v.fusion.sup || v.fusion.inf || v.fusion.izq || v.fusion.der));
-    has.piv = (sk.cortes || []).some((c) => c.rotated);
+    has.piv = (sk.cortes || []).some((c) => c.rotated && !c.fadeKill);
     has.strap = (sk.straps || []).length > 0;
     return SIMBOLOS.filter((s) => has[s.k]);
   }
@@ -1097,8 +1114,12 @@
     const ojeSVG = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r * 0.42)}"/>`;
     const ojeLeg = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rLeg)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rLeg * 0.42)}"/>`;
     let s = `<svg class="sketch-svg" viewBox="0 0 ${f1(totalW)} ${f1(totalH)}" xmlns="http://www.w3.org/2000/svg">`;
-    // Contorno
-    s += `<rect class="edge" x="${f1(ox)}" y="${f1(oy)}" width="${f1(w)}" height="${f1(h)}"/>`;
+    // Contorno del paño: rectángulo, o el polígono recortado si hay cortes "Eliminar" (la parte se va).
+    if (sk.panoPoly && sk.panoPoly.length >= 3) {
+      s += `<polygon class="edge" points="${sk.panoPoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
+    } else {
+      s += `<rect class="edge" x="${f1(ox)}" y="${f1(oy)}" width="${f1(w)}" height="${f1(h)}"/>`;
+    }
     // Elementos del paño (aletas, ventanas, bolsillos, ojetillos, cortes)
     s += elementosSketch(sk, { px: px, py: py, scale: scale, r: r, ojeSVG: ojeSVG, ox: ox, oy: oy, w: w, h: h, cb: cb });
     // Cotas (verde) — origen al centro para posición de elementos; 4 lados; eje de referencia.
