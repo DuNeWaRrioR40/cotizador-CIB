@@ -5751,10 +5751,40 @@
     }
 
     if (it.modo === "existente") {
-      const opts = granelActivos().map((p) => [p.sku || granelNombre(p), granelNombre(p) + (p.sku ? " · " + p.sku : "")]);
-      card.appendChild(facturaSelect("Producto del catálogo", opts, it.existenteSel, (v) => {
-        it.existenteSel = v; const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === v); it.llaveExistente = p ? (p.sku || it.llaveExistente) : it.llaveExistente; renderFactura();
-      }));
+      // Filtros del catálogo: por PROVEEDOR (el último token del SKU es su código, ej. "…-AIM") y por texto
+      // en TIPO y VARIEDAD (subcadena, sin distinguir mayúsculas). Se combinan (AND). Refrescan el
+      // desplegable SIN re-render, para no perder el foco al escribir en los campos de texto.
+      const provCorto = (facturaProvCorto() || "").toUpperCase();
+      if (it.filtProv == null) it.filtProv = !!provCorto; // por defecto filtra si hay código de proveedor
+      const skuProv = (sku) => { const s = String(sku || ""); const i = s.lastIndexOf("-"); return (i >= 0 ? s.slice(i + 1) : s).toUpperCase(); };
+      const catFiltrado = () => {
+        let c = granelActivos();
+        if (it.filtProv && provCorto) c = c.filter((p) => skuProv(p.sku) === provCorto);
+        const tf = (it.filtTipo || "").trim().toLowerCase(); if (tf) c = c.filter((p) => String(p.tipo || "").toLowerCase().indexOf(tf) >= 0);
+        const vf = (it.filtVariedad || "").trim().toLowerCase(); if (vf) c = c.filter((p) => String(p.variedad || "").toLowerCase().indexOf(vf) >= 0);
+        return c;
+      };
+      const selWrap = fe("label", "factura-f"); selWrap.appendChild(fe("span", null, "Producto del catálogo"));
+      const selEl = document.createElement("select");
+      selEl.addEventListener("change", (e) => { it.existenteSel = e.target.value; const p = granelActivos().find((x) => (x.sku || granelNombre(x)) === e.target.value); it.llaveExistente = p ? (p.sku || it.llaveExistente) : it.llaveExistente; renderFactura(); });
+      selWrap.appendChild(selEl); card.appendChild(selWrap);
+      const cnt = fe("p", "muted small", "");
+      const rellenar = () => {
+        const cat = catFiltrado(); selEl.innerHTML = "";
+        cat.forEach((p) => { const o = document.createElement("option"); o.value = p.sku || granelNombre(p); o.textContent = granelNombre(p) + (p.sku ? " · " + p.sku : ""); if (o.value === it.existenteSel) o.selected = true; selEl.appendChild(o); });
+        cnt.textContent = cat.length + " producto(s)" + (cat.length ? "" : " · afloja los filtros para ver más");
+      };
+      rellenar();
+      const fRow = fe("div", "factura-filtros");
+      if (provCorto) {
+        const fl = fe("label", "factura-chk"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!it.filtProv;
+        cb.addEventListener("change", () => { it.filtProv = cb.checked; rellenar(); });
+        fl.appendChild(cb); fl.appendChild(fe("span", null, " Solo " + provCorto)); fRow.appendChild(fl);
+      }
+      const mkFiltro = (ph, key) => { const i = document.createElement("input"); i.type = "text"; i.placeholder = ph; i.value = it[key] || ""; i.className = "factura-filtro-in"; i.addEventListener("input", () => { it[key] = i.value; rellenar(); }); return i; };
+      fRow.appendChild(mkFiltro("Tipo…", "filtTipo"));
+      fRow.appendChild(mkFiltro("Variedad…", "filtVariedad"));
+      card.appendChild(fRow); card.appendChild(cnt);
       card.appendChild(facturaInput("Llave de costo (SKU)", it.llaveExistente, (v) => it.llaveExistente = v, { ph: "SKU del producto" }));
       // Puente: el producto cambió en una variable (color/formato…) → crear VARIANTE (clona del elegido).
       const variante = fe("button", "btn-outline small", "Cambió color/formato/otra variable → crear variante"); variante.type = "button";
