@@ -4287,7 +4287,7 @@
     const N = Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1);
     await descargarSketch({
       filenameBase: nombreBaseArchivo(),
-      titulo: $("f_titulo").value.trim() || ("Carpa " + (+largo) + "m x " + (+ancho) + "m"),
+      titulo: tituloConMedidas() || ("Carpa " + (+largo) + "m x " + (+ancho) + "m"),
       tela: telaPlano,
       color: $("f_color").value.trim(),
       largo: largo, ancho: ancho,
@@ -5023,6 +5023,16 @@
     if (!telaVariante || telaVariante === principal) return list || [];
     return (list || []).map((a) => (a.telaNombre === principal) ? Object.assign({}, a, { telaNombre: telaVariante }) : a);
   }
+  // Título con las medidas SIEMPRE incluidas: "<título> Largo M x Ancho M [x Alto M]". Si es volumétrico
+  // (hay alto), se agrega la tercera medida antecedida de " x ". Sin dimensiones válidas: solo el título.
+  function tituloConMedidas() {
+    const fN = window.CalcCIBSA.fmtNum;
+    const largo = num("f_largo", null), ancho = num("f_ancho", null), alto = alturaUnif();
+    const tit = $("f_titulo").value.trim();
+    const dims = (largo > 0 && ancho > 0) ? (fN(largo) + "M x " + fN(ancho) + "M" + (alto > 0 ? " x " + fN(alto) + "M" : "")) : "";
+    if (!dims) return tit || null;
+    return (tit ? tit + " " : "") + dims;
+  }
   function construirDatosUnif(tela, lote, versionStr) {
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
@@ -5064,7 +5074,7 @@
       cliente: { nombre, apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente") }, empresa: empresaDatos(),
       version: versionStr, fecha: new Date(), suprimirCotas: suprimeCotas(),
       largo, ancho, tela, calc,
-      titulo: $("f_titulo").value.trim() || null,
+      titulo: tituloConMedidas(),
       ojetillosDetalle: ojDetalle(),
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
       descuentoLabel: dI.label,
