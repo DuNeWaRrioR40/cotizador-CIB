@@ -2837,6 +2837,13 @@
     };
   }
   function cortesSpec(list) { return visibles(list).map(rectCorte).filter(Boolean); }
+  // ¿Hay algún corte/guía con ojetillos en su arista (del lado que QUEDA)? Para mostrar el chip "NumOj."
+  // aunque los ojetillos base estén en modo "total".
+  function hayOjEnCortes(list) {
+    return (list || []).some((c) => c && (c.tipo === "corte" || c.tipo === "guia") &&
+      (c.ojAristaLado === "A" || c.ojAristaLado === "B") && c.ojAristaLado !== c.fade &&
+      (window.CalcCIBSA.evalExpr(c.ojAristaD) || 0) > 0);
+  }
   function cortesTotalOj(list) { return (list || []).reduce((s, c) => s + (c.forma === "circ" ? ojIntPz(c.ojCirc) : (ojIntPz(c.oj.sup) + ojIntPz(c.oj.inf) + ojIntPz(c.oj.izq) + ojIntPz(c.oj.der))), 0); }
   function obsCortes(list) {
     const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
@@ -3005,12 +3012,17 @@
               kwrap.appendChild(kl); card.appendChild(addHelpTo(kwrap, "Si está marcado, la parte que se separa se QUITA del plano (queda en blanco), en vez de solo atenuarse. El rectángulo base y el precio no cambian.", "CORTE-FADE-KILL"));
             }
           }
-          // Ojetillos sobre la arista del corte (lado A/B, mismo nombre cardinal que el difuminado).
+          // Ojetillos sobre la arista del corte. Si el corte difumina/elimina un lado (c.fade), ese lado se
+          // SEPARA del paño: no tiene sentido poner ojetillos ahí. Solo se ofrece el lado que QUEDA.
+          const ladoFuera = (c.fade === "A" || c.fade === "B") ? c.fade : null;
+          if (ladoFuera && c.ojAristaLado === ladoFuera) c.ojAristaLado = ""; // selección inválida → limpiar
           const osel = document.createElement("label"); osel.className = "field full"; osel.innerHTML = "<span>Ojetillos en la arista</span>";
           const oopt = document.createElement("select");
-          [["", "Ninguno"], ["A", "Lado A — " + cardi(pnx, pny)], ["B", "Lado B — " + cardi(-pnx, -pny)]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; oopt.appendChild(o); });
+          [["", "Ninguno"], ["A", "Lado A — " + cardi(pnx, pny)], ["B", "Lado B — " + cardi(-pnx, -pny)]]
+            .filter(([v]) => v !== ladoFuera)
+            .forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; oopt.appendChild(o); });
           oopt.value = c.ojAristaLado || ""; oopt.addEventListener("change", (e) => { c.ojAristaLado = e.target.value; pintar(); onChange(); });
-          osel.appendChild(oopt); card.appendChild(addHelpTo(osel, "Coloca ojetillos a lo largo de la arista del corte, del lado elegido. Configura distanciamiento e inset. Por ahora van solo al plano de taller.", "CORTE-OJ-ARISTA"));
+          osel.appendChild(oopt); card.appendChild(addHelpTo(osel, "Coloca ojetillos a lo largo de la arista del corte, del lado que QUEDA. Si el corte difumina/elimina un lado, ese lado no se ofrece (se separa del paño). Configura distanciamiento e inset.", "CORTE-OJ-ARISTA"));
           if (c.ojAristaLado === "A" || c.ojAristaLado === "B") {
             const og = document.createElement("div"); og.className = "pieza-grid";
             const mk = (lab, key, ph) => { const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>"; const i = document.createElement("input"); i.type = "text"; i.inputMode = "decimal"; i.value = c[key] != null ? c[key] : ""; if (ph) i.placeholder = ph; i.addEventListener("input", (e) => { c[key] = e.target.value; refresh(); onChange(); }); i.addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { c[key] = window.CalcCIBSA.fmtNum(r); e.target.value = c[key]; refresh(); onChange(); } }); l.appendChild(i); agregarCalc(i); return l; };
@@ -3278,7 +3290,9 @@
   }
   // Campos de ojetillos para el spec del sketch del uniforme (posiciones explícitas si es por arista).
   function ojSpecUnif() {
-    if (state.ojMode !== "arista") return { ojTotal: nOjetillos() };
+    // ojNumeros != null activa la numeración (NumOj): en "arista" trae los marcadores del perímetro; en
+    // "total" va vacío pero deja que se sumen los de las aristas de cortes/guías (que existen en cualquier modo).
+    if (state.ojMode !== "arista") return { ojTotal: nOjetillos(), ojNumeros: state.ojNumerar ? [] : null };
     const r = ojetillosPosUnif();
     return { ojetillosPos: r.pos, ojNumeros: state.ojNumerar ? (r.numeros || []) : null };
   }
@@ -3478,7 +3492,7 @@
         { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
         { label: "Straps / cintas", items: (state.strapsUnif || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
       ], refrescarOcUnif, { cotas: cotasDeSpec(especUnif), ocultas: state.cotasOcultas, onChange: refrescarOcUnif },
-        state.ojMode === "arista" ? { on: !!state.ojNumerar, toggle: () => { state.ojNumerar = !state.ojNumerar; refrescarOcUnif(); } } : null);
+        (state.ojMode === "arista" || hayOjEnCortes(state.cortesUnif)) ? { on: !!state.ojNumerar, toggle: () => { state.ojNumerar = !state.ojNumerar; refrescarOcUnif(); } } : null);
       menuBordesRot(sk, state, () => { renderBordes(); recompute(); }, () => $("bordeDyn"), () => irANodo($("wOjetillos")));
     }
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) {
@@ -4159,7 +4173,7 @@
       const r = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), !!pz.ojNumerar);
       spec.ojetillosPos = r.pos;
       if (pz.ojNumerar) spec.ojNumeros = r.numeros;
-    } else spec.ojTotal = ojIntPz(pz.ojetillos);
+    } else { spec.ojTotal = ojIntPz(pz.ojetillos); if (pz.ojNumerar) spec.ojNumeros = []; }
     return spec;
   }
   // SVG de vista previa: frontal y, si corresponde, trasera (espejo + calados propios) debajo.
@@ -4740,7 +4754,7 @@
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
         ], refrescarOcPz, { cotas: cotasDeSpec(sketchPieza(pz)), ocultas: pz.cotasOcultas, onChange: refrescarOcPz },
-          pz.ojMode === "arista" ? { on: !!pz.ojNumerar, toggle: () => { pz.ojNumerar = !pz.ojNumerar; refrescarOcPz(); } } : null);
+          (pz.ojMode === "arista" || hayOjEnCortes(pz.cortes)) ? { on: !!pz.ojNumerar, toggle: () => { pz.ojNumerar = !pz.ojNumerar; refrescarOcPz(); } } : null);
         menuBordesRot(sketchBox, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'), () => { const w = document.querySelector('[data-id="' + pz.id + '"] .pz-oj-wrap'); if (!w) return; if (w._subHead && w.style.display === "none") w._subHead.click(); irAElemento(w._subHead || w, w._subHead || w); });
       }
       const card = list ? list.querySelector('[data-id="' + pz.id + '"] .pieza-sub') : null;
@@ -4829,7 +4843,7 @@
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
         ], refrescarOcPz, { cotas: cotasDeSpec(sketchPieza(pz)), ocultas: pz.cotasOcultas, onChange: refrescarOcPz },
-          pz.ojMode === "arista" ? { on: !!pz.ojNumerar, toggle: () => { pz.ojNumerar = !pz.ojNumerar; refrescarOcPz(); } } : null);
+          (pz.ojMode === "arista" || hayOjEnCortes(pz.cortes)) ? { on: !!pz.ojNumerar, toggle: () => { pz.ojNumerar = !pz.ojNumerar; refrescarOcPz(); } } : null);
         menuBordesRot(body, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'), () => { const w = document.querySelector('[data-id="' + pz.id + '"] .pz-oj-wrap'); if (!w) return; if (w._subHead && w.style.display === "none") w._subHead.click(); irAElemento(w._subHead || w, w._subHead || w); });
       }
       aplic();

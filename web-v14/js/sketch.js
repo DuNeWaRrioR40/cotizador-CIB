@@ -310,18 +310,26 @@
           fadePoly = clipPolyHalfPlane(rect, a.x, a.y, b.x, b.y, c.fade === "B");
         }
         // Ojetillos sobre una arista (lado A/B) del corte: repartidos a lo largo, con inset perpendicular.
-        let aristaOje = [];
+        // Si el corte difumina/elimina ese MISMO lado (c.fade === c.ojAristaLado), ese lado se separa del
+        // paño → esos ojetillos no existen (ni se dibujan ni se cuentan).
+        let aristaOje = [], aristaNum = [];
         const dd = parseFloat(c.ojAristaD) || 0;
-        if ((c.ojAristaLado === "A" || c.ojAristaLado === "B") && dd > 0) {
+        const ladoVive = !(c.ojAristaLado && c.ojAristaLado === c.fade);
+        if ((c.ojAristaLado === "A" || c.ojAristaLado === "B") && dd > 0 && ladoVive) {
           const Ls = Math.hypot(b.x - a.x, b.y - a.y);
           if (Ls > 0) {
             const ux = (b.x - a.x) / Ls, uy = (b.y - a.y) / Ls, inx = -uy, iny = ux;
             const ins = parseFloat(c.ojAristaInset) || 0, sgn = (c.ojAristaLado === "A") ? 1 : -1;
             const supr = new Set(Array.isArray(c.ojAristaSupr) ? c.ojAristaSupr : []);
-            posicionesArista(Ls, dd, false).forEach((t, i) => { if (supr.has(i)) return; aristaOje.push({ x: a.x + ux * t + inx * ins * sgn, y: a.y + uy * t + iny * ins * sgn }); });
+            const posA = posicionesArista(Ls, dd, false);
+            posA.forEach((t, i) => { if (supr.has(i)) return; aristaOje.push({ x: a.x + ux * t + inx * ins * sgn, y: a.y + uy * t + iny * ins * sgn }); });
+            // Marcadores de numeración (1er/último) — índices 0..n-1 sobre la distribución COMPLETA de la
+            // arista del corte (los que usa "Suprimir posiciones" del corte). Se muestran con NumOj.
+            const mkN = (t, idx) => ({ x: a.x + ux * t + inx * ins * sgn, y: a.y + uy * t + iny * ins * sgn, text: String(idx), dx: ux, dy: uy, nx: inx * sgn, ny: iny * sgn });
+            if (posA.length >= 1) { aristaNum.push(mkN(posA[0], 0)); if (posA.length > 1) aristaNum.push(mkN(posA[posA.length - 1], posA.length - 1)); }
           }
         }
-        return { x: x, y: y, w: w, h: 0, corte: true, guia: esGuia, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, fadePoly: fadePoly, fadeKill: !esGuia && !!c.fadeKill, strapAncho: parseFloat(c.strapAncho) || 0, strapPrecioM: parseFloat(c.strapPrecioM) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
+        return { x: x, y: y, w: w, h: 0, corte: true, guia: esGuia, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, ojNum: aristaNum, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, fadePoly: fadePoly, fadeKill: !esGuia && !!c.fadeKill, strapAncho: parseFloat(c.strapAncho) || 0, strapPrecioM: parseFloat(c.strapPrecioM) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
       }
       // --- Corte circular: se recorta al paño base; lo que sale, desaparece. ---
       if (c.circ) {
@@ -410,17 +418,18 @@
       ventanas = ventanas.concat(spec.extraVentanas.filter((v) => v && v.w > 0 && v.h > 0).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, circ: !!v.circ, legend: v.legend || "", fusion: v.fusion || {} })));
     }
     // Recorta los ojetillos de cortes/guías: quita los que caen FUERA del paño base (nunca debieron
-    // existir) o dentro de la PARTE SEPARADA (fade) de OTRO corte que secciona (quedan en el pedazo que
-    // se va). Afecta dibujo y conteo ("Ojetillos sobre cortes/calados"). No recorta con su propio fade.
+    // existir) o dentro de la PARTE SEPARADA (difuminada/eliminada) de un corte que secciona — incluido
+    // su PROPIO fade: si el usuario puso ojetillos del lado que se va, esos no existen. Afecta dibujo y
+    // conteo ("Ojetillos sobre cortes/calados"). Los del lado que QUEDA están fuera del fadePoly → se conservan.
     if (cortes.length) {
       const fades = cortes.map((c) => (c.fadePoly && c.fadePoly.length >= 3) ? c.fadePoly : null);
       const dentroRect = (p) => p.x >= -EPS && p.x <= ancho + EPS && p.y >= -EPS && p.y <= largo + EPS;
-      cortes.forEach((c, ci) => {
+      cortes.forEach((c) => {
         if (!c.ojetillos || !c.ojetillos.length) return;
         c.ojetillos = c.ojetillos.filter((p) => {
           if (!dentroRect(p)) return false;
           for (let j = 0; j < fades.length; j++) {
-            if (j === ci || !fades[j]) continue;
+            if (!fades[j]) continue;
             if (puntoEnPoligono(p, fades[j])) return false;
           }
           return true;
@@ -481,7 +490,11 @@
         straps.push({ corners: corners, rem0: { a: corners[0], b: corners[3] }, rem1: { a: corners[1], b: corners[2] }, a: { x: ax, y: ay }, b: { x: bx, y: by }, dir: { x: ldx, y: ldy }, perp: { x: ux, y: uy }, hw: hw, ancho: W, largo: off + ins, nombre: cc.strapNombre || "Cinta", grupo: (cc.strapNombre && cc.strapNombre.trim()) ? cc.strapNombre.trim() : "Corte", origen: "corte", precioM: cc.strapPrecioM || 0 });
       });
     });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: spec.ojNumeros || null, cotasOcultas: spec.cotasOcultas || null };
+    // Numeración NumOj: si está activa (spec.ojNumeros != null), suma los marcadores de las aristas de
+    // cortes/guías (1er/último de sus ojetillos) a los del perímetro base.
+    let ojNumeros = spec.ojNumeros || null;
+    if (ojNumeros != null) cortes.forEach((c) => { if (c.ojNum && c.ojNum.length) ojNumeros = ojNumeros.concat(c.ojNum); });
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
