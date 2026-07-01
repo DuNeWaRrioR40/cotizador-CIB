@@ -113,11 +113,15 @@
       if (cur) out.push(cur);
       return out.length ? out : [""];
     }
-    function callout(ax, ay, text, detail, obj) {
+    function callout(ax, ay, text, detail, obj, key) {
       if (!cb || !cb.slots.has(obj)) return false;
-      const ly = cb.slots.get(obj);
+      const ly0 = cb.slots.get(obj);
+      // Desplazamiento manual del rótulo (en METROS, guardado desde el preview): se multiplica por la escala.
+      // En PDF el eje Y va hacia ARRIBA, por eso off.dy se resta (arrastrar hacia abajo baja la etiqueta).
+      const off = (key && sk.rotDrag && sk.rotDrag[key]) || { dx: 0, dy: 0 }, SC = t.scale || 1;
+      const ly = ly0 - (off.dy || 0) * SC;
       // Flecha corta: el texto arranca pegado al borde derecho del paño y usa el ancho disponible.
-      const panelR = px(sk.ancho), tx = Math.max(panelR + 10, ax + 22), elbowX = Math.min(ax + 16, tx - 6);
+      const panelR = px(sk.ancho), tx = Math.max(panelR + 10, ax + 22) + (off.dx || 0) * SC, elbowX = Math.min(ax + 16, tx - 6);
       page.drawCircle({ x: ax, y: ay, size: 1.3, color: SLATE });
       page.drawLine({ start: { x: ax, y: ay }, end: { x: elbowX, y: ly }, thickness: 0.55, color: SLATE });
       page.drawLine({ start: { x: elbowX, y: ly }, end: { x: tx - 4, y: ly }, thickness: 0.55, color: SLATE });
@@ -133,6 +137,7 @@
       }
       return true;
     }
+    const calloutKey = (obj, pre) => { const id = (obj && obj.id != null) ? obj.id : (obj && obj.arista) || ""; return id === "" ? "" : (pre + ":" + id); };
     function aletaDetalle(a) {
       const f = SK.fmt; const parts = [f(a.ancho || a.w) + "x" + f(a.largo || a.h) + " m"];
       if ((a.offset || 0) > 0) parts.push("offset " + f(a.offset));
@@ -186,7 +191,7 @@
         page.drawRectangle({ x: px(v.x), y: py(v.y + v.h), width: v.w * scale, height: v.h * scale, borderColor: ACC, borderWidth: 0.9, borderDashArray: [3, 2] });
       }
       const med = v.circ ? (String.fromCharCode(216) + SK.fmt(v.w) + "m") : (SK.fmt(v.w) + "x" + SK.fmt(v.h) + "m");
-      if (v.legend && cb && cb.slots.has(v)) { callout(cx, cy, v.legend, med, v); }
+      if (v.legend && cb && cb.slots.has(v)) { callout(cx, cy, v.legend, med, v, calloutKey(v, "win")); }
       else {
         if (v.legend) page.drawText(san(v.legend), { x: cx - font.widthOfTextAtSize(san(v.legend), 6.5) / 2, y: cy + 1, size: 6.5, font: font, color: BLACK() });
         page.drawText(med, { x: cx - font.widthOfTextAtSize(med, 5.5) / 2, y: cy - 6, size: 5.5, font: font, color: PDFLib.rgb(0.42, 0.42, 0.42) });
@@ -227,10 +232,16 @@
         if (horiz) { const sx = a + (d - a) * t; page.drawLine({ start: { x: sx, y: b - stitch }, end: { x: sx, y: b + stitch }, thickness: 0.5, color: TEAL }); }
         else { const sy = b + (e - b) * t; page.drawLine({ start: { x: a - stitch, y: sy }, end: { x: a + stitch, y: sy }, thickness: 0.5, color: TEAL }); }
       }
-      const lbl = "Bolsillo " + String.fromCharCode(216) + SK.fmt(bo.diam) + "m";
-      const cxp = rx + rw / 2, cyp = ry + rh / 2;
-      if (horiz) page.drawText(lbl, { x: cxp - font.widthOfTextAtSize(lbl, 7) / 2, y: cyp - 2.5, size: 7, font: font, color: TEAL });
-      else page.drawText(lbl, { x: cxp - 2.5, y: cyp - font.widthOfTextAtSize(lbl, 7) / 2, size: 7, font: font, color: TEAL, rotate: PDFLib.degrees(90) });
+      const diamTxt = "Bolsillo " + String.fromCharCode(216) + SK.fmt(bo.diam) + "m";
+      if (bo.rotulo && cb && cb.slots.has(bo)) {
+        // Leyenda "sacada": flecha desde un extremo del bolsillo (abajo para izq/der, izquierda para sup/inf).
+        const ax = horiz ? (rx + 6) : (rx + rw / 2), ay = horiz ? (ry + rh / 2) : (ry + 4);
+        callout(ax, ay, diamTxt, "L" + SK.fmt(horiz ? sk.ancho : sk.largo) + "m", bo, calloutKey(bo, "pk"));
+      } else {
+        const cxp = rx + rw / 2, cyp = ry + rh / 2;
+        if (horiz) page.drawText(diamTxt, { x: cxp - font.widthOfTextAtSize(diamTxt, 7) / 2, y: cyp - 2.5, size: 7, font: font, color: TEAL });
+        else page.drawText(diamTxt, { x: cxp - 2.5, y: cyp - font.widthOfTextAtSize(diamTxt, 7) / 2, size: 7, font: font, color: TEAL, rotate: PDFLib.degrees(90) });
+      }
     });
     // Ojetillos
     const insetOj = r + 1;
@@ -254,7 +265,7 @@
         .forEach((b) => page.drawLine({ start: { x: b.x1, y: b.y1 }, end: { x: b.x2, y: b.y2 }, thickness: 0.9, color: FUS }));
       (a.ojetillos || []).forEach((p) => ojePDF(px(p.x), py(p.y), ACC));
       const lbl = a.nombre || "Aleta";
-      if (cb && cb.slots.has(a)) callout(X + Wp / 2, py(a.y + a.h / 2), lbl, aletaDetalle(a), a);
+      if (cb && cb.slots.has(a)) callout(X + Wp / 2, py(a.y + a.h / 2), lbl, aletaDetalle(a), a, calloutKey(a, "al"));
       else page.drawText(san(lbl), { x: X + Wp / 2 - font.widthOfTextAtSize(san(lbl), 6.5) / 2, y: py(a.y + a.h / 2), size: 6.5, font: font, color: PDFLib.rgb(0.54, 0.34, 0.06) });
     });
     // Rótulos de sets (ojetillos/straps): callout con nombre + datos técnicos.
@@ -461,6 +472,7 @@
     (sk.aletas || []).forEach((a) => { if (a.rotulo || !cFits(a.nombre, a.w * g.sc, a.h * g.sc)) calloutEls.push({ obj: a, sy: a.y + a.h / 2 }); });
     (sk.ventanas || []).forEach((v) => { if (v.legend && (v.rotulo || !cFits(v.legend, v.w * g.sc, v.h * g.sc))) calloutEls.push({ obj: v, sy: v.y + v.h / 2 }); });
     (sk.setsRot || []).forEach((sr) => { calloutEls.push({ obj: sr, sy: sr.y }); });
+    (sk.bolsillos || []).forEach((bo) => { if (bo.rotulo) calloutEls.push({ obj: bo, sy: (bo.arista === "sup") ? 0 : sk.largo }); });
     if (calloutEls.length) { const g2 = geomFor(mRight + 130); if (g2) { mRight += 130; g = g2; } }
     const scale = g.sc, x0 = g.x0, topRect = g.topRect;
     const wpx = sk.ancho * scale, hpx = sk.largo * scale;

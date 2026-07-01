@@ -242,6 +242,11 @@ button:active { transform: scale(0.98); }
 .sketch-svg .callout-arrow { fill: #455a64; stroke: none; }
 .sketch-svg .callout-dot { fill: #455a64; stroke: none; }
 .sketch-svg .callout-lbl { fill: #37474f; font-size: 5.5px; font-weight: 600; font-family: inherit; }
+.sketch-svg .callout-drag { cursor: grab; touch-action: none; }
+.sketch-svg .callout-drag.dragging { cursor: grabbing; }
+.sketch-svg .callout-hit { fill: transparent; stroke: none; }
+.sketch-svg .callout-drag:hover .callout-hit { fill: rgba(84,110,122,0.10); stroke: #90a4ae; stroke-width: 0.4; rx: 2; }
+.sketch-svg .callout-drag.dragging .callout-hit { fill: rgba(46,83,140,0.16); stroke: var(--accent); stroke-width: 0.5; }
 .sketch-svg .callout-dim { fill: #607d8b; font-size: 5px; font-family: inherit; }
 .sketch-svg .leyenda-bg { fill: var(--surface); fill-opacity: 0.92; stroke: var(--border, #cdd6e0); stroke-width: 0.5; }
 .sketch-svg .leyenda-tit { fill: var(--text); font-size: 6px; font-weight: 700; font-family: inherit; letter-spacing: 0.5px; }

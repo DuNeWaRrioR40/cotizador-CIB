@@ -508,7 +508,7 @@
     // cortes/guías (1er/último de sus ojetillos) a los del perímetro base.
     let ojNumeros = spec.ojNumeros || null;
     if (ojNumeros != null) cortes.forEach((c) => { if (c.ojNum && c.ojNum.length) ojNumeros = ojNumeros.concat(c.ojNum); });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly };
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
@@ -650,24 +650,38 @@
       if (cur) out.push(cur);
       return out.length ? out : [""];
     }
-    function callout(anchorX, anchorY, text, detail, obj) {
+    // key: clave estable del rótulo (para arrastrarlo). off: {dx,dy} desplazamiento manual (en unidades del
+    // viewBox) que el usuario aplicó arrastrando. La flecha (ancla) queda fija; solo se mueve la etiqueta.
+    function callout(anchorX, anchorY, text, detail, obj, key, off) {
       if (!cb) return;
       const ly = cb.slots.get(obj); if (ly == null) { s += `<text class="callout-lbl" x="${f1(anchorX)}" y="${f1(anchorY)}" text-anchor="middle">${esc(text)}</text>`; return; }
-      // Flecha CORTA: el texto arranca pegado al borde derecho del paño y usa todo el ancho disponible
-      // (antes la flecha era larga y el texto quedaba en una columna angosta a la derecha).
-      const panelR = px(sk.ancho), tx = Math.max(panelR + 10, anchorX + 22), elbowX = Math.min(anchorX + 16, tx - 6);
+      off = off || { dx: 0, dy: 0 };
+      // El desplazamiento manual (off) viene en METROS (independiente de la escala del render): se multiplica
+      // por la escala para pasarlo a unidades del dibujo. Flecha CORTA pegada al borde derecho del paño.
+      const SC = t.scale || 1, panelR = px(sk.ancho);
+      const tx = Math.max(panelR + 10, anchorX + 22) + (off.dx || 0) * SC, lyy = ly + (off.dy || 0) * SC;
+      const elbowX = Math.min(anchorX + 16, tx - 6);
       s += `<circle class="callout-dot" cx="${f1(anchorX)}" cy="${f1(anchorY)}" r="1.3"/>`;
-      s += `<polyline class="callout-line" points="${f1(anchorX)},${f1(anchorY)} ${f1(elbowX)},${f1(ly)} ${f1(tx - 4)},${f1(ly)}"/>`;
-      s += `<polygon class="callout-arrow" points="${f1(tx - 1)},${f1(ly)} ${f1(tx - 6)},${f1(ly - 2.4)} ${f1(tx - 6)},${f1(ly + 2.4)}"/>`;
+      s += `<polyline class="callout-line" points="${f1(anchorX)},${f1(anchorY)} ${f1(elbowX)},${f1(lyy)} ${f1(tx - 4)},${f1(lyy)}"/>`;
       const avail = Math.max(56, cb.rightEdge - tx);
-      const nameLines = wrapLines(text, Math.max(6, Math.floor(avail / 3.0)));   // título 5.5px ≈ 3.0px/char
-      const y0 = ly + (detail ? -1.5 : 2);
+      const nameLines = wrapLines(text, Math.max(6, Math.floor(avail / 3.0)));
+      const y0 = lyy + (detail ? -1.5 : 2);
+      const detLines = detail ? wrapLines(detail, Math.max(8, Math.floor(avail / 2.5))) : [];
+      const hitH = (nameLines.length * 5.4) + (detLines.length * 5.2) + 8;
+      // Etiqueta arrastrable: flecha + textos + zona de agarre transparente. data-rk = clave.
+      if (key) s += `<g class="callout-drag" data-rk="${esc(key)}">`;
+      if (key) s += `<rect class="callout-hit" x="${f1(tx - 4)}" y="${f1(lyy - 6)}" width="${f1(avail + 6)}" height="${f1(hitH)}"/>`;
+      s += `<polygon class="callout-arrow" points="${f1(tx - 1)},${f1(lyy)} ${f1(tx - 6)},${f1(lyy - 2.4)} ${f1(tx - 6)},${f1(lyy + 2.4)}"/>`;
       nameLines.forEach((ln, i) => { s += `<text class="callout-lbl" x="${f1(tx)}" y="${f1(y0 + i * 5.4)}">${esc(ln)}</text>`; });
-      if (detail) {
+      if (detLines.length) {
         const dy0 = y0 + nameLines.length * 5.4 + 0.6;
-        wrapLines(detail, Math.max(8, Math.floor(avail / 2.5))).forEach((ln, i) => { s += `<text class="callout-dim" x="${f1(tx)}" y="${f1(dy0 + i * 5.2)}">${esc(ln)}</text>`; });
+        detLines.forEach((ln, i) => { s += `<text class="callout-dim" x="${f1(tx)}" y="${f1(dy0 + i * 5.2)}">${esc(ln)}</text>`; });
       }
+      if (key) s += "</g>";
     }
+    // Clave estable de un objeto rotulable, y su offset manual guardado (spec.rotDrag).
+    function calloutKey(obj, prefijo) { const id = (obj && obj.id != null) ? obj.id : (obj && obj.arista) || ""; return id === "" ? "" : (prefijo + ":" + id); }
+    function calloutOff(key) { const m = (sk.rotDrag || {})[key]; return (m && (m.dx || m.dy)) ? m : null; }
     // Detalle técnico (dimensiones) de un anexo para el rótulo: ancho × caída + offset + ojetillos.
     function aletaDetalle(a) {
       const parts = [fmt(a.ancho || a.w) + "×" + fmt(a.largo || a.h) + " m"];
@@ -722,7 +736,7 @@
       flechaBarbas(fa.x, fa.y, dx / Lf, dy / Lf, 5).concat(flechaBarbas(fb.x, fb.y, -dx / Lf, -dy / Lf, 5))
         .forEach((b) => { s += `<line class="fusion" x1="${f1(b.x1)}" y1="${f1(b.y1)}" x2="${f1(b.x2)}" y2="${f1(b.y2)}"/>`; });
       (a.ojetillos || []).forEach((p) => { s += ojeSVG(px(p.x), py(p.y), "oje"); });
-      if (cb && cb.slots.has(a)) callout(X + Wp / 2, Y + Hp / 2, a.nombre, aletaDetalle(a), a);
+      if (cb && cb.slots.has(a)) { const k = calloutKey(a, "al"); callout(X + Wp / 2, Y + Hp / 2, a.nombre, aletaDetalle(a), a, k, calloutOff(k)); }
       else s += `<text class="aleta-lbl" x="${f1(X + Wp / 2)}" y="${f1(Y + Hp / 2)}" text-anchor="middle">${esc(a.nombre)}</text>`;
     });
     // Ventanas / paños inscritos (rectangulares o circulares) + leyenda, medida y flechas de fusión.
@@ -734,7 +748,7 @@
         s += `<rect class="win" x="${f1(px(v.x))}" y="${f1(py(v.y))}" width="${f1(v.w * scale)}" height="${f1(v.h * scale)}"/>`;
       }
       const med = v.circ ? ("Ø" + fmt(v.w) + "m") : (fmt(v.w) + "×" + fmt(v.h) + "m");
-      if (v.legend && cb && cb.slots.has(v)) { callout(cx, cy, v.legend, med, v); }
+      if (v.legend && cb && cb.slots.has(v)) { const k = calloutKey(v, "win"); callout(cx, cy, v.legend, med, v, k, calloutOff(k)); }
       else { if (v.legend) s += `<text class="ins-lbl" x="${f1(cx)}" y="${f1(cy - 1)}" text-anchor="middle">${esc(v.legend)}</text>`; s += `<text class="ins-dim" x="${f1(cx)}" y="${f1(cy + 6)}" text-anchor="middle">${med}</text>`; }
       if (!v.circ && v.fusion) {
         const X = px(v.x), Y = py(v.y), X2 = px(v.x + v.w), Y2 = py(v.y + v.h);
@@ -772,9 +786,18 @@
         if (horiz) { const sx = lx1 + (lx2 - lx1) * tt; s += `<line class="pocket-stitch" x1="${f1(sx)}" y1="${f1(ly1 - stitch)}" x2="${f1(sx)}" y2="${f1(ly1 + stitch)}"/>`; }
         else { const sy = ly1 + (ly2 - ly1) * tt; s += `<line class="pocket-stitch" x1="${f1(lx1 - stitch)}" y1="${f1(sy)}" x2="${f1(lx1 + stitch)}" y2="${f1(sy)}"/>`; }
       }
-      const lbl = `Bolsillo Ø${fmt(bo.diam)}m · L${fmt(horiz ? sk.ancho : sk.largo)}m`;
-      if (horiz) s += `<text class="pocket-lbl" x="${f1(bx + bw / 2)}" y="${f1(by + bh / 2 + 2.5)}" text-anchor="middle">${lbl}</text>`;
-      else { const mx = bx + bw / 2, my = by + bh / 2; s += `<text class="pocket-lbl" x="${f1(mx)}" y="${f1(my)}" text-anchor="middle" transform="rotate(-90 ${f1(mx)} ${f1(my)})">${lbl}</text>`; }
+      const diamTxt = `Bolsillo Ø${fmt(bo.diam)}m`, largoTxt = `L${fmt(horiz ? sk.ancho : sk.largo)}m`;
+      if (bo.rotulo && cb && cb.slots && cb.slots.has(bo)) {
+        // Leyenda "sacada": flecha (callout) desde un extremo del bolsillo (abajo para izq/der, izquierda
+        // para sup/inf) hacia la columna de rótulos — donde molesta menos a las cotas.
+        const ax = horiz ? (bx + 6) : (bx + bw / 2);
+        const ay = horiz ? (by + bh / 2) : (by + bh - 4);
+        const k = calloutKey(bo, "pk"); callout(ax, ay, diamTxt, largoTxt, bo, k, calloutOff(k));
+      } else {
+        const lbl = `${diamTxt} · ${largoTxt}`;
+        if (horiz) s += `<text class="pocket-lbl" x="${f1(bx + bw / 2)}" y="${f1(by + bh / 2 + 2.5)}" text-anchor="middle">${lbl}</text>`;
+        else { const mx = bx + bw / 2, my = by + bh / 2; s += `<text class="pocket-lbl" x="${f1(mx)}" y="${f1(my)}" text-anchor="middle" transform="rotate(-90 ${f1(mx)} ${f1(my)})">${lbl}</text>`; }
+      }
     });
     // Ojetillos del paño base — desplazados hacia adentro (≥1px desde la tangente).
     const inset = r + 1;
@@ -1095,6 +1118,9 @@
     });
     // Rótulos de sets (ojetillos/straps): siempre como callout a la derecha (nombre + datos).
     (sk.setsRot || []).forEach((sr) => { calloutEls.push({ obj: sr, ay: py(sr.y) }); });
+    // Bolsillos con rótulo "sacado": su leyenda sale con flecha (como las aletas), en vez de amontonarse
+    // en el rótulo de orientación del lado. Ancla en un extremo del bolsillo (abajo / izquierda).
+    (sk.bolsillos || []).forEach((bo) => { if (bo.rotulo) calloutEls.push({ obj: bo, ay: (bo.arista === "sup") ? py(0) : py(sk.largo) }); });
     let totalH = boundsBot + mBot + bottomH;
     let cb = null;
     if (calloutEls.length) {
@@ -1113,7 +1139,7 @@
     // Ojetillo = anillo + círculo concéntrico menor (borde fino). ojeSVG = dibujo (chico); ojeLeg = leyenda.
     const ojeSVG = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r * 0.42)}"/>`;
     const ojeLeg = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rLeg)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rLeg * 0.42)}"/>`;
-    let s = `<svg class="sketch-svg" viewBox="0 0 ${f1(totalW)} ${f1(totalH)}" xmlns="http://www.w3.org/2000/svg">`;
+    let s = `<svg class="sketch-svg" viewBox="0 0 ${f1(totalW)} ${f1(totalH)}" data-mscale="${scale.toFixed(3)}" xmlns="http://www.w3.org/2000/svg">`;
     // Contorno del paño: rectángulo, o el polígono recortado si hay cortes "Eliminar" (la parte se va).
     if (sk.panoPoly && sk.panoPoly.length >= 3) {
       s += `<polygon class="edge" points="${sk.panoPoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
