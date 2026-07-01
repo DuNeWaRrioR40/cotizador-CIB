@@ -5754,7 +5754,10 @@
       // Filtros del catálogo: por PROVEEDOR (el último token del SKU es su código, ej. "…-AIM") y por texto
       // en TIPO y VARIEDAD (subcadena, sin distinguir mayúsculas). Se combinan (AND). Refrescan el
       // desplegable SIN re-render, para no perder el foco al escribir en los campos de texto.
-      const provCorto = (facturaProvCorto() || "").toUpperCase();
+      // El último token del SKU es abbr(proveedorCorto || proveedor, 3) = las 3 primeras letras. Hay que
+      // comparar con el MISMO criterio (antes se comparaba el nombre completo → nunca calzaba, lista vacía).
+      const provFuente = facturaProvCorto() || (FC.ctx && FC.ctx.proveedor && FC.ctx.proveedor.razon) || "";
+      const provCorto = (window.FacturaCIBSA && window.FacturaCIBSA.abbr) ? window.FacturaCIBSA.abbr(provFuente, 3) : provFuente.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase();
       if (it.filtProv == null) it.filtProv = !!provCorto; // por defecto filtra si hay código de proveedor
       const skuProv = (sku) => { const s = String(sku || ""); const i = s.lastIndexOf("-"); return (i >= 0 ? s.slice(i + 1) : s).toUpperCase(); };
       const catFiltrado = () => {

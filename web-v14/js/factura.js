@@ -189,7 +189,7 @@
   const API = {
     norm, soloDigitosRUT, similitud, nombreCatalogo, aliasLista, colLetter, esMaestro, planFusion,
     matchProveedor, matchItem, candidatos, aliasInicial, factorBuscar,
-    sugerirSKU, sugerirCodMaterialBase, colorMulti, unirColores, hoyCorta, fechaFactura,
+    sugerirSKU, sugerirCodMaterialBase, colorMulti, unirColores, hoyCorta, fechaFactura, abbr,
     filaProveedor, filaCosto, filaFactor, filaGranel,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
