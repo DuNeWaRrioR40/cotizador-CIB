@@ -190,7 +190,7 @@ button:active { transform: scale(0.98); }
 .ins-dims { margin: 6px 0; }
 
 /* Sketch del producto (vista a escala) */
-.sketch { margin: 8px 0 4px; display: flex; justify-content: center; }
+.sketch { margin: 8px 0 4px; display: flex; justify-content: center; position: relative; }
 .sketch-svg { max-width: 360px; width: 100%; height: auto; }
 .sketch-svg .edge { fill: none; stroke: var(--text); stroke-width: 1.6; }
 .sketch-svg .oje { fill: var(--surface); stroke: var(--accent); stroke-width: 0.5; }
@@ -400,6 +400,14 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .sketch, .pz-sketch { position: relative; }
 .sketch-zoom-btn { position: absolute; top: 6px; right: 6px; z-index: 5; width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--accent); font-size: 15px; line-height: 1; cursor: zoom-in; box-shadow: 0 1px 5px rgba(0,0,0,0.2); }
 .sketch-zoom-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* Controles del plano en vivo (arriba a la izquierda): colapsar rótulos / reubicar / reset */
+.sketch-rotctrls { position: absolute; top: 6px; left: 6px; z-index: 5; display: flex; flex-direction: column; gap: 5px; }
+.sketch-ctrl-btn { width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--accent); font-size: 16px; line-height: 1; cursor: pointer; box-shadow: 0 1px 5px rgba(0,0,0,0.2); }
+.sketch-ctrl-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.sketch-ctrl-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* Modo reubicar: al tocar el plano no se hace scroll (así el arrastre no mueve la pantalla en iPhone) */
+.rot-reubicar .sketch, .rot-reubicar .pz-sketch { touch-action: none; }
+.rot-reubicar #sketchUnif { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: 6px; }
 .plano-zoom { position: fixed; inset: 0; z-index: 1500; background: rgba(0,0,0,0.82); display: flex; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
 .plano-zoom.hidden { display: none; }
 .plano-zoom-body { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }

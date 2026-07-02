@@ -7,7 +7,7 @@
   const state = {
     telas: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
-    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, cotasOcultas: {}, rotDrag: {}, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
+    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [],
@@ -3490,7 +3490,7 @@
     actualizarTraseraUnif();
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
-      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag }, ojSpecUnif());
+      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar }, ojSpecUnif());
       if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif() };
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
       activarArrastreCallouts(sk);
@@ -3570,12 +3570,33 @@
     document.querySelectorAll(".sketch, .pz-sketch").forEach((cont) => {
       const svg = cont.querySelector(".sketch-svg");
       const prev = cont.querySelector(":scope > .sketch-zoom-btn");
-      if (!svg) { if (prev) prev.remove(); return; }
-      if (prev) return;
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "sketch-zoom-btn"; b.title = "Ampliar plano"; b.textContent = "🔍+";
-      cont.appendChild(b);
+      if (!svg) { if (prev) prev.remove(); const rc = cont.querySelector(":scope > .sketch-rotctrls"); if (rc) rc.remove(); return; }
+      if (!prev) {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "sketch-zoom-btn"; b.title = "Ampliar plano"; b.textContent = "🔍+";
+        cont.appendChild(b);
+      }
+      if (cont.id === "sketchUnif") montarRotCtrls(cont, svg);
     });
+  }
+  // Controles del plano en vivo (arriba a la izquierda): colapsar rótulos, modo reubicar (congela scroll),
+  // y reset de posiciones. Solo cuando el plano tiene callouts arrastrables (o está colapsado).
+  function montarRotCtrls(cont, svg) {
+    const hasRot = state.rotColapsar || svg.querySelector(".callout-drag");
+    let box = cont.querySelector(":scope > .sketch-rotctrls");
+    if (!hasRot) { if (box) box.remove(); return; }
+    if (!box) {
+      box = document.createElement("div"); box.className = "sketch-rotctrls";
+      box.innerHTML =
+        '<button type="button" class="sketch-ctrl-btn sketch-rot-btn" title="Colapsar / mostrar rótulos">☰</button>' +
+        '<button type="button" class="sketch-ctrl-btn sketch-lock-btn" title="Modo reubicar: congela el scroll para arrastrar los rótulos">🔓</button>' +
+        '<button type="button" class="sketch-ctrl-btn sketch-reset-btn" title="Devolver los rótulos a su posición automática">↺</button>';
+      cont.appendChild(box);
+    }
+    const rotB = box.querySelector(".sketch-rot-btn"), lockB = box.querySelector(".sketch-lock-btn"), resB = box.querySelector(".sketch-reset-btn");
+    if (rotB) rotB.classList.toggle("active", !!state.rotColapsar);
+    if (lockB) { lockB.classList.toggle("active", !!state.rotReubicar); lockB.textContent = state.rotReubicar ? "🔒" : "🔓"; }
+    if (resB) resB.style.display = Object.keys(state.rotDrag || {}).length ? "" : "none";
   }
   function openPlanoZoom(svg) {
     const ov = $("planoZoom"), body = $("planoZoomBody"); if (!ov || !body || !svg) return;
@@ -3598,6 +3619,9 @@
   document.addEventListener("click", (e) => {
     const zb = e.target.closest && e.target.closest(".sketch-zoom-btn");
     if (zb) { e.preventDefault(); const cont = zb.closest(".sketch, .pz-sketch"); const svg = cont && cont.querySelector(".sketch-svg"); if (svg) openPlanoZoom(svg); return; }
+    if (e.target.closest && e.target.closest(".sketch-rot-btn")) { e.preventDefault(); state.rotColapsar = !state.rotColapsar; recompute(); return; }
+    if (e.target.closest && e.target.closest(".sketch-lock-btn")) { e.preventDefault(); state.rotReubicar = !state.rotReubicar; document.body.classList.toggle("rot-reubicar", state.rotReubicar); addZoomBtns(); return; }
+    if (e.target.closest && e.target.closest(".sketch-reset-btn")) { e.preventDefault(); state.rotDrag = {}; recompute(); return; }
     if (e.target.closest && e.target.closest("#planoZoom")) closePlanoZoom();
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePlanoZoom(); });
@@ -4201,13 +4225,26 @@
         let last = { dx: 0, dy: 0 };
         try { g.setPointerCapture(e.pointerId); } catch (_) {}
         g.classList.add("dragging");
+        // Mientras se arrastra, congela el scroll de la página (iPhone) para no mover el plano bajo el dedo.
+        const noScroll = (ev) => ev.preventDefault();
+        document.addEventListener("touchmove", noScroll, { passive: false });
         const move = (ev) => { const p = toVB(ev.clientX, ev.clientY); if (!p) return; last = { dx: p.x - p0.x, dy: p.y - p0.y }; g.setAttribute("transform", "translate(" + last.dx.toFixed(1) + "," + last.dy.toFixed(1) + ")"); };
         const up = () => {
           g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); g.removeEventListener("pointercancel", up);
+          document.removeEventListener("touchmove", noScroll, { passive: false });
           g.classList.remove("dragging");
           if (Math.abs(last.dx) > 0.5 || Math.abs(last.dy) > 0.5) {
+            // Clamp: que el rótulo no se salga del lienzo (si no, no se puede volver a seleccionar).
+            let dx = last.dx, dy = last.dy;
+            try {
+              const vb = svg.viewBox && svg.viewBox.baseVal, bb = g.getBBox(); const M = 6;
+              if (vb && bb && bb.width) {
+                dx = Math.max(M - bb.x, Math.min((vb.width - M) - (bb.x + bb.width), dx));
+                dy = Math.max(M - bb.y, Math.min((vb.height - M) - (bb.y + bb.height), dy));
+              }
+            } catch (_) {}
             const cur = state.rotDrag[rk] || { dx: 0, dy: 0 };   // acumulado en METROS (independiente de escala)
-            state.rotDrag[rk] = { dx: (cur.dx || 0) + last.dx / mscale, dy: (cur.dy || 0) + last.dy / mscale };
+            state.rotDrag[rk] = { dx: (cur.dx || 0) + dx / mscale, dy: (cur.dy || 0) + dy / mscale };
             recompute();
           } else { g.removeAttribute("transform"); }
         };

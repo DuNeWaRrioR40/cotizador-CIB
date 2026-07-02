@@ -508,7 +508,7 @@
     // cortes/guías (1er/último de sus ojetillos) a los del perímetro base.
     let ojNumeros = spec.ojNumeros || null;
     if (ojNumeros != null) cortes.forEach((c) => { if (c.ojNum && c.ojNum.length) ojNumeros = ojNumeros.concat(c.ojNum); });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null };
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
@@ -1105,22 +1105,25 @@
     // a la ALTURA de su elemento (zona libre más cercana), para que la guía sea corta y no cruce el plano.
     const calloutEls = [];
     const live = !!(opts && opts.live);
+    // Colapsar rótulos (iPhone): oculta la columna de callouts para despejar el plano. Se sigue calculando
+    // AUTOROT (para los defaults de los checkboxes de rótulo), pero no se agrega ningún callout ni columna.
+    const colapsar = !!sk.rotColapsar;
     (sk.aletas || []).forEach((a) => {
       const fits = labelCabe(a.nombre, a.w * scale, a.h * scale);
       if (live && a.id != null) AUTOROT[a.id] = !fits;
-      if (a.rotulo || !fits) calloutEls.push({ obj: a, ay: py(a.y + a.h / 2) });
+      if ((a.rotulo || !fits) && !colapsar) calloutEls.push({ obj: a, ay: py(a.y + a.h / 2) });
     });
     (sk.ventanas || []).forEach((v) => {
       if (!v.legend) return;
       const fits = labelCabe(v.legend, v.w * scale, v.h * scale);
       if (live && v.id != null) AUTOROT[v.id] = !fits;
-      if (v.rotulo || !fits) calloutEls.push({ obj: v, ay: py(v.y + v.h / 2) });
+      if ((v.rotulo || !fits) && !colapsar) calloutEls.push({ obj: v, ay: py(v.y + v.h / 2) });
     });
     // Rótulos de sets (ojetillos/straps): siempre como callout a la derecha (nombre + datos).
-    (sk.setsRot || []).forEach((sr) => { calloutEls.push({ obj: sr, ay: py(sr.y) }); });
+    if (!colapsar) (sk.setsRot || []).forEach((sr) => { calloutEls.push({ obj: sr, ay: py(sr.y) }); });
     // Bolsillos con rótulo "sacado": su leyenda sale con flecha (como las aletas), en vez de amontonarse
     // en el rótulo de orientación del lado. Ancla en un extremo del bolsillo (abajo / izquierda).
-    (sk.bolsillos || []).forEach((bo) => { if (bo.rotulo) calloutEls.push({ obj: bo, ay: (bo.arista === "sup") ? py(0) : py(sk.largo) }); });
+    if (!colapsar) (sk.bolsillos || []).forEach((bo) => { if (bo.rotulo) calloutEls.push({ obj: bo, ay: (bo.arista === "sup") ? py(0) : py(sk.largo) }); });
     let totalH = boundsBot + mBot + bottomH;
     let cb = null;
     if (calloutEls.length) {
