@@ -508,7 +508,7 @@
     // cortes/guías (1er/último de sus ojetillos) a los del perímetro base.
     let ojNumeros = spec.ojNumeros || null;
     if (ojNumeros != null) cortes.forEach((c) => { if (c.ojNum && c.ojNum.length) ojNumeros = ojNumeros.concat(c.ojNum); });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar };
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar, cintas: (spec.cintas || []) };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
@@ -726,6 +726,40 @@
         const lbl = st.nombre + " " + fmt(st.largo) + " m";
         s += `<text class="strap-lbl" x="${f1(Mx + st.perp.x * offpx)}" y="${f1(My + st.perp.y * offpx)}" text-anchor="middle">${esc(lbl)}</text>`;
       }
+    });
+    // ===== Cintas / cierres: banda continua a lo largo de una arista, con 4 estados por tramo =====
+    // cosida (línea central) · ! seguridad (box-X) · Ω bolsillo/sin costura (con Ø) · ✕ hueco (achurado + cota).
+    (sk.cintas || []).forEach((c) => {
+      const halfW = Math.max(0.006, (c.ancho || 0.02) / 2), seg = c.seg || {};
+      const PX = (tm, wm) => f1(px(c.ax + c.ux * tm + c.nx * wm));
+      const PY = (tm, wm) => f1(py(c.ay + c.uy * tm + c.ny * wm));
+      const LX = (tm, d) => f1(px(c.ax + c.ux * tm + c.inX * d)); // etiquetas: hacia adentro del paño
+      const LY = (tm, d) => f1(py(c.ay + c.uy * tm + c.inY * d));
+      const seg2 = (t1, w1, t2, w2, cls) => { s += `<line class="${cls}" x1="${PX(t1, w1)}" y1="${PY(t1, w1)}" x2="${PX(t2, w2)}" y2="${PY(t2, w2)}"/>`; };
+      const edgeCls = "cinta-edge" + (c.tipo === "cierre" ? " cierre" : "");
+      (seg.material || []).forEach((m) => { // bordes de banda + tapas
+        seg2(m.a, halfW, m.b, halfW, edgeCls); seg2(m.a, -halfW, m.b, -halfW, edgeCls);
+        seg2(m.a, halfW, m.a, -halfW, "cinta-cap"); seg2(m.b, halfW, m.b, -halfW, "cinta-cap");
+      });
+      (seg.stitch || []).forEach((m) => seg2(m.a, 0, m.b, 0, "cinta-stitch")); // costura plana (central)
+      (seg.safety || []).forEach((m) => { // costura de seguridad: recuadro + dos diagonales (box-X)
+        seg2(m.a, halfW, m.b, halfW, "cinta-safety"); seg2(m.a, -halfW, m.b, -halfW, "cinta-safety");
+        seg2(m.a, halfW, m.a, -halfW, "cinta-safety"); seg2(m.b, halfW, m.b, -halfW, "cinta-safety");
+        seg2(m.a, halfW, m.b, -halfW, "cinta-safety"); seg2(m.a, -halfW, m.b, halfW, "cinta-safety");
+      });
+      (seg.opens || []).forEach((m) => { // bolsillo / sin costura: Ω al medio + Ø
+        const tm = (m.a + m.b) / 2;
+        s += `<text class="cinta-omega" x="${PX(tm, 0)}" y="${PY(tm, 0)}" text-anchor="middle" dominant-baseline="central">Ω</text>`;
+        if (m.dia > 0) s += `<text class="cinta-dim" x="${LX(tm, halfW + 0.05)}" y="${LY(tm, halfW + 0.05)}" text-anchor="middle">Ø${fmt(m.dia)}</text>`;
+      });
+      (seg.gaps || []).forEach((m) => { // hueco: achurado diagonal + topes + cota ✕
+        const poly = `${PX(m.a, halfW)},${PY(m.a, halfW)} ${PX(m.b, halfW)},${PY(m.b, halfW)} ${PX(m.b, -halfW)},${PY(m.b, -halfW)} ${PX(m.a, -halfW)},${PY(m.a, -halfW)}`;
+        s += `<polygon class="cinta-gap" points="${poly}"/>`;
+        seg2(m.a, halfW * 1.35, m.a, -halfW * 1.35, "cinta-cap"); seg2(m.b, halfW * 1.35, m.b, -halfW * 1.35, "cinta-cap");
+        const tm = (m.a + m.b) / 2;
+        s += `<text class="cinta-gap-lbl" x="${LX(tm, halfW + 0.06)}" y="${LY(tm, halfW + 0.06)}" text-anchor="middle">✕ ${fmt(m.b - m.a)} m</text>`;
+      });
+      if (c.legend && c.legend.trim()) s += `<text class="cinta-lbl" x="${LX(c.L / 2, halfW + 0.05)}" y="${LY(c.L / 2, halfW + 0.05)}" text-anchor="middle">${esc(c.legend.trim())}</text>`;
     });
     // Rótulos de sets (ojetillos/straps con rótulo activado): callout a la derecha (nombre + datos técnicos).
     (sk.setsRot || []).forEach((sr) => { callout(px(sr.x), py(sr.y), sr.text, sr.detail, sr); });
@@ -967,6 +1001,32 @@
     s += `<text class="leyenda-tit" x="${f1(x0 + boxW - 8)}" y="${f1(yT)}" text-anchor="end">${total} cinta(s)</text>`;
     return s;
   }
+  // Agrupa los recorridos (runs) por cinta (mismo id): un patrón de N recorridos → 1 grupo con n=N.
+  function cintasResumen(sk) {
+    const map = new Map();
+    (sk.cintas || []).forEach((c) => {
+      let g = map.get(c.id); if (!g) { g = { arista: c.arista, tipo: c.tipo, legend: c.legend, mMat: 0, mCos: 0, nOpen: 0, nGap: 0, n: 0 }; map.set(c.id, g); }
+      const s = c.seg || {}; g.mMat += s.mMaterial || 0; g.mCos += s.mCostura || 0; g.nOpen += (s.opens || []).length; g.nGap += (s.gaps || []).length; g.n += 1;
+    });
+    return Array.from(map.values());
+  }
+  // Cuadro "CINTAS POR ARISTA": una fila por cinta (arista/patrón + metros de material/costura + Ω/✕).
+  function resumenCintasSVG(sk, x0, yTop) {
+    const gs = cintasResumen(sk); if (!gs.length) return "";
+    const f1 = (n) => n.toFixed(1), rowH = 9, titH = 11, boxW = 152;
+    const nm = { sup: "Sup", inf: "Inf", izq: "Izq", der: "Der", "patrón": "Patrón" };
+    const boxH = titH + gs.length * rowH + 4;
+    let s = `<rect class="leyenda-bg" x="${f1(x0 - 4)}" y="${f1(yTop - 2)}" width="${f1(boxW)}" height="${f1(boxH)}" rx="3"/>`;
+    s += `<text class="leyenda-tit" x="${f1(x0)}" y="${f1(yTop + 7)}">CINTAS POR ARISTA</text>`;
+    gs.forEach((g, i) => {
+      const y = yTop + titH + i * rowH + rowH / 2 + 1.4;
+      const lbl = (g.n > 1 ? g.n + "× " : "") + (nm[g.arista] || g.arista || "") + (g.tipo === "cierre" ? " cierre" : "") + (g.legend && g.legend.trim() ? " · " + g.legend.trim() : "");
+      const info = "mat " + fmt(g.mMat) + " · cos " + fmt(g.mCos) + " m" + (g.nOpen ? " · Ω" + g.nOpen : "") + (g.nGap ? " · ✕" + g.nGap : "");
+      s += `<text class="leyenda-lbl" x="${f1(x0)}" y="${f1(y)}">${esc(lbl)}</text>`;
+      s += `<text class="leyenda-lbl" x="${f1(x0 + boxW - 8)}" y="${f1(y)}" text-anchor="end">${esc(info)}</text>`;
+    });
+    return s;
+  }
 
   // SVG temático (clases coloreadas por el CSS de la App).
   // ----- Vista volumétrica: cuboide 3D + hoja de corte desplegada (calados en esquinas) -----
@@ -1103,7 +1163,10 @@
     const legH = simb.length ? (legTitH + simb.length * legRowH + legPad) : 0;
     const resFilas = strapsResumen(sk);
     const resH = resFilas.length ? (11 + (resFilas.length + 1) * 9 + 4) : 0;
-    const bottomH = Math.max(legH, resH);
+    const cintaGrp = cintasResumen(sk).length;
+    const cintaResH = cintaGrp ? (11 + cintaGrp * 9 + 4) : 0;
+    const resTot = resH + (cintaResH ? (resH ? 6 : 0) + cintaResH : 0);   // straps + cintas apilados
+    const bottomH = Math.max(legH, resTot);
     const boundsBot = mTop + bh * scale;
     let totalW = bw * scale + mLeft + mRight;
     if (resFilas.length) totalW = Math.max(totalW, 246);
@@ -1149,6 +1212,7 @@
     const ojeSVG = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r * 0.42)}"/>`;
     const ojeLeg = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rLeg)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rLeg * 0.42)}"/>`;
     let s = `<svg class="sketch-svg" viewBox="0 0 ${f1(totalW)} ${f1(totalH)}" data-mscale="${scale.toFixed(3)}" xmlns="http://www.w3.org/2000/svg">`;
+    s += `<defs><pattern id="cinta-hatch" width="5" height="5" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="0" y2="5" stroke="#8a94a0" stroke-width="0.8"/></pattern></defs>`;
     // Contorno del paño: rectángulo, o el polígono recortado si hay cortes "Eliminar" (la parte se va).
     if (sk.panoPoly && sk.panoPoly.length >= 3) {
       s += `<polygon class="edge" points="${sk.panoPoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
@@ -1163,29 +1227,31 @@
       cotasDe(sk).forEach((c) => {
         if (sk.cotasOcultas && c.key && sk.cotasOcultas[c.key]) return; // cota ocultada por el usuario
         const off = offsetCota(c);
+        let o = "";
         if (c.axis === "h") {
           const xa = px(c.a), xb = px(c.b);
           const base = (c.side === "bottom") ? bBot : bTop, dir = (c.side === "bottom") ? 1 : -1;
           const dimY = base + dir * off, tEnd = dimY - dir * EXTGAP;
-          s += `<line class="cota-ext" x1="${f1(xa)}" y1="${f1(base)}" x2="${f1(xa)}" y2="${f1(tEnd)}"/>`;
-          s += `<line class="cota-ext" x1="${f1(xb)}" y1="${f1(base)}" x2="${f1(xb)}" y2="${f1(tEnd)}"/>`;
-          s += `<line class="cota" x1="${f1(xa)}" y1="${f1(dimY)}" x2="${f1(xb)}" y2="${f1(dimY)}"/>`;
-          s += `<line class="cota-tick" x1="${f1(xa)}" y1="${f1(dimY - TICK)}" x2="${f1(xa)}" y2="${f1(dimY + TICK)}"/>`;
-          s += `<line class="cota-tick" x1="${f1(xb)}" y1="${f1(dimY - TICK)}" x2="${f1(xb)}" y2="${f1(dimY + TICK)}"/>`;
+          o += `<line class="cota-ext" x1="${f1(xa)}" y1="${f1(base)}" x2="${f1(xa)}" y2="${f1(tEnd)}"/>`;
+          o += `<line class="cota-ext" x1="${f1(xb)}" y1="${f1(base)}" x2="${f1(xb)}" y2="${f1(tEnd)}"/>`;
+          o += `<line class="cota" x1="${f1(xa)}" y1="${f1(dimY)}" x2="${f1(xb)}" y2="${f1(dimY)}"/>`;
+          o += `<line class="cota-tick" x1="${f1(xa)}" y1="${f1(dimY - TICK)}" x2="${f1(xa)}" y2="${f1(dimY + TICK)}"/>`;
+          o += `<line class="cota-tick" x1="${f1(xb)}" y1="${f1(dimY - TICK)}" x2="${f1(xb)}" y2="${f1(dimY + TICK)}"/>`;
           const ty = (c.side === "bottom") ? dimY + 7 : dimY - 2;
-          s += `<text class="cota-lbl" x="${f1((xa + xb) / 2)}" y="${f1(ty)}" text-anchor="middle">${fmt(c.value)}m</text>`;
+          o += `<text class="cota-lbl" x="${f1((xa + xb) / 2)}" y="${f1(ty)}" text-anchor="middle">${fmt(c.value)}m</text>`;
         } else {
           const ya = py(c.a), yb = py(c.b);
           const base = (c.side === "right") ? bRight : bLeft, dir = (c.side === "right") ? 1 : -1;
           const dimX = base + dir * off, tEnd = dimX - dir * EXTGAP;
-          s += `<line class="cota-ext" x1="${f1(base)}" y1="${f1(ya)}" x2="${f1(tEnd)}" y2="${f1(ya)}"/>`;
-          s += `<line class="cota-ext" x1="${f1(base)}" y1="${f1(yb)}" x2="${f1(tEnd)}" y2="${f1(yb)}"/>`;
-          s += `<line class="cota" x1="${f1(dimX)}" y1="${f1(ya)}" x2="${f1(dimX)}" y2="${f1(yb)}"/>`;
-          s += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(ya)}" x2="${f1(dimX + TICK)}" y2="${f1(ya)}"/>`;
-          s += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(yb)}" x2="${f1(dimX + TICK)}" y2="${f1(yb)}"/>`;
+          o += `<line class="cota-ext" x1="${f1(base)}" y1="${f1(ya)}" x2="${f1(tEnd)}" y2="${f1(ya)}"/>`;
+          o += `<line class="cota-ext" x1="${f1(base)}" y1="${f1(yb)}" x2="${f1(tEnd)}" y2="${f1(yb)}"/>`;
+          o += `<line class="cota" x1="${f1(dimX)}" y1="${f1(ya)}" x2="${f1(dimX)}" y2="${f1(yb)}"/>`;
+          o += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(ya)}" x2="${f1(dimX + TICK)}" y2="${f1(ya)}"/>`;
+          o += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(yb)}" x2="${f1(dimX + TICK)}" y2="${f1(yb)}"/>`;
           const my = (ya + yb) / 2, tx = (c.side === "right") ? dimX + 3 : dimX - 3;
-          s += `<text class="cota-lbl" x="${f1(tx)}" y="${f1(my)}" text-anchor="middle" transform="rotate(-90 ${f1(tx)} ${f1(my)})">${fmt(c.value)}m</text>`;
+          o += `<text class="cota-lbl" x="${f1(tx)}" y="${f1(my)}" text-anchor="middle" transform="rotate(-90 ${f1(tx)} ${f1(my)})">${fmt(c.value)}m</text>`;
         }
+        s += c.key ? `<g class="cota-g" data-ck="${esc(c.key)}">${o}</g>` : o;
       });
     }
     // Rótulos de orientación (vista frontal/trasera + lados).
@@ -1208,6 +1274,7 @@
     // Leyenda de simbología en la parte inferior izquierda + resumen de straps contiguo.
     if (legH) s += leyendaSVG(simb, 6, boundsBot + mBot + 2, ojeLeg, rLeg);
     s += resumenStrapsSVG(sk, 108, boundsBot + mBot + 2);
+    s += resumenCintasSVG(sk, 108, boundsBot + mBot + 2 + (resH ? resH + 6 : 0));
     // Numeración de ojetillos (1er/último por arista, con flecha) — SOLO en el plano en vivo de la app.
     if (live && sk.ojNumeros && sk.ojNumeros.length) {
       sk.ojNumeros.forEach((m) => {
@@ -1226,8 +1293,68 @@
     return s;
   }
 
+  // ---------- Cinta / cierre: DSL de tramos de discontinuidad ----------
+  // Sintaxis: tramos separados por "," . Cada tramo "a<sep>b[<Ø>d]":
+  //   "a-b"      → tramo SIN costura (la cinta sigue presente pero suelta = canal/bolsillo).
+  //   "a-bØd"    → idem, con diámetro d (bolsillo de cinta). Marcador Ø aceptado como Ø/o/O/d/D/*.
+  //   "a!b"      → tramo con COSTURA DE SEGURIDAD (refuerzo; sí va cosido).
+  //   "a x b"    → tramo SIN cinta (hueco de material; discontinuidad real).
+  // Todo lo NO listado corre continuo y cosido. Ejemplo: "2-4Ø0.05, 5.5!7, 7x9".
+  // Devuelve tramos saneados y ordenados: [{ a, b, tipo:"open"|"safety"|"gap", dia }].
+  function parseCintaTramos(str, L) {
+    const out = []; if (!str) return out;
+    const Lmax = (L > 0) ? L : Infinity;
+    String(str).split(",").forEach((tok) => {
+      const m = tok.trim().match(/^([0-9]*\.?[0-9]+)\s*([-xX!])\s*([0-9]*\.?[0-9]+)\s*(?:[ØøOoDd*]\s*([0-9]*\.?[0-9]+))?$/);
+      if (!m) return;
+      let a = parseFloat(m[1]), b = parseFloat(m[3]);
+      if (!(b > a)) return;
+      const sep = m[2].toLowerCase();
+      const tipo = (sep === "x") ? "gap" : (sep === "!") ? "safety" : "open";
+      const dia = (tipo === "open" && m[4] != null) ? parseFloat(m[4]) : 0;
+      a = Math.max(0, Math.min(a, Lmax)); b = Math.max(0, Math.min(b, Lmax));
+      if (b > a) out.push({ a: a, b: b, tipo: tipo, dia: (dia > 0 ? dia : 0) });
+    });
+    out.sort((p, q) => p.a - q.a);
+    for (let i = 1; i < out.length; i++) { if (out[i].a < out[i - 1].b) out[i].a = out[i - 1].b; } // recorta solapes
+    return out.filter((t) => t.b > t.a);
+  }
+  // A partir de los tramos, segmenta el recorrido [0, L] de la cinta en:
+  //   material: [a,b] donde HAY cinta (todo menos los huecos "gap").
+  //   costura:  [a,b] donde la cinta va COSIDA (todo menos huecos y tramos "open"; incluye los de seguridad).
+  //   opens/safety/gaps: los tramos tal cual (open con su dia; safety refuerzo; gap = hueco).
+  // Devuelve además los metros lineales de cada cosa (para el costeo posterior).
+  function cintaSegmentos(L, tramos) {
+    L = (L > 0) ? L : 0; tramos = tramos || [];
+    const gaps = tramos.filter((t) => t.tipo === "gap");
+    const opens = tramos.filter((t) => t.tipo === "open");
+    const safety = tramos.filter((t) => t.tipo === "safety");
+    const restar = (segs, quita) => {
+      let res = segs.slice();
+      quita.forEach((q) => {
+        const next = [];
+        res.forEach((s) => {
+          if (q.b <= s.a || q.a >= s.b) { next.push(s); return; }         // sin traslape
+          if (q.a > s.a) next.push({ a: s.a, b: q.a });                    // trozo antes
+          if (q.b < s.b) next.push({ a: q.b, b: s.b });                    // trozo después
+        });
+        res = next;
+      });
+      return res.filter((s) => s.b > s.a);
+    };
+    const full = L > 0 ? [{ a: 0, b: L }] : [];
+    const material = restar(full, gaps);          // hay cinta salvo en huecos
+    const costura = restar(material, opens);      // cosido salvo en tramos "open" (canal/bolsillo)
+    const stitch = restar(costura, safety);       // costura "plana" (línea simple): la de seguridad se dibuja aparte (box-X)
+    const mlen = (segs) => segs.reduce((s, x) => s + (x.b - x.a), 0);
+    return {
+      material: material, costura: costura, stitch: stitch, opens: opens, safety: safety, gaps: gaps,
+      mMaterial: mlen(material), mCostura: mlen(costura), mSafety: mlen(safety), L: L,
+    };
+  }
   const API = {
     construirSketch, sketchSVG, volSVG, ojetillosPerimetro, puntosArista,
+    parseCintaTramos, cintaSegmentos, cintasResumen,
     cotasDe, offsetCota, margenCotas, margenCotasLados, centroProducto, fmt, esc, tijeraPrims, tijerasEn, flechaBarbas, zigzagPts,
     distribuirArista, distribuirParejo, posicionesArista,
     aletaGeomRect, aletaOjArista, aletaOjPuntos,

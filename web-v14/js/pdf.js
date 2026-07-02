@@ -177,6 +177,29 @@
         page.drawText(lbl, { x: lx - font.widthOfTextAtSize(lbl, 6) / 2, y: ly - 2, size: 6, font: font, color: STRAP });
       }
     });
+    // ===== Cintas / cierres: banda continua con 4 estados (cosida · ! seguridad box-X · Ø bolsillo · hueco achurado) =====
+    // Nota: la fuente estándar (WinAnsi) no tiene Ω ni ✕; en el PDF el bolsillo se marca con un pequeño círculo + Ø,
+    // y el hueco con achurado + topes + "sin cinta N m".
+    const CRED = PDFLib.rgb(0.753, 0.224, 0.169), HATCH = PDFLib.rgb(0.541, 0.58, 0.627), OD = String.fromCharCode(216);
+    (sk.cintas || []).forEach((c) => {
+      const halfW = Math.max(0.006, (c.ancho || 0.02) / 2), seg = c.seg || {};
+      const PXx = (tm, wm) => px(c.ax + c.ux * tm + c.nx * wm);
+      const PYy = (tm, wm) => py(c.ay + c.uy * tm + c.ny * wm);
+      const LXx = (tm, dd) => px(c.ax + c.ux * tm + c.inX * dd);
+      const LYy = (tm, dd) => py(c.ay + c.uy * tm + c.inY * dd);
+      const ln = (t1, w1, t2, w2, col, th) => page.drawLine({ start: { x: PXx(t1, w1), y: PYy(t1, w1) }, end: { x: PXx(t2, w2), y: PYy(t2, w2) }, thickness: th || 0.6, color: col });
+      const ctr = (lbl, X, Y, size, col) => page.drawText(lbl, { x: X - font.widthOfTextAtSize(lbl, size) / 2, y: Y - size * 0.35, size: size, font: font, color: col });
+      (seg.material || []).forEach((m) => { ln(m.a, halfW, m.b, halfW, ACC, 0.7); ln(m.a, -halfW, m.b, -halfW, ACC, 0.7); ln(m.a, halfW, m.a, -halfW, ACC, 0.6); ln(m.b, halfW, m.b, -halfW, ACC, 0.6); });
+      (seg.stitch || []).forEach((m) => page.drawLine({ start: { x: PXx(m.a, 0), y: PYy(m.a, 0) }, end: { x: PXx(m.b, 0), y: PYy(m.b, 0) }, thickness: 0.5, color: ACC, dashArray: [2.5, 1.8], opacity: 0.7 }));
+      (seg.safety || []).forEach((m) => { ln(m.a, halfW, m.b, halfW, CRED, 0.7); ln(m.a, -halfW, m.b, -halfW, CRED, 0.7); ln(m.a, halfW, m.a, -halfW, CRED, 0.7); ln(m.b, halfW, m.b, -halfW, CRED, 0.7); ln(m.a, halfW, m.b, -halfW, CRED, 0.7); ln(m.a, -halfW, m.b, halfW, CRED, 0.7); });
+      (seg.opens || []).forEach((m) => { const tm = (m.a + m.b) / 2; page.drawCircle({ x: PXx(tm, 0), y: PYy(tm, 0), size: halfW * scale * 0.7, borderColor: ACC, borderWidth: 0.7 }); if (m.dia > 0) ctr(OD + SK.fmt(m.dia), LXx(tm, halfW + 0.05), LYy(tm, halfW + 0.05), 5.5, ACC); });
+      (seg.gaps || []).forEach((m) => {
+        for (let ti = m.a; ti + 2 * halfW <= m.b + 1e-9; ti += 0.07) page.drawLine({ start: { x: PXx(ti, -halfW), y: PYy(ti, -halfW) }, end: { x: PXx(ti + 2 * halfW, halfW), y: PYy(ti + 2 * halfW, halfW) }, thickness: 0.5, color: HATCH });
+        ln(m.a, halfW * 1.35, m.a, -halfW * 1.35, HATCH, 0.7); ln(m.b, halfW * 1.35, m.b, -halfW * 1.35, HATCH, 0.7);
+        const tm = (m.a + m.b) / 2; ctr("sin cinta " + SK.fmt(m.b - m.a) + " m", LXx(tm, halfW + 0.07), LYy(tm, halfW + 0.07), 5.5, CRED);
+      });
+      if (c.legend && c.legend.trim()) ctr(c.legend.trim(), LXx(c.L / 2, halfW + 0.05), LYy(c.L / 2, halfW + 0.05), 6, BLACK());
+    });
     const tijeraPDF = (tx, ty) => {
       const tp = SK.tijeraPrims(tx, ty, 8);
       tp.circles.forEach((cc) => page.drawCircle({ x: cc.x, y: cc.y, size: cc.r, borderColor: PURPLE, borderWidth: 0.5 }));
@@ -431,6 +454,22 @@
     const tot = total + " cinta(s)";
     page.drawText(tot, { x: xLeft + boxW - 6 - font.widthOfTextAtSize(tot, 6), y: yT, size: 6, font: font, color: TXT });
   }
+  // Resumen "CINTAS POR ARISTA" (una fila por cinta; patrón de N recorridos = una fila con ×N).
+  function resumenCintasPDF(page, sk, xLeft, yTop, font) {
+    const SK = global.SketchCIBSA, gs = SK.cintasResumen(sk); if (!gs.length) return;
+    const GRAY = PDFLib.rgb(0.6, 0.65, 0.7), TXT = PDFLib.rgb(0.12, 0.12, 0.12);
+    const titH = 9, rowH = 8, boxW = 168, nm = { sup: "Sup", inf: "Inf", izq: "Izq", der: "Der", "patrón": "Patron" };
+    const boxH = titH + gs.length * rowH + 4;
+    page.drawRectangle({ x: xLeft - 3, y: yTop - boxH, width: boxW, height: boxH, color: WHITE(), opacity: 0.9, borderColor: GRAY, borderWidth: 0.5, borderOpacity: 1 });
+    page.drawText("CINTAS POR ARISTA", { x: xLeft, y: yTop - 7, size: 6, font: font, color: TXT });
+    gs.forEach((g, i) => {
+      const y = yTop - titH - i * rowH - rowH / 2 - 2;
+      const lbl = (g.n > 1 ? g.n + "x " : "") + (nm[g.arista] || g.arista || "") + (g.tipo === "cierre" ? " cierre" : "") + (g.legend && g.legend.trim() ? " " + g.legend.trim() : "");
+      const info = "mat " + SK.fmt(g.mMat) + " / cos " + SK.fmt(g.mCos) + " m" + (g.nOpen ? " b" + g.nOpen : "") + (g.nGap ? " h" + g.nGap : "");
+      page.drawText(lbl, { x: xLeft, y: y, size: 5.5, font: font, color: TXT });
+      page.drawText(info, { x: xLeft + boxW - 6 - font.widthOfTextAtSize(info, 5.5), y: y, size: 5.5, font: font, color: TXT });
+    });
+  }
 
   function dibujarSketchPDF(page, spec, box, font, opts) {
     opts = opts || {};
@@ -448,7 +487,9 @@
     const legH = simb.length ? (9 + simb.length * 9 + 6) : 0;
     const resFilas = SK.strapsResumen(sk);
     const resH = resFilas.length ? (9 + (resFilas.length + 1) * 8 + 4) : 0;
-    const bottomH = Math.max(legH, resH);
+    const cintaGrp = SK.cintasResumen(sk).length;
+    const cintaResH = cintaGrp ? (9 + cintaGrp * 8 + 4) : 0;
+    const bottomH = Math.max(legH, resH + (cintaResH ? (resH ? 5 : 0) + cintaResH : 0));
     const mTop = ML.top + LBL, mLeft = ML.left + LBL;
     const mBot = ML.bottom + 18 + LBL + bottomH;
     let mRight = ML.right + 18 + LBL;
@@ -553,6 +594,8 @@
     const legTop = box.top - box.h + bottomH;
     if (legH) leyendaPDF(page, simb, box.x + 3, legTop, font);
     resumenStrapsPDF(page, sk, box.x + 3 + 99, legTop, font);
+    const rH2 = (SK.strapsResumen(sk).length) ? (9 + (SK.strapsResumen(sk).length + 1) * 8 + 4 + 5) : 0;
+    resumenCintasPDF(page, sk, box.x + 3 + 99, legTop - rH2, font);
   }
 
   // Estampa "Cotización N° X" centrado (correlativo). Devuelve la y debajo; sin correlativo no consume espacio.

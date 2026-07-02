@@ -239,6 +239,17 @@ button:active { transform: scale(0.98); }
 .sketch-svg .strap-mid { stroke: #d8443a; stroke-width: 0.4; stroke-dasharray: 4 3; opacity: 0.45; }
 .sketch-svg .strap-rem { stroke: #d8443a; stroke-width: 0.7; fill: none; }
 .sketch-svg .strap-lbl { fill: #b3261e; font-size: 6.5px; font-weight: 600; font-family: inherit; }
+/* Cintas / cierres */
+.sketch-svg .cinta-edge { stroke: var(--accent); stroke-width: 1; fill: none; }
+.sketch-svg .cinta-edge.cierre { stroke-dasharray: 1.5 1.2; }
+.sketch-svg .cinta-cap { stroke: var(--accent); stroke-width: 0.9; }
+.sketch-svg .cinta-stitch { stroke: var(--accent); stroke-width: 0.7; stroke-dasharray: 2.5 1.8; opacity: 0.7; }
+.sketch-svg .cinta-safety { stroke: #c0392b; stroke-width: 0.9; fill: none; }
+.sketch-svg .cinta-omega { fill: var(--accent); font-size: 8px; font-weight: 700; font-family: inherit; }
+.sketch-svg .cinta-dim { fill: var(--accent); font-size: 5.5px; font-weight: 600; font-family: inherit; }
+.sketch-svg .cinta-gap { fill: url(#cinta-hatch); stroke: none; }
+.sketch-svg .cinta-gap-lbl { fill: #c0392b; font-size: 6px; font-weight: 700; font-family: inherit; }
+.sketch-svg .cinta-lbl { fill: var(--text); font-size: 6.5px; font-weight: 600; font-family: inherit; }
 /* Rótulo-guía (callout) estilo despiece: gris pizarra, distinto de cotas/cortes/straps */
 .sketch-svg .callout-line { stroke: #455a64; stroke-width: 0.55; fill: none; }
 .sketch-svg .callout-arrow { fill: #455a64; stroke: none; }
@@ -443,6 +454,11 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .plano-menu-cota-btn.hide { color: #c0392b; }
 .plano-menu-cota-btn.show { color: #1e8a4c; }
 .plano-menu-cota-btn:hover { border-color: currentColor; }
+/* Hover cruzado: el vínculo del menú y su cota en el plano se resaltan juntos (ámbar) */
+.plano-menu-cota:hover, .plano-menu-cota.hl { cursor: pointer; }
+.plano-menu-cota:hover .plano-menu-cota-lbl, .plano-menu-cota.hl .plano-menu-cota-lbl { color: #e8590c; font-weight: 600; }
+.sketch-svg .cota-g.cota-hl .cota, .sketch-svg .cota-g.cota-hl .cota-tick, .sketch-svg .cota-g.cota-hl .cota-ext { stroke: #e8590c; stroke-width: 1.7; }
+.sketch-svg .cota-g.cota-hl .cota-lbl { fill: #e8590c; font-weight: 700; }
 /* Navegación de sub-menús de la pieza (bajo el título), mismo estilo que la nav de fichas */
 .pieza-submenu-nav { margin: 2px 0 8px; padding: 5px 0 2px; border-bottom: 1px dashed var(--border); justify-content: flex-start; }
 .pieza-submenu-nav.ficha-nav { margin-left: 0; gap: 2px 12px; }

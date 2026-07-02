@@ -10,7 +10,7 @@
     ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
-    backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [],
+    backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [], cintasUnif: [],
     // v4: bordes y unión (uniforme)
     bordeModo: "uniforme", bordeValor: "0.045", bordeRotUnif: false, unionRot: false,
     bordes: {
@@ -172,7 +172,7 @@
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
   const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "cotasOcultas", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "cotasOcultas", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -215,7 +215,7 @@
     setRadio("docmode", state.docMode); setRadio("prodmode", state.prodMode);
     setRadio("ojmode", state.ojMode); setRadio("bordemodo", state.bordeModo);
     bumpSeqs();
-    renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderTraseraUnif();
+    renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); renderTraseraUnif();
     renderOjetillos(); setFactorUnifUI(); aplicarVis(); recompute();
     return true;
   }
@@ -1363,6 +1363,10 @@
           btn.className = "plano-menu-cota-btn " + (oculta ? "show" : "hide");
           btn.textContent = oculta ? "✓" : "✕"; btn.title = oculta ? "Mostrar esta cota" : "Ocultar esta cota";
           btn.addEventListener("click", () => { if (oculta) delete ocultas[c.key]; else ocultas[c.key] = true; if (cotasCtl.onChange) cotasCtl.onChange(); });
+          // Hover: resalta en el plano la cota que corresponde a este vínculo (y viceversa el color del vínculo).
+          const resaltar = (on) => { const svg = container.querySelector(".sketch-svg"); if (!svg) return; svg.querySelectorAll(".cota-g").forEach((g) => { if (g.dataset.ck === c.key) g.classList.toggle("cota-hl", on); }); row.classList.toggle("hl", on); };
+          row.addEventListener("mouseenter", () => resaltar(true));
+          row.addEventListener("mouseleave", () => resaltar(false));
           row.appendChild(lb); row.appendChild(btn); lst.appendChild(row);
         });
         sec.appendChild(lst);
@@ -1703,7 +1707,7 @@
     cargarUF(); // UF del día para el mínimo de producción (no bloquea la carga)
     // Re-dibuja los sub-editores que dependen de las telas/materiales recién cargadas
     // (de lo contrario sus botones "+ …" quedan deshabilitados desde el arranque sin telas).
-    renderComplementosUnif(); renderAletasUnif(); renderStrapsUnif(); renderTraseraUnif(); renderPiezas();
+    renderComplementosUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); renderTraseraUnif(); renderPiezas();
     // Vendedores (desde RANGO → tabla "Vendedores"; si no existe, usa el de config)
     let vendedores = [];
     try { vendedores = await window.SheetsCIBSA.cargarVendedores(token); }
@@ -2050,6 +2054,9 @@
   function renderStrapsUnif() {
     const c = $("strapsUnif"); if (c) renderStraps(c, { straps: state.strapsUnif, cantidad: cantUnif, getAncho: () => num("f_ancho", null), getLargo: () => num("f_largo", null), onChange: recompute });
   }
+  function renderCintasUnif() {
+    const c = $("cintasUnif"); if (c) renderCintas(c, { cintas: state.cintasUnif, getAncho: () => num("f_ancho", null), getLargo: () => num("f_largo", null), onChange: recompute });
+  }
   // Diseño de la vista trasera (calados + materiales propios, $0). Genérico para uniforme/pieza.
   function renderTraseraDiseno(contCortes, contComp, getCortes, getComp, baseL, baseA, onChange) {
     if (contCortes) renderCortes(contCortes, { cortes: getCortes(), baseLargo: baseL, baseAncho: baseA, onChange: onChange });
@@ -2265,6 +2272,57 @@
     });
     return out;
   }
+  // ===== Cintas / cierres =====
+  // Banda CONTINUA paralela a una arista (con offset hacia adentro), recorrido = span [desde, hasta] (o toda la
+  // arista), con pivote/ángulo opcional. El campo "edicion" define los tramos (parser en sketch.js): "-" bolsillo
+  // (con Ø), "!" costura de seguridad, "x" hueco. Devuelve la geometría en metros para que sketch.js la dibuje.
+  // Recorridos (runs) de UNA cinta: modo "arista" → 1 recorrido pegado a una arista; modo "patron" → N
+  // recorridos paralelos que cruzan el paño (distribución "fija" con espaciado, o "entre" dos aristas uniforme).
+  function cintaRuns(c, ctx) {
+    ctx = ctx || {}; const ev = window.CalcCIBSA.evalExpr, SK = window.SketchCIBSA;
+    const A = ctx.ancho || 0, Lp = ctx.largo || 0; if (!(A > 0) || !(Lp > 0)) return [];
+    const ancho = anchoCintaM(strapMat(c)) || 0.02;
+    const mk = (ax, ay, ux, uy, inX, inY, Lc, arista) => {
+      if (!(Lc > 0)) return null;
+      const tramos = SK.parseCintaTramos(c.edicion, Lc), seg = SK.cintaSegmentos(Lc, tramos);
+      return { arista: arista, ax: ax, ay: ay, ux: ux, uy: uy, nx: -uy, ny: ux, inX: inX, inY: inY, L: Lc,
+        tramos: tramos, seg: seg, ancho: ancho, tipo: c.tipo || "cinta", legend: c.legend || "", id: rotId(c) };
+    };
+    if (c.modo === "patron") {
+      const n = Math.max(1, Math.round(ev(c.nPat) || 1));
+      const ext = Math.max(0, ev(c.extremos) || 0), pos1 = Math.max(0, ev(c.pos1) || 0);
+      const vertical = (c.orient || "vertical") === "vertical";       // vertical: corren sup→inf, se distribuyen izq→der
+      const D = vertical ? A : Lp;                                     // eje de distribución
+      const Lc = (vertical ? Lp : A) - 2 * ext;                        // largo de cada recorrido (con offset de extremos)
+      const pos = [];
+      if (c.distMode === "entre" && n > 1) {                            // uniforme entre dos aristas (como ojetillos)
+        const pf = (ev(c.posFin) != null && !isNaN(ev(c.posFin))) ? Math.max(0, ev(c.posFin)) : pos1;
+        const step = Math.max(0, D - pos1 - pf) / (n - 1);
+        for (let k = 0; k < n; k++) pos.push(pos1 + k * step);
+      } else {                                                          // espaciado fijo desde la 1ª
+        const esp = Math.max(0, ev(c.esp) || 0);
+        for (let k = 0; k < n; k++) pos.push(pos1 + k * esp);
+      }
+      return pos.filter((p) => p >= -1e-6 && p <= D + 1e-6)
+        .map((p) => vertical ? mk(p, ext, 0, 1, 1, 0, Lc, "patrón") : mk(ext, p, 1, 0, 0, 1, Lc, "patrón"))
+        .filter(Boolean);
+    }
+    // modo "arista"
+    const e = strapAristaEdge(c.arista || "sup", { ancho: A, largo: Lp }); if (!e) return [];
+    let ux = (e.bx - e.ax) / e.len, uy = (e.by - e.ay) / e.len;
+    const ar = e.outAng * Math.PI / 180, ox = Math.cos(ar), oy = Math.sin(ar), inX = -ox, inY = -oy;
+    const off = Math.max(0, ev(c.offset) || 0), desde = Math.max(0, ev(c.desde) || 0);
+    let hasta = ev(c.hasta); if (hasta == null || isNaN(hasta) || hasta <= 0) hasta = e.len; hasta = Math.min(hasta, e.len);
+    const Lc = Math.max(0, hasta - desde);
+    const axp = e.ax + ux * desde + inX * off, ayp = e.ay + uy * desde + inY * off;
+    const ang = (c.pivote && ev(c.angulo)) ? (ev(c.angulo) || 0) : 0;
+    if (ang) { const g = ang * Math.PI / 180, cs = Math.cos(g), sn = Math.sin(g); const rx = ux * cs - uy * sn, ry = ux * sn + uy * cs; ux = rx; uy = ry; }
+    const r = mk(axp, ayp, ux, uy, inX, inY, Lc, c.arista || "sup"); return r ? [r] : [];
+  }
+  function cintasSpec(list, ctx) {
+    ctx = ctx || {}; const A = ctx.ancho || 0, Lp = ctx.largo || 0; if (!(A > 0) || !(Lp > 0)) return [];
+    const out = []; visibles(list).forEach((c) => cintaRuns(c, ctx).forEach((r) => out.push(r))); return out;
+  }
   // Metros lineales totales de cinta de un strap (reparto normal con ↑/↓ del padre + cada SET con sus ↑/↓ propios).
   function strapMetros(s, ctx) {
     const ev = window.CalcCIBSA.evalExpr;
@@ -2292,6 +2350,44 @@
   }
   function strapsLineasPDF(list, ctx) {
     return visibles(list).map((s) => { const m = strapMat(s); if (!m) return null; const metros = strapMetros(s, ctx), ancho = anchoCintaM(m), inst = strapInstancias(s, ctx); if (!(metros > 0) || !(ancho > 0) || inst <= 0) return null; const nom = (s.legend && s.legend.trim()) ? s.legend.trim() : "Cinta"; const cant = (s.modo === "arista") ? (inst + "× ") : ""; return nom + ": " + cant + m.item + " — " + window.CalcCIBSA.fmtNum(metros) + " m totales × " + window.CalcCIBSA.fmtNum(ancho * 100) + " cm — " + money(metros * (m.precio || 0)) + "/u"; }).filter(Boolean);
+  }
+  // ---- Costeo de cintas / cierres (por metro lineal de MATERIAL = total − huecos), sumando todos los recorridos ----
+  function cintaLc(c, ctx) {   // largo del recorrido en modo "arista" (para el texto de ayuda)
+    const ev = window.CalcCIBSA.evalExpr, e = strapAristaEdge(c.arista || "sup", ctx); if (!e) return 0;
+    const d = Math.max(0, ev(c.desde) || 0); let h = ev(c.hasta); if (h == null || isNaN(h) || h <= 0) h = e.len; h = Math.min(h, e.len);
+    return Math.max(0, h - d);
+  }
+  function cintaMatMetros(c, ctx) { return cintaRuns(c, ctx).reduce((s, r) => s + (r.seg.mMaterial || 0), 0); }
+  function cintasTotal(list, N, ctx) {
+    const n = Math.max(1, N || 1);
+    return visibles(list).reduce((acc, c) => { const m = strapMat(c); if (!m) return acc; return acc + cintaMatMetros(c, ctx) * (m.precio != null ? m.precio : 0) * n; }, 0);
+  }
+  function cintasUnifPDF(list, ctx, N) {
+    const f = window.CalcCIBSA.fmtNum, n = Math.max(1, N || 1);
+    return visibles(list).map((c) => {
+      const m = strapMat(c); if (!m) return null;
+      const runs = cintaRuns(c, ctx); if (!runs.length) return null;
+      const mat = runs.reduce((s, r) => s + (r.seg.mMaterial || 0), 0); if (!(mat > 0)) return null;
+      const nOpen = runs.reduce((s, r) => s + (r.seg.opens || []).length, 0), nGap = runs.reduce((s, r) => s + (r.seg.gaps || []).length, 0), mSaf = runs.reduce((s, r) => s + (r.seg.mSafety || 0), 0);
+      const ancho = anchoCintaM(m), esCierre = c.tipo === "cierre";
+      const nom = (c.legend && c.legend.trim()) ? c.legend.trim() : (esCierre ? "Cierre" : "Cinta");
+      const cant = runs.length > 1 ? (runs.length + "× ") : "";
+      const extra = []; if (nOpen) extra.push(nOpen + " bolsillo(s)"); if (mSaf > 0) extra.push("seguridad " + f(mSaf) + " m"); if (nGap) extra.push(nGap + " hueco(s)");
+      const det = nom + ": " + cant + m.item + " " + f(mat) + " m × " + (ancho > 0 ? f(ancho * 100) + " cm" : "?") + (extra.length ? " (" + extra.join(", ") + ")" : "");
+      const unit = mat * (m.precio || 0);
+      return { cantidad: n, detalle: det, precio: Math.round(unit), totalNeto: Math.round(unit * n), cat: esCierre ? "Cierre" : "Cinta" };
+    }).filter(Boolean);
+  }
+  function cintasLineasPDF(list, ctx) {
+    const f = window.CalcCIBSA.fmtNum;
+    return visibles(list).map((c) => {
+      const m = strapMat(c); if (!m) return null;
+      const runs = cintaRuns(c, ctx); if (!runs.length) return null;
+      const mat = runs.reduce((s, r) => s + (r.seg.mMaterial || 0), 0); if (!(mat > 0)) return null;
+      const nom = (c.legend && c.legend.trim()) ? c.legend.trim() : (c.tipo === "cierre" ? "Cierre" : "Cinta");
+      const cant = runs.length > 1 ? (runs.length + "× ") : "";
+      return nom + ": " + cant + m.item + " — " + f(mat) + " m totales × " + f(anchoCintaM(m) * 100) + " cm — " + money(mat * (m.precio || 0)) + "/u";
+    }).filter(Boolean);
   }
   // Editor de straps. ctx: { straps, cantidad(), onChange }
   function renderStraps(container, ctx) {
@@ -2411,6 +2507,143 @@
     add.disabled = !hayCintas;
     add.addEventListener("click", () => { ctx.straps.push({ matId: null, modo: "unica", arista: "sup", d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "", inset: "0", offBorde: "0.01", legend: "", sets: [] }); pintar(); onChange(); });
     container.appendChild(add);
+  }
+  // ---------- Cintas / cierres ----------
+  function nuevaCinta(base) {
+    base = base || {};
+    return { matId: base.matId != null ? base.matId : null, tipo: base.tipo || "cinta", modo: base.modo || "arista", arista: base.arista || "sup",
+      offset: base.offset != null ? base.offset : "0.02", desde: base.desde != null ? base.desde : "0", hasta: base.hasta || "",
+      pivote: !!base.pivote, angulo: base.angulo || "0",
+      // Patrón de cintas paralelas: orient (vertical=corren sup→inf, se distribuyen izq→der), nº, distribución
+      // ("fijo" espaciado / "entre" uniforme entre 2 aristas), espaciado, posición de la 1ª y offset de extremos.
+      orient: base.orient || "vertical", nPat: base.nPat != null ? base.nPat : "3", distMode: base.distMode || "fijo",
+      esp: base.esp != null ? base.esp : "0.5", pos1: base.pos1 != null ? base.pos1 : "0.5", posFin: base.posFin || "", extremos: base.extremos != null ? base.extremos : "0",
+      edicion: base.edicion || "", legend: base.legend || "", rotulo: !!base.rotulo };
+  }
+  const CINTA_GLOBO = "Cinta/cierre continua paralela a la arista. En «Edición» defines los tramos separados por coma, medidos a lo largo de la cinta: " +
+    "a-b = sin costura / bolsillo (Ø opcional, ej. 2-4Ø0.05) → se marca con Ω; a!b = costura de seguridad (refuerzo) → recuadro con diagonales; " +
+    "a x b = hueco / sin cinta → achurado con cota ✕. Lo NO listado va cosido continuo. Ejemplo: 2-4Ø0.05, 5.5!7, 7x9.";
+  // ctx: { cintas, getAncho(), getLargo(), onChange }
+  function renderCintas(container, ctx) {
+    container.innerHTML = "";
+    const onChange = ctx.onChange, ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
+    const esCinta = (m) => /cinta|cierre/i.test((m && m.item) || "");
+    const cab = document.createElement("p"); cab.className = "muted small";
+    cab.textContent = "Cintas / cierres: banda continua paralela a una arista, con tramos de bolsillo (Ω), seguridad (!) y huecos (✕).";
+    container.appendChild(cab);
+    const rows = document.createElement("div"); container.appendChild(rows);
+    function pintar() {
+      rows.innerHTML = "";
+      (ctx.cintas || []).forEach((c, idx) => {
+        const A = ctx.getAncho ? ctx.getAncho() : null, L = ctx.getLargo ? ctx.getLargo() : null;
+        const card = document.createElement("div"); card.className = "ins-card strap-card";
+        const head = document.createElement("div"); head.className = "ins-head";
+        const nom0 = (c.legend && c.legend.trim()) ? c.legend.trim() : (c.tipo === "cierre" ? "Cierre" : "Cinta");
+        const tt = document.createElement("span"); tt.className = "muted small"; tt.textContent = "Cinta Nº" + (idx + 1) + " — " + nom0;
+        const del = document.createElement("button"); del.type = "button"; del.className = "pz-btn del"; del.textContent = "✕";
+        del.addEventListener("click", () => { ctx.cintas.splice(idx, 1); pintar(); onChange(); });
+        head.appendChild(tt); head.appendChild(del); card.appendChild(head);
+        const numField = (lab, key, ph) => {
+          const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
+          const i = document.createElement("input"); i.type = "text"; i.inputMode = "decimal"; i.value = c[key] != null ? c[key] : ""; if (ph) i.placeholder = ph;
+          i.addEventListener("input", (e) => { c[key] = e.target.value; refresh(); onChange(); });
+          i.addEventListener("blur", (e) => { const r = ev(e.target.value); if (r != null && !isNaN(r)) { c[key] = f(r); e.target.value = c[key]; refresh(); onChange(); } });
+          l.appendChild(i); agregarCalc(i); return l;
+        };
+        const lt = document.createElement("label"); lt.className = "field"; lt.innerHTML = "<span>Tipo</span>";
+        const selT = document.createElement("select");
+        [["cinta", "Cinta"], ["cierre", "Cierre"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; selT.appendChild(o); });
+        selT.value = c.tipo || "cinta"; selT.addEventListener("change", (e) => { c.tipo = e.target.value; refresh(); onChange(); });
+        lt.appendChild(selT); card.appendChild(lt);
+        const lm = document.createElement("label"); lm.className = "field full"; lm.innerHTML = "<span>Cinta / cierre (material)</span>";
+        const selM = document.createElement("select");
+        const o0 = document.createElement("option"); o0.value = ""; o0.textContent = "— elegir material —"; selM.appendChild(o0);
+        state.materiales.forEach((m, i) => { if (!esCinta(m)) return; const o = document.createElement("option"); o.value = String(i); o.textContent = matLabel(m); selM.appendChild(o); });
+        selM.value = c.matId != null ? String(c.matId) : "";
+        selM.addEventListener("change", (e) => { c.matId = e.target.value === "" ? null : parseInt(e.target.value, 10); refresh(); onChange(); });
+        lm.appendChild(selM); addHelpTo(lm, "Material de la cinta/cierre. El ANCHO se toma de la columna MODELO (cm); el precio por metro de la columna de precio.", "CINTA-MAT"); card.appendChild(lm);
+        const selBox = (lab, key, opts, help, code, onSel) => {
+          const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
+          const s = document.createElement("select");
+          opts.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; s.appendChild(o); });
+          s.value = c[key] || opts[0][0]; s.addEventListener("change", (e) => { c[key] = e.target.value; (onSel || refresh)(); onChange(); });
+          l.appendChild(s); if (help) addHelpTo(l, help, code); card.appendChild(l);
+        };
+        selBox("Modo", "modo", [["arista", "Pegada a una arista"], ["patron", "Patrón de cintas paralelas"]],
+          "«Pegada a una arista»: corre paralela a un borde. «Patrón»: varias cintas paralelas que cruzan el paño, con espaciado fijo o repartidas uniformemente entre dos aristas.", "CINTA-MODO", pintar);
+        if (c.modo === "patron") {
+          selBox("Orientación", "orient", [["vertical", "Verticales (↕, se reparten ↔)"], ["horizontal", "Horizontales (↔, se reparten ↕)"]],
+            "Verticales: cada cinta corre de la arista superior a la inferior y se reparten de izquierda a derecha. Horizontales: al revés.", "CINTA-ORIENT");
+          selBox("Distribución", "distMode", [["fijo", "Espaciado fijo"], ["entre", "Uniforme entre dos aristas"]],
+            "Espaciado fijo: N cintas separadas por la misma distancia desde la 1ª. Uniforme entre aristas: N cintas repartidas parejo entre la posición de la 1ª y el margen final.", "CINTA-DIST", pintar);
+          const grid = document.createElement("div"); grid.className = "pieza-grid";
+          grid.appendChild(addHelpTo(numField("Cantidad (N)", "nPat", "3"), "Número de cintas paralelas del patrón.", "CINTA-N"));
+          grid.appendChild(addHelpTo(numField("Posición 1ª (m)", "pos1", "0.5"), "Distancia de la primera cinta a la arista de referencia (izquierda si son verticales, superior si horizontales).", "CINTA-POS1"));
+          if (c.distMode === "entre") grid.appendChild(addHelpTo(numField("Margen final (m)", "posFin", "(=1ª)"), "Distancia de la última cinta a la arista opuesta. Vacío = mismo margen que la primera.", "CINTA-POSFIN"));
+          else grid.appendChild(addHelpTo(numField("Espaciado (m)", "esp", "0.5"), "Distancia fija entre cintas consecutivas.", "CINTA-ESP"));
+          grid.appendChild(addHelpTo(numField("Offset extremos (m)", "extremos", "0"), "Cuánto se retrae cada cinta de los dos bordes perpendiculares (para que no lleguen al borde). 0 = de lado a lado.", "CINTA-EXT"));
+          card.appendChild(grid);
+        } else {
+          const le = document.createElement("label"); le.className = "field"; le.innerHTML = "<span>Arista</span>";
+          const selE = document.createElement("select");
+          [["sup", "Superior"], ["inf", "Inferior"], ["izq", "Izquierda"], ["der", "Derecha"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; selE.appendChild(o); });
+          selE.value = c.arista || "sup"; selE.addEventListener("change", (e) => { c.arista = e.target.value; refresh(); onChange(); });
+          le.appendChild(selE); addHelpTo(le, "Arista del paño por la que corre la cinta (paralela). El recorrido = el largo de esa arista, salvo que lo acotes con Desde/Hasta.", "CINTA-EDGE"); card.appendChild(le);
+          const grid = document.createElement("div"); grid.className = "pieza-grid";
+          grid.appendChild(addHelpTo(numField("Offset (m)", "offset", "0.02"), "Separación de la cinta respecto de la arista, hacia adentro del paño. 0 = pegada al borde.", "CINTA-OFFSET"));
+          grid.appendChild(addHelpTo(numField("Desde (m)", "desde", "0"), "Inicio del recorrido medido sobre la arista desde su origen. 0 = desde el comienzo. Es también el punto de anclaje del pivote.", "CINTA-DESDE"));
+          grid.appendChild(addHelpTo(numField("Hasta (m)", "hasta", "(fin)"), "Fin del recorrido sobre la arista. Vacío = hasta el final de la arista.", "CINTA-HASTA"));
+          card.appendChild(grid);
+          const lp = document.createElement("label"); lp.className = "chk"; const pc = document.createElement("input"); pc.type = "checkbox"; pc.checked = !!c.pivote;
+          pc.addEventListener("change", (e) => { c.pivote = e.target.checked; pintar(); onChange(); });
+          lp.appendChild(pc); lp.appendChild(document.createTextNode(" Pivote (dirigir en ángulo)")); card.appendChild(lp);
+          if (c.pivote) { const ga = document.createElement("div"); ga.className = "pieza-grid"; ga.appendChild(addHelpTo(numField("Ángulo (°)", "angulo", "0"), "Gira la cinta alrededor del punto de anclaje (Desde) respecto de la arista. 0 = paralela.", "CINTA-ANG")); card.appendChild(ga); }
+        }
+        const led = document.createElement("label"); led.className = "field full"; led.innerHTML = "<span>Edición (tramos)</span>";
+        const ied = document.createElement("input"); ied.type = "text"; ied.value = c.edicion || ""; ied.placeholder = "ej. 2-4Ø0.05, 5.5!7, 7x9";
+        ied.addEventListener("input", (e) => { c.edicion = e.target.value; refresh(); onChange(); });
+        led.appendChild(ied); addHelpTo(led, CINTA_GLOBO, "CINTA-EDICION"); card.appendChild(led);
+        const ayuda = document.createElement("p"); ayuda.className = "muted small"; card.appendChild(ayuda);
+        const ln = document.createElement("label"); ln.className = "field full"; ln.innerHTML = "<span>Nombre / leyenda (plano)</span>";
+        const ni = document.createElement("input"); ni.type = "text"; ni.value = c.legend || ""; ni.placeholder = "ej. Cinta superior";
+        ni.addEventListener("input", (e) => { c.legend = e.target.value; refresh(); onChange(); });
+        ln.appendChild(ni); card.appendChild(ln);
+        const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
+        function refresh() {
+          const ctx = { ancho: A, largo: L }, m = strapMat(c), ancho = anchoCintaM(m);
+          if (!(A > 0) || !(L > 0)) { ayuda.textContent = "Define largo y ancho del paño base para ubicar la cinta."; }
+          else if (c.modo === "patron") {
+            const vertical = (c.orient || "vertical") === "vertical", D = vertical ? A : L, Lrun = vertical ? L : A;
+            ayuda.innerHTML = "Paño base <b>" + f(L) + " × " + f(A) + " m</b>. Patrón " + (vertical ? "vertical" : "horizontal") + ": se reparten a lo largo de <b>" + f(D) + " m</b> y cada cinta corre <b>" + f(Lrun) + " m</b> (menos offset de extremos). Los tramos se miden sobre ese recorrido.";
+          } else {
+            const e = strapAristaEdge(c.arista || "sup", ctx), nm = { sup: "superior", inf: "inferior", izq: "izquierda", der: "derecha" }[c.arista || "sup"], Lc = cintaLc(c, ctx);
+            ayuda.innerHTML = "Arista " + nm + ": <b>" + f(e ? e.len : 0) + " m</b> · paño base <b>" + f(L) + " × " + f(A) + " m</b>. Recorrido de la cinta: <b>" + f(Lc) + " m</b> (los tramos se miden en 0…" + f(Lc) + ").";
+          }
+          if (!m) { dims.textContent = "Elige el material para ver el ancho de la cinta."; return; }
+          const runs = cintaRuns(c, ctx);
+          const mat = runs.reduce((s, r) => s + (r.seg.mMaterial || 0), 0), cos = runs.reduce((s, r) => s + (r.seg.mCostura || 0), 0);
+          const nOpen = runs.reduce((s, r) => s + (r.seg.opens || []).length, 0), nGap = runs.reduce((s, r) => s + (r.seg.gaps || []).length, 0), mSaf = runs.reduce((s, r) => s + (r.seg.mSafety || 0), 0);
+          let html = "Ancho cinta <b>" + (ancho > 0 ? f(ancho * 100) + " cm" : "?") + "</b>" + (runs.length > 1 ? " · <b>" + runs.length + "</b> cintas" : "") + " · material <b>" + f(mat) + " m</b> · costura <b>" + f(cos) + " m</b>";
+          if (mSaf > 0) html += " (seguridad " + f(mSaf) + " m)";
+          if (nOpen) html += " · " + nOpen + " bolsillo(s)";
+          if (nGap) html += " · " + nGap + " hueco(s)";
+          dims.innerHTML = html;
+        }
+        refresh();
+        ocultarFichaCtl(card, c, pintar, onChange);
+        fichaColapsable(card, head, tt, c);
+        rows.appendChild(card);
+      });
+      navFichas(rows, (ctx.cintas || []).map((c, i) => ({ titulo: "Cinta " + (i + 1), nombre: c.legend || "", oculto: !!c._oculto })));
+    }
+    pintar();
+    const actions = document.createElement("div"); actions.className = "pz-actions"; actions.style.flexWrap = "wrap";
+    const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline"; add.textContent = "+ Cinta / cierre";
+    add.addEventListener("click", () => { ctx.cintas.push(nuevaCinta()); pintar(); onChange(); });
+    const perim = document.createElement("button"); perim.type = "button"; perim.className = "btn-outline"; perim.textContent = "↻ Perímetro continuo";
+    perim.title = "Instala una cinta cosida continua en las 4 aristas";
+    perim.addEventListener("click", () => { ["sup", "der", "inf", "izq"].forEach((ar) => ctx.cintas.push(nuevaCinta({ arista: ar, legend: "Perímetro" }))); pintar(); onChange(); });
+    actions.appendChild(add); actions.appendChild(perim); container.appendChild(actions);
   }
   // Editor de aletas. ctx: { aletas, cantidad(), valorOj(), onChange }
   function renderAletas(container, ctx) {
@@ -3490,11 +3723,11 @@
     actualizarTraseraUnif();
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
-      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar }, ojSpecUnif());
+      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar }, ojSpecUnif());
       if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif() };
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
       activarArrastreCallouts(sk);
-      const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); recompute(); };
+      const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); recompute(); };
       menuPlano(sk, [
         { label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
         { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
@@ -3554,7 +3787,8 @@
     const strapTotal = strapsTotal(state.strapsUnif, N, { ancho: ancho || 0, largo: largo || 0 });
     const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag };
     const corteTotal = costoCortesUnit(skSpec, lote.valorOjetillo) * N;
-    return o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal;
+    const cintaTotal = cintasTotal(state.cintasUnif, N, { ancho: ancho || 0, largo: largo || 0 });
+    return o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal + cintaTotal;
   }
   function setSubtotalUnifHint(info) {
     const el = $("subtotalUnifHint"); if (!el) return;
@@ -3601,19 +3835,28 @@
   }
   function openPlanoZoom(svg) {
     const ov = $("planoZoom"), body = $("planoZoomBody"); if (!ov || !body || !svg) return;
-    body.innerHTML = "";
-    const clone = svg.cloneNode(true); // conserva class "sketch-svg" para los estilos del dibujo
+    const source = svg.closest && svg.closest(".sketch, .pz-sketch");   // contenedor origen (para re-render y store de arrastre)
     // iOS Safari colapsa un SVG con width/height auto → fijamos tamaño en px según el viewBox.
-    const vb = (svg.getAttribute("viewBox") || "").split(/[\s,]+/).map(parseFloat);
-    const vbw = (vb[2] > 0 ? vb[2] : (svg.clientWidth || 700));
-    const vbh = (vb[3] > 0 ? vb[3] : (svg.clientHeight || 500));
-    const aspect = vbw / vbh;
-    const availW = window.innerWidth * 0.94, availH = window.innerHeight * 0.88;
-    let w, h;
-    if (availW / availH > aspect) { h = availH; w = h * aspect; } else { w = availW; h = w / aspect; }
-    clone.removeAttribute("width"); clone.removeAttribute("height");
-    clone.style.cssText = "width:" + Math.round(w) + "px;height:" + Math.round(h) + "px;max-width:none;max-height:none;background:#fff;border-radius:8px;display:block;";
-    body.appendChild(clone);
+    const sizeClone = (cl, srcSvg) => {
+      const vb = (srcSvg.getAttribute("viewBox") || "").split(/[\s,]+/).map(parseFloat);
+      const vbw = (vb[2] > 0 ? vb[2] : (srcSvg.clientWidth || 700)), vbh = (vb[3] > 0 ? vb[3] : (srcSvg.clientHeight || 500));
+      const aspect = vbw / vbh, availW = window.innerWidth * 0.94, availH = window.innerHeight * 0.88;
+      let w, h; if (availW / availH > aspect) { h = availH; w = h * aspect; } else { w = availW; h = w / aspect; }
+      cl.removeAttribute("width"); cl.removeAttribute("height");
+      cl.style.cssText = "width:" + Math.round(w) + "px;height:" + Math.round(h) + "px;max-width:none;max-height:none;background:#fff;border-radius:8px;display:block;";
+    };
+    // Clona el SVG vigente del origen y ata el arrastre de rótulos; al soltar, re-renderiza el plano
+    // (con el store del origen) y vuelve a clonar el zoom, así se puede reubicar CON la lupa activa.
+    const render = () => {
+      // Si el re-render reconstruyó el contenedor (preview del compuesto), lo re-ubicamos por su id estable.
+      const src = (source && source.id && document.getElementById(source.id)) || source;
+      const srcSvg = src ? src.querySelector(".sketch-svg") : svg; if (!srcSvg) return;
+      const ctx = src && src._dragCtx;
+      body.innerHTML = "";
+      const cl = srcSvg.cloneNode(true); sizeClone(cl, srcSvg); body.appendChild(cl);
+      activarArrastreCallouts(body, ctx ? ctx.store : undefined, () => { if (ctx && ctx.onChange) ctx.onChange(); render(); });
+    };
+    render();
     ov.classList.remove("hidden");
   }
   function closePlanoZoom() { const ov = $("planoZoom"); if (ov) ov.classList.add("hidden"); const body = $("planoZoomBody"); if (body) body.innerHTML = ""; }
@@ -3623,7 +3866,8 @@
     if (e.target.closest && e.target.closest(".sketch-rot-btn")) { e.preventDefault(); state.rotColapsar = !state.rotColapsar; recompute(); return; }
     if (e.target.closest && e.target.closest(".sketch-lock-btn")) { e.preventDefault(); state.rotReubicar = !state.rotReubicar; document.body.classList.toggle("rot-reubicar", state.rotReubicar); addZoomBtns(); return; }
     if (e.target.closest && e.target.closest(".sketch-reset-btn")) { e.preventDefault(); state.rotDrag = {}; recompute(); return; }
-    if (e.target.closest && e.target.closest("#planoZoom")) closePlanoZoom();
+    // Cerrar la lupa SOLO con el botón ✕ o al tocar el fondo (overlay o su padding), no al interactuar con el SVG/rótulos.
+    if (e.target && (e.target.id === "planoZoom" || e.target.id === "planoZoomBody" || (e.target.closest && e.target.closest("#planoZoomClose")))) closePlanoZoom();
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePlanoZoom(); });
   // Auto-reparación: cualquier re-render de un plano (cambiar tela, ocultar, rótulos, etc.) reescribe
@@ -3792,6 +4036,7 @@
       aletas: base ? (base.aletas || []).map((a) => nuevaAleta(a)) : [],
       backAletas: base ? (base.backAletas || []).map((a) => nuevaAleta(a)) : [],
       straps: base ? (base.straps || []).map((s) => Object.assign({}, s)) : [],
+      cintas: base ? (base.cintas || []).map((c) => Object.assign({}, c)) : [],
       backCortes: base ? (base.backCortes || []).map((c) => nuevaCorte(c)) : [],
       backComplementos: base ? (base.backComplementos || []).map((c) => Object.assign({}, c, { cantAristas: (c.cantAristas || []).slice() })) : [],
       union: base ? base.union : "0.045",
@@ -4201,7 +4446,7 @@
       const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
       return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {}, rotulo: !!ins.rotulo, id: rotId(ins) } : null;
     }).filter(Boolean);
-    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((state.telas.find((t) => t.nombre === pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, rotDrag: pz.rotDrag };
+    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((state.telas.find((t) => t.nombre === pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cintas: cintasSpec(pz.cintas || [], { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, rotDrag: pz.rotDrag };
     if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh }; }
     if (pz.ojMode === "arista") {
       const r = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), !!pz.ojNumerar);
@@ -4215,6 +4460,7 @@
   // en state.rotDrag[clave] y re-renderiza (la flecha se redibuja al destino). Se re-cablea en cada render.
   function activarArrastreCallouts(container, store, onChange) {
     store = store || state.rotDrag; onChange = onChange || recompute;   // store: dónde se guardan los offsets (uniforme = state.rotDrag; pieza = pz.rotDrag)
+    if (container) container._dragCtx = { store: store, onChange: onChange };   // lo usa la lupa para arrastrar dentro del zoom
     const svg = container && container.querySelector("svg.sketch-svg"); if (!svg || !svg.getScreenCTM) return;
     const mscale = parseFloat(svg.dataset.mscale) || 1; // unidades del viewBox por metro (para guardar en metros)
     const toVB = (cx, cy) => { const m = svg.getScreenCTM(); if (!m) return null; const pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy; return pt.matrixTransform(m.inverse()); };
@@ -4369,7 +4615,7 @@
       strapsAristas: strapsDetalleAristas(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }),
       observaciones: terminacionesTexto(state.orientUnif).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, []).concat(materialesCortes(state.cortesUnif)),
-      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif() } } : {}),
+      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif() } } : {}),
       trasera: state.trasUnif && !(alturaUnif() > 0),
       backExtra: { cortes: cortesSpec(state.backCortesUnif), aletas: aletasSpec(state.backAletasUnif) },
       materialesTrasera: materialesTraseras(state.backCortesUnif, state.backComplementosUnif),
@@ -4622,6 +4868,7 @@
         <div class="pz-cortes"></div>
         <div class="pz-aletas"></div>
         <div class="pz-straps"></div>
+        <div class="pz-cintas"></div>
         <label class="chk"><input class="pz-tras" type="checkbox" /> <span>Incluir vista trasera (espejo)</span></label>
         <p class="pz-tras-hint muted small hidden">Define primero largo y ancho de la pieza para habilitar la vista trasera.</p>
         <div class="pz-back trasera-box hidden"></div>
@@ -4654,8 +4901,10 @@
       renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
       renderAletas(q(".pz-aletas"), { aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto, telaBase: () => pz.telaNombre, baseListo: () => (window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0 && !!pz.telaNombre) });
       renderStraps(q(".pz-straps"), { straps: (pz.straps || (pz.straps = [])), cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
+      renderCintas(q(".pz-cintas"), { cintas: (pz.cintas || (pz.cintas = [])), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
       subColapsar(q(".pz-oj-wrap"), "Ojetillos", pz, "_cOj", () => (pz.ojMode === "arista") || (parseInt(pz.ojetillos || 0, 10) > 0));
       subColapsar(q(".pz-straps"), "Straps / cintas", pz, "_cStr", () => (pz.straps || []).length);
+      subColapsar(q(".pz-cintas"), "Cintas / cierres", pz, "_cCin", () => (pz.cintas || []).length);
       subColapsar(q(".pz-borde"), "Bordes y uniones", pz, "_cBorde", () => false);
       subColapsar(q(".pz-comp"), "Complementos", pz, "_cComp", () => (pz.complementos || []).length);
       subColapsar(q(".pz-ins"), "Inscribir paños (ventanas)", pz, "_cIns", () => (pz.inscritos || []).length);
@@ -4845,9 +5094,10 @@
         const valOjPz = num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT);
         const aleTot = aletasTotal(pz.aletas, r.lote.N, valOjPz, facPz(pz)) + aletasTotal(pz.backAletas, r.lote.N, valOjPz, facPz(pz));
         const strapTot = strapsTotal(pz.straps, r.lote.N, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 });
+        const cintaTot = cintasTotal(pz.cintas || [], r.lote.N, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 });
         const corteTot = costoCortesUnit(sketchPieza(pz), valOjPz) * r.lote.N;
-        const piezaTotal = r.o.subtotalLote + compUnit * r.lote.N + insTot + aleTot + strapTot + corteTot;
-        r.compUnit = compUnit; r.insTot = insTot; r.aleTot = aleTot; r.strapTot = strapTot; r.corteTot = corteTot; r.piezaTotal = piezaTotal;
+        const piezaTotal = r.o.subtotalLote + compUnit * r.lote.N + insTot + aleTot + strapTot + cintaTot + corteTot;
+        r.compUnit = compUnit; r.insTot = insTot; r.aleTot = aleTot; r.strapTot = strapTot; r.cintaTot = cintaTot; r.corteTot = corteTot; r.piezaTotal = piezaTotal;
         subtotalGen += piezaTotal; calcs.push({ pz, r });
         if (card) {
           let s = `Subtotal: <b>${money(piezaTotal)}</b> · ${r.lote.N} u × (${r.largo}×${r.ancho} m) · ${r.o.panosUnit} paños/u`;
@@ -4911,7 +5161,7 @@
       if (!(a > 0) || !(l > 0)) {
         body.innerHTML = '<p class="muted small">Completa largo y ancho de esta pieza.</p>';
       } else {
-        const sk = document.createElement("div"); sk.className = "sketch";
+        const sk = document.createElement("div"); sk.className = "sketch"; sk.id = "prevsk_" + pz.id;
         if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); }
         body.appendChild(sk);
         const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn-outline"; dl.textContent = "Descargar plano (PDF)";
@@ -4951,7 +5201,7 @@
     $("f_union").value = "0.045";
     $("f_usaAlto").checked = false; $("f_altura").value = ""; $("wAltura").classList.add("hidden");
     state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
-    state.cortesUnif = []; state.backCortesUnif = []; state.backComplementosUnif = []; state.aletasUnif = []; state.backAletasUnif = []; state.strapsUnif = []; state.factorUnif = "1";
+    state.cortesUnif = []; state.backCortesUnif = []; state.backComplementosUnif = []; state.aletasUnif = []; state.backAletasUnif = []; state.strapsUnif = []; state.cintasUnif = []; state.factorUnif = "1";
     { const t = $("f_trasUnif"); if (t) t.checked = false; }
     document.querySelector('input[name="ojmode"][value="total"]').checked = true;
     state.orientacionSel = "mayor"; state.orientUnif = "largo"; $("resultHolder").innerHTML = ""; $("formStatus").textContent = "";
@@ -4969,7 +5219,7 @@
     state.prodMode = "uniforme"; state.piezas = []; state.compuesto = null;
     state.complementosUnif = [];
     const ru = document.querySelector('input[name="prodmode"][value="uniforme"]'); if (ru) ru.checked = true;
-    renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderTraseraUnif(); setFactorUnifUI(); aplicarVis();
+    renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); renderTraseraUnif(); setFactorUnifUI(); aplicarVis();
     renderGranelLineas(); renderGranel(); renderOjetillos(); recompute();
   }
   // "Limpiar" (junto a Generar) borra TODO; "Limpiar (mantener cliente)" en Datos del cliente conserva al cliente.
@@ -5114,16 +5364,17 @@
     const o = orientKey === "ancho" ? lote.oAncho : lote.oLargo;
     const N = lote.N;
     const aletasEf = aletasEfectivas(state.aletasUnif, tela && tela.nombre), backAletasEf = aletasEfectivas(state.backAletasUnif, tela && tela.nombre);
-    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(aletasEf), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag };
+    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(aletasEf), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag };
     const ojeTotal = lote.nOjetillos * lote.valorOjetillo * N;
     const compTotal = compTotalUnit(state.complementosUnif) * N;
     const aleTotal = aletasTotal(aletasEf, N, lote.valorOjetillo, facUnif()) + aletasTotal(backAletasEf, N, lote.valorOjetillo, facUnif());
     const strapTotal = strapsTotal(state.strapsUnif, N, { ancho: ancho || 0, largo: largo || 0 });
     const corteTotal = costoCortesUnit(skSpec, lote.valorOjetillo) * N;
+    const cintaTotal = cintasTotal(state.cintasUnif, N, { ancho: ancho || 0, largo: largo || 0 });
     const granelLineas = granelLineasPDF(), granelNeto = granelLineas.reduce((s, g) => s + g.total, 0);
     // El descuento global (pago contado) aplica SOLO a la carpa. El granel ya viene neto
     // con su propio descuento por línea y no recibe el descuento global.
-    const carpaSub0 = o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal;
+    const carpaSub0 = o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal + cintaTotal;
     // Mínimo de producción de taller (0,6 UF neto POR UNIDAD), con descuento escalonado por unidad,
     // sobre el neto de carpa ANTES del descuento. N unidades idénticas → neto/u = carpaSub0/N.
     const nU = Math.max(1, N), minProd = minProduccionEscalonado(Array(nU).fill(carpaSub0 / nU));
@@ -5156,7 +5407,7 @@
       observaciones: $("f_observaciones").value.trim() || null,
       detalleExtra: terminacionesTexto(state.orientUnif),
       complementos: complementosUnifPDF(N),
-      aletas: aletasUnifPDF(aletasEf, N).concat(aletasUnifPDF(backAletasEf, N)).concat(strapsUnifPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cortesUnifPDF(skSpec, lote.valorOjetillo, N)),
+      aletas: aletasUnifPDF(aletasEf, N).concat(aletasUnifPDF(backAletasEf, N)).concat(strapsUnifPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cintasUnifPDF(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cortesUnifPDF(skSpec, lote.valorOjetillo, N)),
       granel: granelLineas,
       minProduccion: minProd, minProdUF: CFG.MIN_PRODUCCION_UF, ufValor: state.ufValor,
       sketch: skSpec,
@@ -5212,7 +5463,7 @@
         orientTxt: pz.orient === "ancho" ? "uniones a lo ancho" : "uniones a lo largo",
         terminaciones: terminacionesPieza(pz),
         complementosLineas: compLineasPDF(pz.complementos),
-        inscritosLineas: inscritosLineasPDF(pz).concat(aletasLineasPDF(pz.aletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))).concat(aletasLineasPDF(pz.backAletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))).concat(strapsLineasPDF(pz.straps, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 })).concat(cortesLineasPDF(sketchPieza(pz), num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), r.lote.N)),
+        inscritosLineas: inscritosLineasPDF(pz).concat(aletasLineasPDF(pz.aletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))).concat(aletasLineasPDF(pz.backAletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))).concat(strapsLineasPDF(pz.straps, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 })).concat(cintasLineasPDF(pz.cintas || [], { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 })).concat(cortesLineasPDF(sketchPieza(pz), num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), r.lote.N)),
         sketch: sketchPieza(pz),
         valorUnitario: r.o.valorUnitario + (r.compUnit || 0) + (((r.insTot || 0) + (r.aleTot || 0) + (r.strapTot || 0) + (r.corteTot || 0)) / r.lote.N),
         valorTotal: r.piezaTotal != null ? r.piezaTotal : r.o.subtotalLote,
@@ -6347,7 +6598,7 @@
     renderBordes();
     renderComplementosUnif();
     renderCortesUnif();
-    renderAletasUnif(); renderStrapsUnif();
+    renderAletasUnif(); renderStrapsUnif(); renderCintasUnif();
     renderTraseraUnif();
     renderHistorial();
     limpiarCampos(); // arranque/reinicio de sesión: App siempre comienza sin datos de cotizaciones previas
