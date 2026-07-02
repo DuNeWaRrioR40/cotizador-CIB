@@ -668,9 +668,15 @@
       const y0 = lyy + (detail ? -1.5 : 2);
       const detLines = detail ? wrapLines(detail, Math.max(8, Math.floor(avail / 2.5))) : [];
       const hitH = (nameLines.length * 5.4) + (detLines.length * 5.2) + 8;
+      // Zona de agarre AJUSTADA al ancho real del texto (no a toda la columna), para poder soltar la
+      // etiqueta en espacios estrechos. Ancho ≈ largo de la línea más larga × ancho de carácter, + la flecha.
+      const maxNameCh = nameLines.reduce((m, l) => Math.max(m, l.length), 0);
+      const maxDetCh = detLines.reduce((m, l) => Math.max(m, l.length), 0);
+      const textW = Math.max(maxNameCh * 3.0, maxDetCh * 2.55);
+      const hitW = Math.max(26, Math.min(avail + 6, textW + 10));
       // Etiqueta arrastrable: flecha + textos + zona de agarre transparente. data-rk = clave.
       if (key) s += `<g class="callout-drag" data-rk="${esc(key)}">`;
-      if (key) s += `<rect class="callout-hit" x="${f1(tx - 4)}" y="${f1(lyy - 6)}" width="${f1(avail + 6)}" height="${f1(hitH)}"/>`;
+      if (key) s += `<rect class="callout-hit" x="${f1(tx - 6)}" y="${f1(lyy - 6)}" width="${f1(hitW)}" height="${f1(hitH)}"/>`;
       s += `<polygon class="callout-arrow" points="${f1(tx - 1)},${f1(lyy)} ${f1(tx - 6)},${f1(lyy - 2.4)} ${f1(tx - 6)},${f1(lyy + 2.4)}"/>`;
       nameLines.forEach((ln, i) => { s += `<text class="callout-lbl" x="${f1(tx)}" y="${f1(y0 + i * 5.4)}">${esc(ln)}</text>`; });
       if (detLines.length) {

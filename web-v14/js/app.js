@@ -2249,7 +2249,7 @@
         const grp = EDGELBL[s.arista || "sup"] || "Arista";
         const ux = (e.bx - e.ax) / e.len, uy = (e.by - e.ay) / e.len, supr = new Set(parseSupr(s.supr));
         const ar = e.outAng * Math.PI / 180, sdx = Math.cos(ar), sdy = Math.sin(ar); // dir de crecimiento (hacia afuera)
-        if (d > 0) window.SketchCIBSA.posicionesArista(e.len, d, false).forEach((t, i) => { if (supr.has(i)) return; out.push({ cx: e.ax + ux * t - sdx * B, cy: e.ay + uy * t - sdy * B, angulo: e.outAng, offset: off, inset: ins, ancho: ancho, legend: nom, grupo: grp }); });
+        if (d > 0) window.SketchCIBSA.posicionesArista(e.len, d, false).forEach((t, i) => { if (supr.has(i)) return; out.push({ cx: e.ax + ux * t - sdx * B, cy: e.ay + uy * t - sdy * B, angulo: e.outAng, offset: off, inset: ins, ancho: ancho, legend: nom, grupo: grp, set: true }); });
         // Sets de straps: grupos (≥2) desde una esquina, con offset, espaciado, inset (= offBorde extra) y ↑/↓ PROPIOS.
         (s.sets || []).forEach((st) => {
           const cnt = ev(st.n); if (!(cnt >= 2)) return;
@@ -4195,12 +4195,13 @@
   // Spec del dibujo (sketch) de una pieza: dimensiones, ojetillos y ventanas inscritas.
   function sketchPieza(pz) {
     const ev = window.CalcCIBSA.evalExpr;
+    if (!pz.rotDrag) pz.rotDrag = {};   // offsets manuales de los rótulos de esta pieza (persisten en el snapshot)
     const a = ev(pz.ancho), l = ev(pz.largo);
     const ventanas = visibles(pz.inscritos).map((ins) => {
       const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
       return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {}, rotulo: !!ins.rotulo, id: rotId(ins) } : null;
     }).filter(Boolean);
-    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((state.telas.find((t) => t.nombre === pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas };
+    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((state.telas.find((t) => t.nombre === pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, rotDrag: pz.rotDrag };
     if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh }; }
     if (pz.ojMode === "arista") {
       const r = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), !!pz.ojNumerar);
@@ -4212,13 +4213,14 @@
   // SVG de vista previa: frontal y, si corresponde, trasera (espejo + calados propios) debajo.
   // Hace arrastrables los rótulos-flecha (callouts) del plano en vivo: al soltar, guarda el desplazamiento
   // en state.rotDrag[clave] y re-renderiza (la flecha se redibuja al destino). Se re-cablea en cada render.
-  function activarArrastreCallouts(container) {
+  function activarArrastreCallouts(container, store, onChange) {
+    store = store || state.rotDrag; onChange = onChange || recompute;   // store: dónde se guardan los offsets (uniforme = state.rotDrag; pieza = pz.rotDrag)
     const svg = container && container.querySelector("svg.sketch-svg"); if (!svg || !svg.getScreenCTM) return;
     const mscale = parseFloat(svg.dataset.mscale) || 1; // unidades del viewBox por metro (para guardar en metros)
     const toVB = (cx, cy) => { const m = svg.getScreenCTM(); if (!m) return null; const pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy; return pt.matrixTransform(m.inverse()); };
     container.querySelectorAll(".callout-drag").forEach((g) => {
       // Doble-clic: vuelve el rótulo a su posición automática.
-      g.addEventListener("dblclick", (e) => { const rk = g.dataset.rk; if (rk && state.rotDrag[rk]) { e.preventDefault(); e.stopPropagation(); delete state.rotDrag[rk]; recompute(); } });
+      g.addEventListener("dblclick", (e) => { const rk = g.dataset.rk; if (rk && store[rk]) { e.preventDefault(); e.stopPropagation(); delete store[rk]; onChange(); } });
       g.addEventListener("pointerdown", (e) => {
         const rk = g.dataset.rk; if (!rk) return;
         e.preventDefault(); e.stopPropagation();
@@ -4244,9 +4246,9 @@
                 dy = Math.max(M - bb.y, Math.min((vb.height - M) - (bb.y + bb.height), dy));
               }
             } catch (_) {}
-            const cur = state.rotDrag[rk] || { dx: 0, dy: 0 };   // acumulado en METROS (independiente de escala)
-            state.rotDrag[rk] = { dx: (cur.dx || 0) + dx / mscale, dy: (cur.dy || 0) + dy / mscale };
-            recompute();
+            const cur = store[rk] || { dx: 0, dy: 0 };   // acumulado en METROS (independiente de escala)
+            store[rk] = { dx: (cur.dx || 0) + dx / mscale, dy: (cur.dy || 0) + dy / mscale };
+            onChange();
           } else { g.removeAttribute("transform"); }
         };
         g.addEventListener("pointermove", move); g.addEventListener("pointerup", up); g.addEventListener("pointercancel", up);
@@ -4825,6 +4827,7 @@
       const sketchBox = list ? list.querySelector('[data-id="' + pz.id + '"] .pz-sketch') : null;
       if (sketchBox && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
         sketchBox.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas));
+        activarArrastreCallouts(sketchBox, pz.rotDrag, recomputeCompuesto);
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
         menuPlano(sketchBox, [
           { label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
@@ -4909,7 +4912,7 @@
         body.innerHTML = '<p class="muted small">Completa largo y ancho de esta pieza.</p>';
       } else {
         const sk = document.createElement("div"); sk.className = "sketch";
-        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas));
+        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); }
         body.appendChild(sk);
         const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn-outline"; dl.textContent = "Descargar plano (PDF)";
         dl.addEventListener("click", () => descargarSketchPieza(pz));
