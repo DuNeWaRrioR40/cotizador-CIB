@@ -3582,6 +3582,7 @@
   // Controles del plano en vivo (arriba a la izquierda): colapsar rótulos, modo reubicar (congela scroll),
   // y reset de posiciones. Solo cuando el plano tiene callouts arrastrables (o está colapsado).
   function montarRotCtrls(cont, svg) {
+    document.body.classList.toggle("rot-colapsar", !!state.rotColapsar); // oculta también el panel-lista de rótulos
     const hasRot = state.rotColapsar || svg.querySelector(".callout-drag");
     let box = cont.querySelector(":scope > .sketch-rotctrls");
     if (!hasRot) { if (box) box.remove(); return; }
