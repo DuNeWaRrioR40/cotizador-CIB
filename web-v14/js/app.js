@@ -2286,8 +2286,19 @@
       if (!(Lc > 0)) return null;
       const tramos = SK.parseCintaTramos(c.edicion, Lc), seg = SK.cintaSegmentos(Lc, tramos);
       return { arista: arista, ax: ax, ay: ay, ux: ux, uy: uy, nx: -uy, ny: ux, inX: inX, inY: inY, L: Lc,
-        tramos: tramos, seg: seg, ancho: ancho, tipo: c.tipo || "cinta", legend: c.legend || "", id: rotId(c) };
+        tramos: tramos, seg: seg, ancho: ancho, tipo: c.tipo || "cinta", legend: c.legend || "", rotulo: !!c.rotulo, id: rotId(c) };
     };
+    if (c.modo === "perimetro") {
+      const off = Math.max(0, ev(c.offset) || 0), runs = [];
+      ["sup", "der", "inf", "izq"].forEach((ar) => {
+        const e = strapAristaEdge(ar, { ancho: A, largo: Lp }); if (!e) return;
+        const ux = (e.bx - e.ax) / e.len, uy = (e.by - e.ay) / e.len;
+        const arr = e.outAng * Math.PI / 180, inX = -Math.cos(arr), inY = -Math.sin(arr);
+        const r = mk(e.ax + inX * off, e.ay + inY * off, ux, uy, inX, inY, e.len, "Perímetro");
+        if (r) { r.perim = true; runs.push(r); }
+      });
+      return runs;   // un solo objeto cinta (mismo id) → una ficha / un rótulo, dibujado en las 4 aristas
+    }
     if (c.modo === "patron") {
       const n = Math.max(1, Math.round(ev(c.nPat) || 1));
       const ext = Math.max(0, ev(c.extremos) || 0), pos1 = Math.max(0, ev(c.pos1) || 0);
@@ -2518,7 +2529,7 @@
       // ("fijo" espaciado / "entre" uniforme entre 2 aristas), espaciado, posición de la 1ª y offset de extremos.
       orient: base.orient || "vertical", nPat: base.nPat != null ? base.nPat : "3", distMode: base.distMode || "fijo",
       esp: base.esp != null ? base.esp : "0.5", pos1: base.pos1 != null ? base.pos1 : "0.5", posFin: base.posFin || "", extremos: base.extremos != null ? base.extremos : "0",
-      edicion: base.edicion || "", legend: base.legend || "", rotulo: !!base.rotulo };
+      edicion: base.edicion || "", legend: base.legend || "", rotulo: base.rotulo != null ? !!base.rotulo : true };
   }
   const CINTA_GLOBO = "Cinta/cierre continua paralela a la arista. En «Edición» defines los tramos separados por coma, medidos a lo largo de la cinta: " +
     "a-b = sin costura / bolsillo (Ø opcional, ej. 2-4Ø0.05) → se marca con Ω; a!b = costura de seguridad (refuerzo) → recuadro con diagonales; " +
@@ -2569,6 +2580,13 @@
           s.value = c[key] || opts[0][0]; s.addEventListener("change", (e) => { c[key] = e.target.value; (onSel || refresh)(); onChange(); });
           l.appendChild(s); if (help) addHelpTo(l, help, code); card.appendChild(l);
         };
+        if (c.modo === "perimetro") {
+          const gi = document.createElement("div"); gi.className = "pieza-grid";
+          gi.appendChild(addHelpTo(numField("Inset (m)", "offset", "0"), "Separación de la cinta respecto del borde, hacia adentro del paño, igual en todo el perímetro. 0 = pegada al borde.", "CINTA-INSET"));
+          card.appendChild(gi);
+          const np = document.createElement("p"); np.className = "muted small"; np.textContent = "Cinta cosida continua en las 4 aristas del cobertor. Sin tramos: o va, o no va (elimínala con la ✕).";
+          card.appendChild(np);
+        } else {
         selBox("Modo", "modo", [["arista", "Pegada a una arista"], ["patron", "Patrón de cintas paralelas"]],
           "«Pegada a una arista»: corre paralela a un borde. «Patrón»: varias cintas paralelas que cruzan el paño, con espaciado fijo o repartidas uniformemente entre dos aristas.", "CINTA-MODO", pintar);
         if (c.modo === "patron") {
@@ -2603,6 +2621,7 @@
         const ied = document.createElement("input"); ied.type = "text"; ied.value = c.edicion || ""; ied.placeholder = "ej. 2-4Ø0.05, 5.5!7, 7x9";
         ied.addEventListener("input", (e) => { c.edicion = e.target.value; refresh(); onChange(); });
         led.appendChild(ied); addHelpTo(led, CINTA_GLOBO, "CINTA-EDICION"); card.appendChild(led);
+        }
         const ayuda = document.createElement("p"); ayuda.className = "muted small"; card.appendChild(ayuda);
         const ln = document.createElement("label"); ln.className = "field full"; ln.innerHTML = "<span>Nombre / leyenda (plano)</span>";
         const ni = document.createElement("input"); ni.type = "text"; ni.value = c.legend || ""; ni.placeholder = "ej. Cinta superior";
@@ -2612,6 +2631,9 @@
         function refresh() {
           const ctx = { ancho: A, largo: L }, m = strapMat(c), ancho = anchoCintaM(m);
           if (!(A > 0) || !(L > 0)) { ayuda.textContent = "Define largo y ancho del paño base para ubicar la cinta."; }
+          else if (c.modo === "perimetro") {
+            ayuda.innerHTML = "Perímetro del cobertor: <b>" + f(2 * (A + L)) + " m</b> (paño " + f(L) + " × " + f(A) + " m). Cinta cosida continua en las 4 aristas.";
+          }
           else if (c.modo === "patron") {
             const vertical = (c.orient || "vertical") === "vertical", D = vertical ? A : L, Lrun = vertical ? L : A;
             ayuda.innerHTML = "Paño base <b>" + f(L) + " × " + f(A) + " m</b>. Patrón " + (vertical ? "vertical" : "horizontal") + ": se reparten a lo largo de <b>" + f(D) + " m</b> y cada cinta corre <b>" + f(Lrun) + " m</b> (menos offset de extremos). Los tramos se miden sobre ese recorrido.";
@@ -2642,7 +2664,7 @@
     add.addEventListener("click", () => { ctx.cintas.push(nuevaCinta()); pintar(); onChange(); });
     const perim = document.createElement("button"); perim.type = "button"; perim.className = "btn-outline cinta-perim-btn"; perim.textContent = "↻ Cinta cosida en TODO el perímetro (4 aristas)";
     perim.title = "Instala de una vez una cinta cosida continua en las 4 aristas del cobertor";
-    perim.addEventListener("click", () => { ["sup", "der", "inf", "izq"].forEach((ar) => ctx.cintas.push(nuevaCinta({ arista: ar, legend: "Perímetro" }))); pintar(); onChange(); });
+    perim.addEventListener("click", () => { ctx.cintas.push(nuevaCinta({ modo: "perimetro", legend: "" })); pintar(); onChange(); });
     actions.appendChild(add); actions.appendChild(perim); container.appendChild(actions);
   }
   // Editor de aletas. ctx: { aletas, cantidad(), valorOj(), onChange }
@@ -3732,6 +3754,7 @@
         { label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
         { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
         { label: "Straps / cintas", items: (state.strapsUnif || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
+        { label: "Cintas / cierres", rotulo: true, items: (state.cintasUnif || []).map((c, i) => ({ obj: c, titulo: "Cinta " + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
       ], refrescarOcUnif, { cotas: cotasDeSpec(especUnif), ocultas: state.cotasOcultas, onChange: refrescarOcUnif },
         (state.ojMode === "arista" || hayOjEnCortes(state.cortesUnif)) ? { on: !!state.ojNumerar, toggle: () => { state.ojNumerar = !state.ojNumerar; refrescarOcUnif(); } } : null);
       menuBordesRot(sk, state, () => { renderBordes(); recompute(); }, () => $("bordeDyn"), () => irANodo($("wOjetillos")));
@@ -5083,6 +5106,7 @@
           { label: "Paños inscritos", rotulo: true, items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
+          { label: "Cintas / cierres", rotulo: true, items: (pz.cintas || []).map((c, i) => ({ obj: c, titulo: "Cinta " + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
         ], refrescarOcPz, { cotas: cotasDeSpec(sketchPieza(pz)), ocultas: pz.cotasOcultas, onChange: refrescarOcPz },
           (pz.ojMode === "arista" || hayOjEnCortes(pz.cortes)) ? { on: !!pz.ojNumerar, toggle: () => { pz.ojNumerar = !pz.ojNumerar; refrescarOcPz(); } } : null);
         menuBordesRot(sketchBox, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'), () => { const w = document.querySelector('[data-id="' + pz.id + '"] .pz-oj-wrap'); if (!w) return; if (w._subHead && w.style.display === "none") w._subHead.click(); irAElemento(w._subHead || w, w._subHead || w); });
@@ -5173,6 +5197,7 @@
           { label: "Paños inscritos", rotulo: true, items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
           { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
           { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
+          { label: "Cintas / cierres", rotulo: true, items: (pz.cintas || []).map((c, i) => ({ obj: c, titulo: "Cinta " + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
         ], refrescarOcPz, { cotas: cotasDeSpec(sketchPieza(pz)), ocultas: pz.cotasOcultas, onChange: refrescarOcPz },
           (pz.ojMode === "arista" || hayOjEnCortes(pz.cortes)) ? { on: !!pz.ojNumerar, toggle: () => { pz.ojNumerar = !pz.ojNumerar; refrescarOcPz(); } } : null);
         menuBordesRot(body, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'), () => { const w = document.querySelector('[data-id="' + pz.id + '"] .pz-oj-wrap'); if (!w) return; if (w._subHead && w.style.display === "none") w._subHead.click(); irAElemento(w._subHead || w, w._subHead || w); });

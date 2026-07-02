@@ -181,6 +181,7 @@
     // Nota: la fuente estándar (WinAnsi) no tiene Ω ni ✕; en el PDF el bolsillo se marca con un pequeño círculo + Ø,
     // y el hueco con achurado + topes + "sin cinta N m".
     const CRED = PDFLib.rgb(0.753, 0.224, 0.169), HATCH = PDFLib.rgb(0.541, 0.58, 0.627), OD = String.fromCharCode(216);
+    const cintaLblDone = {};
     (sk.cintas || []).forEach((c) => {
       const halfW = Math.max(0.006, (c.ancho || 0.02) / 2), seg = c.seg || {};
       const PXx = (tm, wm) => px(c.ax + c.ux * tm + c.nx * wm);
@@ -198,7 +199,7 @@
         ln(m.a, halfW * 1.35, m.a, -halfW * 1.35, HATCH, 0.7); ln(m.b, halfW * 1.35, m.b, -halfW * 1.35, HATCH, 0.7);
         const tm = (m.a + m.b) / 2; ctr("sin cinta " + SK.fmt(m.b - m.a) + " m", LXx(tm, halfW + 0.07), LYy(tm, halfW + 0.07), 5.5, CRED);
       });
-      if (c.legend && c.legend.trim()) ctr(c.legend.trim(), LXx(c.L / 2, halfW + 0.05), LYy(c.L / 2, halfW + 0.05), 6, BLACK());
+      if (c.rotulo && ((c.legend && c.legend.trim()) || c.perim) && !cintaLblDone[c.id]) { cintaLblDone[c.id] = true; const lbl = ((c.perim ? "perim. " : "") + (c.legend || "").trim()).trim(); if (lbl) ctr(lbl, LXx(c.L / 2, halfW + 0.05), LYy(c.L / 2, halfW + 0.05), 6, BLACK()); }
     });
     const tijeraPDF = (tx, ty) => {
       const tp = SK.tijeraPrims(tx, ty, 8);

@@ -258,6 +258,7 @@ button:active { transform: scale(0.98); }
 .sketch-svg .callout-arrow { fill: #455a64; stroke: none; }
 .sketch-svg .callout-dot { fill: #455a64; stroke: none; }
 .sketch-svg .callout-lbl { fill: #37474f; font-size: 5.5px; font-weight: 600; font-family: inherit; }
+.sketch-svg .callout-pref { font-weight: 800; text-decoration: underline; }
 .sketch-svg .callout-drag { cursor: grab; touch-action: none; }
 .sketch-svg .callout-drag.dragging { cursor: grabbing; }
 .sketch-svg .callout-hit { fill: transparent; stroke: none; }

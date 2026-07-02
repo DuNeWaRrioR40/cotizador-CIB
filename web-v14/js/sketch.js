@@ -652,7 +652,7 @@
     }
     // key: clave estable del rótulo (para arrastrarlo). off: {dx,dy} desplazamiento manual (en unidades del
     // viewBox) que el usuario aplicó arrastrando. La flecha (ancla) queda fija; solo se mueve la etiqueta.
-    function callout(anchorX, anchorY, text, detail, obj, key, off) {
+    function callout(anchorX, anchorY, text, detail, obj, key, off, pref) {
       if (!cb) return;
       const ly = cb.slots.get(obj); if (ly == null) { s += `<text class="callout-lbl" x="${f1(anchorX)}" y="${f1(anchorY)}" text-anchor="middle">${esc(text)}</text>`; return; }
       off = off || { dx: 0, dy: 0 };
@@ -678,7 +678,10 @@
       if (key) s += `<g class="callout-drag" data-rk="${esc(key)}">`;
       if (key) s += `<rect class="callout-hit" x="${f1(tx - 6)}" y="${f1(lyy - 6)}" width="${f1(hitW)}" height="${f1(hitH)}"/>`;
       s += `<polygon class="callout-arrow" points="${f1(tx - 1)},${f1(lyy)} ${f1(tx - 6)},${f1(lyy - 2.4)} ${f1(tx - 6)},${f1(lyy + 2.4)}"/>`;
-      nameLines.forEach((ln, i) => { s += `<text class="callout-lbl" x="${f1(tx)}" y="${f1(y0 + i * 5.4)}">${esc(ln)}</text>`; });
+      nameLines.forEach((ln, i) => {
+        const cont = (pref && i === 0) ? (`<tspan class="callout-pref">${esc(pref)}</tspan>` + (ln ? " " + esc(ln) : "")) : esc(ln);
+        s += `<text class="callout-lbl" x="${f1(tx)}" y="${f1(y0 + i * 5.4)}">${cont}</text>`;
+      });
       if (detLines.length) {
         const dy0 = y0 + nameLines.length * 5.4 + 0.6;
         detLines.forEach((ln, i) => { s += `<text class="callout-dim" x="${f1(tx)}" y="${f1(dy0 + i * 5.2)}">${esc(ln)}</text>`; });
@@ -729,6 +732,7 @@
     });
     // ===== Cintas / cierres: banda continua a lo largo de una arista, con 4 estados por tramo =====
     // cosida (línea central) · ! seguridad (box-X) · Ω bolsillo/sin costura (con Ø) · ✕ hueco (achurado + cota).
+    const cintaRotDone = {};
     (sk.cintas || []).forEach((c) => {
       const halfW = Math.max(0.006, (c.ancho || 0.02) / 2), seg = c.seg || {};
       const PX = (tm, wm) => f1(px(c.ax + c.ux * tm + c.nx * wm));
@@ -759,7 +763,13 @@
         const tm = (m.a + m.b) / 2;
         s += `<text class="cinta-gap-lbl" x="${LX(tm, halfW + 0.06)}" y="${LY(tm, halfW + 0.06)}" text-anchor="middle">✕ ${fmt(m.b - m.a)} m</text>`;
       });
-      if (c.legend && c.legend.trim()) s += `<text class="cinta-lbl" x="${LX(c.L / 2, halfW + 0.05)}" y="${LY(c.L / 2, halfW + 0.05)}" text-anchor="middle">${esc(c.legend.trim())}</text>`;
+      // Leyenda de la cinta: callout arrastrable (opt-in por rótulo). Solo el 1er recorrido por id.
+      // La cinta perimetral antepone "perim." (negrita + subrayado) al título elegido por el usuario.
+      if (c.rotulo && ((c.legend && c.legend.trim()) || c.perim) && !cintaRotDone[c.id]) {
+        cintaRotDone[c.id] = true;
+        const k = calloutKey(c, "ci");
+        callout(px(c.ax + c.ux * c.L / 2), py(c.ay + c.uy * c.L / 2), (c.legend || "").trim(), "L " + fmt(c.L) + " m", c, k, calloutOff(k), c.perim ? "perim." : "");
+      }
     });
     // Rótulos de sets (ojetillos/straps con rótulo activado): callout a la derecha (nombre + datos técnicos).
     (sk.setsRot || []).forEach((sr) => { callout(px(sr.x), py(sr.y), sr.text, sr.detail, sr); });
@@ -1239,6 +1249,9 @@
     // Bolsillos con rótulo "sacado": su leyenda sale con flecha (como las aletas), en vez de amontonarse
     // en el rótulo de orientación del lado. Ancla en un extremo del bolsillo (abajo / izquierda).
     if (!colapsar) (sk.bolsillos || []).forEach((bo) => { if (bo.rotulo) calloutEls.push({ obj: bo, ay: (bo.arista === "sup") ? py(0) : py(sk.largo) }); });
+    // Cintas / cierres: su leyenda sale como callout arrastrable (opt-in por rótulo). Solo el 1er recorrido por id
+    // (un patrón de N comparte id → un solo rótulo).
+    if (!colapsar) { const vistoC = {}; (sk.cintas || []).forEach((c) => { if (c.rotulo && ((c.legend && c.legend.trim()) || c.perim) && !vistoC[c.id]) { vistoC[c.id] = true; calloutEls.push({ obj: c, ay: py(c.ay + c.uy * c.L / 2) }); } }); }
     let totalH = boundsBot + mBot + bottomH + cintaDetH;
     let cb = null;
     if (calloutEls.length) {
