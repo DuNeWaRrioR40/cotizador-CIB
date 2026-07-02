@@ -118,7 +118,7 @@
       const ly0 = cb.slots.get(obj);
       // Desplazamiento manual del rótulo (en METROS, guardado desde el preview): se multiplica por la escala.
       // En PDF el eje Y va hacia ARRIBA, por eso off.dy se resta (arrastrar hacia abajo baja la etiqueta).
-      const off = (key && sk.rotDrag && sk.rotDrag[key]) || { dx: 0, dy: 0 }, SC = t.scale || 1;
+      const off = (key && sk.rotDrag && sk.rotDrag[key]) || { dx: 0, dy: 0 }, SC = scale || 1;
       const ly = ly0 - (off.dy || 0) * SC;
       // Flecha corta: el texto arranca pegado al borde derecho del paño y usa el ancho disponible.
       const panelR = px(sk.ancho), tx = Math.max(panelR + 10, ax + 22) + (off.dx || 0) * SC, elbowX = Math.min(ax + 16, tx - 6);

@@ -2640,8 +2640,8 @@
     const actions = document.createElement("div"); actions.className = "pz-actions"; actions.style.flexWrap = "wrap";
     const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline"; add.textContent = "+ Cinta / cierre";
     add.addEventListener("click", () => { ctx.cintas.push(nuevaCinta()); pintar(); onChange(); });
-    const perim = document.createElement("button"); perim.type = "button"; perim.className = "btn-outline"; perim.textContent = "↻ Perímetro continuo";
-    perim.title = "Instala una cinta cosida continua en las 4 aristas";
+    const perim = document.createElement("button"); perim.type = "button"; perim.className = "btn-outline cinta-perim-btn"; perim.textContent = "↻ Cinta cosida en TODO el perímetro (4 aristas)";
+    perim.title = "Instala de una vez una cinta cosida continua en las 4 aristas del cobertor";
     perim.addEventListener("click", () => { ["sup", "der", "inf", "izq"].forEach((ar) => ctx.cintas.push(nuevaCinta({ arista: ar, legend: "Perímetro" }))); pintar(); onChange(); });
     actions.appendChild(add); actions.appendChild(perim); container.appendChild(actions);
   }

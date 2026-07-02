@@ -1010,6 +1010,50 @@
     });
     return Array.from(map.values());
   }
+  // Tira de DETALLE (no a escala, ancho fijo) de cada cinta única, para apreciar el patrón claramente.
+  // Dibuja el recorrido 0…L en una barra ancha con los 4 estados (cosida / ! seguridad / Ω bolsillo / ✕ hueco).
+  function resumenCintaDetalleSVG(sk, x0, yTop, availW) {
+    const seen = new Map();
+    (sk.cintas || []).forEach((c) => { if (!seen.has(c.id)) seen.set(c.id, c); });
+    const list = Array.from(seen.values()).filter((c) => c.L > 0);
+    if (!list.length) return "";
+    const f1 = (n) => n.toFixed(1), titH = 8, bandH = 12, axisH = 8, rowGap = 8, stripH = titH + 4 + bandH + axisH;
+    const nm = { sup: "Sup", inf: "Inf", izq: "Izq", der: "Der", "patrón": "Patrón" };
+    let s = "", y = yTop;
+    list.forEach((c) => {
+      const L = c.L, sx = availW / L, seg = c.seg || {}, bx = (tm) => f1(x0 + tm * sx);
+      const yb0 = y + titH + 4, yb1 = yb0 + bandH, yc = (yb0 + yb1) / 2;
+      const tit = (nm[c.arista] || c.arista || "") + (c.tipo === "cierre" ? " cierre" : "") + (c.legend && c.legend.trim() ? " · " + c.legend.trim() : "") + " — detalle del patrón (L=" + fmt(L) + "m)";
+      s += `<text class="cinta-det-tit" x="${f1(x0)}" y="${f1(y + titH - 1)}">${esc(tit)}</text>`;
+      (seg.material || []).forEach((m) => {
+        s += `<line class="cinta-edge" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/>`;
+        s += `<line class="cinta-edge" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/>`;
+        s += `<line class="cinta-cap" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.a)}" y2="${f1(yb1)}"/>`;
+        s += `<line class="cinta-cap" x1="${bx(m.b)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/>`;
+      });
+      (seg.stitch || []).forEach((m) => { s += `<line class="cinta-stitch" x1="${bx(m.a)}" y1="${f1(yc)}" x2="${bx(m.b)}" y2="${f1(yc)}"/>`; });
+      (seg.safety || []).forEach((m) => {
+        s += `<line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/>`;
+        s += `<line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.a)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.b)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/>`;
+        s += `<line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/>`;
+      });
+      (seg.opens || []).forEach((m) => {
+        const tm = (m.a + m.b) / 2;
+        s += `<text class="cinta-omega" x="${bx(tm)}" y="${f1(yc)}" text-anchor="middle" dominant-baseline="central">Ω</text>`;
+        if (m.dia > 0) s += `<text class="cinta-dim" x="${bx(tm)}" y="${f1(yb1 + 6)}" text-anchor="middle">Ø${fmt(m.dia)}</text>`;
+      });
+      (seg.gaps || []).forEach((m) => {
+        s += `<rect class="cinta-gap" x="${bx(m.a)}" y="${f1(yb0)}" width="${f1((m.b - m.a) * sx)}" height="${f1(bandH)}"/>`;
+        s += `<line class="cinta-cap" x1="${bx(m.a)}" y1="${f1(yb0 - 2)}" x2="${bx(m.a)}" y2="${f1(yb1 + 2)}"/><line class="cinta-cap" x1="${bx(m.b)}" y1="${f1(yb0 - 2)}" x2="${bx(m.b)}" y2="${f1(yb1 + 2)}"/>`;
+        const tm = (m.a + m.b) / 2;
+        s += `<text class="cinta-gap-lbl" x="${bx(tm)}" y="${f1(yb1 + 6)}" text-anchor="middle">✕${fmt(m.b - m.a)}</text>`;
+      });
+      s += `<text class="cinta-det-ax" x="${f1(x0)}" y="${f1(yb1 + axisH)}">0</text>`;
+      s += `<text class="cinta-det-ax" x="${f1(x0 + availW)}" y="${f1(yb1 + axisH)}" text-anchor="end">${fmt(L)}m</text>`;
+      y += stripH + rowGap;
+    });
+    return s;
+  }
   // Cuadro "CINTAS POR ARISTA": una fila por cinta (arista/patrón + metros de material/costura + Ω/✕).
   function resumenCintasSVG(sk, x0, yTop) {
     const gs = cintasResumen(sk); if (!gs.length) return "";
@@ -1165,6 +1209,8 @@
     const resH = resFilas.length ? (11 + (resFilas.length + 1) * 9 + 4) : 0;
     const cintaGrp = cintasResumen(sk).length;
     const cintaResH = cintaGrp ? (11 + cintaGrp * 9 + 4) : 0;
+    const cintaDetN = new Set((sk.cintas || []).map((c) => c.id)).size;   // tiras de detalle (una por cinta única)
+    const cintaDetH = cintaDetN ? (cintaDetN * 40 + 8) : 0;
     const resTot = resH + (cintaResH ? (resH ? 6 : 0) + cintaResH : 0);   // straps + cintas apilados
     const bottomH = Math.max(legH, resTot);
     const boundsBot = mTop + bh * scale;
@@ -1193,7 +1239,7 @@
     // Bolsillos con rótulo "sacado": su leyenda sale con flecha (como las aletas), en vez de amontonarse
     // en el rótulo de orientación del lado. Ancla en un extremo del bolsillo (abajo / izquierda).
     if (!colapsar) (sk.bolsillos || []).forEach((bo) => { if (bo.rotulo) calloutEls.push({ obj: bo, ay: (bo.arista === "sup") ? py(0) : py(sk.largo) }); });
-    let totalH = boundsBot + mBot + bottomH;
+    let totalH = boundsBot + mBot + bottomH + cintaDetH;
     let cb = null;
     if (calloutEls.length) {
       const calloutW = 130; totalW += calloutW;
@@ -1275,6 +1321,7 @@
     if (legH) s += leyendaSVG(simb, 6, boundsBot + mBot + 2, ojeLeg, rLeg);
     s += resumenStrapsSVG(sk, 108, boundsBot + mBot + 2);
     s += resumenCintasSVG(sk, 108, boundsBot + mBot + 2 + (resH ? resH + 6 : 0));
+    if (cintaDetN) s += resumenCintaDetalleSVG(sk, 6, boundsBot + mBot + bottomH + 8, totalW - 14);
     // Numeración de ojetillos (1er/último por arista, con flecha) — SOLO en el plano en vivo de la app.
     if (live && sk.ojNumeros && sk.ojNumeros.length) {
       sk.ojNumeros.forEach((m) => {

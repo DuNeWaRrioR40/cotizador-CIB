@@ -250,6 +250,9 @@ button:active { transform: scale(0.98); }
 .sketch-svg .cinta-gap { fill: url(#cinta-hatch); stroke: none; }
 .sketch-svg .cinta-gap-lbl { fill: #c0392b; font-size: 6px; font-weight: 700; font-family: inherit; }
 .sketch-svg .cinta-lbl { fill: var(--text); font-size: 6.5px; font-weight: 600; font-family: inherit; }
+.sketch-svg .cinta-det-tit { fill: var(--text); font-size: 6.5px; font-weight: 700; font-family: inherit; }
+.sketch-svg .cinta-det-ax { fill: var(--muted); font-size: 6px; font-family: inherit; }
+.cinta-perim-btn { flex-basis: 100%; border-style: dashed; font-weight: 600; }
 /* Rótulo-guía (callout) estilo despiece: gris pizarra, distinto de cotas/cortes/straps */
 .sketch-svg .callout-line { stroke: #455a64; stroke-width: 0.55; fill: none; }
 .sketch-svg .callout-arrow { fill: #455a64; stroke: none; }
