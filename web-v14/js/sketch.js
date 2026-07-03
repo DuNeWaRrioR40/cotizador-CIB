@@ -1022,6 +1022,12 @@
   }
   // Tira de DETALLE (no a escala, ancho fijo) de cada cinta única, para apreciar el patrón claramente.
   // Dibuja el recorrido 0…L en una barra ancha con los 4 estados (cosida / ! seguridad / Ω bolsillo / ✕ hueco).
+  // Devuelve el nº de barras de detalle (completa + zooms) por cinta única, para dimensionar el lienzo.
+  function cintaDetalleN(sk) {
+    const seen = new Set(); let n = 0;
+    (sk.cintas || []).forEach((c) => { if (c.L > 0 && !seen.has(c.id)) { seen.add(c.id); n += 1 + ((c.zoomTramos && c.zoomTramos.length) || 0); } });
+    return n;
+  }
   function resumenCintaDetalleSVG(sk, x0, yTop, availW) {
     const seen = new Map();
     (sk.cintas || []).forEach((c) => { if (!seen.has(c.id)) seen.set(c.id, c); });
@@ -1029,38 +1035,29 @@
     if (!list.length) return "";
     const f1 = (n) => n.toFixed(1), titH = 8, bandH = 12, axisH = 8, rowGap = 8, stripH = titH + 4 + bandH + axisH;
     const nm = { sup: "Sup", inf: "Inf", izq: "Izq", der: "Der", "patrón": "Patrón" };
+    // Recorta los segmentos al rango [za,zb] y los reubica a 0 (para las barras de zoom).
+    const clipSeg = (seg, za, zb) => { const cl = (arr) => (arr || []).map((m) => { const a = Math.max(m.a, za), b = Math.min(m.b, zb); return (b > a) ? { a: a - za, b: b - za, dia: m.dia } : null; }).filter(Boolean); return { material: cl(seg.material), stitch: cl(seg.stitch), safety: cl(seg.safety), opens: cl(seg.opens), gaps: cl(seg.gaps) }; };
+    // Dibuja UNA barra (detalle completo o zoom): banda + 4 estados + eje + (opcional) marcas numeradas de zoom.
+    const strip = (yy, L, seg, tit, marks) => {
+      let o = ""; const sx = availW / (L > 0 ? L : 1), bx = (tm) => f1(x0 + tm * sx);
+      const yb0 = yy + titH + 4, yb1 = yb0 + bandH, yc = (yb0 + yb1) / 2;
+      o += `<text class="cinta-det-tit" x="${f1(x0)}" y="${f1(yy + titH - 1)}">${esc(tit)}</text>`;
+      (seg.material || []).forEach((m) => { o += `<line class="cinta-edge" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/><line class="cinta-edge" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-cap" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.a)}" y2="${f1(yb1)}"/><line class="cinta-cap" x1="${bx(m.b)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/>`; });
+      (seg.stitch || []).forEach((m) => { o += `<line class="cinta-stitch" x1="${bx(m.a)}" y1="${f1(yc)}" x2="${bx(m.b)}" y2="${f1(yc)}"/>`; });
+      (seg.safety || []).forEach((m) => { o += `<line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.a)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.b)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/>`; });
+      (seg.opens || []).forEach((m) => { const tm = (m.a + m.b) / 2; o += `<text class="cinta-omega" x="${bx(tm)}" y="${f1(yc)}" text-anchor="middle" dominant-baseline="central">Ω</text>`; if (m.dia > 0) o += `<text class="cinta-dim" x="${bx(tm)}" y="${f1(yb1 + 6)}" text-anchor="middle">Ø${fmt(m.dia)}</text>`; });
+      (seg.gaps || []).forEach((m) => { o += `<rect class="cinta-gap" x="${bx(m.a)}" y="${f1(yb0)}" width="${f1((m.b - m.a) * sx)}" height="${f1(bandH)}"/><line class="cinta-cap" x1="${bx(m.a)}" y1="${f1(yb0 - 2)}" x2="${bx(m.a)}" y2="${f1(yb1 + 2)}"/><line class="cinta-cap" x1="${bx(m.b)}" y1="${f1(yb0 - 2)}" x2="${bx(m.b)}" y2="${f1(yb1 + 2)}"/>`; const tm = (m.a + m.b) / 2; o += `<text class="cinta-gap-lbl" x="${bx(tm)}" y="${f1(yb1 + 6)}" text-anchor="middle">✕${fmt(m.b - m.a)}</text>`; });
+      o += `<text class="cinta-det-ax" x="${f1(x0)}" y="${f1(yb1 + axisH)}">0</text><text class="cinta-det-ax" x="${f1(x0 + availW)}" y="${f1(yb1 + axisH)}" text-anchor="end">${fmt(L)}m</text>`;
+      (marks || []).forEach((mk) => { const mx = x0 + ((mk.a + mk.b) / 2) * sx; o += `<line class="cinta-zoom-br" x1="${bx(mk.a)}" y1="${f1(yb1 + 1.5)}" x2="${bx(mk.b)}" y2="${f1(yb1 + 1.5)}"/><circle class="cinta-zoom-num-bg" cx="${f1(mx)}" cy="${f1(yb0 - 4)}" r="4"/><text class="cinta-zoom-num" x="${f1(mx)}" y="${f1(yb0 - 4)}" text-anchor="middle" dominant-baseline="central">${mk.n}</text>`; });
+      return o;
+    };
     let s = "", y = yTop;
     list.forEach((c) => {
-      const L = c.L, sx = availW / L, seg = c.seg || {}, bx = (tm) => f1(x0 + tm * sx);
-      const yb0 = y + titH + 4, yb1 = yb0 + bandH, yc = (yb0 + yb1) / 2;
-      const tit = (nm[c.arista] || c.arista || "") + (c.tipo === "cierre" ? " cierre" : "") + (c.legend && c.legend.trim() ? " · " + c.legend.trim() : "") + " — detalle del patrón (L=" + fmt(L) + "m)";
-      s += `<text class="cinta-det-tit" x="${f1(x0)}" y="${f1(y + titH - 1)}">${esc(tit)}</text>`;
-      (seg.material || []).forEach((m) => {
-        s += `<line class="cinta-edge" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/>`;
-        s += `<line class="cinta-edge" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/>`;
-        s += `<line class="cinta-cap" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.a)}" y2="${f1(yb1)}"/>`;
-        s += `<line class="cinta-cap" x1="${bx(m.b)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/>`;
-      });
-      (seg.stitch || []).forEach((m) => { s += `<line class="cinta-stitch" x1="${bx(m.a)}" y1="${f1(yc)}" x2="${bx(m.b)}" y2="${f1(yc)}"/>`; });
-      (seg.safety || []).forEach((m) => {
-        s += `<line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/>`;
-        s += `<line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.a)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.b)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/>`;
-        s += `<line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/>`;
-      });
-      (seg.opens || []).forEach((m) => {
-        const tm = (m.a + m.b) / 2;
-        s += `<text class="cinta-omega" x="${bx(tm)}" y="${f1(yc)}" text-anchor="middle" dominant-baseline="central">Ω</text>`;
-        if (m.dia > 0) s += `<text class="cinta-dim" x="${bx(tm)}" y="${f1(yb1 + 6)}" text-anchor="middle">Ø${fmt(m.dia)}</text>`;
-      });
-      (seg.gaps || []).forEach((m) => {
-        s += `<rect class="cinta-gap" x="${bx(m.a)}" y="${f1(yb0)}" width="${f1((m.b - m.a) * sx)}" height="${f1(bandH)}"/>`;
-        s += `<line class="cinta-cap" x1="${bx(m.a)}" y1="${f1(yb0 - 2)}" x2="${bx(m.a)}" y2="${f1(yb1 + 2)}"/><line class="cinta-cap" x1="${bx(m.b)}" y1="${f1(yb0 - 2)}" x2="${bx(m.b)}" y2="${f1(yb1 + 2)}"/>`;
-        const tm = (m.a + m.b) / 2;
-        s += `<text class="cinta-gap-lbl" x="${bx(tm)}" y="${f1(yb1 + 6)}" text-anchor="middle">✕${fmt(m.b - m.a)}</text>`;
-      });
-      s += `<text class="cinta-det-ax" x="${f1(x0)}" y="${f1(yb1 + axisH)}">0</text>`;
-      s += `<text class="cinta-det-ax" x="${f1(x0 + availW)}" y="${f1(yb1 + axisH)}" text-anchor="end">${fmt(L)}m</text>`;
-      y += stripH + rowGap;
+      const seg = c.seg || {}, zt = c.zoomTramos || [];
+      const marks = zt.map((z, i) => ({ a: z.a, b: z.b, n: i + 1 }));
+      const tit = (nm[c.arista] || c.arista || "") + (c.tipo === "cierre" ? " cierre" : "") + (c.legend && c.legend.trim() ? " · " + c.legend.trim() : "") + " — detalle del patrón (L=" + fmt(c.L) + "m)";
+      s += strip(y, c.L, seg, tit, marks); y += stripH + rowGap;
+      zt.forEach((z, i) => { s += strip(y, z.b - z.a, clipSeg(seg, z.a, z.b), "Zoom " + (i + 1) + " · " + fmt(z.a) + "–" + fmt(z.b) + " m", null); y += stripH + rowGap; });
     });
     return s;
   }
@@ -1219,7 +1216,7 @@
     const resH = resFilas.length ? (11 + (resFilas.length + 1) * 9 + 4) : 0;
     const cintaGrp = cintasResumen(sk).length;
     const cintaResH = cintaGrp ? (11 + cintaGrp * 9 + 4) : 0;
-    const cintaDetN = new Set((sk.cintas || []).map((c) => c.id)).size;   // tiras de detalle (una por cinta única)
+    const cintaDetN = cintaDetalleN(sk);   // barras de detalle (completa + zooms) por cinta única
     const cintaDetH = cintaDetN ? (cintaDetN * 40 + 8) : 0;
     const resTot = resH + (cintaResH ? (resH ? 6 : 0) + cintaResH : 0);   // straps + cintas apilados
     const bottomH = Math.max(legH, resTot);
@@ -1379,6 +1376,16 @@
     for (let i = 1; i < out.length; i++) { if (out[i].a < out[i - 1].b) out[i].a = out[i - 1].b; } // recorta solapes
     return out.filter((t) => t.b > t.a);
   }
+  // Rangos "a-b" separados por coma (para el "zoom de detalle": secciones que se amplían aparte).
+  function parseZoomRanges(str, L) {
+    const out = []; if (!str) return out; const Lmax = (L > 0) ? L : Infinity;
+    String(str).split(",").forEach((tok) => {
+      const m = tok.trim().match(/^([0-9]*\.?[0-9]+)\s*[-–]\s*([0-9]*\.?[0-9]+)$/); if (!m) return;
+      let a = parseFloat(m[1]), b = parseFloat(m[2]); if (b < a) { const t = a; a = b; b = t; }
+      a = Math.max(0, Math.min(a, Lmax)); b = Math.max(0, Math.min(b, Lmax)); if (b > a) out.push({ a: a, b: b });
+    });
+    return out;
+  }
   // A partir de los tramos, segmenta el recorrido [0, L] de la cinta en:
   //   material: [a,b] donde HAY cinta (todo menos los huecos "gap").
   //   costura:  [a,b] donde la cinta va COSIDA (todo menos huecos y tramos "open"; incluye los de seguridad).
@@ -1414,7 +1421,7 @@
   }
   const API = {
     construirSketch, sketchSVG, volSVG, ojetillosPerimetro, puntosArista,
-    parseCintaTramos, cintaSegmentos, cintasResumen,
+    parseCintaTramos, cintaSegmentos, cintasResumen, parseZoomRanges,
     cotasDe, offsetCota, margenCotas, margenCotasLados, centroProducto, fmt, esc, tijeraPrims, tijerasEn, flechaBarbas, zigzagPts,
     distribuirArista, distribuirParejo, posicionesArista,
     aletaGeomRect, aletaOjArista, aletaOjPuntos,

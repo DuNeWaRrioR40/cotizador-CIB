@@ -2286,7 +2286,7 @@
       if (!(Lc > 0)) return null;
       const tramos = SK.parseCintaTramos(c.edicion, Lc), seg = SK.cintaSegmentos(Lc, tramos);
       return { arista: arista, ax: ax, ay: ay, ux: ux, uy: uy, nx: -uy, ny: ux, inX: inX, inY: inY, L: Lc,
-        tramos: tramos, seg: seg, ancho: ancho, tipo: c.tipo || "cinta", legend: c.legend || "", rotulo: !!c.rotulo, id: rotId(c) };
+        tramos: tramos, seg: seg, zoomTramos: SK.parseZoomRanges(c.zoomDetalle, Lc), ancho: ancho, tipo: c.tipo || "cinta", legend: c.legend || "", rotulo: !!c.rotulo, id: rotId(c) };
     };
     if (c.modo === "perimetro") {
       const off = Math.max(0, ev(c.offset) || 0), runs = [];
@@ -2529,7 +2529,7 @@
       // ("fijo" espaciado / "entre" uniforme entre 2 aristas), espaciado, posición de la 1ª y offset de extremos.
       orient: base.orient || "vertical", nPat: base.nPat != null ? base.nPat : "3", distMode: base.distMode || "fijo",
       esp: base.esp != null ? base.esp : "0.5", pos1: base.pos1 != null ? base.pos1 : "0.5", posFin: base.posFin || "", extremos: base.extremos != null ? base.extremos : "0",
-      edicion: base.edicion || "", legend: base.legend || "", rotulo: base.rotulo != null ? !!base.rotulo : true };
+      edicion: base.edicion || "", zoomDetalle: base.zoomDetalle || "", legend: base.legend || "", rotulo: base.rotulo != null ? !!base.rotulo : true };
   }
   const CINTA_GLOBO = "Cinta/cierre continua paralela a la arista. En «Edición» defines los tramos separados por coma, medidos a lo largo de la cinta: " +
     "a-b = sin costura / bolsillo (Ø opcional, ej. 2-4Ø0.05) → se marca con Ω; a!b = costura de seguridad (refuerzo) → recuadro con diagonales; " +
@@ -2621,6 +2621,10 @@
         const ied = document.createElement("input"); ied.type = "text"; ied.value = c.edicion || ""; ied.placeholder = "ej. 2-4Ø0.05, 5.5!7, 7x9";
         ied.addEventListener("input", (e) => { c.edicion = e.target.value; refresh(); onChange(); });
         led.appendChild(ied); addHelpTo(led, CINTA_GLOBO, "CINTA-EDICION"); card.appendChild(led);
+        const lz = document.createElement("label"); lz.className = "field full"; lz.innerHTML = "<span>Zoom detalle (secciones a ampliar)</span>";
+        const iz = document.createElement("input"); iz.type = "text"; iz.value = c.zoomDetalle || ""; iz.placeholder = "ej. 0.51-1, 9.9-9.95";
+        iz.addEventListener("input", (e) => { c.zoomDetalle = e.target.value; refresh(); onChange(); });
+        lz.appendChild(iz); addHelpTo(lz, "Rangos «desde-hasta» separados por coma (sobre el recorrido de la cinta). Cada rango genera una barra de detalle AMPLIADA numerada, debajo del detalle general, para que el taller vea el tramo en grande. Ej.: 0.51-1, 9.9-9.95.", "CINTA-ZOOM"); card.appendChild(lz);
         }
         const ayuda = document.createElement("p"); ayuda.className = "muted small"; card.appendChild(ayuda);
         const ln = document.createElement("label"); ln.className = "field full"; ln.innerHTML = "<span>Nombre / leyenda (plano)</span>";
@@ -5779,6 +5783,109 @@
   }
   // "dd/mm/aaaa" → número comparable aaaammdd (0 si no parsea). Para elegir el costo más reciente por SKU.
   function facturaFechaVal(s) { const m = String(s || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (!m) return 0; let a = parseInt(m[3], 10); if (a < 100) a += 2000; return a * 10000 + parseInt(m[2], 10) * 100 + parseInt(m[1], 10); }
+
+  // ---------- Visor / editor de productos (BD GRANEL, edición in place) ----------
+  const VS = { headers: null, colIdx: null, rows: null };
+  function visorColLetter(i) { let s = "", n = i + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+  function vsVal(row, k) { const i = VS.colIdx[k]; return String((i != null && i !== -1 && row.cells[i] != null ? row.cells[i] : "") || "").trim(); }
+  async function visorCargar() {
+    const tok = window.AuthCIBSA && window.AuthCIBSA.getToken ? window.AuthCIBSA.getToken() : null;
+    if (!tok) throw new Error("Inicia sesión (Google) para usar el Visor.");
+    const raw = await window.SheetsCIBSA.leerHojaRaw(tok, CFG.HOJA_GRANEL_MAESTRO || "GRANEL", "A1:AE");
+    if (!raw || raw.length < 2) throw new Error("La hoja GRANEL no tiene datos.");
+    const headers = raw[0].map((h) => String(h || "").trim());
+    const C = CFG.COL_GRANEL, colIdx = {};
+    Object.keys(C).forEach((k) => { colIdx[k] = headers.findIndex((h) => h.toLowerCase() === String(C[k]).toLowerCase()); });
+    const rows = [];
+    for (let i = 1; i < raw.length; i++) { const r = raw[i] || []; const cat = String((r[colIdx.categoria] != null ? r[colIdx.categoria] : "") || "").trim(); if (!cat) continue; rows.push({ _row: i + 1, cells: r.slice() }); }
+    VS.headers = headers; VS.colIdx = colIdx; VS.rows = rows;
+  }
+  async function abrirVisor() {
+    const cont = $("facturaPanel"); if (!cont) return;
+    facturaMsg("Cargando BD para el Visor…", false);
+    try { await facturaEnsure(false); await visorCargar(); } catch (e) { facturaMsg("Visor: " + (e && e.message ? e.message : e), true); return; }
+    facturaMsg("", false); renderVisor(cont);
+  }
+  function renderVisor(cont) {
+    cont.innerHTML = "";
+    const box = fe("div", "visor-box");
+    const head = fe("div", "visor-head");
+    head.appendChild(fe("b", null, "Visor de productos (BD)"));
+    const close = fe("button", "btn-outline visor-close", "✕ Cerrar"); close.type = "button";
+    close.addEventListener("click", () => { cont.innerHTML = ""; if (FC.ctx) renderFactura(); });
+    head.appendChild(close); box.appendChild(head);
+    box.appendChild(fe("p", "muted small", "Busca por tipo, variedad, modelo, color o categoría. Se edita el ÚLTIMO registro (fecha más reciente) en la hoja GRANEL, todo salvo SKU y Parent."));
+    const search = fe("input", "visor-search"); search.type = "text"; search.placeholder = "Buscar producto…"; box.appendChild(search);
+    const results = fe("div", "visor-results"); box.appendChild(results);
+    const editor = fe("div", "visor-editor"); box.appendChild(editor);
+    const doSearch = () => {
+      editor.innerHTML = ""; results.innerHTML = "";
+      const q = search.value.trim().toLowerCase();
+      if (q.length < 2) { results.appendChild(fe("p", "muted small", "Escribe al menos 2 caracteres.")); return; }
+      const campos = ["tipo", "variedad", "modelo", "color", "categoria"];
+      const match = VS.rows.filter((row) => campos.some((k) => VS.colIdx[k] !== -1 && vsVal(row, k).toLowerCase().includes(q)));
+      const groups = new Map();
+      match.forEach((row) => { const cod = vsVal(row, "codMaterialBase") || ("sku:" + vsVal(row, "sku")); let g = groups.get(cod); if (!g) { g = []; groups.set(cod, g); } g.push(row); });
+      const prods = [];
+      groups.forEach((g) => { g.sort((a, b) => { const fa = facturaFechaVal(vsVal(a, "fechaActualizacion")), fb = facturaFechaVal(vsVal(b, "fechaActualizacion")); return fb - fa || b._row - a._row; }); prods.push({ last: g[0], n: g.length }); });
+      if (!prods.length) { results.appendChild(fe("p", "muted small", "Sin coincidencias.")); return; }
+      prods.slice(0, 40).forEach((pr) => {
+        const row = pr.last;
+        const lbl = [vsVal(row, "categoria"), vsVal(row, "tipo"), vsVal(row, "variedad"), vsVal(row, "modelo"), vsVal(row, "color")].filter(Boolean).join(" · ");
+        const item = fe("button", "visor-item"); item.type = "button";
+        item.appendChild(fe("span", null, lbl || "(sin nombre)"));
+        item.appendChild(fe("small", "muted", "SKU " + (vsVal(row, "sku") || "—") + (pr.n > 1 ? " · " + pr.n + " estados" : "")));
+        item.addEventListener("click", () => { results.querySelectorAll(".visor-item").forEach((x) => x.classList.remove("sel")); item.classList.add("sel"); renderVisorEditor(editor, row); });
+        results.appendChild(item);
+      });
+      if (prods.length > 40) results.appendChild(fe("p", "muted small", prods.length + " productos; se muestran 40. Afina la búsqueda."));
+    };
+    search.addEventListener("input", doSearch);
+    cont.appendChild(box); try { search.focus(); } catch (e) {}
+  }
+  function renderVisorEditor(editor, row) {
+    editor.innerHTML = "";
+    const NOEDIT = {}; NOEDIT[CFG.COL_GRANEL.sku] = 1; NOEDIT[CFG.COL_GRANEL.parent] = 1;   // SKU y Parent (SKU rollo): no editables
+    editor.appendChild(fe("div", "visor-ed-tit", "Editar último registro — fila " + row._row + " · SKU " + (vsVal(row, "sku") || "—")));
+    const grid = fe("div", "visor-grid"), edits = {};
+    VS.headers.forEach((h, i) => {
+      if (!h) return;   // columna auxiliar sin encabezado
+      const l = fe("label", "field visor-field"); l.appendChild(fe("span", null, h + (NOEDIT[h] ? " (no editable)" : "")));
+      const inp = fe("input"); inp.type = "text"; inp.value = String((row.cells[i] != null ? row.cells[i] : "")).trim();
+      if (NOEDIT[h]) { inp.readOnly = true; inp.className = "visor-ro"; }
+      else inp.addEventListener("input", () => { edits[i] = inp.value; });
+      l.appendChild(inp); grid.appendChild(l);
+    });
+    editor.appendChild(grid);
+    const act = fe("div", "pz-actions"); const save = fe("button", "btn-outline visor-save", "Guardar cambios"); save.type = "button";
+    save.addEventListener("click", () => visorConfirmar(row, edits, editor)); act.appendChild(save); editor.appendChild(act);
+    editor.appendChild(fe("p", "muted small visor-ed-msg"));
+  }
+  function visorConfirmar(row, edits, editor) {
+    const msg = editor.querySelector(".visor-ed-msg"); if (msg) { msg.textContent = ""; msg.style.color = ""; }
+    const diffs = [];
+    Object.keys(edits).forEach((iStr) => { const i = parseInt(iStr, 10); const old = String((row.cells[i] != null ? row.cells[i] : "")).trim(), nu = String(edits[i]).trim(); if (nu !== old) diffs.push({ i: i, h: VS.headers[i], old: old, nu: nu }); });
+    if (!diffs.length) { if (msg) msg.textContent = "No hay cambios que guardar."; return; }
+    const cf = fe("div", "visor-confirm");
+    cf.appendChild(fe("div", "visor-confirm-tit", "Se escribirán estos cambios en GRANEL (fila " + row._row + "):"));
+    diffs.forEach((d) => { const r = fe("div", "visor-diff"); r.appendChild(fe("b", null, d.h + ": ")); r.appendChild(fe("span", "visor-old", (d.old || "(vacío)"))); r.appendChild(fe("span", null, " → ")); r.appendChild(fe("span", "visor-new", (d.nu || "(vacío)"))); cf.appendChild(r); });
+    const ac = fe("div", "pz-actions");
+    const ok = fe("button", "btn-outline visor-save", "✓ Confirmar y guardar"); ok.type = "button";
+    const no = fe("button", "btn-outline", "Cancelar"); no.type = "button";
+    ok.addEventListener("click", () => { cf.remove(); visorEscribir(row, diffs, editor); });
+    no.addEventListener("click", () => cf.remove());
+    ac.appendChild(ok); ac.appendChild(no); cf.appendChild(ac); editor.appendChild(cf);
+  }
+  function visorEscribir(row, diffs, editor) {
+    const msg = editor.querySelector(".visor-ed-msg");
+    const tok = window.AuthCIBSA && window.AuthCIBSA.getToken ? window.AuthCIBSA.getToken() : null;
+    if (!tok) { if (msg) { msg.textContent = "Sesión expirada. Vuelve a iniciar sesión."; msg.style.color = "var(--danger,#c0392b)"; } return; }
+    const updates = diffs.map((d) => ({ rango: visorColLetter(d.i) + row._row, valores: [[d.nu]] }));
+    if (msg) { msg.textContent = "Guardando…"; msg.style.color = ""; }
+    window.SheetsCIBSA.actualizarCeldas(tok, CFG.HOJA_GRANEL_MAESTRO || "GRANEL", updates)
+      .then(() => { diffs.forEach((d) => { row.cells[d.i] = d.nu; }); if (msg) { msg.textContent = "✓ Guardado (" + diffs.length + " campo(s)). Recuerda «↻ Actualizar catálogo» para reflejarlo en la App."; msg.style.color = "#1e8a4c"; } })
+      .catch((e) => { if (msg) { msg.textContent = "Error al guardar: " + (e && e.message ? e.message : e); msg.style.color = "var(--danger,#c0392b)"; } });
+  }
   // Marca en el contexto los productos de esta factura que YA están en COSTOS (mismo RUT+folio+SKU): los deja
   // en "Omitir" para que recargar el XML y registrar el RESTO no duplique lo ya cargado. No bloquea nada.
   function facturaMarcarYaCargados(ctx) {
@@ -6552,6 +6659,7 @@
   { const fi = $("facturaFile"); if (fi) fi.addEventListener("change", (e) => { const fs = e.target.files; if (!fs || !fs.length) return; facturaDesdeArchivos(Array.prototype.slice.call(fs)); e.target.value = ""; }); }
   { const bm = $("facturaManual"); if (bm) bm.addEventListener("click", async () => { await facturaEnsure(); FC.ctx = facturaCtxManual(); facturaMsg("Carga manual.", false); renderFactura(); }); }
   { const br = $("facturaRefrescar"); if (br) br.addEventListener("click", async () => { facturaMsg("Actualizando catálogo…", false); try { await facturaEnsure(true); facturaMsg("Catálogo actualizado (PROVEEDORES, COSTOS, FACTOR).", false); if (FC.ctx) renderFactura(); else if (FC.cola && FC.cola.length) renderFacturaCola(); } catch (e) { facturaMsg("No se pudo actualizar: " + (e && e.message ? e.message : e), true); } }); }
+  { const bv = $("facturaVisor"); if (bv) bv.addEventListener("click", () => { abrirVisor(); }); }
 
   // ---------- Fusión canónica de duplicados (solo usuario maestro) ----------
   function facturaEsMaestro() {
