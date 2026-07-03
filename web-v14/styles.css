@@ -278,6 +278,13 @@ button:active { transform: scale(0.98); }
 .visor-diff { font-size: 12px; padding: 1px 0; }
 .visor-old { color: #c0392b; text-decoration: line-through; }
 .visor-new { color: #1e8a4c; font-weight: 600; }
+/* Diálogo "¿versión nueva o sobrescribir?" al generar */
+.hist-ask-ov { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.hist-ask { background: var(--surface); border-radius: 12px; padding: 16px; max-width: 420px; width: 100%; box-shadow: 0 8px 30px rgba(0,0,0,0.3); }
+.hist-ask-tit { font-weight: 700; margin-bottom: 4px; }
+.hist-ask-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.hist-ask-row .btn-outline { flex: 1 1 auto; }
+.hist-ask-new { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 /* Rótulo-guía (callout) estilo despiece: gris pizarra, distinto de cotas/cortes/straps */
 .sketch-svg .callout-line { stroke: #455a64; stroke-width: 0.55; fill: none; }
 .sketch-svg .callout-arrow { fill: #455a64; stroke: none; }
@@ -343,10 +350,17 @@ button:active { transform: scale(0.98); }
 .qr-modal-btns { display: flex; gap: 8px; }
 .hist-main .hist-granel { color: #0f6e56; font-weight: 700; }
 .hist-badge { color: #1B5E20; font-weight: 600; }
+.hist-badge.editado { color: #8a5a00; }
+.hist-chip.editado { border-left: 3px solid #d9a300; }
 .hist-acts { display: flex; gap: 6px; }
 .hist-act { width: 32px; height: 28px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer; font-size: 14px; padding: 0; line-height: 1; }
 .hist-act:hover { border-color: var(--accent); }
+.hist-act.edit:hover { border-color: #d9a300; color: #8a5a00; }
 .hist-act.del:hover { border-color: #d8443a; color: #d8443a; }
+/* Banner de edición de un registro del historial */
+.edit-hist-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; padding: 10px 12px; border: 1px solid #d9a300; background: #fff8e6; border-radius: 10px; color: #5a4300; font-size: 14px; }
+.edit-hist-banner.hidden { display: none; }
+.edit-hist-banner .edit-hist-cancel { margin-left: auto; }
 /* Ayuda contextual: ícono "?" + globo informativo */
 .help-ico { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 6px; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: var(--field); color: var(--muted); font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer; vertical-align: middle; flex: 0 0 auto; }
 .help-ico:hover { border-color: var(--accent); color: var(--accent); }

@@ -135,7 +135,7 @@
     const ts = parseInt(r && r[0], 10) || 0; if (!ts) return null; // descarta encabezado / filas inválidas
     let snap = null; try { snap = r[6] ? JSON.parse(r[6]) : null; } catch (e) {}
     const est = (snap && snap.estado) || {};
-    return { ts: ts, nombre: (r[1] || "").toString().trim(), apellido: (r[2] || "").toString().trim(), tipo: (r[3] || "").toString().trim(), version: parseInt(r[4], 10) || 1, fecha: (r[5] || "").toString().trim(), snap: snap, modo: est.docMode || "formal", prod: est.prodMode || "uniforme" };
+    return { ts: ts, nombre: (r[1] || "").toString().trim(), apellido: (r[2] || "").toString().trim(), tipo: (r[3] || "").toString().trim(), version: parseInt(r[4], 10) || 1, fecha: (r[5] || "").toString().trim(), editado: (snap && snap.editado) || "", snap: snap, modo: est.docMode || "formal", prod: est.prodMode || "uniforme" };
   }
   // Une historial local + remoto (Sheet), deduplica por cliente+tipo (mayor versión / ts más reciente),
   // sube al Sheet las entradas locales que aún no estén allí (migración), y deja el resultado en localStorage.
@@ -396,33 +396,146 @@
     const wm = correlMaxLocal(); if (wm > max) max = wm; // la marca asegura que no se reutilicen números borrados
     return max + correlSalto();
   }
+  // Decisión de historial para ESTA generación: _histSkip = no guardar; _histReplace = sobrescribir la versión
+  // actual (en vez de crear un registro nuevo). Por defecto: guardar como registro nuevo (no sobrescribir).
+  let _histSkip = false, _histReplace = false, _editHist = null, _forzarNueva = false;   // _editHist: registro que se está editando (por ts); _forzarNueva: "nueva versión desde un registro" (no volver a preguntar)
+  function noGuardarHist() { const c = $("f_noHist"); return !!(c && c.checked); }
+  function edFechaHora(d) { return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2) + "/" + d.getFullYear(); }
+  function ocultarEdicionBanner() { const b = $("editHistBanner"); if (b) { b.classList.add("hidden"); b.innerHTML = ""; } }
+  function mostrarEdicionBanner(ent) {
+    const b = $("editHistBanner"); if (!b) return; b.innerHTML = "";
+    const who = ((ent.nombre || "") + " " + (ent.apellido || "")).trim() || (ent.razonSocial || "esta cotización");
+    const sp = document.createElement("span"); sp.innerHTML = "✏️ Editando <b>" + esc(who) + "</b> v" + ("0" + (parseInt(ent.version, 10) || 1)).slice(-2) + ". Al generar, se <b>actualiza ese registro</b> (quedará marcado como «editado»).";
+    const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn-outline edit-hist-cancel"; btn.textContent = "Cancelar edición";
+    btn.addEventListener("click", () => { _editHist = null; ocultarEdicionBanner(); });
+    b.appendChild(sp); b.appendChild(btn); b.classList.remove("hidden");
+  }
+  // Diálogo del lápiz: ¿nueva versión desde estos datos o sobrescribir la versión guardada?
+  // Devuelve "nueva" | "sobrescribir" | null (cancelar).
+  function preguntarEditar(ent, nextVer) {
+    return new Promise((resolve) => {
+      const pad = (n) => String(n).padStart(2, "0");
+      const v = parseInt(ent && ent.version, 10) || 1;
+      const ov = document.createElement("div"); ov.className = "hist-ask-ov";
+      const box = document.createElement("div"); box.className = "hist-ask";
+      const tit = document.createElement("div"); tit.className = "hist-ask-tit"; tit.textContent = "Editar cotización v" + pad(v);
+      const p = document.createElement("p"); p.className = "muted small"; p.textContent = "¿Partir una versión NUEVA desde estos datos (con la fecha de hoy) o sobrescribir esta misma versión guardada (queda marcada como «editado»)?";
+      const row = document.createElement("div"); row.className = "hist-ask-row";
+      const done = (r) => { ov.remove(); resolve(r); };
+      const bN = document.createElement("button"); bN.type = "button"; bN.className = "btn-outline hist-ask-new"; bN.textContent = "Nueva versión (v" + pad(nextVer) + ")";
+      const bO = document.createElement("button"); bO.type = "button"; bO.className = "btn-outline"; bO.textContent = "Sobrescribir v" + pad(v);
+      const bC = document.createElement("button"); bC.type = "button"; bC.className = "btn-outline"; bC.textContent = "Cancelar";
+      bN.addEventListener("click", () => done("nueva")); bO.addEventListener("click", () => done("sobrescribir")); bC.addEventListener("click", () => done(null));
+      ov.addEventListener("click", (e) => { if (e.target === ov) done(null); });
+      row.appendChild(bN); row.appendChild(bO); row.appendChild(bC);
+      box.appendChild(tit); box.appendChild(p); box.appendChild(row); ov.appendChild(box); document.body.appendChild(ov);
+    });
+  }
+  // Máxima versión existente para el mismo cliente + tipo del registro dado.
+  function histMaxVerDe(ent) {
+    const k = (s) => (s || "").trim().toLowerCase();
+    return histPrune(histLoad())
+      .filter((e) => k(e.nombre) === k(ent.nombre) && k(e.apellido) === k(ent.apellido) && e.tipo === ent.tipo)
+      .reduce((m, e) => Math.max(m, parseInt(e.version, 10) || 1), parseInt(ent.version, 10) || 1);
+  }
+  // Editar un registro EXISTENTE: el lápiz ofrece "nueva versión desde estos datos" o "sobrescribir esta versión".
+  async function editarHistorial(ent) {
+    const nextVer = histMaxVerDe(ent) + 1;
+    const modo = await preguntarEditar(ent, nextVer);
+    if (modo === null) return;   // cancelar
+    // Carga el diseño guardado en ambos casos.
+    _editHist = null; ocultarEdicionBanner(); _forzarNueva = false;
+    if (ent && ent.snap) restaurarCotizacion(ent.snap);
+    else { aplicarHistorial(ent); }   // registros antiguos sin snap: cae al flujo de duplicar
+    if (modo === "nueva") {
+      // Parte una versión NUEVA con los datos guardados → se guarda como registro nuevo con la fecha de hoy.
+      _forzarNueva = true;
+      $("f_version").value = String(nextVer).padStart(2, "0");
+      ocultarEdicionBanner();
+    } else {
+      // Sobrescribir la versión guardada → modo edición (misma versión, misma fecha, marca «editado»).
+      _editHist = { ts: ent.ts, fecha: ent.fecha, version: parseInt(ent.version, 10) || 1 };
+      $("f_version").value = ("0" + _editHist.version).slice(-2);   // MISMA versión (no +1)
+      mostrarEdicionBanner(ent);
+    }
+    recompute();
+    try { $("f_nombre").focus(); } catch (e) {}
+    try { $("editHistBanner").scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+  }
+  // Diálogo: ¿versión nueva (v+1) o sobrescribir la actual? Devuelve "nueva" | "sobrescribir" | null (cancelar).
+  function preguntarVersion(maxVer) {
+    return new Promise((resolve) => {
+      const pad = (n) => String(n).padStart(2, "0");
+      const ov = document.createElement("div"); ov.className = "hist-ask-ov";
+      const box = document.createElement("div"); box.className = "hist-ask";
+      const tit = document.createElement("div"); tit.className = "hist-ask-tit"; tit.textContent = "Ya existe una cotización de este cliente (v" + pad(maxVer) + ").";
+      const p = document.createElement("p"); p.className = "muted small"; p.textContent = "¿Guardar esta como una versión NUEVA o sobrescribir la actual?";
+      const row = document.createElement("div"); row.className = "hist-ask-row";
+      const done = (v) => { ov.remove(); resolve(v); };
+      const bN = document.createElement("button"); bN.type = "button"; bN.className = "btn-outline hist-ask-new"; bN.textContent = "Nueva versión (v" + pad(maxVer + 1) + ")";
+      const bO = document.createElement("button"); bO.type = "button"; bO.className = "btn-outline"; bO.textContent = "Sobrescribir v" + pad(maxVer);
+      const bC = document.createElement("button"); bC.type = "button"; bC.className = "btn-outline"; bC.textContent = "Cancelar";
+      bN.addEventListener("click", () => done("nueva")); bO.addEventListener("click", () => done("sobrescribir")); bC.addEventListener("click", () => done(null));
+      ov.addEventListener("click", (e) => { if (e.target === ov) done(null); });
+      row.appendChild(bN); row.appendChild(bO); row.appendChild(bC);
+      box.appendChild(tit); box.appendChild(p); box.appendChild(row); ov.appendChild(box); document.body.appendChild(ov);
+    });
+  }
+  // Resuelve la decisión ANTES de construir el PDF (ajusta f_version si hace falta). Devuelve false si el usuario
+  // canceló la generación. Debe llamarse al inicio de cada flujo de "Generar".
+  async function prepararVersionHistorial(nombre, apellido) {
+    _histSkip = false; _histReplace = false;
+    if (_editHist) { _histReplace = true; return true; }   // editando un registro → actualiza ESE registro (sin diálogo)
+    if (noGuardarHist()) { _histSkip = true; return true; }
+    if (_forzarNueva) { _histReplace = false; return true; }   // "nueva versión desde un registro": f_version ya fijado, guarda como registro nuevo (sin diálogo)
+    const nom = (nombre || "").trim(), ape = (apellido || "").trim();
+    if (!nom || !ape) return true;   // sin cliente: guardarHistorial no guarda igual
+    const tipo = histTipo(), k = (s) => (s || "").trim().toLowerCase();
+    const mismos = histPrune(histLoad()).filter((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === tipo);
+    if (!mismos.length) return true;   // primera cotización de este cliente/tipo → se guarda tal cual
+    const maxVer = mismos.reduce((m, e) => Math.max(m, parseInt(e.version, 10) || 1), 0);
+    const ch = await preguntarVersion(maxVer);
+    if (ch === null) return false;   // cancelar toda la generación
+    if (ch === "nueva") { $("f_version").value = String(maxVer + 1).padStart(2, "0"); _histReplace = false; }
+    else { $("f_version").value = String(maxVer).padStart(2, "0"); _histReplace = true; }
+    return true;
+  }
   function guardarHistorial(nombre, apellido, version) {
+    _forzarNueva = false;   // consumido en prepararVersionHistorial; se limpia siempre
     const nom = (nombre || "").trim(), ape = (apellido || "").trim();
     if (!nom || !ape) return; // solo cotizaciones formales con cliente
+    if (_histSkip) return null;   // borrador / reimpresión: NO guarda en el historial y NO genera número de cotización
     const tipo = histTipo(), vNum = parseInt(version, 10) || 1;
     const k = (s) => (s || "").trim().toLowerCase();
-    let arr = histPrune(histLoad());
-    const i = arr.findIndex((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === tipo && (parseInt(e.version, 10) || 1) === vNum);
     const corr = correlativoDe(nom, ape, version);
     correlMaxBump(corr); // avanza la marca de máximo histórico (dispositivo + nube), salvo que reuse un número ya existente
+    let arr = histPrune(histLoad());
+    const i = arr.findIndex((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === tipo && (parseInt(e.version, 10) || 1) === vNum);
     const emp = empresaDatos();
-    const ent = { ts: Date.now(), fecha: histFechaCorta(new Date()), nombre: nom, apellido: ape, razonSocial: emp ? emp.razon : "", tipo: tipo, modo: state.docMode, prod: state.prodMode, version: vNum, snap: snapshotCotizacion() };
+    const editando = !!_editHist;
+    const ent = { ts: editando ? _editHist.ts : Date.now(), fecha: editando ? _editHist.fecha : histFechaCorta(new Date()), nombre: nom, apellido: ape, razonSocial: emp ? emp.razon : "", tipo: tipo, modo: state.docMode, prod: state.prodMode, version: vNum, snap: snapshotCotizacion() };
     if (ent.snap) ent.snap.correlativo = corr;
-    if (i >= 0) arr.splice(i, 1); // reemplaza la MISMA versión; versiones distintas conviven como registros separados
+    if (editando) { ent.editado = edFechaHora(new Date()); if (ent.snap) ent.snap.editado = ent.editado; }   // marca "editado" (se persiste en el snap → al Sheet)
+    if (i >= 0 && _histReplace) arr.splice(i, 1); // sobrescribir SOLO si se eligió (o se está editando); si no, se guarda como registro nuevo
+    // Si edito pero la versión cambió y no calzó por versión, quita también por ts para no duplicar.
+    if (editando) { const j = arr.findIndex((e) => e.ts === _editHist.ts); if (j >= 0) arr.splice(j, 1); }
     arr.unshift(ent);
     arr = arr.slice(0, HIST_MAX);
     histStore(arr);
     renderHistorial();
+    if (editando) { _editHist = null; ocultarEdicionBanner(); }   // fin del modo edición
     // Sincroniza esta cotización a la hoja HISTORIAL del Sheet (mejor esfuerzo; no bloquea el PDF).
     const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
     if (tok) {
-      // Reemplaza en la nube (borra filas de la misma clave y anexa la nueva) para NO acumular duplicados.
-      window.SheetsCIBSA.reemplazarHistorial(tok, HIST_HOJA, ent, entryToRow(ent), HIST_ENC)
-        .catch((e) => console.warn("CIBSA: no se pudo sincronizar el historial al Sheet —", e && e.message ? e.message : e));
+      const p = _histReplace
+        ? window.SheetsCIBSA.reemplazarHistorial(tok, HIST_HOJA, ent, entryToRow(ent), HIST_ENC)   // sobrescribe (borra misma clave + anexa)
+        : window.SheetsCIBSA.escribirHistorial(tok, HIST_HOJA, [entryToRow(ent)], HIST_ENC);        // registro nuevo (solo anexa)
+      p.catch((e) => console.warn("CIBSA: no se pudo sincronizar el historial al Sheet —", e && e.message ? e.message : e));
     }
     return corr;
   }
   function aplicarHistorial(ent) {
+    _editHist = null; ocultarEdicionBanner();   // cargar un registro (no editar) cancela cualquier edición en curso
     if (ent && ent.snap) { // memoria completa: reconstruye toda la cotización
       restaurarCotizacion(ent.snap);
     } else { // registros antiguos (solo cliente + tipo)
@@ -465,18 +578,22 @@
       : '<span class="hist-nom">' + esc(contacto) + '</span>';
     const vtxt = "v" + ("0" + (parseInt(ent.version, 10) || 1)).slice(-2);
     const granelPref = entTieneGranel(ent) ? '<span class="hist-granel">Granel/</span>' : "";
-    const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "");
+    const editado = (ent.editado || (ent.snap && ent.snap.editado) || "");
+    const badge = editado ? ' · <span class="hist-badge editado">editado ' + esc(editado) + '</span>' : (esUltima ? ' · <span class="hist-badge">última versión</span>' : '');
+    const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "") + (editado ? " editado" : "");
     const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = "Duplicar para editar (como versión siguiente)";
-    main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + (esUltima ? ' · <span class="hist-badge">última versión</span>' : '') + '</span>' +
+    main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + badge + '</span>' +
       tituloHtml +
       '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + '</span>';
     main.addEventListener("click", () => aplicarHistorial(ent));
     const acts = document.createElement("div"); acts.className = "hist-acts";
     const bDl = document.createElement("button"); bDl.type = "button"; bDl.className = "hist-act"; bDl.title = "Descargar respaldo (.json)"; bDl.textContent = "⬇";
     bDl.addEventListener("click", (e) => { e.stopPropagation(); descargarRegistro(ent); });
+    const bEd = document.createElement("button"); bEd.type = "button"; bEd.className = "hist-act edit"; bEd.title = "Editar este registro (se marcará como «editado»)"; bEd.textContent = "✏️";
+    bEd.addEventListener("click", (e) => { e.stopPropagation(); editarHistorial(ent); });
     const bDel = document.createElement("button"); bDel.type = "button"; bDel.className = "hist-act del"; bDel.title = "Borrar definitivamente"; bDel.textContent = "🗑";
     bDel.addEventListener("click", (e) => { e.stopPropagation(); borrarRegistro(ent); });
-    acts.appendChild(bDl); acts.appendChild(bDel);
+    acts.appendChild(bDl); acts.appendChild(bEd); acts.appendChild(bDel);
     card.appendChild(main); card.appendChild(acts);
     return card;
   }
@@ -5238,7 +5355,8 @@
     { const to = $("telaOpcList"); if (to) to.querySelectorAll("input:checked").forEach((c) => (c.checked = false)); }
     { const tg = $("f_telaGlobalOn"); if (tg) tg.checked = false; const tgl = $("telaGlobalList"); if (tgl) tgl.querySelectorAll("input:checked").forEach((c) => (c.checked = false)); const tgb = $("telaGlobalBody"); if (tgb) tgb.classList.add("hidden"); }
     favCatActiva = null; renderCategoriasFav();
-    { const sc = $("f_suprimirCotas"); if (sc) sc.checked = false; const sc2 = $("f_suprimirCotas2"); if (sc2) sc2.checked = false; }
+    { const sc = $("f_suprimirCotas"); if (sc) sc.checked = false; const sc2 = $("f_suprimirCotas2"); if (sc2) sc2.checked = false; const nh = $("f_noHist"); if (nh) nh.checked = false; }
+    _editHist = null; ocultarEdicionBanner();   // limpiar cancela cualquier edición de registro en curso
     $("telaMultiErr").classList.add("hidden"); state.prelim = [];
     // Reset bordes/unión → mismo borde 0.045
     state.bordeModo = "uniforme"; state.bordeValor = "0.045";
@@ -5278,6 +5396,7 @@
     const largo = num("f_largo", null), ancho = num("f_ancho", null), tela = telaActual();
     // Basta con identificar al destinatario: el contacto (nombre+apellido) O la empresa (razón social).
     if ((!nombre || !apellido) && !empresaDatos()) return alert("Ingresa el nombre y apellido del cliente, o al menos la razón social de la empresa.");
+    if (!(await prepararVersionHistorial(nombre, apellido))) return;   // pregunta nueva versión / sobrescribir (o cancela)
     // Sin carpa válida: si hay productos a granel, se genera una cotización SOLO de granel.
     const hayCarpa = !!tela && largo != null && ancho != null && largo > 0 && ancho > 0;
     if (!hayCarpa) {
@@ -5533,6 +5652,7 @@
   async function generarCompuesto() {
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
     if ((!nombre || !apellido) && !empresaDatos()) return alert("Ingresa el nombre y apellido del cliente, o al menos la razón social de la empresa.");
+    if (!(await prepararVersionHistorial(nombre, apellido))) return;   // pregunta nueva versión / sobrescribir (o cancela)
     if (!state.piezas.length) {
       if (granelLineasPDF().length) return generarGranelSolo(nombre, apellido);
       return alert("Agrega al menos una pieza (o productos a granel).");

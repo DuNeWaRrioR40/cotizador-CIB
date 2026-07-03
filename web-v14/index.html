@@ -340,7 +340,7 @@
           <label class="chk desc-monto-chk"><input id="f_descMonto" type="checkbox" /> monto&nbsp;$</label>
         </div>
       </div>
-      <label class="field"><span>Versión</span><input id="f_version" type="text" value="01" /></label>
+      <input id="f_version" type="hidden" value="01" />
     </div>
 
     <!-- Observaciones (formal: uniforme y compuesto) -->
@@ -406,10 +406,12 @@
     <!-- Resumen del compuesto, replicado justo encima de Generar -->
     <div id="piezasResumenBottom" class="cmp hidden"></div>
 
+    <div id="editHistBanner" class="edit-hist-banner hidden"></div>
     <div class="actions">
       <button id="btnGenerar" class="btn-gen btn-lg" type="button">Generar cotización (PDF)</button>
       <button id="btnLimpiar" class="btn-outline" type="button">Limpiar</button>
     </div>
+    <label class="chk" style="margin-top:8px"><input type="checkbox" id="f_noHist" /> <span>No guardar esta cotización en el historial (borrador / reimpresión / prueba)</span></label>
     <label class="chk" style="margin-top:8px"><input type="checkbox" id="f_suprimirCotas2" /> <span>Suprimir cotas (plano y cotización "de aprobación": sin cotas, observaciones, resumen de materiales ni "Diseño aprobado")</span></label>
     <div id="resultHolder" class="result"></div>
     <p id="formStatus" class="status"></p>
