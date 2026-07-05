@@ -91,13 +91,14 @@
     if (!ptr) throw new Error(`No se encontró en RANGO una fila con ID '${CFG.ID_TABLA_GRANEL}'.`);
     const { encabezados, registros } = await leerTabla(token, ptr.hoja, ptr.rango);
     const C = CFG.COL_GRANEL, idx = {};
-    ["categoria", "variedad", "proveedor", "tipo", "modelo", "formato", "precio", "anchoRollo", "specs", "fav", "unidadMinima"].forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
+    ["categoria", "variedad", "proveedor", "tipo", "modelo", "formato", "precio", "precioCalc", "anchoRollo", "specs", "fav", "unidadMinima"].forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
     const get = (r, k) => { const i = idx[k]; return (i !== -1 ? (r[encabezados[i]] || "") : "").trim(); };
     const esTela = (s) => norm(s) === "tela";
     const esMLineal = (s) => /lineal/.test(norm(s));   // "M.LINEAL", "metro lineal", etc.
-    // Una misma tela puede tener M.LINEAL en GRANEL (venta por metro) y en CONFECCION. El selector de
-    // confección debe usar el precio de CONFECCION; si no existe, cae al M.LINEAL que haya. Dedup por
-    // nombre prefiriendo CONFECCION.
+    // Confección y metro comparten el MISMO precio de lista (costo × factor): una tela = un precio.
+    // La diferencia "vender sin confección" es un descuento de canal (carrito de granel), no un precio aparte.
+    // Por eso ya no hay preferencia por CONFECCION: se toma la fila M.LINEAL del material (dedup por nombre,
+    // primera que aparezca; los precios de las filas de un mismo material están homologados en el Sheet).
     const mapa = {};
     for (const r of registros) {
       if (!esTela(get(r, "categoria")) || !esMLineal(get(r, "variedad"))) continue;
@@ -106,15 +107,16 @@
       const nombre = [proveedor, tipo, modelo, formato].filter(Boolean).join(" · ");
       const nombreCliente = [tipo, modelo, formato].filter(Boolean).join(" · ");
       if (!nombre) continue;
-      const precioML = parseNumero(get(r, "precio"));
+      // Precio efectivo por metro lineal: Precio manual si existe, si no el PrecioCalc (fórmula costo×factor).
+      const precioManual = parseNumero(get(r, "precio"));
+      const precioML = precioManual != null ? precioManual : parseNumero(get(r, "precioCalc"));
       const ancho = parseNumero(get(r, "anchoRollo"));
       if (precioML == null || ancho == null || ancho <= 0) continue;   // sin precio o sin ancho de rollo: no se puede valorizar por m²
       const ficha = get(r, "specs").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
       const favCats = get(r, "fav").split("/").map((s) => s.trim()).filter(Boolean);
-      const umin = norm(get(r, "unidadMinima")), esConf = (umin === "confeccion" || umin === "conf");
       const tela = { nombre, nombreCliente, valorM2: precioML / ancho, anchoRollo: ancho, ficha, proveedor, tipo, fav: favCats, unidadMinima: get(r, "unidadMinima") };
-      const key = nombre.toLowerCase(), prev = mapa[key];
-      if (!prev || (esConf && !prev.esConf)) mapa[key] = { tela: tela, esConf: esConf };   // CONFECCION gana
+      const key = nombre.toLowerCase();
+      if (!mapa[key]) mapa[key] = { tela: tela };   // una tela = un precio de lista (sin preferencia por CONFECCION)
     }
     const telas = Object.keys(mapa).map((k) => mapa[k].tela);
     if (!telas.length) throw new Error("VIGENTES no tiene filas válidas Categoria=Tela y Variedad=M.LINEAL (con Precio y ancho de rollo). Encabezados: " + encabezados.join(" | "));
@@ -178,7 +180,11 @@
         tipo: get(r, "tipo"), variedad: get(r, "variedad"), modelo: get(r, "modelo"),
         equiv: get(r, "equiv"),                                          // clave de equivalencia (interna)
         unidad: get(r, "unidad") || "unidad",
-        precio: parseNumero(get(r, "precio")),                           // venta neto; null si vacío
+        // Precio efectivo: si hay Precio MANUAL (override) se usa; si está vacío, cae al PrecioCalc
+        // (fórmula costo × factor). Así los productos cargados por factura (Precio vacío) sí quedan valorizados.
+        precio: (function () { const m = parseNumero(get(r, "precio")); return m != null ? m : parseNumero(get(r, "precioCalc")); })(),
+        precioManual: parseNumero(get(r, "precio")),                     // solo el Precio escrito a mano (Visor/depuración)
+        precioCalc: parseNumero(get(r, "precioCalc")),                   // solo la fórmula (Visor/depuración)
         anchoRollo: parseNumero(get(r, "anchoRollo")),                   // opcional, para $/m²
         specs: get(r, "specs"), nombreCliente: get(r, "nombreCliente"), notas: get(r, "notas"),
         sku: get(r, "sku"),                                              // llave única por fila (interna)
@@ -190,8 +196,8 @@
         largo: get(r, "largo"),                                          // largo (p. ej. venta por metro)
         color: get(r, "color"), materialidad: get(r, "materialidad"),    // atributos descriptivos
         fav: get(r, "fav").split("/").map((s) => s.trim()).filter(Boolean), // categorías FAV (varias con "/")
-        // divisible = GRANEL (acepta decimales); por defecto/UNITARIO = false (cantidad entera). Mín 1 siempre.
-        divisible: /granel/i.test(get(r, "unidadMinima")),
+        // divisible = GRANEL o CONFECCION/CONF (aceptan decimales; material vendido por medida); UNITARIO = false (entero). Mín 1 siempre.
+        divisible: /granel|conf/i.test(get(r, "unidadMinima")),
         // Campos del modelo de costeo (para clonar productos/estados en el panel de facturas):
         unidadMinima: get(r, "unidadMinima"), parent: get(r, "parent"),
         rendimiento: parseNumero(get(r, "rendimiento")), codMaterialBase: get(r, "codMaterialBase"),

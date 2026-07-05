@@ -3,7 +3,7 @@
 (function (global) {
   const CONFIG = {
     // Versión visible del build (debe coincidir con el SW). Sirve para confirmar que cargó la última.
-    APP_VERSION: "v14-52",
+    APP_VERSION: "v14-56",
     // --- Google ---
     // Pega aquí el "ID de cliente" del cliente OAuth tipo WEB (lo creas en Google Cloud).
     GOOGLE_CLIENT_ID: "844999785397-fncjlgv5l9eqhp9f1mv98t6gcdo4l9nc.apps.googleusercontent.com",
@@ -42,6 +42,9 @@
     COL_GRANEL: {
       categoria: "Categoria", proveedor: "Proveedor", tipo: "Tipo", variedad: "Variedad",
       modelo: "Modelo", equiv: "Equiv", unidad: "Unidad", precio: "Precio",
+      // Precio calculado por fórmula (costo × factor) que vive a la derecha en VIGENTES/GRANEL.
+      // Para productos cargados por factura, "Precio" (manual) queda vacío y el valor real está aquí.
+      precioCalc: "PrecioCalc",
       anchoRollo: "AnchoRollo", specs: "Specs", nombreCliente: "NombreCliente",
       activo: "Activo", notas: "Notas",
       // Internas / analíticas (opcionales): SKU (llave única por fila), Precio Base + Fecha Base
@@ -112,6 +115,10 @@
     IVA_PCT: 19,
     VALOR_OJETILLO_DEFAULT: 450,
     DIAS_ENTREGA_DEFAULT: 3,
+    // Descuento por defecto de la venta a GRANEL de tela por metro (M.LINEAL): mismo material sin confección.
+    // Se aplica como descuento editable en la línea del carrito. Solo Categoría=TELA + Variedad=M.LINEAL
+    // (accesorios/insumos y ROLLO nacen en 0). El vendedor puede modificarlo (p. ej. subirlo por volumen).
+    GRANEL_DESCUENTO_TELA_PCT: 25,
     // Correlativo de cotizaciones: parte cerca de este número y luego avanza con un SALTO ALEATORIO
     // (entre 1 y CORRELATIVO_SALTO_MAX) en cada nueva cotización, para que la competencia no pueda
     // inferir el volumen por la diferencia entre números. Estable por cotización (cliente+versión):

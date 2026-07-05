@@ -849,9 +849,18 @@
     if (v < 1) v = 1;
     return v;
   }
+  // Descuento con que NACE una línea de granel. Tela vendida por metro (Categoría=TELA + Variedad=M.LINEAL)
+  // = mismo material sin confección → descuento por defecto (config, 25%). Rollo, accesorios e insumos → 0.
+  // Es solo el valor INICIAL; el vendedor lo edita en el carrito (p. ej. subirlo por volumen).
+  function granelDescInicial(p) {
+    const N = (window.FacturaCIBSA && window.FacturaCIBSA.norm) ? window.FacturaCIBSA.norm : (s) => String(s || "").trim().toLowerCase();
+    const esTelaMetro = N(p.categoria) === "tela" && /lineal/.test(N(p.variedad));
+    const pct = (CFG.GRANEL_DESCUENTO_TELA_PCT != null) ? CFG.GRANEL_DESCUENTO_TELA_PCT : 0;
+    return esTelaMetro ? String(pct) : "0";
+  }
   function granelAgregar(p, cant, colorElegido) {
     const color = (colorElegido != null && colorElegido !== "") ? colorElegido : (p.color || "");
-    state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, formato: p.formato, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, divisible: !!p.divisible, color: color, materialidad: p.materialidad, largo: p.largo, cantidad: String(cant), descPct: "0", descMonto: false });
+    state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, formato: p.formato, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, divisible: !!p.divisible, color: color, materialidad: p.materialidad, largo: p.largo, cantidad: String(cant), descPct: granelDescInicial(p), descMonto: false });
     granelSel = p; // el comparador interno sigue al último producto agregado
     renderGranelLineas(); renderGranel(); recompute();
   }
@@ -891,6 +900,26 @@
     }).filter(Boolean);
   }
   function granelTotalPDF() { return granelLineasPDF().reduce((s, g) => s + g.total, 0); }
+  // Revalidación de una línea del carrito contra el catálogo VIGENTE del Sheet (state.granel).
+  // El precio de la línea se congela al agregarla; si en el Sheet ese SKU cambió, perdió el precio
+  // o desapareció, hay que avisar en vez de arrastrar el valor viejo en silencio.
+  function granelVigenteDeLinea(l) {
+    if (!l || !l.sku) return { validable: false };                    // líneas antiguas sin SKU: no se pueden validar
+    const skuN = String(l.sku).trim().toLowerCase();
+    const cat = (state.granel || []).find((p) => p.sku && String(p.sku).trim().toLowerCase() === skuN);
+    if (!cat) return { validable: true, hallado: false, precioVig: null };
+    return { validable: true, hallado: true, precioVig: (cat.precio != null ? cat.precio : null) };
+  }
+  // Devuelve null si la línea está al día, o { motivo, precioVig? } si está desfasada.
+  function granelLineaDesfasada(l) {
+    const v = granelVigenteDeLinea(l);
+    if (!v.validable) return null;
+    if (!v.hallado) return { motivo: "no-esta" };                                  // el SKU ya no está en el catálogo
+    if (v.precioVig == null) return { motivo: "sin-precio" };                       // el producto perdió el precio en el Sheet
+    if (l.precio == null) return { motivo: "recuperable", precioVig: v.precioVig }; // la línea no traía precio, pero el Sheet ahora sí
+    if (Math.round(v.precioVig) !== Math.round(l.precio)) return { motivo: "cambio", precioVig: v.precioVig };
+    return null;
+  }
   // Carrito de líneas a granel agregadas a la cotización (cantidad editable + subtotal neto).
   function renderGranelLineas() {
     const cont = $("granelLineas"); if (!cont) return;
@@ -949,6 +978,25 @@
       });
       r2.appendChild(cw); r2.appendChild(u); r2.appendChild(dl); r2.appendChild(di); r2.appendChild(pct);
       item.appendChild(r1); item.appendChild(r2);
+      // Revalidación contra el Sheet: si la línea quedó desfasada, avisar (rojo) en vez de arrastrar el precio viejo.
+      const df = granelLineaDesfasada(l);
+      if (df) {
+        item.classList.add("desfasada");
+        const w = document.createElement("div"); w.className = "granel-cart-warn";
+        const msg = document.createElement("span");
+        if (df.motivo === "no-esta") msg.textContent = "⚠ Este producto ya no está en el catálogo del Sheet — verificar.";
+        else if (df.motivo === "sin-precio") msg.textContent = "⚠ El producto ya no tiene precio en el Sheet — verificar antes de cotizar.";
+        else if (df.motivo === "cambio") msg.textContent = "⚠ Precio desactualizado: en el Sheet ahora es " + money(df.precioVig) + " (esta línea usa " + money(l.precio || 0) + ").";
+        else if (df.motivo === "recuperable") msg.textContent = "⚠ Esta línea no tenía precio; en el Sheet ahora hay " + money(df.precioVig) + ".";
+        w.appendChild(msg);
+        if (df.precioVig != null) {
+          const fix = document.createElement("button"); fix.type = "button"; fix.className = "granel-cart-fix";
+          fix.textContent = "Actualizar a " + money(df.precioVig);
+          fix.addEventListener("click", () => { l.precio = df.precioVig; renderGranelLineas(); recompute(); });
+          w.appendChild(fix);
+        }
+        item.appendChild(w);
+      }
       box.appendChild(item);
     });
     recalcSub();
@@ -5968,10 +6016,23 @@
     const NOEDIT = {}; NOEDIT[CFG.COL_GRANEL.sku] = 1; NOEDIT[CFG.COL_GRANEL.parent] = 1;   // SKU y Parent (SKU rollo): no editables
     editor.appendChild(fe("div", "visor-ed-tit", "Editar último registro — fila " + row._row + " · SKU " + (vsVal(row, "sku") || "—")));
     const grid = fe("div", "visor-grid"), edits = {};
+    const UMIN_H = (CFG.COL_GRANEL && CFG.COL_GRANEL.unidadMinima) || "Unidad Minima";
+    const umNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
     VS.headers.forEach((h, i) => {
       if (!h) return;   // columna auxiliar sin encabezado
       const l = fe("label", "field visor-field"); l.appendChild(fe("span", null, h + (NOEDIT[h] ? " (no editable)" : "")));
-      const inp = fe("input"); inp.type = "text"; inp.value = String((row.cells[i] != null ? row.cells[i] : "")).trim();
+      const val0 = String((row.cells[i] != null ? row.cells[i] : "")).trim();
+      // Unidad Mínima: solo GRANEL / UNITARIO (un solo significado, sin CONF). Legacy CONFECCION/CONF se muestra como GRANEL.
+      if (!NOEDIT[h] && umNorm(h) === umNorm(UMIN_H)) {
+        const sel = fe("select"); sel.className = "visor-sel";
+        [["GRANEL", "GRANEL"], ["UNITARIO", "UNITARIO"]].forEach(([v, t]) => { const o = fe("option"); o.value = v; o.textContent = t; sel.appendChild(o); });
+        const legacyConf = /^(conf|confeccion)$/i.test(val0);
+        sel.value = legacyConf ? "GRANEL" : (val0 === "UNITARIO" ? "UNITARIO" : "GRANEL");
+        if (sel.value !== val0) edits[i] = sel.value;   // homologa legacy en el próximo guardado
+        sel.addEventListener("change", () => { edits[i] = sel.value; });
+        l.appendChild(sel); grid.appendChild(l); return;
+      }
+      const inp = fe("input"); inp.type = "text"; inp.value = val0;
       if (NOEDIT[h]) { inp.readOnly = true; inp.className = "visor-ro"; }
       else inp.addEventListener("input", () => { edits[i] = inp.value; });
       l.appendChild(inp); grid.appendChild(l);
@@ -6473,7 +6534,7 @@
       g.appendChild(facturaInput("Modelo", P.modelo, (v) => P.modelo = v, { ej: "G200 · COBKK10000 · NAUTICO600 · MEISTER" }));
       g.appendChild(facturaInput("Color", P.color, (v) => P.color = v, { ej: "AZUL MARINO · BLANCO · varios: NEGRO / BLANCO", title: "Si hay varios colores al MISMO precio, sepáralos con / (no entran al SKU). Si el color cambia el precio, deja UN color (sí entra al SKU)." }));
       g.appendChild(facturaSelectUnidad("Unidad (medida del proveedor, de la lista)", P.unidad, (v) => P.unidad = v));
-      g.appendChild(facturaSelect("Unidad mínima", [["UNITARIO", "UNITARIO"], ["GRANEL", "GRANEL"], ["CONF", "CONF (confección)"]], (P.unidadMinima === "CONFECCION" ? "CONF" : P.unidadMinima), (v) => P.unidadMinima = v));
+      g.appendChild(facturaSelect("Unidad mínima", [["GRANEL", "GRANEL"], ["UNITARIO", "UNITARIO"]], (/^(conf|confeccion)$/i.test(String(P.unidadMinima || "").trim()) ? "GRANEL" : P.unidadMinima), (v) => P.unidadMinima = v));
       g.appendChild(facturaInput("Ancho rollo (m)", P.anchoRollo, (v) => P.anchoRollo = v, { inputmode: "decimal", ej: "2 · 1,52 · 3 (en metros)" }));
       g.appendChild(facturaInput("Rendimiento (estado comprado)", P.rendimiento, (v) => P.rendimiento = fnum(v), { inputmode: "decimal", ej: "1 (se vende entero) · 50 (m por rollo) · 100" }));
       card.appendChild(g);
@@ -6532,13 +6593,13 @@
 
       // Estados de venta (hijos) que derivan del comprado
       const estWrap = fe("div", "factura-estados");
-      estWrap.appendChild(fe("p", "factura-sub", "Estados de venta DERIVADOS (distintos al comprado de arriba). Aquí va lo que se fracciona/transforma: p. ej. M.LINEAL para vender por metro (U.mín GRANEL) o para confección (U.mín CONF). Cada uno deriva del costo del comprado vía Parent, con su propio rendimiento. NO repitas aquí la variedad comprada."));
+      estWrap.appendChild(fe("p", "factura-sub", "Estados de venta DERIVADOS (distintos al comprado de arriba). Aquí va lo que se fracciona: p. ej. M.LINEAL para vender por metro (U.mín GRANEL). La confección NO es un estado aparte: usa esa misma fila M.LINEAL a precio de lista, y el granel aplica su descuento en el carrito. Cada estado deriva del costo del comprado vía Parent, con su propio rendimiento. NO repitas aquí la variedad comprada."));
       it.estados.forEach((es, ei) => {
         const row = fe("div", "factura-grid factura-estado");
-        row.appendChild(facturaInput("Variedad", es.variedad, (v) => es.variedad = v, { ph: "M.LINEAL…", ej: "M.LINEAL · CONF · SALDO (≠ a la comprada)" }));
+        row.appendChild(facturaInput("Variedad", es.variedad, (v) => es.variedad = v, { ph: "M.LINEAL…", ej: "M.LINEAL · SALDO (≠ a la comprada)" }));
         if (es.variedad && window.FacturaCIBSA.norm(es.variedad) === window.FacturaCIBSA.norm(P.variedad)) row.appendChild(fe("span", "factura-warn", "⚠ repite la variedad comprada"));
         row.appendChild(facturaSelectUnidad("Unidad", es.unidad, (v) => es.unidad = v));
-        row.appendChild(facturaSelect("U. mínima", [["GRANEL", "GRANEL"], ["CONF", "CONF (confección)"], ["UNITARIO", "UNITARIO"]], (es.unidadMinima === "CONFECCION" ? "CONF" : es.unidadMinima), (v) => es.unidadMinima = v));
+        row.appendChild(facturaSelect("U. mínima", [["GRANEL", "GRANEL"], ["UNITARIO", "UNITARIO"]], (/^(conf|confeccion)$/i.test(String(es.unidadMinima || "").trim()) ? "GRANEL" : es.unidadMinima), (v) => es.unidadMinima = v));
         row.appendChild(facturaInput("Rendimiento", es.rendimiento, (v) => es.rendimiento = fnum(v), { inputmode: "decimal", ej: "metros por rollo (50 · 100)" }));
         const del = fe("button", "factura-estado-del", "✕"); del.type = "button"; del.title = "Quitar estado";
         del.addEventListener("click", () => { it.estados.splice(ei, 1); renderFactura(); });

@@ -270,7 +270,7 @@ button:active { transform: scale(0.98); }
 .visor-ed-tit { font-weight: 700; margin-bottom: 6px; }
 .visor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .visor-field span { font-size: 11px; color: var(--muted); }
-.visor-field input { width: 100%; padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+.visor-field input, .visor-field select { width: 100%; padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: var(--surface); color: var(--text); }
 .visor-ro { background: #f1f1f4; color: var(--muted); cursor: not-allowed; }
 .visor-save { font-weight: 600; }
 .visor-confirm { margin-top: 10px; border: 1px solid var(--accent); border-radius: 8px; padding: 8px 10px; background: rgba(46,83,140,0.05); }
@@ -573,6 +573,10 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .granel-cart-cap { font-size: 13px; font-weight: 600; color: #0f6e56; margin-bottom: 6px; }
 .granel-cart-item { padding: 5px 0; border-bottom: 1px dashed var(--border); }
 .granel-cart-item:last-of-type { border-bottom: 0; }
+.granel-cart-item.desfasada { border-left: 3px solid #d8443a; padding-left: 8px; margin-left: -8px; }
+.granel-cart-warn { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; color: #b3261e; font-size: 12px; font-weight: 600; }
+.granel-cart-fix { border: 1px solid #d8443a; color: #b3261e; background: #fff; border-radius: 8px; padding: 2px 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.granel-cart-fix:hover { background: #fdecea; }
 .granel-cart-r1 { display: flex; align-items: center; gap: 8px; }
 .granel-cart-r2 { display: flex; align-items: flex-end; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
 .granel-cart-nom { flex: 1 1 auto; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
