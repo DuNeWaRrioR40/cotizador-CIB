@@ -3,7 +3,7 @@
 (function (global) {
   const CONFIG = {
     // Versión visible del build (debe coincidir con el SW). Sirve para confirmar que cargó la última.
-    APP_VERSION: "v14-58",
+    APP_VERSION: "v14-61",
     // --- Google ---
     // Pega aquí el "ID de cliente" del cliente OAuth tipo WEB (lo creas en Google Cloud).
     GOOGLE_CLIENT_ID: "844999785397-fncjlgv5l9eqhp9f1mv98t6gcdo4l9nc.apps.googleusercontent.com",
@@ -32,6 +32,11 @@
     COL_MAT_PRECIO: "PRECIO VTA",
     COL_MAT_UNIDAD: "UNIDAD",
     COL_MAT_PROVEEDOR: "PROVEEDOR",
+    // Categorías (de la tabla Materiales) cuyos ítems se comportan como CINTA/CIERRE (banda por arista) y por
+    // tanto aparecen en los selectores de Cintas/Straps, agrupados por categoría. Deja la lista con los nombres
+    // EXACTOS de tus categorías de cinta (p. ej. "Cinta", "Cierre", "Velcro"). Si la dejas vacía, la App cae a
+    // un patrón /cinta|cierre/ sobre la categoría o el nombre del ítem (menos preciso, pero funciona de arranque).
+    CATEGORIAS_CINTA: [],
 
     // --- Productos a granel (referenciada en RANGO con este ID) ---
     // Productos estándar que se venden sin transformación (a lo más, corte por metro).

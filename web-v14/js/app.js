@@ -1862,12 +1862,17 @@
       });
     }
     renderTelaOpc(); renderCategoriasFav(); renderTelaGlobal();
-    // Materiales (desde RANGO → tabla "Materiales"; si no existe, queda vacío)
-    try { state.materiales = await window.SheetsCIBSA.cargarMateriales(token); }
-    catch (e) { console.warn("CIBSA: no se pudieron cargar los materiales —", e && e.message ? e.message : e); state.materiales = []; }
-    // Productos a granel (desde RANGO → tabla "Granel"; si no existe, queda vacío)
+    // Productos a granel (desde RANGO → tabla "Granel"/VIGENTES; si no existe, queda vacío). Se carga PRIMERO
+    // porque los materiales (Insumo/Accesorio/Estructural) ahora se derivan de aquí por su Rol.
     try { state.granel = await window.SheetsCIBSA.cargarGranel(token); }
     catch (e) { console.warn("CIBSA: no se pudieron cargar los productos a granel —", e && e.message ? e.message : e); state.granel = []; }
+    // Materiales UNIFICADOS: se derivan de GRANEL por su Rol (Insumo/Accesorio/Estructural). El Panel alimenta todo.
+    // Durante la transición, si aún no hay filas con Rol en GRANEL, cae a la tabla "Materiales".
+    state.materiales = window.SheetsCIBSA.materialesDesdeGranel(state.granel);
+    if (!state.materiales.length) {
+      try { state.materiales = await window.SheetsCIBSA.cargarMateriales(token); }
+      catch (e) { console.warn("CIBSA: no se pudieron cargar los materiales —", e && e.message ? e.message : e); state.materiales = []; }
+    }
     renderGranel();
     cargarUF(); // UF del día para el mínimo de producción (no bloquea la carga)
     // Re-dibuja los sub-editores que dependen de las telas/materiales recién cargadas
@@ -2075,6 +2080,30 @@
     if (extra) s += " · " + extra;
     if (m.proveedor) s += "  (" + m.proveedor + ")";
     return s;
+  }
+  // ¿Este material se comporta como cinta/cierre (banda por arista)? Se identifica por CATEGORÍA (no por el
+  // nombre del ítem, que era frágil). Si CONFIG.CATEGORIAS_CINTA está definido, usa esa lista (exacta,
+  // normalizada); si no, cae a un patrón /cinta|cierre/ sobre la categoría o el ítem (compatibilidad).
+  function esCintaMat(m) {
+    if (!m) return false;
+    const nm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+    const lista = CFG.CATEGORIAS_CINTA;
+    if (Array.isArray(lista) && lista.length) return lista.some((c) => nm(c) === nm(m.categoria));
+    return /cinta|cierre/i.test(m.categoria || "") || /cinta|cierre/i.test(m.item || "");
+  }
+  // Llena un <select> con los materiales tipo cinta AGRUPADOS por categoría (<optgroup>). Conserva la opción
+  // "— elegir —" que ya tenga el select; solo agrega los grupos. Ordena categorías e ítems alfabéticamente.
+  function opcionesCintaEn(sel) {
+    const cats = [];
+    state.materiales.forEach((m) => { if (esCintaMat(m)) { const c = m.categoria || ""; if (cats.indexOf(c) === -1) cats.push(c); } });
+    cats.sort((a, b) => a.localeCompare(b));
+    cats.forEach((cat) => {
+      const og = document.createElement("optgroup"); og.label = cat || "(sin categoría)";
+      state.materiales.map((m, i) => ({ m, i })).filter((x) => esCintaMat(x.m) && (x.m.categoria || "") === cat)
+        .sort((a, b) => (a.m.item || "").localeCompare(b.m.item || ""))
+        .forEach((x) => { const o = document.createElement("option"); o.value = String(x.i); o.textContent = matLabel(x.m); og.appendChild(o); });
+      sel.appendChild(og);
+    });
   }
   function compMat(comp) { return (comp.matId != null && state.materiales[comp.matId]) || null; }
   function compPrecio(comp) { const r = window.CalcCIBSA.evalExpr(comp.precio); return (r == null || isNaN(r)) ? 0 : r; }
@@ -2569,8 +2598,7 @@
   function renderStraps(container, ctx) {
     container.innerHTML = "";
     const onChange = ctx.onChange, ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
-    const esCinta = (m) => /cinta/i.test((m && m.item) || ""); // ITEM contiene "cinta"
-    const hayCintas = state.materiales.some(esCinta);
+    const hayCintas = state.materiales.some(esCintaMat);
     const cab = document.createElement("p"); cab.className = "muted small";
     cab.textContent = hayCintas ? "Straps (cintas/webbing) — banda recta; el ancho lo da la cinta:" : "Straps: no hay materiales tipo \"cinta\" en la tabla de Materiales.";
     container.appendChild(cab);
@@ -2588,7 +2616,7 @@
         const lt = document.createElement("label"); lt.className = "field full"; lt.innerHTML = "<span>Cinta (material)</span>";
         const selT = document.createElement("select");
         const o0 = document.createElement("option"); o0.value = ""; o0.textContent = "— elegir cinta —"; selT.appendChild(o0);
-        state.materiales.forEach((m, i) => { if (!esCinta(m)) return; const o = document.createElement("option"); o.value = String(i); o.textContent = matLabel(m); selT.appendChild(o); });
+        opcionesCintaEn(selT);
         selT.value = s.matId != null ? String(s.matId) : "";
         selT.addEventListener("change", (e) => { s.matId = e.target.value === "" ? null : parseInt(e.target.value, 10); refresh(); onChange(); });
         lt.appendChild(selT); addHelpTo(lt, "Cinta/webbing del strap. El ancho se toma de la columna MODELO (en cm) y el precio por metro de la columna de precio.", "STRAP-CINTA"); card.appendChild(lt);
@@ -2703,7 +2731,6 @@
   function renderCintas(container, ctx) {
     container.innerHTML = "";
     const onChange = ctx.onChange, ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
-    const esCinta = (m) => /cinta|cierre/i.test((m && m.item) || "");
     const cab = document.createElement("p"); cab.className = "muted small";
     cab.textContent = "Cintas / cierres: banda continua paralela a una arista, con tramos de bolsillo (Ω), seguridad (!) y huecos (✕).";
     container.appendChild(cab);
@@ -2734,7 +2761,7 @@
         const lm = document.createElement("label"); lm.className = "field full"; lm.innerHTML = "<span>Cinta / cierre (material)</span>";
         const selM = document.createElement("select");
         const o0 = document.createElement("option"); o0.value = ""; o0.textContent = "— elegir material —"; selM.appendChild(o0);
-        state.materiales.forEach((m, i) => { if (!esCinta(m)) return; const o = document.createElement("option"); o.value = String(i); o.textContent = matLabel(m); selM.appendChild(o); });
+        opcionesCintaEn(selM);
         selM.value = c.matId != null ? String(c.matId) : "";
         selM.addEventListener("change", (e) => { c.matId = e.target.value === "" ? null : parseInt(e.target.value, 10); refresh(); onChange(); });
         lm.appendChild(selM); addHelpTo(lm, "Material de la cinta/cierre. El ANCHO se toma de la columna MODELO (cm); el precio por metro de la columna de precio.", "CINTA-MAT"); card.appendChild(lm);
@@ -3469,7 +3496,7 @@
           const ssel = document.createElement("label"); ssel.className = "field full"; ssel.innerHTML = "<span>Strap (cinta) en la arista</span>";
           const sopt = document.createElement("select");
           const so0 = document.createElement("option"); so0.value = ""; so0.textContent = "— sin strap —"; sopt.appendChild(so0);
-          state.materiales.forEach((m, i) => { if (!/cinta/i.test((m && m.item) || "")) return; const o = document.createElement("option"); o.value = String(i); o.textContent = matLabel(m); sopt.appendChild(o); });
+          opcionesCintaEn(sopt);
           sopt.value = c.strapMatId != null ? String(c.strapMatId) : "";
           sopt.addEventListener("change", (e) => { c.strapMatId = e.target.value === "" ? null : parseInt(e.target.value, 10); if (c.strapMatId != null && !c.strapLado) c.strapLado = "A"; pintar(); onChange(); });
           ssel.appendChild(sopt); card.appendChild(addHelpTo(ssel, "Coloca cintas (straps) que cruzan la arista del corte, repartidas a lo largo de ella (como los ojetillos): distanciamiento, cuánto cruza a cada lado y supresión.", "CORTE-STRAP"));

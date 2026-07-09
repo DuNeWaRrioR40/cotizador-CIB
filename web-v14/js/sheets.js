@@ -207,6 +207,24 @@
     return out;
   }
 
+  // Deriva la lista de "materiales" (Insumo / Accesorio / Estructural) desde los productos de GRANEL, usando la
+  // columna Rol. Fuente UNIFICADA: el Panel (carga de facturas) alimenta GRANEL, y estos ítems aparecen en los
+  // selectores de complementos y de cintas/straps. Mapa acordado: item←Tipo, ancho(cm)←Modelo, precio←p.precio
+  // (que ya es PrecioCalc cuando el Precio manual está vacío), agrupación←Categoria. proveedor es INTERNO.
+  function materialesDesdeGranel(granel) {
+    const roles = { insumo: 1, accesorio: 1, estructural: 1 };
+    const out = [];
+    (granel || []).forEach((p) => {
+      if (!p || !roles[norm(p.rol)]) return;   // solo filas con Rol Insumo/Accesorio/Estructural (telas y granel puro tienen Rol vacío)
+      if (/rollo/i.test(p.variedad || "")) return;   // el ROLLO completo no alimenta confección (sí se vende en "venta a granel", que lee state.granel directo)
+      out.push({
+        categoria: p.categoria, item: p.tipo || p.modelo || p.categoria, modelo: p.modelo, color: p.color,
+        precio: (p.precio != null ? p.precio : null), unidad: p.unidad || "unidad", proveedor: p.proveedor, rol: p.rol,
+      });
+    });
+    return out;
+  }
+
   async function cargarVendedores(token) {
     const punteros = await leerRango(token);
     const ptr = punteros.find((p) => p.id.toLowerCase() === CFG.ID_TABLA_VENDEDORES.toLowerCase());
@@ -479,5 +497,5 @@
     return r.json();
   }
 
-  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, borrarFilasHistorialClave, reemplazarHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, cargarUnidades, anexarHoja, anexarGranel, leerHojaRaw, actualizarCeldas, parseNumero };
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, materialesDesdeGranel, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, borrarFilasHistorialClave, reemplazarHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, cargarUnidades, anexarHoja, anexarGranel, leerHojaRaw, actualizarCeldas, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);
