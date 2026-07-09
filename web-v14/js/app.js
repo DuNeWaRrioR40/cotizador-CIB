@@ -6066,8 +6066,19 @@
       l.appendChild(inp); grid.appendChild(l);
     });
     editor.appendChild(grid);
-    const act = fe("div", "pz-actions"); const save = fe("button", "btn-outline visor-save", "Guardar cambios"); save.type = "button";
-    save.addEventListener("click", () => visorConfirmar(row, edits, editor)); act.appendChild(save); editor.appendChild(act);
+    // N° de factura de este producto → para re-ingresarla por «Cargar facturas» y crear un estado que falte (p. ej. M.LINEAL).
+    { const F = window.FacturaCIBSA; const costKey = vsVal(row, "parent") || vsVal(row, "sku");
+      const cu = (costKey && FC.costoUlt) ? FC.costoUlt[F.norm(costKey)] : null;
+      const t = cu && cu.folio
+        ? "¿Falta un estado (p. ej. la variante M.LINEAL para confección)? Vuelve a ingresar por «Cargar facturas» la factura N° " + cu.folio + (cu.fecha ? " (" + cu.fecha + ")" : "") + " de este producto y agrégalo ahí."
+        : "¿Falta un estado? Créalo por «Cargar facturas». (No encontré la factura de este producto en COSTOS vía Parent/SKU.)";
+      editor.appendChild(fe("p", "muted small visor-factura-info", t)); }
+    const act = fe("div", "pz-actions");
+    const save = fe("button", "btn-outline visor-save", "Guardar cambios"); save.type = "button";
+    save.addEventListener("click", () => visorConfirmar(row, edits, editor));
+    const cancel = fe("button", "btn-outline", "Cancelar"); cancel.type = "button";
+    cancel.addEventListener("click", () => { editor.innerHTML = ""; const s = document.querySelector(".visor-item.sel"); if (s) s.classList.remove("sel"); });
+    act.appendChild(save); act.appendChild(cancel); editor.appendChild(act);
     editor.appendChild(fe("p", "muted small visor-ed-msg"));
   }
   function visorConfirmar(row, edits, editor) {
