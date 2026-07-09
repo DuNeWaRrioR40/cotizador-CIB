@@ -140,6 +140,7 @@
     const orden = CFG.GRANEL_ORDEN || [];
     const map = {
       "Categoria": p.categoria, "Proveedor": p.proveedor || p.proveedorCorto, "Tipo": p.tipo, "Variedad": p.variedad,
+      "Rol": p.rol || "",   // supra-categoría (col G): se escribe en blanco; se llena a mano. Mantiene la alineación de columnas.
       "Formato": p.formato, "Modelo": p.modelo, "Color": p.color, "Largo": p.largo, "Materialidad": p.materialidad,
       "Peso": p.peso, "Equiv": p.equiv, "Unidad": p.unidad, "Unidad Minima": p.unidadMinima, "Precio": "",
       "Specs": p.specs, "AnchoRollo": p.anchoRollo, "NombreCliente": p.nombreCliente, "Activo": p.activo || "SI",

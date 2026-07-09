@@ -3,7 +3,7 @@
 (function (global) {
   const CONFIG = {
     // Versión visible del build (debe coincidir con el SW). Sirve para confirmar que cargó la última.
-    APP_VERSION: "v14-56",
+    APP_VERSION: "v14-58",
     // --- Google ---
     // Pega aquí el "ID de cliente" del cliente OAuth tipo WEB (lo creas en Google Cloud).
     GOOGLE_CLIENT_ID: "844999785397-fncjlgv5l9eqhp9f1mv98t6gcdo4l9nc.apps.googleusercontent.com",
@@ -41,12 +41,14 @@
     ID_TABLA_GRANEL: "Granel",
     COL_GRANEL: {
       categoria: "Categoria", proveedor: "Proveedor", tipo: "Tipo", variedad: "Variedad",
+      // Rol (supra-categoría): INSUMO / ACCESORIO / ESTRUCTURAL (se llena a mano; en blanco para telas/granel).
+      rol: "Rol",
       modelo: "Modelo", equiv: "Equiv", unidad: "Unidad", precio: "Precio",
       // Precio calculado por fórmula (costo × factor) que vive a la derecha en VIGENTES/GRANEL.
       // Para productos cargados por factura, "Precio" (manual) queda vacío y el valor real está aquí.
       precioCalc: "PrecioCalc",
       anchoRollo: "AnchoRollo", specs: "Specs", nombreCliente: "NombreCliente",
-      activo: "Activo", notas: "Notas",
+      activo: "Activo", notas: "Notas", vigentes: "Vigentes",
       // Internas / analíticas (opcionales): SKU (llave única por fila), Precio Base + Fecha Base
       // (para variación de precio) y Fecha Actualización (freshness / carga masiva). Fechas en dd/mm/aaaa.
       sku: "SKU", precioBase: "Precio Base", fechaActualizacion: "Fecha Actualización", fechaBase: "Fecha Base",
@@ -64,15 +66,23 @@
       unidadProveedor: "UnidadProveedor",    // unidad en que vende el proveedor
       proveedorRUT: "ProveedorRUT",          // RUT del proveedor (link a PROVEEDORES)
     },
-    // Orden REAL de las columnas de la hoja GRANEL maestra (A→AE). Se usa para construir filas nuevas
-    // al cargar facturas. W es una columna auxiliar (OK/DUP) sin encabezado; X es el flag "Vigentes".
+    // Orden REAL de las columnas de la hoja GRANEL maestra (A→AF). Se usa para construir filas nuevas
+    // al cargar facturas. "Rol" se insertó en la columna G (Insumo/Accesorio/Estructural; se llena a mano,
+    // por eso se escribe en blanco). Una columna auxiliar (OK/DUP) va sin encabezado; luego el flag "Vigentes".
     GRANEL_ORDEN: [
-      "Categoria", "Proveedor", "Tipo", "Variedad", "Formato", "Modelo", "Color", "Largo",
+      "Categoria", "Proveedor", "Tipo", "Variedad", "Formato", "Modelo", "Rol", "Color", "Largo",
       "Materialidad", "Peso", "Equiv", "Unidad", "Unidad Minima", "Precio", "Specs", "AnchoRollo",
       "NombreCliente", "Activo", "Notas", "Fecha Actualización", "Fecha Base", "SKU", "", "Vigentes",
       "FAV", "CodMaterialBase", "Parent (SKU rollo)", "Rendimiento", "NombreProveedor",
       "UnidadProveedor", "ProveedorRUT",
     ],
+    // Fórmula que la carga de facturas ESCRIBE en la columna "Vigentes" de cada fila nueva (en vez de un 1
+    // literal), para que la columna quede 100% fórmula y el dedup por SKU/fecha siempre se recalcule (evita
+    // "vigentes zombis" al recargar un SKU). {FILA} se reemplaza por el número de fila real al escribir.
+    // Debe ser IDÉNTICA a la que tienes arrastrada en GRANEL. Tras insertar "Rol" en G: SKU=col W, Fecha Actualización=col U.
+    // Separador ";" (locale es-CL). Si cambias columnas o la fórmula del Sheet, actualiza también esto.
+    VIGENTES_FORMULA_TPL:
+      '=IF($W{FILA}="";"";IF(ROW()=MAX(FILTER(ROW($W$2:$W);$W$2:$W=$W{FILA};$U$2:$U=MAXIFS($U$2:$U;$W$2:$W;$W{FILA})));1;0))',
 
     // --- Carga de facturas (DTE) → costos / proveedores ---
     HOJA_GRANEL_MAESTRO: "GRANEL",   // historial maestro (append de productos nuevos)

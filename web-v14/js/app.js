@@ -5959,7 +5959,7 @@
   async function visorCargar() {
     const tok = window.AuthCIBSA && window.AuthCIBSA.getToken ? window.AuthCIBSA.getToken() : null;
     if (!tok) throw new Error("Inicia sesión (Google) para usar el Visor.");
-    const raw = await window.SheetsCIBSA.leerHojaRaw(tok, CFG.HOJA_GRANEL_MAESTRO || "GRANEL", "A1:AE");
+    const raw = await window.SheetsCIBSA.leerHojaRaw(tok, CFG.HOJA_GRANEL_MAESTRO || "GRANEL", "A1:AF");
     if (!raw || raw.length < 2) throw new Error("La hoja GRANEL no tiene datos.");
     const headers = raw[0].map((h) => String(h || "").trim());
     const C = CFG.COL_GRANEL, colIdx = {};
@@ -6014,6 +6014,7 @@
   function renderVisorEditor(editor, row) {
     editor.innerHTML = "";
     const NOEDIT = {}; NOEDIT[CFG.COL_GRANEL.sku] = 1; NOEDIT[CFG.COL_GRANEL.parent] = 1;   // SKU y Parent (SKU rollo): no editables
+    if (CFG.COL_GRANEL.vigentes) NOEDIT[CFG.COL_GRANEL.vigentes] = 1;   // Vigentes es una fórmula: no editable (evita pisarla)
     editor.appendChild(fe("div", "visor-ed-tit", "Editar último registro — fila " + row._row + " · SKU " + (vsVal(row, "sku") || "—")));
     const grid = fe("div", "visor-grid"), edits = {};
     const UMIN_H = (CFG.COL_GRANEL && CFG.COL_GRANEL.unidadMinima) || "Unidad Minima";
@@ -6850,7 +6851,7 @@
   const GIDX_FUSION = { sku: 21, parent: 26, activo: 17, notas: 18, nombreProv: 28 }; // V, AA, R, S, AC (0-based)
   async function facturaMergePlan(dupSKU, canonSKU) {
     const tok = window.AuthCIBSA.getToken(), S = window.SheetsCIBSA, F = window.FacturaCIBSA;
-    const granel = await S.leerHojaRaw(tok, CFG.HOJA_GRANEL_MAESTRO, "A:AE");
+    const granel = await S.leerHojaRaw(tok, CFG.HOJA_GRANEL_MAESTRO, "A:AF");
     const costos = await S.leerHojaRaw(tok, CFG.HOJA_COSTOS, "A:G");
     return F.planFusion({ dupSKU: dupSKU, canonSKU: canonSKU, granel: granel, costos: costos, gIdx: GIDX_FUSION, cIdx: { llave: 0 } });
   }

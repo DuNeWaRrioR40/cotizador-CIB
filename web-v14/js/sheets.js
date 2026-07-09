@@ -177,6 +177,7 @@
       if (!categoria) return;   // mínimo: categoría
       out.push({
         categoria, proveedor: get(r, "proveedor"),                       // proveedor INTERNO
+        rol: get(r, "rol"),                                              // supra-categoría: INSUMO/ACCESORIO/ESTRUCTURAL (aún no enruta; se lee para la reestructuración)
         tipo: get(r, "tipo"), variedad: get(r, "variedad"), modelo: get(r, "modelo"),
         equiv: get(r, "equiv"),                                          // clave de equivalencia (interna)
         unidad: get(r, "unidad") || "unidad",
@@ -434,7 +435,7 @@
 
   // Append a GRANEL SIN tocar la columna de fórmula (PrecioCalc, a la derecha). En vez de values.append con
   // INSERT_ROWS (que inserta filas en blanco sin la fórmula arrastrada), calcula la primera fila libre
-  // mirando la columna A y ESCRIBE el bloque A{n}:AE{n} con values.batchUpdate. No inserta ni desplaza,
+  // mirando la columna A y ESCRIBE el bloque A{n}:AF{n} con values.batchUpdate. No inserta ni desplaza,
   // así la fórmula de PrecioCalc (ya arrastrada hacia abajo) queda intacta y se calcula sola.
   async function anexarGranel(token, filas) {
     if (!filas || !filas.length) return;
@@ -442,6 +443,12 @@
     let colA = [];
     try { colA = await leerValores(token, `'${hoja}'!A:A`); } catch (e) { colA = []; }
     const nextRow = (colA ? colA.length : 0) + 1;   // values.get omite filas vacías al final → última con datos en A
+    // Vigentes: en vez de un 1 literal (que no se recalcula y deja "zombis" al recargar un SKU), se escribe la
+    // FÓRMULA por fila. Así la columna queda 100% fórmula y el dedup por SKU/fecha siempre se recalcula.
+    const tpl = CFG.VIGENTES_FORMULA_TPL, orden = CFG.GRANEL_ORDEN || [], vigIdx = orden.indexOf("Vigentes");
+    if (tpl && vigIdx !== -1) {
+      filas = filas.map((row, i) => { const r = row.slice(); r[vigIdx] = tpl.replace(/\{FILA\}/g, String(nextRow + i)); return r; });
+    }
     return actualizarCeldas(token, hoja, [{ rango: "A" + nextRow, valores: filas }]);
   }
 
