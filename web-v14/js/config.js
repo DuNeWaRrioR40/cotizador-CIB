@@ -3,7 +3,7 @@
 (function (global) {
   const CONFIG = {
     // Versión visible del build (debe coincidir con el SW). Sirve para confirmar que cargó la última.
-    APP_VERSION: "v14-62",
+    APP_VERSION: "v14-63",
     // --- Google ---
     // Pega aquí el "ID de cliente" del cliente OAuth tipo WEB (lo creas en Google Cloud).
     GOOGLE_CLIENT_ID: "844999785397-fncjlgv5l9eqhp9f1mv98t6gcdo4l9nc.apps.googleusercontent.com",
@@ -88,6 +88,13 @@
     // Separador ";" (locale es-CL). Si cambias columnas o la fórmula del Sheet, actualiza también esto.
     VIGENTES_FORMULA_TPL:
       '=IF($W{FILA}="";"";IF(ROW()=MAX(FILTER(ROW($W$2:$W);$W$2:$W=$W{FILA};$U$2:$U=MAXIFS($U$2:$U;$W$2:$W;$W{FILA})));1;0))',
+    // Fórmula que la carga ESCRIBE en la columna "Specs" (ficha técnica): la busca en la pestaña FICHAS por la
+    // identidad del material (Proveedor + Tipo + Modelo, INDEPENDIENTE de Formato/Variedad). Así una sola ficha
+    // cubre todos los formatos/estados de un material. En GRANEL (tras Rol en G): Proveedor=B, Tipo=C, Modelo=F.
+    // FICHAS: A=Proveedor, B=Tipo, C=Modelo, D=Ficha. Si FICHAS no existe aún, IFERROR deja "" (no rompe).
+    // Vacío ("") = no inyectar (deja el texto). Separador ";" (locale es-CL).
+    SPECS_FORMULA_TPL:
+      '=IFERROR(INDEX(FILTER(FICHAS!$D$2:$D;FICHAS!$A$2:$A=$B{FILA};FICHAS!$B$2:$B=$C{FILA};FICHAS!$C$2:$C=$F{FILA});1);"")',
 
     // --- Carga de facturas (DTE) → costos / proveedores ---
     HOJA_GRANEL_MAESTRO: "GRANEL",   // historial maestro (append de productos nuevos)

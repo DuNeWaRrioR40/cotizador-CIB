@@ -461,11 +461,14 @@
     let colA = [];
     try { colA = await leerValores(token, `'${hoja}'!A:A`); } catch (e) { colA = []; }
     const nextRow = (colA ? colA.length : 0) + 1;   // values.get omite filas vacías al final → última con datos en A
-    // Vigentes: en vez de un 1 literal (que no se recalcula y deja "zombis" al recargar un SKU), se escribe la
-    // FÓRMULA por fila. Así la columna queda 100% fórmula y el dedup por SKU/fecha siempre se recalcula.
-    const tpl = CFG.VIGENTES_FORMULA_TPL, orden = CFG.GRANEL_ORDEN || [], vigIdx = orden.indexOf("Vigentes");
-    if (tpl && vigIdx !== -1) {
-      filas = filas.map((row, i) => { const r = row.slice(); r[vigIdx] = tpl.replace(/\{FILA\}/g, String(nextRow + i)); return r; });
+    // Columnas que se escriben como FÓRMULA por fila (no como texto/literal), para que queden 100% fórmula:
+    //  - Vigentes: dedup por SKU/fecha (evita "zombis" al recargar un SKU).
+    //  - Specs: ficha técnica desde la pestaña FICHAS por Proveedor+Tipo+Modelo (una ficha por material).
+    const orden = CFG.GRANEL_ORDEN || [];
+    const inyecciones = [{ col: "Vigentes", tpl: CFG.VIGENTES_FORMULA_TPL }, { col: "Specs", tpl: CFG.SPECS_FORMULA_TPL }]
+      .map((x) => ({ idx: orden.indexOf(x.col), tpl: x.tpl })).filter((x) => x.tpl && x.idx !== -1);
+    if (inyecciones.length) {
+      filas = filas.map((row, i) => { const r = row.slice(), fila = String(nextRow + i); inyecciones.forEach((x) => { r[x.idx] = x.tpl.replace(/\{FILA\}/g, fila); }); return r; });
     }
     return actualizarCeldas(token, hoja, [{ rango: "A" + nextRow, valores: filas }]);
   }
