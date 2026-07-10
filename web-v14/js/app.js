@@ -1836,6 +1836,9 @@
     $("loginStatus").textContent = "Cargando lista de precios…";
     const token = window.AuthCIBSA.getToken();
     const telas = await window.SheetsCIBSA.cargarTelas(token);
+    // Agrupa la lista por proveedor (y dentro, por tipo/modelo/formato): el nombre empieza por el proveedor,
+    // así ordenar por nombre deja juntas todas las telas de un mismo proveedor en todos los selectores.
+    telas.sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es", { numeric: true }));
     state.telas = telas;
     const sel = $("f_tela");
     sel.innerHTML = "";
