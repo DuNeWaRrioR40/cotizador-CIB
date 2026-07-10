@@ -66,6 +66,20 @@
     return idx;
   }
 
+  // dd/mm/aaaa (o con - .) → entero comparable aaaammdd (0 si vacía/ilegible).
+  function fechaVal(s) {
+    const m = String(s || "").trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+    if (!m) return 0;
+    const y = m[3].length === 2 ? "20" + m[3] : m[3];
+    return parseInt(y, 10) * 10000 + parseInt(m[2], 10) * 100 + parseInt(m[1], 10);
+  }
+  // Precio "gana lo más nuevo": Precio manual (fecha fMan) vs PrecioCalc de factura (fecha fCosto) → el más
+  // reciente. Empate → manual. Si falta uno, se usa el otro (null si ambos faltan).
+  function precioNewest(manual, calc, fMan, fCosto) {
+    if (manual != null && calc != null) return (fMan >= fCosto) ? manual : calc;
+    return (manual != null) ? manual : calc;
+  }
+
   async function leerTabla(token, hoja, rango) {
     const filas = await leerValores(token, `'${hoja}'!${rango}`);
     if (!filas.length) throw new Error(`El rango ${hoja}!${rango} no devolvió datos.`);
@@ -91,7 +105,7 @@
     if (!ptr) throw new Error(`No se encontró en RANGO una fila con ID '${CFG.ID_TABLA_GRANEL}'.`);
     const { encabezados, registros } = await leerTabla(token, ptr.hoja, ptr.rango);
     const C = CFG.COL_GRANEL, idx = {};
-    ["categoria", "variedad", "proveedor", "tipo", "modelo", "formato", "precio", "precioCalc", "anchoRollo", "specs", "fav", "unidadMinima", "vigentes", "fechaActualizacion", "fechaFactura"].forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
+    ["categoria", "variedad", "proveedor", "tipo", "modelo", "formato", "precio", "precioCalc", "anchoRollo", "specs", "fav", "unidadMinima", "vigentes", "fechaActualizacion", "fechaFactura", "fechaCosto", "fechaPrecio"].forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
     const get = (r, k) => { const i = idx[k]; return (i !== -1 ? (r[encabezados[i]] || "") : "").trim(); };
     const esTela = (s) => norm(s) === "tela";
     const esMLineal = (s) => /lineal/.test(norm(s));   // "M.LINEAL", "metro lineal", etc.
@@ -99,13 +113,6 @@
     // La diferencia "vender sin confección" es un descuento de canal (carrito de granel), no un precio aparte.
     // Por eso ya no hay preferencia por CONFECCION: se toma la fila M.LINEAL del material (dedup por nombre,
     // primera que aparezca; los precios de las filas de un mismo material están homologados en el Sheet).
-    // Fecha (dd/mm/aaaa o dd-mm-aaaa) → entero comparable aaaammdd (0 si vacía/ilegible).
-    const parseFechaCL = (s) => {
-      const m = String(s || "").trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
-      if (!m) return 0;
-      const y = m[3].length === 2 ? "20" + m[3] : m[3];
-      return parseInt(y, 10) * 10000 + parseInt(m[2], 10) * 100 + parseInt(m[1], 10);
-    };
     const mapa = {};
     for (const r of registros) {
       if (!esTela(get(r, "categoria")) || !esMLineal(get(r, "variedad"))) continue;
@@ -117,17 +124,21 @@
       const nombre = [proveedor, tipo, modelo, formato].filter(Boolean).join(" · ");
       const nombreCliente = [tipo, modelo, formato].filter(Boolean).join(" · ");
       if (!nombre) continue;
-      // Precio efectivo por metro lineal: Precio manual si existe, si no el PrecioCalc (fórmula costo×factor).
-      const precioManual = parseNumero(get(r, "precio"));
-      const precioML = precioManual != null ? precioManual : parseNumero(get(r, "precioCalc"));
+      // Precio efectivo por m lineal: gana el MÁS NUEVO entre el Precio manual (fecha = Fecha Precio o, si
+      // falta, Fecha Actualización) y el PrecioCalc de factura (fecha = FechaCosto). Empate → manual.
+      const manual = parseNumero(get(r, "precio"));
+      const calc = parseNumero(get(r, "precioCalc"));
+      const fMan = fechaVal(get(r, "fechaPrecio")) || fechaVal(get(r, "fechaActualizacion"));
+      const fCosto = fechaVal(get(r, "fechaCosto"));
+      const precioML = precioNewest(manual, calc, fMan, fCosto);
       const ancho = parseNumero(get(r, "anchoRollo"));
       if (precioML == null || ancho == null || ancho <= 0) continue;   // sin precio o sin ancho de rollo: no se puede valorizar por m²
       const ficha = get(r, "specs").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
       const favCats = get(r, "fav").split("/").map((s) => s.trim()).filter(Boolean);
       const tela = { nombre, nombreCliente, valorM2: precioML / ancho, anchoRollo: ancho, ficha, proveedor, tipo, fav: favCats, unidadMinima: get(r, "unidadMinima") };
-      // Recencia: fecha de FACTURA si existe, si no Fecha Actualización. Ante varias filas del mismo
-      // material (misma llave = nombre), gana la MÁS RECIENTE, no la primera por posición.
-      const fecha = parseFechaCL(get(r, "fechaFactura")) || parseFechaCL(get(r, "fechaActualizacion"));
+      // Recencia de FILA (dedup por Vigentes): fecha de FACTURA si existe, si no Fecha Actualización. Ante
+      // varias filas del mismo material (misma llave = nombre), gana la MÁS RECIENTE, no la primera.
+      const fecha = fechaVal(get(r, "fechaFactura")) || fechaVal(get(r, "fechaActualizacion"));
       const key = nombre.toLowerCase();
       const prev = mapa[key];
       if (!prev || fecha > prev.fecha) mapa[key] = { tela: tela, fecha: fecha };   // última versión por material
@@ -195,9 +206,9 @@
         tipo: get(r, "tipo"), variedad: get(r, "variedad"), modelo: get(r, "modelo"),
         equiv: get(r, "equiv"),                                          // clave de equivalencia (interna)
         unidad: get(r, "unidad") || "unidad",
-        // Precio efectivo: si hay Precio MANUAL (override) se usa; si está vacío, cae al PrecioCalc
-        // (fórmula costo × factor). Así los productos cargados por factura (Precio vacío) sí quedan valorizados.
-        precio: (function () { const m = parseNumero(get(r, "precio")); return m != null ? m : parseNumero(get(r, "precioCalc")); })(),
+        // Precio efectivo "gana lo más nuevo": compara el Precio manual (fecha = Fecha Precio o Fecha
+        // Actualización) contra el PrecioCalc de factura (fecha = FechaCosto) y usa el más reciente.
+        precio: precioNewest(parseNumero(get(r, "precio")), parseNumero(get(r, "precioCalc")), fechaVal(get(r, "fechaPrecio")) || fechaVal(get(r, "fechaActualizacion")), fechaVal(get(r, "fechaCosto"))),
         precioManual: parseNumero(get(r, "precio")),                     // solo el Precio escrito a mano (Visor/depuración)
         precioCalc: parseNumero(get(r, "precioCalc")),                   // solo la fórmula (Visor/depuración)
         anchoRollo: parseNumero(get(r, "anchoRollo")),                   // opcional, para $/m²

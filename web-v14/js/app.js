@@ -2078,6 +2078,9 @@
     let s = m.item;
     const extra = [m.modelo, m.color].filter(Boolean).join(" ");
     if (extra) s += " · " + extra;
+    // Precio del material en la propia opción (como las listas de tela muestran su $/m²).
+    // "s/precio" si la fila no tiene precio, para detectar materiales sin valorizar.
+    s += " — " + (m.precio != null ? money(m.precio) + "/" + (m.unidad || "u") : "s/precio");
     if (m.proveedor) s += "  (" + m.proveedor + ")";
     return s;
   }
