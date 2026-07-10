@@ -73,11 +73,11 @@
     const y = m[3].length === 2 ? "20" + m[3] : m[3];
     return parseInt(y, 10) * 10000 + parseInt(m[2], 10) * 100 + parseInt(m[1], 10);
   }
-  // Precio "gana lo más nuevo": Precio manual (fecha fMan) vs PrecioCalc de factura (fecha fCosto) → el más
-  // reciente. Empate → manual. Si falta uno, se usa el otro (null si ambos faltan).
-  function precioNewest(manual, calc, fMan, fCosto) {
-    if (manual != null && calc != null) return (fMan >= fCosto) ? manual : calc;
-    return (manual != null) ? manual : calc;
+  // Precio efectivo — "la factura manda si existe": si hay PrecioCalc con valor (> 0, = costo desde
+  // COSTOS/factura), gana la factura; si viene vacío o 0, se usa el Precio manual (setup / productos sin
+  // compra). El manual es un placeholder que la primera factura del material reemplaza, sin importar fechas.
+  function precioEfectivo(manual, calc) {
+    return (calc != null && calc > 0) ? calc : manual;
   }
 
   async function leerTabla(token, hoja, rango) {
@@ -124,13 +124,9 @@
       const nombre = [proveedor, tipo, modelo, formato].filter(Boolean).join(" · ");
       const nombreCliente = [tipo, modelo, formato].filter(Boolean).join(" · ");
       if (!nombre) continue;
-      // Precio efectivo por m lineal: gana el MÁS NUEVO entre el Precio manual (fecha = Fecha Precio o, si
-      // falta, Fecha Actualización) y el PrecioCalc de factura (fecha = FechaCosto). Empate → manual.
-      const manual = parseNumero(get(r, "precio"));
-      const calc = parseNumero(get(r, "precioCalc"));
-      const fMan = fechaVal(get(r, "fechaPrecio")) || fechaVal(get(r, "fechaActualizacion"));
-      const fCosto = fechaVal(get(r, "fechaCosto"));
-      const precioML = precioNewest(manual, calc, fMan, fCosto);
+      // Precio efectivo por m lineal — "la factura manda si existe": si hay PrecioCalc (costo de factura),
+      // gana la factura; si no hay factura, se usa el Precio manual (placeholder del setup).
+      const precioML = precioEfectivo(parseNumero(get(r, "precio")), parseNumero(get(r, "precioCalc")));
       const ancho = parseNumero(get(r, "anchoRollo"));
       if (precioML == null || ancho == null || ancho <= 0) continue;   // sin precio o sin ancho de rollo: no se puede valorizar por m²
       const ficha = get(r, "specs").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
@@ -206,9 +202,8 @@
         tipo: get(r, "tipo"), variedad: get(r, "variedad"), modelo: get(r, "modelo"),
         equiv: get(r, "equiv"),                                          // clave de equivalencia (interna)
         unidad: get(r, "unidad") || "unidad",
-        // Precio efectivo "gana lo más nuevo": compara el Precio manual (fecha = Fecha Precio o Fecha
-        // Actualización) contra el PrecioCalc de factura (fecha = FechaCosto) y usa el más reciente.
-        precio: precioNewest(parseNumero(get(r, "precio")), parseNumero(get(r, "precioCalc")), fechaVal(get(r, "fechaPrecio")) || fechaVal(get(r, "fechaActualizacion")), fechaVal(get(r, "fechaCosto"))),
+        // Precio efectivo — "la factura manda si existe": PrecioCalc (factura) si existe, si no el manual.
+        precio: precioEfectivo(parseNumero(get(r, "precio")), parseNumero(get(r, "precioCalc"))),
         precioManual: parseNumero(get(r, "precio")),                     // solo el Precio escrito a mano (Visor/depuración)
         precioCalc: parseNumero(get(r, "precioCalc")),                   // solo la fórmula (Visor/depuración)
         anchoRollo: parseNumero(get(r, "anchoRollo")),                   // opcional, para $/m²
