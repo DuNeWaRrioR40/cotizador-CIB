@@ -170,6 +170,7 @@
       prorrata: pr.prorrata, m2Full, m2Lote,
       materialFull: m2Full * valorM2 * fT, materialLote: m2Lote * valorM2 * fT,
       ahorro: r2((m2Full - m2Lote) * valorM2 * fT),
+      valorM2: r2(valorM2), metroLineal: r2(rollo * valorM2),
       faltanteParaBajar, excedenteCobertura, costoPano,
     };
   }

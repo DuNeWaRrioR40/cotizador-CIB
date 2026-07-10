@@ -91,7 +91,7 @@
     if (!ptr) throw new Error(`No se encontró en RANGO una fila con ID '${CFG.ID_TABLA_GRANEL}'.`);
     const { encabezados, registros } = await leerTabla(token, ptr.hoja, ptr.rango);
     const C = CFG.COL_GRANEL, idx = {};
-    ["categoria", "variedad", "proveedor", "tipo", "modelo", "formato", "precio", "precioCalc", "anchoRollo", "specs", "fav", "unidadMinima"].forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
+    ["categoria", "variedad", "proveedor", "tipo", "modelo", "formato", "precio", "precioCalc", "anchoRollo", "specs", "fav", "unidadMinima", "vigentes", "fechaActualizacion", "fechaFactura"].forEach((k) => { idx[k] = buscarColumna(encabezados, C[k]); });
     const get = (r, k) => { const i = idx[k]; return (i !== -1 ? (r[encabezados[i]] || "") : "").trim(); };
     const esTela = (s) => norm(s) === "tela";
     const esMLineal = (s) => /lineal/.test(norm(s));   // "M.LINEAL", "metro lineal", etc.
@@ -99,9 +99,19 @@
     // La diferencia "vender sin confección" es un descuento de canal (carrito de granel), no un precio aparte.
     // Por eso ya no hay preferencia por CONFECCION: se toma la fila M.LINEAL del material (dedup por nombre,
     // primera que aparezca; los precios de las filas de un mismo material están homologados en el Sheet).
+    // Fecha (dd/mm/aaaa o dd-mm-aaaa) → entero comparable aaaammdd (0 si vacía/ilegible).
+    const parseFechaCL = (s) => {
+      const m = String(s || "").trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+      if (!m) return 0;
+      const y = m[3].length === 2 ? "20" + m[3] : m[3];
+      return parseInt(y, 10) * 10000 + parseInt(m[2], 10) * 100 + parseInt(m[1], 10);
+    };
     const mapa = {};
     for (const r of registros) {
       if (!esTela(get(r, "categoria")) || !esMLineal(get(r, "variedad"))) continue;
+      // Respeta el flag Vigentes de GRANEL: descarta las filas marcadas 0 (no vigentes).
+      // Conserva 1 y las legacy en blanco (telas viejas sin SKU/flag).
+      if (String(get(r, "vigentes")).trim() === "0") continue;
       const proveedor = get(r, "proveedor"), tipo = get(r, "tipo"), modelo = get(r, "modelo"), formato = get(r, "formato");
       // nombre: incluye el proveedor (USO INTERNO en la App). nombreCliente: SIN proveedor (es el que va al PDF).
       const nombre = [proveedor, tipo, modelo, formato].filter(Boolean).join(" · ");
@@ -115,8 +125,12 @@
       const ficha = get(r, "specs").split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
       const favCats = get(r, "fav").split("/").map((s) => s.trim()).filter(Boolean);
       const tela = { nombre, nombreCliente, valorM2: precioML / ancho, anchoRollo: ancho, ficha, proveedor, tipo, fav: favCats, unidadMinima: get(r, "unidadMinima") };
+      // Recencia: fecha de FACTURA si existe, si no Fecha Actualización. Ante varias filas del mismo
+      // material (misma llave = nombre), gana la MÁS RECIENTE, no la primera por posición.
+      const fecha = parseFechaCL(get(r, "fechaFactura")) || parseFechaCL(get(r, "fechaActualizacion"));
       const key = nombre.toLowerCase();
-      if (!mapa[key]) mapa[key] = { tela: tela };   // una tela = un precio de lista (sin preferencia por CONFECCION)
+      const prev = mapa[key];
+      if (!prev || fecha > prev.fecha) mapa[key] = { tela: tela, fecha: fecha };   // última versión por material
     }
     const telas = Object.keys(mapa).map((k) => mapa[k].tela);
     if (!telas.length) throw new Error("VIGENTES no tiene filas válidas Categoria=Tela y Variedad=M.LINEAL (con Precio y ancho de rollo). Encabezados: " + encabezados.join(" | "));

@@ -4106,6 +4106,7 @@
     let h = `<div class="h">${head}${sel ? " ✓" : ""}</div>`;
     h += `<div class="total">${money(o.subtotalLote + compTot)}</div>`;
     h += `<div class="muted small">${o.panosUnit} paños/u · ${o.uniones} uniones · ${o.m2Lote} m² (lote, neto)</div>`;
+    h += `<div class="muted small">$/m²: ${money(o.valorM2)} · $/ML: ${money(o.metroLineal)}</div>`;
     if (o.prorrata) h += `<div class="muted small">Prorrata · ahorro ${money(o.ahorro)}</div>`;
     if (compTot > 0) h += `<div class="muted small">+ complementos ${money(compTot)}</div>`;
     if (esEco) h += `<div class="eco">Más económica</div>`;

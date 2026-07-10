@@ -3,7 +3,7 @@
 (function (global) {
   const CONFIG = {
     // Versión visible del build (debe coincidir con el SW). Sirve para confirmar que cargó la última.
-    APP_VERSION: "v14-63",
+    APP_VERSION: "v14-65",
     // --- Google ---
     // Pega aquí el "ID de cliente" del cliente OAuth tipo WEB (lo creas en Google Cloud).
     GOOGLE_CLIENT_ID: "844999785397-fncjlgv5l9eqhp9f1mv98t6gcdo4l9nc.apps.googleusercontent.com",
@@ -57,6 +57,9 @@
       // Internas / analíticas (opcionales): SKU (llave única por fila), Precio Base + Fecha Base
       // (para variación de precio) y Fecha Actualización (freshness / carga masiva). Fechas en dd/mm/aaaa.
       sku: "SKU", precioBase: "Precio Base", fechaActualizacion: "Fecha Actualización", fechaBase: "Fecha Base",
+      // Fecha de la FACTURA (DTE) — opcional. Si la columna existe, manda sobre Fecha Actualización para
+      // decidir cuál fila de un mismo material es la más reciente. Si no existe, se cae a Fecha Actualización.
+      fechaFactura: "Fecha Factura",
       // UNIDAD MINIMA: "UNITARIO" (cantidad entera, mín 1) o "GRANEL" (mín 1, acepta decimales).
       // Vacío/desconocido = UNITARIO (más restrictivo). El mínimo de venta nunca es < 1.
       unidadMinima: "Unidad Minima", formato: "Formato", peso: "Peso",
