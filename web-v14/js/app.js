@@ -799,7 +799,11 @@
       const nomS = document.createElement("span"); nomS.className = "granel-prod-nom"; nomS.textContent = granelNombre(g.rep);
       const preS = document.createElement("span"); preS.className = "granel-prod-precio";
       top.appendChild(nomS); top.appendChild(preS); info.appendChild(top);
-      if (g.rep.specs) { const sp = document.createElement("div"); sp.className = "granel-prod-specs"; sp.textContent = g.rep.specs; info.appendChild(sp); }
+      // Modelo · Formato prominente: es lo que identifica el producto (diferencia las carpas dimensionadas).
+      // La ficha técnica (specs) NO se muestra aquí — confunde y es info del comprador; ya se inyecta en el
+      // detalle del PDF (ver granelAgregar/detalle).
+      const keyTxt = [g.rep.tipo, g.rep.modelo, g.rep.formato].filter(Boolean).join(" · ");
+      if (keyTxt) { const kf = document.createElement("div"); kf.className = "granel-prod-key"; kf.style.cssText = "font-weight:600;margin:2px 0;"; kf.textContent = keyTxt; info.appendChild(kf); }
       const attrs = [g.rep.materialidad].filter(Boolean); if (g.rep.largo) attrs.push("largo " + g.rep.largo + " m");
       if (attrs.length) { const at = document.createElement("div"); at.className = "granel-prod-attr"; at.textContent = attrs.join(" · "); info.appendChild(at); }
       const meta = document.createElement("div"); meta.className = "granel-prod-meta"; info.appendChild(meta);
