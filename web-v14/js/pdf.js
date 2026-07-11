@@ -748,10 +748,12 @@
       itemRow(String(a.cantidad), [[a.cat || "Anexo", true], [a.detalle, false]],
         `${money(a.precio)} c/u`, money(a.totalNeto));
     });
-    // Productos a granel (sin proveedor) — una fila por línea
+    // Productos a granel (sin proveedor) — una fila por línea. Si la línea tiene descuento
+    // propio, va como línea aparte EN NEGRITA para que el cliente lo vea con su monto.
     (datos.granel || []).forEach((g) => {
-      itemRow(String(g.cantidad), [[g.detalle, false]],
-        g.precioU, money(g.total));
+      const det = [[g.detalle, false]];
+      if (g.descuentoTxt) { det.push(["", false, 0]); det.push([g.descuentoTxt, true]); }
+      itemRow(String(g.cantidad), det, g.precioU, money(g.total));
     });
     // Mínimo de producción de taller (escalonado por unidad): completa el neto confeccionado.
     if (datos.minProduccion > 0) {
@@ -766,6 +768,12 @@
       txt(page, label, cols[3] - pad - bold.widthOfTextAtSize(label, 11), y - 14, { f: bold, color: BLACK() });
       txt(page, value, cols[3] + (colW[3] - bold.widthOfTextAtSize(value, 11)) / 2, y - 14, { f: bold, color: BLACK() });
       y -= h; hline(y);
+    }
+    // Si hubo descuentos por línea en granel, se desglosan: lista → descuento → subtotal neto.
+    const granelDescT = (datos.granel || []).reduce((s, g) => s + (g.descuento || 0), 0);
+    if (granelDescT > 0) {
+      totalRow("Subtotal (precios de lista)", money(c.subtotal + granelDescT));
+      totalRow("Total Descuentos", "-" + money(granelDescT));
     }
     totalRow("Subtotal Neto", money(c.subtotal));
     if (c.descuentoPct > 0) {
@@ -1135,9 +1143,12 @@
       detail.push(["Valores aproximados. La confección tiene un margen de error de aprox. ±4 cm.", false, 8.5]);
       itemRow(String(pz.cantidad), detail, money(pz.valorUnitario), money(pz.valorTotal));
     });
-    // Productos a granel (sin proveedor)
+    // Productos a granel (sin proveedor). El descuento propio de la línea va aparte y EN
+    // NEGRITA para que el cliente lo vea con su monto.
     (datos.granel || []).forEach((g) => {
-      itemRow(String(g.cantidad), [[g.detalle, false]], g.precioU, money(g.total));
+      const det = [[g.detalle, false]];
+      if (g.descuentoTxt) { det.push(["", false, 0]); det.push([g.descuentoTxt, true]); }
+      itemRow(String(g.cantidad), det, g.precioU, money(g.total));
     });
     // Mínimo de producción (escalonado por unidad): el monto ya viene calculado desde la app.
     const granelT = (datos.granel || []).reduce((s, g) => s + g.total, 0);
@@ -1167,6 +1178,12 @@
       txt(label, cols[3] - pad - bold.widthOfTextAtSize(label, 11), y - 14, { f: bold, color: BLACK() });
       txt(value, cols[3] + (colW[3] - bold.widthOfTextAtSize(value, 11)) / 2, y - 14, { f: bold, color: BLACK() });
       y -= h; hline(y); vsegs(top, y);
+    }
+    // Si hubo descuentos por línea en granel, se desglosan: lista → descuento → subtotal neto.
+    const granelDescT = (datos.granel || []).reduce((s, g) => s + (g.descuento || 0), 0);
+    if (granelDescT > 0) {
+      totalRow("Subtotal (precios de lista)", money(subtotal + granelDescT));
+      totalRow("Total Descuentos", "-" + money(granelDescT));
     }
     totalRow("Subtotal Neto", money(subtotal));
     if (descuento > 0) {

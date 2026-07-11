@@ -886,7 +886,9 @@
   }
   // Líneas a granel para el PDF (sin proveedor). El descuento es PROPIO de cada línea
   // (no recibe el descuento global de la cotización). total = neto ya con su descuento.
-  // { cantidad, detalle, precioU, bruto, descPct, descuento, total }.
+  // descuentoTxt: línea EXPLÍCITA (en negrita en el PDF) para que el cliente vea el descuento
+  // y su monto — antes iba pegado al final de la ficha técnica y pasaba desapercibido.
+  // { cantidad, detalle, descuentoTxt, precioU, bruto, descPct, descuento, total }.
   function granelLineasPDF() {
     const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
     return (state.granelLineas || []).map((l) => {
@@ -897,10 +899,14 @@
       // Formato del rollo: útil en productos vendidos por rollo o por metro lineal (ancho × largo del rollo).
       const fmt = (l.formato || "").trim(), vNorm = String(l.variedad || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
       if (fmt && /(lineal|rollo)/.test(vNorm)) detalle += " · Formato " + fmt;
-      if (k.desc > 0) detalle += k.esMonto ? " · Desc. " + money(k.desc) : " · Desc. " + f(k.dp) + "%";
+      const descuentoTxt = k.desc > 0
+        ? (k.esMonto ? "Descuento aplicado: -" + money(k.desc)
+                     : "Descuento " + f(k.dp) + "% aplicado: -" + money(k.desc))
+          + " (precio de lista " + money(k.bruto) + ")"
+        : null;
       // En el PDF, Cantidad y Valor unitario van SOLO con el número (sin unidad de medida); la unidad/
       // formato se entiende por el Detalle (y la Variedad). La unidad se sigue mostrando en pantalla.
-      return { cantidad: f(k.cant), detalle: detalle, precioU: money(l.precio), bruto: k.bruto, descPct: k.dp, descuento: k.desc, total: k.neto };
+      return { cantidad: f(k.cant), detalle: detalle, descuentoTxt: descuentoTxt, precioU: money(l.precio), bruto: k.bruto, descPct: k.dp, descuento: k.desc, total: k.neto };
     }).filter(Boolean);
   }
   function granelTotalPDF() { return granelLineasPDF().reduce((s, g) => s + g.total, 0); }
