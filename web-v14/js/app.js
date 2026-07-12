@@ -6616,6 +6616,7 @@
       g.appendChild(facturaInput("Variedad (estado comprado)", P.variedad, (v) => P.variedad = v, { ph: "ROLLO / DIMENSIONADA…", ej: "ROLLO · M.LINEAL · DIMENSIONADA · TARRO · UNIDAD" }));
       g.appendChild(facturaInput("Formato", P.formato, (v) => P.formato = v, { ph: "M2X50…", ej: "M2X50 (2m×50m) · M1,52X50 · GAL025 (1/4 galón)" }));
       g.appendChild(facturaInput("Modelo", P.modelo, (v) => P.modelo = v, { ej: "G200 · COBKK10000 · NAUTICO600 · MEISTER" }));
+      g.appendChild(facturaInput("Equiv (comparador, opcional)", P.equiv, (v) => P.equiv = v, { ph: "PETARP200…", ej: "Clave de producto EQUIVALENTE. Uso interno (comparador de granel); NUNCA va al PDF. Los productos con la misma Equiv se comparan entre proveedores. Ej: PETARP200, PVC650. Varias con /", title: "Productos con la MISMA Equiv se comparan entre sí en el granel (equivalentes de distintos proveedores). Interno, no va al PDF. Opcional." }));
       g.appendChild(facturaInput("Color", P.color, (v) => P.color = v, { ej: "AZUL MARINO · BLANCO · varios: NEGRO / BLANCO", title: "Si hay varios colores al MISMO precio, sepáralos con / (no entran al SKU). Si el color cambia el precio, deja UN color (sí entra al SKU)." }));
       g.appendChild(facturaSelectUnidad("Unidad (medida del proveedor, de la lista)", P.unidad, (v) => P.unidad = v));
       g.appendChild(facturaSelect("Unidad mínima", [["GRANEL", "GRANEL"], ["UNITARIO", "UNITARIO"]], (/^(conf|confeccion)$/i.test(String(P.unidadMinima || "").trim()) ? "GRANEL" : P.unidadMinima), (v) => P.unidadMinima = v));
