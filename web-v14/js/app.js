@@ -2946,8 +2946,11 @@
         const lt = document.createElement("label"); lt.className = "field full"; lt.innerHTML = "<span>Tela</span>";
         const selT = document.createElement("select"); state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre; selT.appendChild(o); }); // el nombre ya incluye Proveedor · Modelo · Formato
         selT.value = a.telaNombre || (ctx.telaBase && ctx.telaBase()) || ((state.telas[0] && state.telas[0].nombre) || ""); a.telaNombre = selT.value;
-        selT.addEventListener("change", (e) => { a.telaNombre = e.target.value; refresh(); onChange(); });
-        lt.appendChild(selT); card.appendChild(addHelpTo(lt, "Tela del anexo. Por defecto es la del paño base; puedes cambiarla. En cotización multi-tela, si mantienes la del paño base, el anexo sigue a cada tela; si eliges otra distinta, se conserva fija en todas las variantes.", "ALETA-TELA"));
+        const mtA = document.createElement("div"); mtA.className = "muted small aleta-tela-info";
+        const pintTelaInfoA = () => { const t = telaPorNombre(selT.value); mtA.textContent = t ? `Valor m²: ${money(t.valorM2)} · Rollo: ${t.anchoRollo} m` + (t.proveedor ? ` · Proveedor: ${t.proveedor}` : "") : ""; };
+        selT.addEventListener("change", (e) => { a.telaNombre = e.target.value; pintTelaInfoA(); refresh(); onChange(); });
+        lt.appendChild(selT); lt.appendChild(mtA); pintTelaInfoA();
+        card.appendChild(addHelpTo(lt, "Tela del anexo. Por defecto es la del paño base; puedes cambiarla. En cotización multi-tela, si mantienes la del paño base, el anexo sigue a cada tela; si eliges otra distinta, se conserva fija en todas las variantes.", "ALETA-TELA"));
         const grid = document.createElement("div"); grid.className = "pieza-grid";
         grid.appendChild(addHelpTo(selField("Cuelga del borde", [["inf", "Inferior"], ["sup", "Superior"], ["izq", "Izquierda"], ["der", "Derecha"]], "baseEdge", false, () => pintarOjArista()), "Borde del paño base del que se fusiona y cuelga el anexo (desde ahí se extiende hacia afuera).", "ALETA-BORDE-BASE"));
         grid.appendChild(addHelpTo(numField("Distancia al borde (m, ≥ unión)", "dBorde"), "A qué distancia del borde elegido se cose el anexo. Debe ser ≥ la unión (típico 0,045 m).", "ALETA-DIST"));

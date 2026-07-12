@@ -3,7 +3,7 @@
 (function (global) {
   const CONFIG = {
     // Versión visible del build (debe coincidir con el SW). Sirve para confirmar que cargó la última.
-    APP_VERSION: "v14-75",
+    APP_VERSION: "v14-76",
     // --- Google ---
     // Pega aquí el "ID de cliente" del cliente OAuth tipo WEB (lo creas en Google Cloud).
     GOOGLE_CLIENT_ID: "844999785397-fncjlgv5l9eqhp9f1mv98t6gcdo4l9nc.apps.googleusercontent.com",
