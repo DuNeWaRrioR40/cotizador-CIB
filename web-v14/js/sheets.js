@@ -387,8 +387,12 @@
     for (let i = 0; i < filas.length; i++) {
       const r = filas[i] || [];
       if (r[0] == null || isNaN(parseInt(r[0], 10))) continue; // salta encabezado / filas vacías
-      if (norm(r[1]) === norm(ent.nombre) && norm(r[2]) === norm(ent.apellido) &&
-          norm(r[3]) === norm(ent.tipo) && ver(r[4]) === ver(ent.version)) idxs.push(i);
+      // Coincide por CLAVE (cliente+tipo+versión) O por el timestamp exacto de la fila mostrada. El "o por ts"
+      // rescata el caso en que algún campo de la clave quedó levemente distinto en la nube y no calzaba.
+      const claveOk = norm(r[1]) === norm(ent.nombre) && norm(r[2]) === norm(ent.apellido) &&
+          norm(r[3]) === norm(ent.tipo) && ver(r[4]) === ver(ent.version);
+      const tsOk = ent.ts != null && String(r[0]).trim() === String(ent.ts).trim();
+      if (claveOk || tsOk) idxs.push(i);
     }
     if (!idxs.length) return 0;
     const sheetId = await obtenerSheetId(token, hoja);

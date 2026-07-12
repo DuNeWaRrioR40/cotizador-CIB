@@ -178,7 +178,7 @@
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
     // Telas adicionales marcadas (multi-tela uniforme) + categoría FAV activa, para reponer la selección completa.
     const telaOpc = []; { const cont = $("telaOpcList"); if (cont) cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => telaOpc.push(cb.value)); }
-    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, empresaOn: $("f_empresaOn") ? $("f_empresaOn").checked : false, descMonto: $("f_descMonto") ? $("f_descMonto").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", estado: st };
+    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, empresaOn: $("f_empresaOn") ? $("f_empresaOn").checked : false, descMonto: $("f_descMonto") ? $("f_descMonto").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", telasFrozen: telasFrozenMap(), estado: st };
     try { return JSON.parse(JSON.stringify(snap)); } catch (e) { return null; }
   }
   function setSelectIfOption(id, val) { const sel = $(id); if (!sel || val == null) return; if (Array.from(sel.options).some((o) => o.value === val)) sel.value = val; }
@@ -201,6 +201,7 @@
     limpiarCampos(); // base limpia
     const st = snap.estado || {};
     SNAP_STATE.forEach((k) => { if (k in st) { try { state[k] = JSON.parse(JSON.stringify(st[k])); } catch (e) {} } });
+    state.telasFrozen = (snap.telasFrozen && Object.keys(snap.telasFrozen).length) ? snap.telasFrozen : null;   // integridad histórica: ficha/valor m² del momento cotizado
     Object.keys(snap.campos || {}).forEach((id) => { const el = $(id); if (el) el.value = snap.campos[id]; });
     setSelectIfOption("f_tela", snap.telaUnif);
     setSelectIfOption("f_vendedor", snap.vendedor);
@@ -450,6 +451,7 @@
     if (modo === "nueva") {
       // Parte una versión NUEVA con los datos guardados → se guarda como registro nuevo con la fecha de hoy.
       _forzarNueva = true;
+      state.telasFrozen = null;   // re-cotización: usa ficha/precio VIGENTES, no los congelados del histórico
       $("f_version").value = String(nextVer).padStart(2, "0");
       ocultarEdicionBanner();
     } else {
@@ -1069,15 +1071,18 @@
     if (!confirm("¿Borrar el registro «" + nom + " · " + (ent.tipo || "") + " " + vtxt + "»?\n\nSe quitará del historial y de la nube. Si crees que podrías necesitarlo, descárgalo antes con el botón ⬇.")) return;
     if (!confirm("ÚLTIMA CONFIRMACIÓN: esta acción NO se puede deshacer.\n\n¿Borrar definitivamente «" + nom + " " + vtxt + "»?")) return;
     const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+    let nNube = -1;
     if (tok) {
       // Borra TODAS las filas de esta cotización en la nube (no solo el ts visible): cada generación apendía
       // una fila, y borrar solo una dejaba duplicados que reaparecían al sincronizar.
-      try { await window.SheetsCIBSA.borrarFilasHistorialClave(tok, HIST_HOJA, ent); }
+      try { nNube = await window.SheetsCIBSA.borrarFilasHistorialClave(tok, HIST_HOJA, ent); }
       catch (e) { return alert("No se pudo borrar de la nube (" + (e.message || e) + ").\nEl registro NO se borró; inténtalo con conexión."); }
     }
     const k = (s) => (s || "").trim().toLowerCase(), ver = (v) => parseInt(v, 10) || 1;
     histStore(histLoad().filter((x) => !(k(x.nombre) === k(ent.nombre) && k(x.apellido) === k(ent.apellido) && k(x.tipo) === k(ent.tipo) && ver(x.version) === ver(ent.version))));
     renderHistorial();
+    // Si la nube borró 0 filas (con sesión activa), la fila puede volver al sincronizar → avisar para diagnosticar.
+    if (tok && nNube === 0) alert("Aviso: en la nube no encontré filas de este registro (0 borradas). Si reaparece al recargar, hay que quitarlo directo en la hoja HISTORIAL del Sheet. Avísame el caso para revisarlo.");
   }
   function importarRegistro(file) {
     const reader = new FileReader();
@@ -1801,7 +1806,7 @@
     const cont = $("telaMulti");
     if (!cont) return [];
     const names = Array.from(cont.querySelectorAll("input:checked")).map((c) => c.value);
-    return state.telas.filter((t) => names.includes(t.nombre));
+    return names.map((n) => telaPorNombre(n)).filter(Boolean);
   }
 
   // ---------- Tema ----------
@@ -1944,8 +1949,27 @@
     const r = window.CalcCIBSA.evalExpr($(id).value);
     return (r == null || isNaN(r)) ? def : r;
   }
-  function telaActual() {
-    return state.telas.find((t) => t.nombre === $("f_tela").value) || null;
+  // Resolución central de tela por nombre. Si hay telas CONGELADAS (cotización restaurada del historial), usa
+  // esa versión (ficha y valor m² del momento en que se cotizó) → integridad histórica; si no, la tela viva.
+  function telaPorNombre(n) {
+    if (!n) return null;
+    if (state.telasFrozen && state.telasFrozen[n]) return state.telasFrozen[n];
+    return state.telas.find((t) => t.nombre === n) || null;
+  }
+  function telaActual() { return telaPorNombre($("f_tela") ? $("f_tela").value : ""); }
+  // Congela (clona) las telas usadas por la cotización, por nombre, para guardarlas en el snapshot y que una
+  // reimpresión futura muestre la ficha/valor m² de ese momento aunque la BD cambie después.
+  function telasFrozenMap() {
+    const names = new Set();
+    const add = (v) => { if (v) names.add(v); };
+    add($("f_tela") && $("f_tela").value);
+    { const c = $("telaOpcList"); if (c) c.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => add(cb.value)); }
+    { const c = $("telaGlobalList"); if (c && $("f_telaGlobalOn") && $("f_telaGlobalOn").checked) c.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => add(cb.value)); }
+    const scan = (o) => { if (!o || typeof o !== "object") return; if (Array.isArray(o)) { o.forEach(scan); return; } Object.keys(o).forEach((k) => { if (k === "telaNombre") add(o[k]); else if (o[k] && typeof o[k] === "object") scan(o[k]); }); };
+    SNAP_STATE.forEach((k) => scan(state[k]));
+    const map = {};
+    names.forEach((n) => { const t = telaPorNombre(n); if (t) { try { map[n] = JSON.parse(JSON.stringify(t)); } catch (e) {} } });
+    return map;
   }
   // Nombre de la tela PARA EL CLIENTE (sin proveedor). El proveedor es interno y NUNCA va al PDF/plano.
   function telaCli(t) {
@@ -2002,7 +2026,7 @@
     const out = [];
     cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
       if (out.some((t) => t.nombre === cb.value)) return;
-      const t = state.telas.find((x) => x.nombre === cb.value); if (t) out.push(t);
+      const t = telaPorNombre(cb.value); if (t) out.push(t);
     });
     return out;
   }
@@ -2016,7 +2040,7 @@
   function setChecksTelaOpc(filtro) {
     const cont = $("telaOpcList"); if (!cont) return;
     cont.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-      const t = state.telas.find((x) => x.nombre === cb.value);
+      const t = telaPorNombre(cb.value);
       cb.checked = !!(t && filtro(t));
     });
   }
@@ -2053,7 +2077,7 @@
     const cont = $("telaOpcList");
     if (cont) cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
       if (out.some((t) => t.nombre === cb.value)) return;
-      const t = state.telas.find((x) => x.nombre === cb.value); if (t) out.push(t);
+      const t = telaPorNombre(cb.value); if (t) out.push(t);
     });
     return out;
   }
@@ -2383,7 +2407,7 @@
   }
   function calcAleta(a, cantidad, valorOj, factor) {
     const ev = window.CalcCIBSA.evalExpr;
-    const al = ev(a.largo), aa = ev(a.ancho), tela = state.telas.find((t) => t.nombre === a.telaNombre), N = Math.max(1, cantidad || 1);
+    const al = ev(a.largo), aa = ev(a.ancho), tela = telaPorNombre(a.telaNombre), N = Math.max(1, cantidad || 1);
     if (!tela || al == null || aa == null || al <= 0 || aa <= 0) return null;
     const u = ev(a.union);
     let lote;
@@ -3014,7 +3038,7 @@
   // Calcula un paño inscrito: dimensiones propias (las ingresa el usuario); se confecciona como pieza.
   function calcInscrito(pz, ins) {
     const winLargo = window.CalcCIBSA.evalExpr(ins.largo), winAncho = window.CalcCIBSA.evalExpr(ins.ancho);
-    const tela = state.telas.find((t) => t.nombre === ins.telaNombre);
+    const tela = telaPorNombre(ins.telaNombre);
     const N = Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1);
     if (!tela || winLargo == null || winAncho == null || winLargo <= 0 || winAncho <= 0) return null;
     const u = window.CalcCIBSA.evalExpr(ins.union);
@@ -4682,7 +4706,7 @@
       const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
       return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {}, rotulo: !!ins.rotulo, id: rotId(ins) } : null;
     }).filter(Boolean);
-    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((state.telas.find((t) => t.nombre === pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cintas: cintasSpec(pz.cintas || [], { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, rotDrag: pz.rotDrag };
+    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((telaPorNombre(pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cintas: cintasSpec(pz.cintas || [], { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, rotDrag: pz.rotDrag };
     if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh }; }
     if (pz.ojMode === "arista") {
       const r = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), !!pz.ojNumerar);
@@ -4904,7 +4928,7 @@
     const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
     const largo = ev(pz.largo), ancho = ev(pz.ancho);
     if (!(largo > 0) || !(ancho > 0)) return alert("Esta pieza necesita largo y ancho para el plano.");
-    const tela = state.telas.find((t) => t.nombre === pz.telaNombre);
+    const tela = telaPorNombre(pz.telaNombre);
     const N = Math.max(1, parseInt(ev(pz.cantidad) || 1, 10) || 1);
     const etq = (pz.etiqueta || "").trim();
     await descargarSketch({
@@ -5234,7 +5258,7 @@
     return { dAncho, dLargo };
   }
   function calcPieza(pz) {
-    const tela = state.telas.find((t) => t.nombre === pz.telaNombre);
+    const tela = telaPorNombre(pz.telaNombre);
     const largo = window.CalcCIBSA.evalExpr(pz.largo);
     const ancho = window.CalcCIBSA.evalExpr(pz.ancho);
     if (!tela || largo == null || ancho == null || largo <= 0 || ancho <= 0) return null;
@@ -5449,6 +5473,7 @@
     favCatActiva = null; renderCategoriasFav();
     { const sc = $("f_suprimirCotas"); if (sc) sc.checked = false; const sc2 = $("f_suprimirCotas2"); if (sc2) sc2.checked = false; const nh = $("f_noHist"); if (nh) nh.checked = false; }
     _editHist = null; ocultarEdicionBanner();   // limpiar cancela cualquier edición de registro en curso
+    state.telasFrozen = null;   // sin telas congeladas: se cotiza con la BD viva
     $("telaMultiErr").classList.add("hidden"); state.prelim = [];
     // Reset bordes/unión → mismo borde 0.045
     state.bordeModo = "uniforme"; state.bordeValor = "0.045";
