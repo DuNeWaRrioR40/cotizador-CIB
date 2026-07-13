@@ -350,6 +350,7 @@
     const conCotas = opts.cotas !== false, fmt = SK.fmt;
     // Simbología presente (hoja desplegada, sin aletas): reserva alto para la leyenda.
     const skVol = Object.assign({}, SK.construirSketch(spec), { aletas: [], straps: [] });
+    if ((spec.volumetrico.ojEn || "externo") === "externo" && SK.ojetillosVolExterno) skVol.ojetillos = SK.ojetillosVolExterno(skVol.ojetillos, A, L, H);
     const simb = SK.simbologia(skVol);
     const legH = simb.length ? (9 + simb.length * 9 + 6) : 0;
     const EDGE = PDFLib.rgb(0.12, 0.12, 0.12), FOLD = PDFLib.rgb(0.54, 0.63, 0.72), CUT = PDFLib.rgb(0.557, 0.267, 0.678);
@@ -361,28 +362,31 @@
     const dtL = (t, x, y, sz, c) => page.drawText(String(t), { x: PX(x), y: PY(y) - sz * 0.34, size: sz, font: font, color: c || INK });
     const hCota = (xa, xb, y, val) => { dl(xa, y, xb, y, GREEN, 0.6); dl(xa, y - 2.5, xa, y + 2.5, GREEN, 0.6); dl(xb, y - 2.5, xb, y + 2.5, GREEN, 0.6); dtC(fmt(val) + "m", (xa + xb) / 2, y - 4, 7, GREEN); };
     const vCota = (ya, yb, x, val) => { dl(x, ya, x, yb, GREEN, 0.6); dl(x - 2.5, ya, x + 2.5, ya, GREEN, 0.6); dl(x - 2.5, yb, x + 2.5, yb, GREEN, 0.6); dtL(fmt(val) + "m", x - 26, (ya + yb) / 2, 7, GREEN); };
-    // ----- Panel A: cuboide 3D -----
-    const panelAH = Math.min(box.h * 0.44, 250);
-    const dep = 0.5, k = 0.707, needW = A + L * dep * k, needH = H + L * dep * k;
-    const sc3 = Math.min((VW - 120) / needW, (panelAH - 46) / needH);
-    const wA = A * sc3, hH = H * sc3, dd = L * dep * k * sc3, bbW = wA + dd, bbH = hH + dd;
-    const x0 = (VW - bbW) / 2, y0 = 16 + (panelAH + bbH) / 2;
-    const FBL = [x0, y0], FBR = [x0 + wA, y0], FTL = [x0, y0 - hH], FTR = [x0 + wA, y0 - hH];
-    const BBL = [x0 + dd, y0 - dd], BBR = [x0 + wA + dd, y0 - dd], BTL = [x0 + dd, y0 - hH - dd], BTR = [x0 + wA + dd, y0 - hH - dd];
-    dtC("REPRESENTACION 3D", VW / 2, 12, 8.5, INK);
-    [[BBL, BBR], [BBL, BTL], [BBL, FBL]].forEach((e) => dl(e[0][0], e[0][1], e[1][0], e[1][1], FOLD, 0.6, [3, 2]));
-    [[FTL, FTR], [FTR, FBR], [FBR, FBL], [FBL, FTL], [FTL, BTL], [FTR, BTR], [FBR, BBR], [BTL, BTR], [BTR, BBR]].forEach((e) => dl(e[0][0], e[0][1], e[1][0], e[1][1], EDGE, 1));
-    if (conCotas) {
-      dtC("ancho " + fmt(A) + "m", (FBL[0] + FBR[0]) / 2, y0 + 10, 7, MUT);
-      dtL("alto " + fmt(H) + "m", x0 - 34, (FTL[1] + FBL[1]) / 2, 7, MUT);
-      dtL("largo " + fmt(L) + "m", (FTR[0] + BTR[0]) / 2 + 3, (FTR[1] + BTR[1]) / 2 - 2, 7, MUT);
+    // ----- Panel A: cuboide 3D (se omite con soloDesplegado: vista interior/espejo) -----
+    const soloDesp = !!opts.soloDesplegado;
+    const panelAH = soloDesp ? 4 : Math.min(box.h * 0.44, 250);
+    if (!soloDesp) {
+      const dep = 0.5, k = 0.707, needW = A + L * dep * k, needH = H + L * dep * k;
+      const sc3 = Math.min((VW - 120) / needW, (panelAH - 46) / needH);
+      const wA = A * sc3, hH = H * sc3, dd = L * dep * k * sc3, bbW = wA + dd, bbH = hH + dd;
+      const x0 = (VW - bbW) / 2, y0 = 16 + (panelAH + bbH) / 2;
+      const FBL = [x0, y0], FBR = [x0 + wA, y0], FTL = [x0, y0 - hH], FTR = [x0 + wA, y0 - hH];
+      const BBL = [x0 + dd, y0 - dd], BBR = [x0 + wA + dd, y0 - dd], BTL = [x0 + dd, y0 - hH - dd], BTR = [x0 + wA + dd, y0 - hH - dd];
+      dtC("REPRESENTACION 3D", VW / 2, 12, 8.5, INK);
+      [[BBL, BBR], [BBL, BTL], [BBL, FBL]].forEach((e) => dl(e[0][0], e[0][1], e[1][0], e[1][1], FOLD, 0.6, [3, 2]));
+      [[FTL, FTR], [FTR, FBR], [FBR, FBL], [FBL, FTL], [FTL, BTL], [FTR, BTR], [FBR, BBR], [BTL, BTR], [BTR, BBR]].forEach((e) => dl(e[0][0], e[0][1], e[1][0], e[1][1], EDGE, 1));
+      if (conCotas) {
+        dtC("ancho " + fmt(A) + "m", (FBL[0] + FBR[0]) / 2, y0 + 10, 7, MUT);
+        dtL("alto " + fmt(H) + "m", x0 - 34, (FTL[1] + FBL[1]) / 2, 7, MUT);
+        dtL("largo " + fmt(L) + "m", (FTR[0] + BTR[0]) / 2 + 3, (FTR[1] + BTR[1]) / 2 - 2, 7, MUT);
+      }
     }
     // ----- Panel B: hoja desplegada -----
     const Wd = A + 2 * H, Ld = L + 2 * H;
     const pbx = 60, pbyTit = panelAH + 12, pby = panelAH + 30;
     const scB = Math.min((VW - 120) / Wd, (box.h - pby - 40 - legH) / Ld);
     const X = (x) => pbx + x * scB, Y = (y) => pby + y * scB;
-    dtC("PLANO DESPLEGADO (hoja de corte)", VW / 2, pbyTit, 8.5, INK);
+    dtC(spec.vista === "trasera" ? "PLANO DESPLEGADO - VISTA INTERIOR (espejo)" : "PLANO DESPLEGADO (hoja de corte)", VW / 2, pbyTit, 8.5, INK);
     const cross = [[H, 0], [H + A, 0], [H + A, H], [Wd, H], [Wd, H + L], [H + A, H + L], [H + A, Ld], [H, Ld], [H, H + L], [0, H + L], [0, H], [H, H]];
     for (let i = 0; i < cross.length; i++) { const a = cross[i], b = cross[(i + 1) % cross.length]; dl(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]), EDGE, 1); }
     [[[H, H], [H + A, H]], [[H, H + L], [H + A, H + L]], [[H, H], [H, H + L]], [[H + A, H], [H + A, H + L]]].forEach((e) => dl(X(e[0][0]), Y(e[0][1]), X(e[1][0]), Y(e[1][1]), FOLD, 0.7, [4, 3]));
@@ -1361,7 +1365,7 @@
         matT.forEach((m) => { p2.drawText(san("- " + m.nombre + ": " + m.cant), { x: M, y: my, size: 10, font: font, color: BLACK() }); my -= matLineH; });
       }
       const espejoSpec = Object.assign({}, datos.sketch, { espejo: true, vista: "trasera", extraCortes: (datos.backExtra && datos.backExtra.cortes) || [], aletas: (datos.backExtra && datos.backExtra.aletas) || [] });
-      dibujarSketchPDF(p2, espejoSpec, { x: M, top: yb, w: W - 2 * M, h: yb - (bottomM + matBlockH + 16) }, font, { cotas: true });
+      dibujarSketchPDF(p2, espejoSpec, { x: M, top: yb, w: W - 2 * M, h: yb - (bottomM + matBlockH + 16) }, font, { cotas: true, soloDesplegado: true });
     }
 
     const bytes = await doc.save();

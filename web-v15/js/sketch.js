@@ -1111,6 +1111,20 @@
   }
 
   // SVG temático (clases coloreadas por el CSS de la App).
+  // Proyecta los ojetillos del perímetro del paño base (tapa) al borde EXTERNO de la hoja
+  // desplegada (la arista extrema de las alas de altura). Es el comportamiento por defecto en
+  // volumétricos: los ojetillos van en el contorno exterior, no en el perímetro interno L×A.
+  // Puntos que no están sobre el perímetro (p. ej. ojetillos de calados) se dejan en la tapa.
+  function ojetillosVolExterno(pts, A, L, H) {
+    const E = 1e-6;
+    return (pts || []).map((p) => {
+      if (Math.abs(p.y) < E) return { x: p.x, y: -H };          // arista superior → borde externo sup
+      if (Math.abs(p.y - L) < E) return { x: p.x, y: L + H };   // inferior
+      if (Math.abs(p.x) < E) return { x: -H, y: p.y };          // izquierda
+      if (Math.abs(p.x - A) < E) return { x: A + H, y: p.y };   // derecha
+      return p;
+    });
+  }
   // ----- Vista volumétrica: cuboide 3D + hoja de corte desplegada (calados en esquinas) -----
   function volSVG(spec, opts) {
     opts = opts || {};
@@ -1121,6 +1135,7 @@
     const VW = 380;
     // Simbología presente en la hoja desplegada (sin aletas: no aplican en volumétrico).
     const skVol = Object.assign({}, construirSketch(spec), { aletas: [], straps: [] });
+    if ((spec.volumetrico.ojEn || "externo") === "externo") skVol.ojetillos = ojetillosVolExterno(skVol.ojetillos, A, L, H);
     const simbVol = simbologia(skVol);
     const legH = simbVol.length ? (11 + simbVol.length * 11 + 8) : 0;
     const hCota = (xa, xb, y, val) => {
@@ -1145,33 +1160,37 @@
       return o;
     };
     // -------- Panel A: cuboide 3D (proyección oblicua) --------
-    const paTop = 14, paH = 150;
-    const dep = 0.5, k = 0.707;
-    const needW = A + L * dep * k, needH = H + L * dep * k;
-    const sc3 = Math.min((VW - 90) / needW, (paH - 38) / needH);
-    const wA = A * sc3, hH = H * sc3, dd = L * dep * k * sc3;
-    const bbW = wA + dd, bbH = hH + dd;
-    const x0 = (VW - bbW) / 2, y0 = paTop + (paH + bbH) / 2; // frente-inferior-izq (punto más bajo)
-    const FBL = [x0, y0], FBR = [x0 + wA, y0], FTL = [x0, y0 - hH], FTR = [x0 + wA, y0 - hH];
-    const BBL = [x0 + dd, y0 - dd], BBR = [x0 + wA + dd, y0 - dd], BTL = [x0 + dd, y0 - hH - dd], BTR = [x0 + wA + dd, y0 - hH - dd];
-    const P = (p) => f1(p[0]) + "," + f1(p[1]);
+    // soloDesplegado: omite el 3D (p. ej. vista interior/espejo, donde el volumen ya se mostró).
+    const soloDesp = !!opts.soloDesplegado;
+    const paTop = 14, paH = soloDesp ? -8 : 150;
     let s = `<svg class="sketch-svg" viewBox="0 0 ${VW} 0H" xmlns="http://www.w3.org/2000/svg">`;
-    s += `<text class="vista-tit" x="${f1(VW / 2)}" y="10" text-anchor="middle">REPRESENTACIÓN 3D</text>`;
-    // Caras (relleno suave para dar volumen)
-    s += `<polygon points="${P(FTL)} ${P(FTR)} ${P(BTR)} ${P(BTL)}" fill="rgba(120,140,170,0.18)" stroke="none"/>`; // tapa
-    s += `<polygon points="${P(FTR)} ${P(BTR)} ${P(BBR)} ${P(FBR)}" fill="rgba(120,140,170,0.10)" stroke="none"/>`; // lado der
-    s += `<polygon points="${P(FTL)} ${P(FTR)} ${P(FBR)} ${P(FBL)}" fill="rgba(120,140,170,0.04)" stroke="none"/>`; // frente
-    // Aristas ocultas (punteadas)
-    [[BBL, BBR], [BBL, BTL], [BBL, FBL]].forEach((e) => { s += `<line class="vol-fold" x1="${f1(e[0][0])}" y1="${f1(e[0][1])}" x2="${f1(e[1][0])}" y2="${f1(e[1][1])}"/>`; });
-    // Aristas visibles (sólidas)
-    [[FTL, FTR], [FTR, FBR], [FBR, FBL], [FBL, FTL], [FTL, BTL], [FTR, BTR], [FBR, BBR], [BTL, BTR], [BTR, BBR]].forEach((e) => {
-      s += `<line class="vol-edge" x1="${f1(e[0][0])}" y1="${f1(e[0][1])}" x2="${f1(e[1][0])}" y2="${f1(e[1][1])}"/>`;
-    });
-    if (conCotas) {
-      s += `<text class="cota-lbl" x="${f1((FBL[0] + FBR[0]) / 2)}" y="${f1(y0 + 9)}" text-anchor="middle">ancho ${fmt(A)}m</text>`;
-      s += `<text class="cota-lbl" x="${f1(x0 - 4)}" y="${f1((FTL[1] + FBL[1]) / 2)}" text-anchor="middle" transform="rotate(-90 ${f1(x0 - 4)} ${f1((FTL[1] + FBL[1]) / 2)})">alto ${fmt(H)}m</text>`;
-      const mlx = (FTR[0] + BTR[0]) / 2 + 3, mly = (FTR[1] + BTR[1]) / 2 - 2;
-      s += `<text class="cota-lbl" x="${f1(mlx)}" y="${f1(mly)}">largo ${fmt(L)}m</text>`;
+    if (!soloDesp) {
+      const dep = 0.5, k = 0.707;
+      const needW = A + L * dep * k, needH = H + L * dep * k;
+      const sc3 = Math.min((VW - 90) / needW, (paH - 38) / needH);
+      const wA = A * sc3, hH = H * sc3, dd = L * dep * k * sc3;
+      const bbW = wA + dd, bbH = hH + dd;
+      const x0 = (VW - bbW) / 2, y0 = paTop + (paH + bbH) / 2; // frente-inferior-izq (punto más bajo)
+      const FBL = [x0, y0], FBR = [x0 + wA, y0], FTL = [x0, y0 - hH], FTR = [x0 + wA, y0 - hH];
+      const BBL = [x0 + dd, y0 - dd], BBR = [x0 + wA + dd, y0 - dd], BTL = [x0 + dd, y0 - hH - dd], BTR = [x0 + wA + dd, y0 - hH - dd];
+      const P = (p) => f1(p[0]) + "," + f1(p[1]);
+      s += `<text class="vista-tit" x="${f1(VW / 2)}" y="10" text-anchor="middle">REPRESENTACIÓN 3D</text>`;
+      // Caras (relleno suave para dar volumen)
+      s += `<polygon points="${P(FTL)} ${P(FTR)} ${P(BTR)} ${P(BTL)}" fill="rgba(120,140,170,0.18)" stroke="none"/>`; // tapa
+      s += `<polygon points="${P(FTR)} ${P(BTR)} ${P(BBR)} ${P(FBR)}" fill="rgba(120,140,170,0.10)" stroke="none"/>`; // lado der
+      s += `<polygon points="${P(FTL)} ${P(FTR)} ${P(FBR)} ${P(FBL)}" fill="rgba(120,140,170,0.04)" stroke="none"/>`; // frente
+      // Aristas ocultas (punteadas)
+      [[BBL, BBR], [BBL, BTL], [BBL, FBL]].forEach((e) => { s += `<line class="vol-fold" x1="${f1(e[0][0])}" y1="${f1(e[0][1])}" x2="${f1(e[1][0])}" y2="${f1(e[1][1])}"/>`; });
+      // Aristas visibles (sólidas)
+      [[FTL, FTR], [FTR, FBR], [FBR, FBL], [FBL, FTL], [FTL, BTL], [FTR, BTR], [FBR, BBR], [BTL, BTR], [BTR, BBR]].forEach((e) => {
+        s += `<line class="vol-edge" x1="${f1(e[0][0])}" y1="${f1(e[0][1])}" x2="${f1(e[1][0])}" y2="${f1(e[1][1])}"/>`;
+      });
+      if (conCotas) {
+        s += `<text class="cota-lbl" x="${f1((FBL[0] + FBR[0]) / 2)}" y="${f1(y0 + 9)}" text-anchor="middle">ancho ${fmt(A)}m</text>`;
+        s += `<text class="cota-lbl" x="${f1(x0 - 4)}" y="${f1((FTL[1] + FBL[1]) / 2)}" text-anchor="middle" transform="rotate(-90 ${f1(x0 - 4)} ${f1((FTL[1] + FBL[1]) / 2)})">alto ${fmt(H)}m</text>`;
+        const mlx = (FTR[0] + BTR[0]) / 2 + 3, mly = (FTR[1] + BTR[1]) / 2 - 2;
+        s += `<text class="cota-lbl" x="${f1(mlx)}" y="${f1(mly)}">largo ${fmt(L)}m</text>`;
+      }
     }
     // -------- Panel B: hoja de corte desplegada --------
     const pbTit = paTop + paH;
@@ -1182,7 +1201,7 @@
     const sheetBot = pby + Ld * scB + 20;
     const totalH = sheetBot + legH;
     s = s.replace("0H", f1(totalH)); // fijar alto del viewBox
-    s += `<text class="vista-tit" x="${f1(VW / 2)}" y="${f1(pbTit + 12)}" text-anchor="middle">PLANO DESPLEGADO (hoja de corte)</text>`;
+    s += `<text class="vista-tit" x="${f1(VW / 2)}" y="${f1(pbTit + 12)}" text-anchor="middle">${spec.vista === "trasera" ? "PLANO DESPLEGADO — VISTA INTERIOR (espejo)" : "PLANO DESPLEGADO (hoja de corte)"}</text>`;
     // Contorno en cruz (tapa central + 4 alas), sin las esquinas (calados)
     const cross = [[H, 0], [H + A, 0], [H + A, H], [Wd, H], [Wd, H + L], [H + A, H + L], [H + A, Ld], [H, Ld], [H, H + L], [0, H + L], [0, H], [H, H]];
     s += `<polygon class="edge" points="${cross.map((p) => f1(X(p[0])) + "," + f1(Y(p[1]))).join(" ")}" fill="rgba(120,140,170,0.06)"/>`;
@@ -1460,5 +1479,6 @@
     autoRotulo: AUTOROT,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
+  API.ojetillosVolExterno = ojetillosVolExterno;
   global.SketchCIBSA = API;
 })(typeof window !== "undefined" ? window : globalThis);

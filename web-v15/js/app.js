@@ -194,7 +194,7 @@
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
     // Telas adicionales marcadas (multi-tela uniforme) + categoría FAV activa, para reponer la selección completa.
     const telaOpc = []; { const cont = $("telaOpcList"); if (cont) cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => telaOpc.push(cb.value)); }
-    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, empresaOn: $("f_empresaOn") ? $("f_empresaOn").checked : false, descMonto: $("f_descMonto") ? $("f_descMonto").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", telasFrozen: telasFrozenMap(), estado: st };
+    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, ojVolExt: $("f_ojVolExt") ? $("f_ojVolExt").checked : true, empresaOn: $("f_empresaOn") ? $("f_empresaOn").checked : false, descMonto: $("f_descMonto") ? $("f_descMonto").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", telasFrozen: telasFrozenMap(), estado: st };
     try { return JSON.parse(JSON.stringify(snap)); } catch (e) { return null; }
   }
   function setSelectIfOption(id, val) { const sel = $(id); if (!sel || val == null) return; if (Array.from(sel.options).some((o) => o.value === val)) sel.value = val; }
@@ -224,6 +224,8 @@
     // Repone la selección multi-tela (telas adicionales marcadas) y la categoría FAV activa.
     { const cont = $("telaOpcList"); if (cont) { const sel = new Set(snap.telaOpc || []); cont.querySelectorAll('input[type="checkbox"]').forEach((cb) => { cb.checked = sel.has(cb.value); }); } }
     favCatActiva = snap.favCat || null; renderCategoriasFav();
+    if ($("f_ojVolExt")) $("f_ojVolExt").checked = snap.ojVolExt !== false;
+    if ($("wOjVol")) $("wOjVol").classList.toggle("hidden", !snap.usaAlto);
     if ($("f_usaAlto")) { $("f_usaAlto").checked = !!snap.usaAlto; if ($("wAltura")) $("wAltura").classList.toggle("hidden", !snap.usaAlto); }
     if ($("f_empresaOn")) { $("f_empresaOn").checked = !!snap.empresaOn; toggleEmpresa(); }
     if ($("f_descMonto")) { $("f_descMonto").checked = !!snap.descMonto; actualizarDescSuffix(); }
@@ -4078,8 +4080,11 @@
       if (r != null && !isNaN(r)) { $(id).value = window.CalcCIBSA.fmtNum(r); recompute(); }
     }));
   // Producto volumétrico (alto) — uniforme
-  $("f_usaAlto").addEventListener("change", (e) => { $("wAltura").classList.toggle("hidden", !e.target.checked); recompute(); });
+  { const c = $("f_ojVolExt"); if (c) c.addEventListener("change", recompute); }
+  $("f_usaAlto").addEventListener("change", (e) => { if ($("wOjVol")) $("wOjVol").classList.toggle("hidden", !e.target.checked); $("wAltura").classList.toggle("hidden", !e.target.checked); recompute(); });
   function alturaUnif() { return $("f_usaAlto").checked ? num("f_altura", 0) : 0; }
+  // Dónde van los ojetillos del volumétrico: "externo" (borde extremo de las alas, por defecto) o "tapa".
+  function ojEnUnif() { const c = $("f_ojVolExt"); return (c && !c.checked) ? "tapa" : "externo"; }
 
   function recompute() {
     if (state.docMode === "preliminar") recomputePrelim();
@@ -4101,7 +4106,7 @@
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
       const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar }, ojSpecUnif());
-      if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif() };
+      if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif(), ojEn: ojEnUnif() };
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
       activarArrastreCallouts(sk);
       const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); recompute(); };
@@ -4827,7 +4832,7 @@
       return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {}, rotulo: !!ins.rotulo, id: rotId(ins) } : null;
     }).filter(Boolean);
     const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((telaPorNombre(pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cintas: cintasSpec(pz.cintas || [], { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, rotDrag: pz.rotDrag };
-    if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh }; }
+    if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh, ojEn: pz.ojVolExt === false ? "tapa" : "externo" }; }
     if (pz.ojMode === "arista") {
       const r = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), !!pz.ojNumerar);
       spec.ojetillosPos = r.pos;
@@ -4911,7 +4916,16 @@
   }
   function sketchDualSVG(spec, trasera, backCortes, backAletas) {
     let html = window.SketchCIBSA.sketchSVG(spec, { live: true });
-    if (spec.volumetrico && (parseFloat(spec.volumetrico.alto) || 0) > 0) return html; // volumétrico: solo vista 3D + desplegado
+    if (spec.volumetrico && (parseFloat(spec.volumetrico.alto) || 0) > 0) {
+      // Volumétrico: la trasera se muestra como el DESPLEGADO EN ESPEJO (vista interior),
+      // sin repetir la representación 3D (misma geometría).
+      if (trasera) {
+        const backV = Object.assign({}, spec, { espejo: true, vista: "trasera", aletas: backAletas || [] });
+        if (backCortes && backCortes.length) backV.extraCortes = backCortes;
+        html += '<div class="muted small" style="margin:8px 0 2px">Vista interior (desplegado en espejo · diseño trasero):</div>' + window.SketchCIBSA.sketchSVG(backV, { soloDesplegado: true });
+      }
+      return html;
+    }
     if (trasera) {
       const back = Object.assign({}, spec, { espejo: true, vista: "trasera", aletas: backAletas || [] });
       if (backCortes && backCortes.length) back.extraCortes = backCortes;
@@ -5023,8 +5037,8 @@
       strapsAristas: strapsDetalleAristas(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }),
       observaciones: terminacionesTexto(state.orientUnif).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, []).concat(materialesCortes(state.cortesUnif)),
-      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif() } } : {}),
-      trasera: state.trasUnif && !(alturaUnif() > 0),
+      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif(), ojEn: ojEnUnif() } } : {}),
+      trasera: state.trasUnif,
       backExtra: { cortes: cortesSpec(state.backCortesUnif), aletas: aletasSpec(state.backAletasUnif) },
       materialesTrasera: materialesTraseras(state.backCortesUnif, state.backComplementosUnif),
     });
@@ -5269,6 +5283,7 @@
         </div>
         <label class="chk"><input class="pz-usaAlto" type="checkbox" /> <span>Volumétrico (agregar alto)</span></label>
         <label class="field pz-alto-field hidden"><span>Alto (m)</span><input class="pz-alto" type="text" inputmode="text" placeholder="se suma 2× alto al largo y al ancho" /></label>
+        <label class="chk pz-ojvol-field hidden"><input class="pz-ojVolExt" type="checkbox" checked /> <span>Ojetillos en el borde externo del desplegado</span></label>
         <div class="pz-oj-wrap"></div>
         <div class="pz-borde"></div>
         <div class="pz-comp"></div>
@@ -5299,7 +5314,10 @@
       q(".pz-usaAlto").checked = !!pz.usaAlto;
       q(".pz-alto").value = pz.altura || "";
       q(".pz-alto-field").classList.toggle("hidden", !pz.usaAlto);
-      q(".pz-usaAlto").addEventListener("change", (e) => { pz.usaAlto = e.target.checked; q(".pz-alto-field").classList.toggle("hidden", !pz.usaAlto); recomputeCompuesto(); });
+      q(".pz-ojvol-field").classList.toggle("hidden", !pz.usaAlto);
+      q(".pz-ojVolExt").checked = pz.ojVolExt !== false;
+      q(".pz-ojVolExt").addEventListener("change", (e) => { pz.ojVolExt = e.target.checked; recomputeCompuesto(); });
+      q(".pz-usaAlto").addEventListener("change", (e) => { pz.usaAlto = e.target.checked; q(".pz-alto-field").classList.toggle("hidden", !pz.usaAlto); q(".pz-ojvol-field").classList.toggle("hidden", !pz.usaAlto); recomputeCompuesto(); });
       q(".pz-alto").addEventListener("input", (e) => { pz.altura = e.target.value; recomputeCompuesto(); });
       q(".pz-alto").addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { pz.altura = window.CalcCIBSA.fmtNum(r); e.target.value = pz.altura; recomputeCompuesto(); } });
       renderPiezaOjetillos(q(".pz-oj-wrap"), pz);
@@ -5611,6 +5629,7 @@
     { const dm = $("f_descMonto"); if (dm) dm.checked = false; actualizarDescSuffix(); }
     $("f_union").value = "0.045";
     $("f_usaAlto").checked = false; $("f_altura").value = ""; $("wAltura").classList.add("hidden");
+    { const c = $("f_ojVolExt"); if (c) c.checked = true; } { const w = $("wOjVol"); if (w) w.classList.add("hidden"); }
     state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
     state.cortesUnif = []; state.backCortesUnif = []; state.backComplementosUnif = []; state.aletasUnif = []; state.backAletasUnif = []; state.strapsUnif = []; state.cintasUnif = []; state.factorUnif = "1";
     { const t = $("f_trasUnif"); if (t) t.checked = false; }
