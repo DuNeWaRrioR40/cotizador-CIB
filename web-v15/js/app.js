@@ -3898,10 +3898,13 @@
     return (r == null || isNaN(r)) ? 0 : Math.max(0, Math.round(r));
   }
   // Posiciones de ojetillos del uniforme (modo arista) según dimensiones del formulario.
+  // Volumétrico con ojetillos al borde externo: las aristas verticales conservan sus esquinas.
+  function volExtUnif() { return alturaUnif() > 0 && ojEnUnif() === "externo"; }
+  function volExtPz(pz) { return !!pz.usaAlto && (window.CalcCIBSA.evalExpr(pz.altura) || 0) > 0 && pz.ojVolExt !== false; }
   function ojetillosPosUnif() {
     const a = num("f_ancho", null), l = num("f_largo", null);
     if (!(a > 0) || !(l > 0)) return { pos: [], total: 0, numeros: [] };
-    return ojetillosPosiciones(a, l, state.ojEdges, state.ojParejo, cortesSpec(state.cortesUnif), !!state.ojNumerar);
+    return ojetillosPosiciones(a, l, state.ojEdges, state.ojParejo, cortesSpec(state.cortesUnif), !!state.ojNumerar, volExtUnif());
   }
   function nOjetillos() {
     if (state.ojMode === "total") return ojInt(state.ojTotal);
@@ -3924,9 +3927,9 @@
   }
   // Detalle por arista para el plano de taller: cantidad instalada + espaciado real entre ojetillos.
   // (Las esquinas se cuentan en las aristas horizontales, para que la suma sea el total sin duplicar.)
-  function ojDetalleAristas(ancho, largo, edges, parejo, cortes) {
+  function ojDetalleAristas(ancho, largo, edges, parejo, cortes, mantenerEsquinas) {
     if (!window.SketchCIBSA || !(ancho > 0) || !(largo > 0)) return [];
-    const r = ojetillosPosiciones(ancho, largo, edges, parejo, cortes);
+    const r = ojetillosPosiciones(ancho, largo, edges, parejo, cortes, false, mantenerEsquinas);
     const f = window.CalcCIBSA.fmtNum, out = [];
     ["sup", "inf", "izq", "der"].forEach((k) => {
       const d = r.detalle && r.detalle[k]; if (!d) return;
@@ -4714,7 +4717,7 @@
   // Devuelve { pos:[{x,y}], total, errores:[], detalle:{sup:{n,kept,d,esp}, ...} }
   // Posiciones de una arista, descontando las esquinas que ya colocan las aristas horizontales
   // (las verticales no repiten esquinas: así cada esquina se suprime con UNA sola supresión).
-  function posicionesEdge(k, L, d, parejo, removed, edges, nTot, splits) {
+  function posicionesEdge(k, L, d, parejo, removed, edges, nTot, splits, mantenerEsquinas) {
     const ev = window.CalcCIBSA.evalExpr;
     let full;
     if (nTot != null && nTot >= 2) {
@@ -4732,14 +4735,17 @@
     } else {
       full = window.SketchCIBSA.posicionesAristaSeg(L, d, !!parejo, removed, splits);
     }
-    if (k === "izq" || k === "der") {
+    // En un paño plano las esquinas las colocan las aristas horizontales (se descartan aquí para no
+    // duplicar). En el desplegado VOLUMÉTRICO con ojetillos al borde externo, cada ala es independiente
+    // (los calados separan las aristas) y cada una debe partir EN su vértice → mantenerEsquinas.
+    if ((k === "izq" || k === "der") && !mantenerEsquinas) {
       const horizOn = (kk) => { const he = edges && edges[kk]; return !!(he && he.on !== false && ev(he.d) > 0); };
       const supOn = horizOn("sup"), infOn = horizOn("inf");
       full = full.filter((p) => !((p <= 1e-6 && supOn) || (p >= L - 1e-6 && infOn)));
     }
     return full;
   }
-  function ojetillosPosiciones(ancho, largo, edges, parejo, cortes, numerar) {
+  function ojetillosPosiciones(ancho, largo, edges, parejo, cortes, numerar, mantenerEsquinas) {
     const SK = window.SketchCIBSA, ev = window.CalcCIBSA.evalExpr;
     const out = [], errs = [], detalle = {}, numeros = [];
     const rem = SK.intervalosCalados(ancho, largo, cortes || []); // bordes seccionados por calados
@@ -4753,7 +4759,7 @@
       const insVec = (ins) => (k === "sup") ? { x: 0, y: ins } : (k === "inf") ? { x: 0, y: -ins } : (k === "izq") ? { x: ins, y: 0 } : { x: -ins, y: 0 };
       // Distribución normal: SOLO si la arista está activa y tiene distanciamiento/total. Los sets son independientes.
       if (e.on !== false && (usaTotal || d > 0)) {
-        const full = posicionesEdge(k, L, d, parejo, removed, edges, usaTotal ? nTot : null, splits), n = full.length;
+        const full = posicionesEdge(k, L, d, parejo, removed, edges, usaTotal ? nTot : null, splits, mantenerEsquinas), n = full.length;
         detalle[k].n = n; // el espaciado real (esp) se calcula abajo desde las posiciones instaladas
         // Marcadores de numeración (1er y último ojetillo de la arista) con flecha hacia donde crece
         // el conjunto. Índices 0..n-1 sobre la distribución COMPLETA (los que usa "Suprimir posiciones").
@@ -4808,7 +4814,7 @@
     if (pz.ojMode === "arista") {
       const ev = window.CalcCIBSA.evalExpr, a = ev(pz.ancho), l = ev(pz.largo);
       if (!(a > 0) || !(l > 0)) return 0;
-      return ojetillosPosiciones(a, l, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes)).total;
+      return ojetillosPosiciones(a, l, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), false, volExtPz(pz)).total;
     }
     return ojIntPz(pz.ojetillos);
   }
@@ -4834,7 +4840,7 @@
     const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((telaPorNombre(pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cintas: cintasSpec(pz.cintas || [], { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, rotDrag: pz.rotDrag };
     if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh, ojEn: pz.ojVolExt === false ? "tapa" : "externo" }; }
     if (pz.ojMode === "arista") {
-      const r = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), !!pz.ojNumerar);
+      const r = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), !!pz.ojNumerar, volExtPz(pz));
       spec.ojetillosPos = r.pos;
       if (pz.ojNumerar) spec.ojNumeros = r.numeros;
     } else { spec.ojTotal = ojIntPz(pz.ojetillos); if (pz.ojNumerar) spec.ojNumeros = []; }
@@ -5033,7 +5039,7 @@
       color: $("f_color").value.trim(),
       largo: largo, ancho: ancho,
       ojetillos: nOjetillos(), unidades: N,
-      ojetillosAristas: state.ojMode === "arista" ? ojDetalleAristas(ancho, largo, state.ojEdges, state.ojParejo, cortesSpec(state.cortesUnif)) : [],
+      ojetillosAristas: state.ojMode === "arista" ? ojDetalleAristas(ancho, largo, state.ojEdges, state.ojParejo, cortesSpec(state.cortesUnif), volExtUnif()) : [],
       strapsAristas: strapsDetalleAristas(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }),
       observaciones: terminacionesTexto(state.orientUnif).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, []).concat(materialesCortes(state.cortesUnif)),
@@ -5101,7 +5107,7 @@
       color: pz.color || "",
       largo: largo, ancho: ancho,
       ojetillos: ojTotalPieza(pz), unidades: N,
-      ojetillosAristas: pz.ojMode === "arista" ? ojDetalleAristas(window.CalcCIBSA.evalExpr(pz.ancho), window.CalcCIBSA.evalExpr(pz.largo), pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes)) : [],
+      ojetillosAristas: pz.ojMode === "arista" ? ojDetalleAristas(window.CalcCIBSA.evalExpr(pz.ancho), window.CalcCIBSA.evalExpr(pz.largo), pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), volExtPz(pz)) : [],
       strapsAristas: strapsDetalleAristas(pz.straps, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 }),
       observaciones: terminacionesPieza(pz).concat(obsComplementos(pz.complementos)).concat(obsVentanas(pz)).concat(obsCortes(pz.cortes)),
       materiales: materialesResumen(ojTotalPieza(pz), pz.complementos, pz.inscritos).concat(materialesCortes(pz.cortes)),
