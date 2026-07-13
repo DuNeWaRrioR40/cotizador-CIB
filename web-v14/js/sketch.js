@@ -579,12 +579,22 @@
   }
   function offsetCota(c) { return c.off; }
   // Margen necesario por lado (para que las cotas no se salgan del lienzo).
+  // Cotas VISIBLES y RE-EMPACADAS: quita las ocultas y COLAPSA los niveles (offsets) vacíos por lado, para que
+  // las cotas restantes —y sobre todo las generales— se acerquen al plano al suprimir las intermedias.
+  function cotasVisibles(sk) {
+    const all = cotasDe(sk).filter((c) => !(sk.cotasOcultas && c.key && sk.cotasOcultas[c.key]));
+    ["top", "bottom", "left", "right"].forEach((side) => {
+      const enLado = all.filter((c) => c.side === side);
+      if (!enLado.length) return;
+      const niveles = Array.from(new Set(enLado.map((c) => Math.round(c.off)))).sort((a, b) => a - b);
+      const mapa = {}; niveles.forEach((lvl, k) => { mapa[lvl] = OFF_MIN0 + k * OFF_STEP; });
+      enLado.forEach((c) => { c.off = mapa[Math.round(c.off)]; });
+    });
+    return all;
+  }
   function margenCotasLados(sk) {
     const m = { top: 0, bottom: 0, left: 0, right: 0 };
-    cotasDe(sk).forEach((c) => {
-      if (sk.cotasOcultas && c.key && sk.cotasOcultas[c.key]) return; // cota oculta: no reserva margen → al suprimir, el plano se re-encuadra y crece
-      if (c.off > m[c.side]) m[c.side] = c.off;
-    });
+    cotasVisibles(sk).forEach((c) => { if (c.off > m[c.side]) m[c.side] = c.off; });
     ["top", "bottom", "left", "right"].forEach((k) => { if (m[k] > 0) m[k] += 14; });
     return m;
   }
@@ -1283,8 +1293,7 @@
     // Cotas (verde) — origen al centro para posición de elementos; 4 lados; eje de referencia.
     if (conCotas) {
       const bTop = py(pMinY), bBot = py(pMaxY), bLeft = px(pMinX), bRight = px(pMaxX);
-      cotasDe(sk).forEach((c) => {
-        if (sk.cotasOcultas && c.key && sk.cotasOcultas[c.key]) return; // cota ocultada por el usuario
+      cotasVisibles(sk).forEach((c) => {   // ya filtra ocultas y re-empaca los niveles (mismos offsets que el margen)
         const off = offsetCota(c);
         let o = "";
         if (c.axis === "h") {
