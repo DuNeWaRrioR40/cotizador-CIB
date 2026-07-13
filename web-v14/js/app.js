@@ -3989,6 +3989,7 @@
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
       activarArrastreCallouts(sk);
       const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); recompute(); };
+      activarClicOcultarCotas(sk, state.cotasOcultas, refrescarOcUnif);
       menuPlano(sk, [
         { label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
         { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
@@ -4721,6 +4722,34 @@
   // SVG de vista previa: frontal y, si corresponde, trasera (espejo + calados propios) debajo.
   // Hace arrastrables los rótulos-flecha (callouts) del plano en vivo: al soltar, guarda el desplazamiento
   // en state.rotDrag[clave] y re-renderiza (la flecha se redibuja al destino). Se re-cablea en cada render.
+  // Clic en una cota del plano → aparece una ✕; al pincharla, esa cota se oculta. Alternativa ágil a la lista
+  // de cotas cuando hay muchas. `ocultas` = mapa cotasOcultas; `onChange` = re-render del plano.
+  function activarClicOcultarCotas(container, ocultas, onChange) {
+    if (!container || !ocultas) return;
+    const NS = "http://www.w3.org/2000/svg";
+    container.querySelectorAll("svg.sketch-svg").forEach((svg) => {
+      let sel = null, xG = null;
+      const limpiar = () => { if (xG && xG.parentNode) xG.parentNode.removeChild(xG); xG = null; if (sel) sel.classList.remove("cota-sel"); sel = null; };
+      svg.addEventListener("click", () => limpiar());   // clic en vacío: cancela
+      svg.querySelectorAll(".cota-g[data-ck]").forEach((g) => {
+        g.classList.add("cota-click");
+        g.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (sel === g) { limpiar(); return; }   // segundo clic en la misma cota: cancela
+          limpiar(); sel = g; g.classList.add("cota-sel");
+          const ln = g.querySelector("line.cota");
+          let cx, cy;
+          if (ln) { cx = (+ln.getAttribute("x1") + +ln.getAttribute("x2")) / 2; cy = (+ln.getAttribute("y1") + +ln.getAttribute("y2")) / 2; }
+          else { try { const bb = g.getBBox(); cx = bb.x + bb.width / 2; cy = bb.y + bb.height / 2; } catch (_) { return; } }
+          xG = document.createElementNS(NS, "g"); xG.setAttribute("class", "cota-x");
+          const c = document.createElementNS(NS, "circle"); c.setAttribute("cx", cx); c.setAttribute("cy", cy); c.setAttribute("r", "6.5"); xG.appendChild(c);
+          const t = document.createElementNS(NS, "text"); t.setAttribute("x", cx); t.setAttribute("y", cy + 3); t.setAttribute("text-anchor", "middle"); t.textContent = "✕"; xG.appendChild(t);
+          xG.addEventListener("click", (ev) => { ev.stopPropagation(); const ck = g.getAttribute("data-ck"); if (ck) ocultas[ck] = true; limpiar(); if (onChange) onChange(); });
+          svg.appendChild(xG);
+        });
+      });
+    });
+  }
   function activarArrastreCallouts(container, store, onChange) {
     store = store || state.rotDrag; onChange = onChange || recompute;   // store: dónde se guardan los offsets (uniforme = state.rotDrag; pieza = pz.rotDrag)
     if (container) container._dragCtx = { store: store, onChange: onChange };   // lo usa la lupa para arrastrar dentro del zoom
@@ -5340,6 +5369,7 @@
       if (sketchBox && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
         sketchBox.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas));
         activarArrastreCallouts(sketchBox, pz.rotDrag, recomputeCompuesto);
+        activarClicOcultarCotas(sketchBox, pz.cotasOcultas, recomputeCompuesto);
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
         menuPlano(sketchBox, [
           { label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
@@ -5426,7 +5456,7 @@
         body.innerHTML = '<p class="muted small">Completa largo y ancho de esta pieza.</p>';
       } else {
         const sk = document.createElement("div"); sk.className = "sketch"; sk.id = "prevsk_" + pz.id;
-        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); }
+        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); }
         body.appendChild(sk);
         const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn-outline"; dl.textContent = "Descargar plano (PDF)";
         dl.addEventListener("click", () => descargarSketchPieza(pz));

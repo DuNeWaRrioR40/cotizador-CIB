@@ -205,6 +205,13 @@ button:active { transform: scale(0.98); }
 .sketch-svg .cota-tick { stroke: #1B5E20; stroke-width: 0.45; }
 .sketch-svg .cota-lbl { fill: #1B5E20; font-size: 5.5px; font-family: inherit; }
 .sketch-svg .cota-eje { stroke: #1B5E20; stroke-width: 0.35; stroke-dasharray: 3 2; opacity: 0.45; }
+/* Clic en una cota para ocultarla: cursor + resaltado + botón ✕ */
+.sketch-svg .cota-g.cota-click { cursor: pointer; }
+.sketch-svg .cota-g.cota-sel line.cota, .sketch-svg .cota-g.cota-sel .cota-tick { stroke: #d8443a; stroke-width: 0.8; }
+.sketch-svg .cota-g.cota-sel .cota-lbl { fill: #d8443a; font-weight: bold; }
+.sketch-svg .cota-x { cursor: pointer; }
+.sketch-svg .cota-x circle { fill: #d8443a; stroke: #fff; stroke-width: 0.5; }
+.sketch-svg .cota-x text { fill: #fff; font-size: 7px; font-weight: bold; }
 .sketch-svg .cut { stroke: #8e44ad; stroke-width: 1.1; fill: none; stroke-dasharray: 6 3; }
 .sketch-svg .cut-guia { stroke: #0d8c8c; stroke-width: 0.9; fill: none; stroke-dasharray: 2 2.5; opacity: 0.95; }
 .sketch-svg .oj-num { stroke: #c0392b; stroke-width: 0.9; fill: none; }
