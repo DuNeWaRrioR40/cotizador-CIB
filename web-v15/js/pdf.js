@@ -363,7 +363,13 @@
     if (!(A > 0) || !(L > 0) || !(H > 0)) return;
     const conCotas = opts.cotas !== false, fmt = SK.fmt;
     // Simbología presente (hoja desplegada, sin aletas): reserva alto para la leyenda.
-    const skVol = Object.assign({}, SK.construirSketch(spec), { aletas: [], straps: [] });
+    const sk0 = SK.construirSketch(spec);
+    const aletasV = (sk0.aletas || []).map((a) => {
+      const adx = a.fused === "r" ? -H : a.fused === "l" ? H : 0;
+      const ady = a.fused === "t" ? H : a.fused === "b" ? -H : 0;
+      return Object.assign({}, a, { x: a.x + adx, y: a.y + ady, ojetillos: (a.ojetillos || []).map((p) => ({ x: p.x + adx, y: p.y + ady })) });
+    });
+    const skVol = Object.assign({}, sk0, { aletas: aletasV, straps: [] });
     if ((spec.volumetrico.ojEn || "externo") === "externo" && SK.ojetillosVolExterno) skVol.ojetillos = SK.ojetillosVolExterno(skVol.ojetillos, A, L, H);
     const simb = SK.simbologia(skVol);
     const legH = simb.length ? (9 + simb.length * 9 + 6) : 0;
@@ -397,9 +403,16 @@
     }
     // ----- Panel B: hoja desplegada -----
     const Wd = A + 2 * H, Ld = L + 2 * H;
+    let extL = 0, extR = 0, extT = 0, extB = 0;
+    aletasV.forEach((a) => {
+      extL = Math.max(extL, -H - a.x); extR = Math.max(extR, (a.x + a.w) - (A + H));
+      extT = Math.max(extT, -H - a.y); extB = Math.max(extB, (a.y + a.h) - (L + H));
+    });
+    extL = Math.max(0, extL); extR = Math.max(0, extR); extT = Math.max(0, extT); extB = Math.max(0, extB);
+    const Wd2 = Wd + extL + extR, Ld2 = Ld + extT + extB;
     const pbx = 60, pbyTit = panelAH + 12, pby = panelAH + 30;
-    const scB = Math.min((VW - 120) / Wd, (box.h - pby - 40 - legH) / Ld);
-    const X = (x) => pbx + x * scB, Y = (y) => pby + y * scB;
+    const scB = Math.min((VW - 120) / Wd2, (box.h - pby - 40 - legH) / Ld2);
+    const X = (x) => pbx + (extL + x) * scB, Y = (y) => pby + (extT + y) * scB;
     dtC(spec.vista === "trasera" ? "PLANO DESPLEGADO - VISTA INTERIOR (espejo)" : "PLANO DESPLEGADO (hoja de corte)", VW / 2, pbyTit, 8.5, INK);
     const cross = [[H, 0], [H + A, 0], [H + A, H], [Wd, H], [Wd, H + L], [H + A, H + L], [H + A, Ld], [H, Ld], [H, H + L], [0, H + L], [0, H], [H, H]];
     for (let i = 0; i < cross.length; i++) { const a = cross[i], b = cross[(i + 1) % cross.length]; dl(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]), EDGE, 1); }
@@ -657,8 +670,8 @@
       const w = f.widthOfTextAtSize(s, size);
       txt(page, s, (W - w) / 2, y, { f, size });
     };
-    center("COTIZACIÓN FORMAL", 15); y -= 18;
-    center("(válido por 15 días)", 11); y -= 16;
+    center("COTIZACIÓN FORMAL", 13); y -= 18;
+    center("(válido por 15 días)", 11, font); y -= 16;
     y = stampCorrelativo(page, datos, W, y, bold); y -= 8;
 
     // Solo-granel: sin título (puede haber muchos productos distintos), salvo que el usuario escriba uno.
@@ -1071,8 +1084,8 @@
     y -= 60;
 
     const center = (s, size, f = bold) => { txt(s, (W - f.widthOfTextAtSize(s, size)) / 2, y, { f, size }); };
-    center("COTIZACIÓN FORMAL", 15); y -= 18;
-    center("(válido por 15 días)", 11); y -= 16;
+    center("COTIZACIÓN FORMAL", 13); y -= 18;
+    center("(válido por 15 días)", 11, font); y -= 16;
     y = stampCorrelativo(page, datos, W, y, bold); y -= 8;
 
     const titulo = datos.titulo || "Producto compuesto según detalle";

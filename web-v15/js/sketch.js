@@ -1134,8 +1134,15 @@
     const conCotas = opts.cotas !== false;
     const f1 = (n) => n.toFixed(1);
     const VW = 380;
-    // Simbología presente en la hoja desplegada (sin aletas: no aplican en volumétrico).
-    const skVol = Object.assign({}, construirSketch(spec), { aletas: [], straps: [] });
+    // Hoja desplegada: las ALETAS cuelgan del borde EXTERNO del ala (el rim de la caja), por lo
+    // que su geometría se desplaza H hacia afuera respecto del paño base. Los straps no aplican.
+    const sk0 = construirSketch(spec);
+    const aletasV = (sk0.aletas || []).map((a) => {
+      const dx = a.fused === "r" ? -H : a.fused === "l" ? H : 0;
+      const dy = a.fused === "t" ? H : a.fused === "b" ? -H : 0;
+      return Object.assign({}, a, { x: a.x + dx, y: a.y + dy, ojetillos: (a.ojetillos || []).map((p) => ({ x: p.x + dx, y: p.y + dy })) });
+    });
+    const skVol = Object.assign({}, sk0, { aletas: aletasV, straps: [] });
     if ((spec.volumetrico.ojEn || "externo") === "externo") skVol.ojetillos = ojetillosVolExterno(skVol.ojetillos, A, L, H);
     const simbVol = simbologia(skVol);
     const legH = simbVol.length ? (11 + simbVol.length * 11 + 8) : 0;
@@ -1196,10 +1203,19 @@
     // -------- Panel B: hoja de corte desplegada --------
     const pbTit = paTop + paH;
     const Wd = A + 2 * H, Ld = L + 2 * H;
-    const scB = Math.min((VW - 96) / Wd, 230 / Ld);
+    // Márgenes extra si alguna aleta sobresale de la cruz (en coords del paño base, la cruz cubre
+    // x ∈ [-H, A+H], y ∈ [-H, L+H]).
+    let extL = 0, extR = 0, extT = 0, extB = 0;
+    aletasV.forEach((a) => {
+      extL = Math.max(extL, -H - a.x); extR = Math.max(extR, (a.x + a.w) - (A + H));
+      extT = Math.max(extT, -H - a.y); extB = Math.max(extB, (a.y + a.h) - (L + H));
+    });
+    extL = Math.max(0, extL); extR = Math.max(0, extR); extT = Math.max(0, extT); extB = Math.max(0, extB);
+    const Wd2 = Wd + extL + extR, Ld2 = Ld + extT + extB;
+    const scB = Math.min((VW - 96) / Wd2, 230 / Ld2);
     const pbx = 52, pby = pbTit + 24;
-    const X = (x) => pbx + x * scB, Y = (y) => pby + y * scB;
-    const sheetBot = pby + Ld * scB + 20;
+    const X = (x) => pbx + (extL + x) * scB, Y = (y) => pby + (extT + y) * scB;
+    const sheetBot = pby + Ld2 * scB + 20;
     const totalH = sheetBot + legH;
     s = s.replace("0H", f1(totalH)); // fijar alto del viewBox
     s += `<text class="vista-tit" x="${f1(VW / 2)}" y="${f1(pbTit + 12)}" text-anchor="middle">${spec.vista === "trasera" ? "PLANO DESPLEGADO — VISTA INTERIOR (espejo)" : "PLANO DESPLEGADO (hoja de corte)"}</text>`;
