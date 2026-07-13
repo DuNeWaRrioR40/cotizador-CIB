@@ -5555,6 +5555,12 @@
     state.prodMode = "uniforme"; state.piezas = []; state.compuesto = null;
     state.complementosUnif = [];
     const ru = document.querySelector('input[name="prodmode"][value="uniforme"]'); if (ru) ru.checked = true;
+    // Filtros del historial de cotizaciones recientes: todos los campos como recién abiertos.
+    ["histFNombre", "histFCorrel", "histFDesde", "histFHasta"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
+    { const t = $("histFTipo"); if (t) t.value = ""; }
+    if (typeof renderListaFiltrada === "function") renderListaFiltrada();
+    // Navegación / filtros de productos a granel: vuelve al inicio (categorías), sin selección ni comparador.
+    granelNav = {};
     renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); renderTraseraUnif(); setFactorUnifUI(); aplicarVis();
     renderGranelLineas(); renderGranel(); renderOjetillos(); recompute();
   }
