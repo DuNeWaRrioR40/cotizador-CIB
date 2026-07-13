@@ -15,12 +15,15 @@
     if (prov && n.toUpperCase().indexOf(prov.toUpperCase()) === 0) n = n.slice(prov.length).replace(/^\s*·\s*/, "");
     return n;
   }
-  const BLUE = () => PDFLib.rgb(0.18, 0.325, 0.549);     // #2E538C
-  const HEADERBLUE = () => PDFLib.rgb(0.357, 0.482, 0.706); // #5B7BB4
+  // v15: paleta del documento corporativo — tinta #111 + amarillo CIBSA #FFDF26
+  const BLUE = () => PDFLib.rgb(0.067, 0.067, 0.067);      // tinta (antes azul corporativo)
+  const HEADERBLUE = () => PDFLib.rgb(0.067, 0.067, 0.067); // cabecera de tabla: negro
   const WHITE = () => PDFLib.rgb(1, 1, 1);
   const BLACK = () => PDFLib.rgb(0.1, 0.1, 0.1);
-  const YELLOW = () => PDFLib.rgb(1, 0.94, 0.30);
-  const TOTALFILL = () => PDFLib.rgb(0.863, 0.902, 0.945); // #DCE6F1
+  const BRAND = () => PDFLib.rgb(1, 0.875, 0.149);         // #FFDF26 amarillo CIBSA
+  const GRAYBOX = () => PDFLib.rgb(0.955, 0.955, 0.945);   // gris tarjeta del documento
+  const YELLOW = () => GRAYBOX();                          // caja de nota: gris + barra amarilla
+  const TOTALFILL = () => BRAND();                         // fila TOTAL: amarillo como "Total con IVA"
 
   const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
     "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -79,12 +82,20 @@
   }
 
   // Encabezado con logos (reutilizable). Devuelve la y debajo del bloque.
-  function dibujarEncabezado(page, cibsa, kam, W, M, yTop) {
-    const cW = 130, cH = cW * (cibsa.height / cibsa.width);
-    page.drawImage(cibsa, { x: M, y: yTop - cH + 14, width: cW, height: cH });
-    const kW = 64, kH = kW * (kam.height / kam.width);
-    page.drawImage(kam, { x: W - M - kW, y: yTop - kH + 6, width: kW, height: kH });
+  function dibujarEncabezado(page, cibsa, _kam, W, M, yTop) {
+    // v15: wordmark CIBSA amarillo centrado; el escudo derecho se eliminó.
+    const cW = 150, cH = cW * (cibsa.height / cibsa.width);
+    page.drawImage(cibsa, { x: (W - cW) / 2, y: yTop - cH + 14, width: cW, height: cH });
     return yTop - 60;
+  }
+  // v15: banda amarilla de pie de página con el eslogan del documento.
+  function pieBanda(page, bold, W, fecha) {
+    page.drawRectangle({ x: 0, y: 0, width: W, height: 30, color: BRAND() });
+    page.drawText("FABRICAMOS SOLUCIONES A SU MEDIDA", { x: 50, y: 11, size: 9.5, font: bold, color: BLACK() });
+    if (fecha) {
+      const s = `${fecha.getDate()} de ${MESES[fecha.getMonth()]} de ${fecha.getFullYear()}`;
+      page.drawText(san(s), { x: W - 50 - bold.widthOfTextAtSize(san(s), 8.5), y: 11.5, size: 8.5, font: bold, color: BLACK() });
+    }
   }
   function tituloCentrado(page, s, W, y, f, size, color) {
     const w = f.widthOfTextAtSize(san(s), size);
@@ -612,7 +623,6 @@
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
     const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
-    const kam = await doc.embedPng(b64ToBytes(LOGOS.kamanchaca));
 
     const W = 612, H = 792, M = 50;
     const page = doc.addPage([W, H]);
@@ -622,10 +632,8 @@
       p.drawText(san(s), { x, y: yy, size, font: f, color });
 
     // Encabezado: logos
-    const cW = 130, cH = cW * (cibsa.height / cibsa.width);
-    page.drawImage(cibsa, { x: M, y: y - cH + 14, width: cW, height: cH });
-    const kW = 64, kH = kW * (kam.height / kam.width);
-    page.drawImage(kam, { x: W - M - kW, y: y - kH + 6, width: kW, height: kH });
+    const cW = 150, cH = cW * (cibsa.height / cibsa.width);
+    page.drawImage(cibsa, { x: (W - cW) / 2, y: y - cH + 14, width: cW, height: cH });
     y -= 60;
 
     const center = (s, size, f = bold) => {
@@ -695,7 +703,7 @@
       const size = 10;
       let x = cols[i] + pad;
       if (i !== 1) { x = cols[i] + (colW[i] - bold.widthOfTextAtSize(h, size)) / 2; }
-      txt(page, h, x, y - 15, { f: bold, size, color: WHITE() });
+      txt(page, h, x, y - 15, { f: bold, size, color: BRAND() });
     });
     let yTop = y; y -= headH; hline(y);
 
@@ -790,7 +798,8 @@
     nota += c.descuentoPct > 0 ? (c.descuentoEsMonto ? " y el descuento por pago contado." : ` y el ${c.descuentoPct}% de descuento por pago contado.`) : ".";
     nota += " Productos sujetos a disponibilidad de stock.";
     const notaLines = wrap(nota, bold, 11, W - 2 * M - 8);
-    page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: right - M, height: notaLines.length * 13 + 6, color: YELLOW() });
+    page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: right - M, height: notaLines.length * 13 + 6, color: GRAYBOX() });
+    page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: 4, height: notaLines.length * 13 + 6, color: BRAND() });
     let ny = y - 12;
     notaLines.forEach((ln) => { txt(page, ln, M + 4, ny, { f: bold, color: BLACK() }); ny -= 13; });
 
@@ -835,6 +844,7 @@
       .concat((vend.fonos || []).filter(Boolean))
       .concat([e.casa_matriz]);
     vendLineas.forEach((l) => { t2(l, M, y2, { size: 11, color: BLACK() }); y2 -= 14; });
+    pieBanda(p2, bold, W, datos.fecha);
 
     const bytes = await doc.save();
     return { bytes, filename: nombreArchivo(datos) + ".pdf" };
@@ -903,7 +913,6 @@
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
     const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
-    const kam = await doc.embedPng(b64ToBytes(LOGOS.kamanchaca));
 
     const W = 612, H = 792, M = 50;
     const page = doc.addPage([W, H]);
@@ -913,10 +922,8 @@
       p.drawText(san(s), { x, y: yy, size, font: f, color });
 
     // Encabezado: logos
-    const cW = 130, cH = cW * (cibsa.height / cibsa.width);
-    page.drawImage(cibsa, { x: M, y: y - cH + 14, width: cW, height: cH });
-    const kW = 64, kH = kW * (kam.height / kam.width);
-    page.drawImage(kam, { x: W - M - kW, y: y - kH + 6, width: kW, height: kH });
+    const cW = 150, cH = cW * (cibsa.height / cibsa.width);
+    page.drawImage(cibsa, { x: (W - cW) / 2, y: y - cH + 14, width: cW, height: cH });
     y -= 60;
 
     const center = (s, size, f = bold) => {
@@ -959,9 +966,9 @@
     // Cabecera
     const headH = 22;
     page.drawRectangle({ x: M, y: y - headH, width: right - M, height: headH, color: HEADERBLUE() });
-    txt(page, "Detalle", cols[0] + pad, y - 15, { f: bold, size: 10, color: WHITE() });
+    txt(page, "Detalle", cols[0] + pad, y - 15, { f: bold, size: 10, color: BRAND() });
     const h2lbl = "Valor Neto (1 unidad)";
-    txt(page, h2lbl, cols[1] + (colW[1] - bold.widthOfTextAtSize(h2lbl, 9)) / 2, y - 15, { f: bold, size: 9, color: WHITE() });
+    txt(page, h2lbl, cols[1] + (colW[1] - bold.widthOfTextAtSize(h2lbl, 9)) / 2, y - 15, { f: bold, size: 9, color: BRAND() });
     let yTop = y; y -= headH; hline(y);
 
     const oj = datos.ojetillosDetalle || "ojetillos según diseño";
@@ -990,7 +997,8 @@
       "despacho. Este valor preliminar no constituye una cotización formal y queda sujeto a confirmación y a " +
       "disponibilidad de stock.";
     const notaLines = wrap(nota, bold, 11, W - 2 * M - 8);
-    page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: right - M, height: notaLines.length * 13 + 6, color: YELLOW() });
+    page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: right - M, height: notaLines.length * 13 + 6, color: GRAYBOX() });
+    page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: 4, height: notaLines.length * 13 + 6, color: BRAND() });
     let ny = y - 12;
     notaLines.forEach((ln) => { txt(page, ln, M + 4, ny, { f: bold, color: BLACK() }); ny -= 13; });
     y = ny - 16;
@@ -1020,7 +1028,6 @@
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
     const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
-    const kam = await doc.embedPng(b64ToBytes(LOGOS.kamanchaca));
 
     const W = 612, H = 792, M = 50;
     const GRAY = () => PDFLib.rgb(0.6, 0.6, 0.6);
@@ -1031,10 +1038,8 @@
       page.drawText(san(s), { x, y: yy, size, font: f, color });
 
     // Encabezado: logos
-    const cW = 130, cH = cW * (cibsa.height / cibsa.width);
-    page.drawImage(cibsa, { x: M, y: y - cH + 14, width: cW, height: cH });
-    const kW = 64, kH = kW * (kam.height / kam.width);
-    page.drawImage(kam, { x: W - M - kW, y: y - kH + 6, width: kW, height: kH });
+    const cW = 150, cH = cW * (cibsa.height / cibsa.width);
+    page.drawImage(cibsa, { x: (W - cW) / 2, y: y - cH + 14, width: cW, height: cH });
     y -= 60;
 
     const center = (s, size, f = bold) => { txt(s, (W - f.widthOfTextAtSize(s, size)) / 2, y, { f, size }); };
@@ -1088,7 +1093,7 @@
         const size = 10;
         let x = cols[i] + pad;
         if (i !== 1) x = cols[i] + (colW[i] - bold.widthOfTextAtSize(h, size)) / 2;
-        txt(h, x, y - 15, { f: bold, size, color: WHITE() });
+        txt(h, x, y - 15, { f: bold, size, color: BRAND() });
       });
       hline(y); vsegs(y, y - headH); hline(y - headH);
       y -= headH;
@@ -1200,7 +1205,8 @@
     nota += " Productos sujetos a disponibilidad de stock.";
     const notaLines = wrap(nota, bold, 11, W - 2 * M - 8);
     asegurar(notaLines.length * 13 + 10);
-    page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: right - M, height: notaLines.length * 13 + 6, color: YELLOW() });
+    page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: right - M, height: notaLines.length * 13 + 6, color: GRAYBOX() });
+    page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: 4, height: notaLines.length * 13 + 6, color: BRAND() });
     let ny = y - 12;
     notaLines.forEach((ln) => { txt(ln, M + 4, ny, { f: bold, color: BLACK() }); ny -= 13; });
 
@@ -1241,6 +1247,7 @@
       { nombre: CFG.VENDEDOR.nombre, email: CFG.VENDEDOR.email || "", fonos: [CFG.VENDEDOR.fono].filter(Boolean) };
     [vend.nombre].concat(vend.email ? [vend.email] : []).concat((vend.fonos || []).filter(Boolean)).concat([e.casa_matriz])
       .forEach((l) => { t2(l, M, y2, { size: 11, color: BLACK() }); y2 -= 14; });
+    pieBanda(p2, bold, W, datos.fecha);
 
     const bytes = await doc.save();
     return { bytes, filename: nombreArchivo(datos) + ".pdf" };
@@ -1255,13 +1262,12 @@
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
     const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
-    const kam = await doc.embedPng(b64ToBytes(LOGOS.kamanchaca));
     const W = 612, H = 792, M = 50;
     const page = doc.addPage([W, H]);
     const txt = (s, x, y, o) => page.drawText(san(s), { x, y, size: (o && o.size) || 11, font: (o && o.f) || font, color: (o && o.color) || BLUE() });
     const fmtN = (n) => (Math.round((+n) * 1000) / 1000).toString();
 
-    let y = dibujarEncabezado(page, cibsa, kam, W, M, H - 40);
+    let y = dibujarEncabezado(page, cibsa, null, W, M, H - 40);
     tituloCentrado(page, "PLANO DEL PRODUCTO", W, y, bold, 15, BLUE()); y -= 15;
     tituloCentrado(page, "(plano referencial para taller)", W, y, font, 10, BLUE()); y -= 14;
     y = stampCorrelativo(page, datos, W, y, bold); y -= 8;
@@ -1329,7 +1335,7 @@
     // Página de vista trasera (espejo + diseño trasero $0), si corresponde.
     if (datos.trasera && datos.sketch) {
       const p2 = doc.addPage([W, H]);
-      let yb = dibujarEncabezado(p2, cibsa, kam, W, M, H - 40);
+      let yb = dibujarEncabezado(p2, cibsa, null, W, M, H - 40);
       tituloCentrado(p2, "VISTA TRASERA (espejo)", W, yb, bold, 15, BLUE()); yb -= 15;
       tituloCentrado(p2, "Diseño trasero referencial de taller · costo $0 (no afecta la cotización).", W, yb, font, 9, BLUE()); yb -= 18;
       if (datos.titulo) { p2.drawText(san('"' + datos.titulo + '"'), { x: M, y: yb, size: 12, font: bold, color: BLUE() }); yb -= 20; }
@@ -1360,12 +1366,11 @@
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
     const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
-    const kam = await doc.embedPng(b64ToBytes(LOGOS.kamanchaca));
     const W = 612, H = 792, M = 50;
     const f = (n) => (Math.round((+n) * 1000) / 1000).toString().replace(".", ",");
     const gris = rgb(0.42, 0.42, 0.42), verde = rgb(0.06, 0.43, 0.34);
     let page = doc.addPage([W, H]);
-    let y = dibujarEncabezado(page, cibsa, kam, W, M, H - 40);
+    let y = dibujarEncabezado(page, cibsa, null, W, M, H - 40);
     tituloCentrado(page, "PLANO DE CORTE (TALLER)", W, y, bold, 15, BLUE()); y -= 15;
     tituloCentrado(page, "Layout de corte sobre el rollo · uso interno de taller", W, y, font, 9, BLUE()); y -= 14;
     y = stampCorrelativo(page, datos, W, y, bold); y -= 6;
@@ -1373,7 +1378,7 @@
     const T = (s, x, yy, o) => page.drawText(san(s), { x: x, y: yy, size: (o && o.size) || 11, font: (o && o.f) || font, color: (o && o.color) || BLACK() });
 
     (datos.piezas || []).forEach((p) => {
-      if (y < 175) { page = doc.addPage([W, H]); y = dibujarEncabezado(page, cibsa, kam, W, M, H - 40) - 8; }
+      if (y < 175) { page = doc.addPage([W, H]); y = dibujarEncabezado(page, cibsa, null, W, M, H - 40) - 8; }
       T(p.nombre + " — " + p.tela, M, y, { f: bold, size: 12, color: BLUE() }); y -= 15;
       T("Rollo (ancho): " + f(p.rollo) + " m   ·   Pieza: " + f(p.dimL) + " × " + f(p.dimA) + " m   ·   " + p.N + " u", M, y, { size: 10 }); y -= 13;
       T(p.panosUnit + " tira(s)/u de " + f(p.rollo) + " × " + f(p.panoLen) + " m   ·   " + p.uniones + " unión(es)   ·   lote: " + f(p.linealLote) + " m lineales (" + f(p.m2Lote) + " m²)", M, y, { size: 10 }); y -= 16;
