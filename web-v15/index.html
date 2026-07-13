@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
   <title>Cotizador CIBSA</title>
-  <meta name="theme-color" content="#185FA5" />
+  <meta name="theme-color" content="#FFDF26" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon-32.png" sizes="32x32" />
@@ -17,15 +17,15 @@
   <!-- Encabezado -->
   <header id="appHeader" class="hidden">
     <div class="brand">
-      <span class="logo-c">C</span>
-      <span class="brand-title">Cotizador CIBSA</span>
+      <span class="logo-word" aria-hidden="true">CIBSA</span>
+      <span class="brand-title">Cotizador</span>
       <button id="btnFacturas" class="hdr-btn" type="button" title="Cargar facturas (costos)">Facturas</button>
     </div>
     <div class="header-right">
       <select id="themeSelect" aria-label="Tema">
         <option value="A">Tema A · Claro</option>
         <option value="B">Tema B · Oscuro</option>
-        <option value="C">Tema C · Tarjetas</option>
+        <option value="C">Tema C · Documento</option>
       </select>
       <span id="userEmail" class="user-email"></span>
       <span id="appVersion" class="app-version" title="Versión cargada"></span>
@@ -36,9 +36,9 @@
   <!-- Login -->
   <section id="loginView" class="view login">
     <div class="login-inner">
-      <span class="logo-c logo-big">C</span>
-      <h1>Cotizador CIBSA</h1>
-      <p class="muted">Carpas y lonas</p>
+      <span class="logo-word logo-word-big" aria-hidden="true">CIBSA</span>
+      <p class="login-tag">Fabricamos soluciones a su medida</p>
+      <h1>Cotizador</h1>
       <p class="muted center">Inicia sesión con tu cuenta Google autorizada<br />para conectarte a la lista de precios.</p>
       <button id="btnLogin" class="btn-accent btn-lg" type="button">Iniciar sesión con Google</button>
       <p id="loginStatus" class="status"></p>
@@ -47,7 +47,7 @@
       <select id="themeSelectLogin" aria-label="Tema">
         <option value="A">Tema A · Claro</option>
         <option value="B">Tema B · Oscuro</option>
-        <option value="C">Tema C · Tarjetas</option>
+        <option value="C">Tema C · Documento</option>
       </select>
     </div>
   </section>
