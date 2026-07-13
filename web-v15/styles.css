@@ -616,7 +616,7 @@ h2.section .help-ico, h3.section .help-ico { width: 18px; height: 18px; font-siz
 .granel-var-eq { color: var(--muted); font-weight: 600; }
 /* Tarjeta de producto: info (comparar) + fila para agregar a la cotización */
 .granel-prod-info { display: block; width: 100%; text-align: left; background: transparent; border: 0; padding: 0; cursor: pointer; color: inherit; }
-.granel-prod-hint { color: var(--accent); }
+.granel-prod-hint { display: inline-block; background: var(--sel); color: var(--text); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 700; }
 /* SKU (interno) sobre el campo de cantidad: negro, mismo tamaño que el hint (11px) */
 .granel-prod-sku { font-size: 8px; color: var(--text); margin-top: 4px; letter-spacing: .3px; }
 .granel-add { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
@@ -752,7 +752,7 @@ body.no-plano .pz-descargar { display: none !important; }
 .factura-filtro-in { flex: 1 1 90px; min-width: 80px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg, #fff); color: var(--text); font-size: 12px; }
 .factura-f input, .factura-f select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg, #fff); color: var(--text); font-size: 13px; }
 .factura-sub { font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
-.app-version { font-size: 11px; opacity: .6; padding: 2px 6px; border: 1px solid var(--border); border-radius: 6px; align-self: center; }
+.app-version { font-size: 13px; font-weight: 700; color: var(--header-text); padding: 3px 8px; border: 1px solid color-mix(in srgb, var(--header-text) 35%, transparent); border-radius: 6px; align-self: center; letter-spacing: 0.02em; }
 .factura-costo-aviso { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 6px; }
 .factura-warn-box { border: 1px solid var(--danger,#c0392b); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
 .factura-clone { margin: 6px 0 4px; padding: 6px 8px; border: 1px dashed var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 6%, transparent); }

@@ -692,6 +692,9 @@
   // ---------- Productos a granel: catálogo (drill-down) + comparador interno ----------
   const GRANEL_LEVELS = ["categoria", "variedad", "proveedor", "tipo"];
   let granelNav = {}, granelSel = null;
+  // Cantidades escritas en las tarjetas de granel: el re-render (p. ej. al abrir el comparador)
+  // reconstruye los inputs; esta memoria evita que lo tipeado desaparezca.
+  let granelCantMem = {};
   function granelActivos() { return (state.granel || []).filter((p) => p && p.categoria); }
   function granelNombre(p) {
     if (p.nombreCliente && p.nombreCliente.trim()) return p.nombreCliente.trim();
@@ -766,6 +769,9 @@
     const crumbEl = $("granelNavCrumb"), levelEl = $("granelLevel"), cmpEl = $("granelCompare");
     if (!levelEl) return;
     renderGranelLineas();   // carrito siempre visible (independiente del drill-down)
+    // El comparador se ancla bajo la tarjeta seleccionada (dentro del listado); antes de limpiar
+    // el listado hay que devolverlo a su contenedor original o el innerHTML = "" lo destruiría.
+    if (cmpEl) { if (!cmpEl._home) cmpEl._home = cmpEl.parentElement; if (cmpEl.parentElement !== cmpEl._home) cmpEl._home.appendChild(cmpEl); }
     levelEl.innerHTML = ""; if (crumbEl) crumbEl.innerHTML = ""; if (cmpEl) cmpEl.innerHTML = "";
     const prods = granelActivos();
     if (!prods.length) { levelEl.innerHTML = '<p class="muted small">No hay productos a granel cargados. Crea la pestaña <b>GRANEL</b> en tu Sheet y agrégala en <b>RANGO</b> (ID «Granel»); luego reinicia sesión.</p>'; return; }
@@ -816,9 +822,11 @@
     const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = grupos.length + " producto(s):";
     levelEl.appendChild(cap);
     const ul = document.createElement("div"); ul.className = "granel-prods";
+    let selCard = null;
     grupos.forEach((g) => {
       let cur = g.colores[0].prod, colorSel = g.colores[0].color;
       const card = document.createElement("div"); card.className = "granel-prod" + (cur === granelSel ? " sel" : "");
+      if (cur === granelSel) selCard = card;
       const info = document.createElement("button"); info.type = "button"; info.className = "granel-prod-info";
       const top = document.createElement("div"); top.className = "granel-prod-top";
       const nomS = document.createElement("span"); nomS.className = "granel-prod-nom"; nomS.textContent = granelNombre(g.rep);
@@ -846,6 +854,9 @@
         if (cur.precio == null) { const w = document.createElement("span"); w.className = "muted small"; w.textContent = "Sin precio en el Sheet: no se puede cotizar."; addRow.appendChild(w); return; }
         const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = cur.divisible ? "decimal" : "numeric"; inp.className = "granel-cant";
         const uv = granelUnidadVenta(cur.variedad); inp.placeholder = "cant." + (uv ? " (" + uv + ")" : ""); inp.title = cur.divisible ? "Mínimo 1; acepta decimales." : "Producto unitario: cantidad entera, mínimo 1.";
+        const memKey = cur.sku || (granelNombre(g.rep) + "|" + (cur.formato || "") + "|" + (colorSel || ""));
+        if (granelCantMem[memKey] != null) inp.value = granelCantMem[memKey];
+        inp.addEventListener("input", () => { granelCantMem[memKey] = inp.value; });
         agregarCalc(inp);
         const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn-outline small"; btn.textContent = "+ Agregar a la cotización";
         const add = () => { let c = window.CalcCIBSA.evalExpr(inp.value); if (c == null || isNaN(c) || c <= 0) { inp.focus(); return; } c = granelClampCant(cur.divisible, c); granelAgregar(cur, c, colorSel); };
@@ -868,6 +879,8 @@
     });
     levelEl.appendChild(ul);
     renderGranelComparador();
+    // Comparador bajo la MISMA ficha desde donde se pidió, no al final del listado.
+    if (cmpEl && selCard) selCard.insertAdjacentElement("afterend", cmpEl);
   }
   let granelSeq = 0;
   function granelNombreL(l) { return (l.nombreCliente && l.nombreCliente.trim()) ? l.nombreCliente.trim() : [l.categoria, l.tipo, l.variedad, l.modelo].filter(Boolean).join(" "); }
@@ -5560,7 +5573,7 @@
     { const t = $("histFTipo"); if (t) t.value = ""; }
     if (typeof renderListaFiltrada === "function") renderListaFiltrada();
     // Navegación / filtros de productos a granel: vuelve al inicio (categorías), sin selección ni comparador.
-    granelNav = {};
+    granelNav = {}; granelCantMem = {};
     renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); renderTraseraUnif(); setFactorUnifUI(); aplicarVis();
     renderGranelLineas(); renderGranel(); renderOjetillos(); recompute();
   }
