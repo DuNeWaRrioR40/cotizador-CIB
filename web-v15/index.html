@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <title>Cotizador CIBSA</title>
+  <meta name="theme-color" content="#185FA5" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Cotizador CIBSA" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-theme="A">
+  <!-- Encabezado -->
+  <header id="appHeader" class="hidden">
+    <div class="brand">
+      <span class="logo-c">C</span>
+      <span class="brand-title">Cotizador CIBSA</span>
+      <button id="btnFacturas" class="hdr-btn" type="button" title="Cargar facturas (costos)">Facturas</button>
+    </div>
+    <div class="header-right">
+      <select id="themeSelect" aria-label="Tema">
+        <option value="A">Tema A · Claro</option>
+        <option value="B">Tema B · Oscuro</option>
+        <option value="C">Tema C · Tarjetas</option>
+      </select>
+      <span id="userEmail" class="user-email"></span>
+      <span id="appVersion" class="app-version" title="Versión cargada"></span>
+      <button id="btnLogout" class="btn-ghost" type="button">Salir</button>
+    </div>
+  </header>
+
+  <!-- Login -->
+  <section id="loginView" class="view login">
+    <div class="login-inner">
+      <span class="logo-c logo-big">C</span>
+      <h1>Cotizador CIBSA</h1>
+      <p class="muted">Carpas y lonas</p>
+      <p class="muted center">Inicia sesión con tu cuenta Google autorizada<br />para conectarte a la lista de precios.</p>
+      <button id="btnLogin" class="btn-accent btn-lg" type="button">Iniciar sesión con Google</button>
+      <p id="loginStatus" class="status"></p>
+    </div>
+    <div class="theme-floating">
+      <select id="themeSelectLogin" aria-label="Tema">
+        <option value="A">Tema A · Claro</option>
+        <option value="B">Tema B · Oscuro</option>
+        <option value="C">Tema C · Tarjetas</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- Formulario -->
+  <main id="formView" class="view hidden">
+    <!-- Navegación lateral: pestaña fija + panel deslizante -->
+    <button id="navTab" type="button" aria-label="Abrir navegación" title="Ir a una sección">☰</button>
+    <button id="navTabGranel" type="button" aria-label="Ir a productos a granel" title="Productos a granel">▤</button>
+    <div id="navBackdrop"></div>
+    <nav id="navPanel" aria-label="Secciones">
+      <div class="nav-head"><b>Ir a…</b><button id="navClose" type="button" aria-label="Cerrar">✕</button></div>
+      <div id="navList"></div>
+    </nav>
+    <!-- Selector de tipo de documento -->
+    <div id="modeSwitch" class="mode-switch">
+      <label class="mode-opt"><input type="radio" name="docmode" value="formal" checked /> <span><b>Cotización Formal</b><br /><small class="muted">Documento completo con datos del cliente, descuentos e IVA.</small></span></label>
+      <label class="mode-opt"><input type="radio" name="docmode" value="preliminar" /> <span><b>Valor preliminar (estimado)</b><br /><small class="muted">Aproximación rápida del valor en una o más telas recomendadas.</small></span></label>
+    </div>
+    <p id="modePreliminarHint" class="muted small hidden">Modo preliminar: valores netos por <b>1 unidad</b>, sin datos del cliente, sin descuentos y sin IVA.</p>
+
+    <!-- Carga de facturas (DTE) → costos / proveedores. Fuera del flujo de cotización (arriba de Vendedor). -->
+    <div id="wFactura" class="hidden wFactura-top">
+      <h2 class="section">Carga de facturas (costos)</h2>
+      <p class="muted small">Sube uno o <b>varios</b> XML de facturas (DTE) — puedes seleccionar toda la tanda del mes — o usa carga manual. Verás una <b>cola con el estado</b> de cada factura (nueva / ya cargada) y procesas solo las pendientes. Antes de escribir en la base te muestra un <b>resumen para confirmar</b>.</p>
+      <div class="factura-entry">
+        <label class="btn-outline file-btn">📄 Cargar XML(s) de factura<input id="facturaFile" type="file" accept=".xml,text/xml,application/xml" multiple class="hidden" /></label>
+        <button id="facturaManual" type="button" class="btn-outline">✍️ Carga manual</button>
+        <button id="facturaVisor" type="button" class="btn-outline" title="Buscar un producto y editar su último registro en la BD (GRANEL)">🔎 Visor</button>
+        <button id="facturaRefrescar" type="button" class="btn-outline" title="Vuelve a leer PROVEEDORES, COSTOS y FACTOR del Sheet (útil tras agregar datos o re-loguear)">↻ Actualizar catálogo</button>
+        <span id="facturaMsg" class="muted small"></span>
+      </div>
+      <div id="facturaPanel"></div>
+      <div id="facturaResumen"></div>
+      <div id="facturaMerge"></div>
+    </div>
+
+    <label class="field" id="vendedorField"><span>Vendedor</span><select id="f_vendedor"></select></label>
+
+    <!-- Datos del cliente (formal) -->
+    <div id="wCliente">
+      <h2 class="section">Datos del cliente</h2>
+      <button id="btnLimpiarCotiz" class="btn-outline" type="button">🧹 Limpiar (mantener cliente)</button>
+      <p class="muted small">Borra toda la información de esta cotización excepto los datos del cliente. Para borrar todo, usa el botón «Limpiar» al costado de «Generar cotización».</p>
+      <label class="field"><span>Nombre</span><input id="f_nombre" type="text" autocomplete="off" /></label>
+      <label class="field"><span>Apellido</span><input id="f_apellido" type="text" autocomplete="off" /></label>
+      <label class="field"><span>Dirección</span><input id="f_dir_cliente" type="text" autocomplete="off" /></label>
+      <label class="field"><span>Comuna</span><input id="f_comuna_cliente" type="text" autocomplete="off" /></label>
+      <label class="field"><span>E-mail</span><input id="f_email" type="email" autocomplete="off" /></label>
+      <label class="chk"><input type="checkbox" id="f_empresaOn" /> <span><b>Datos Empresa</b> — dirigir la cotización a una empresa (tiene prioridad sobre el cliente)</span></label>
+      <div id="wEmpresa" class="hidden empresa-box">
+        <div class="empresa-scan-row">
+          <button id="btnEscanearQR" class="btn-outline" type="button">📷 Escanear QR (e-RUT)</button>
+          <span class="muted small">Apunta la cámara al QR del e-RUT para poblar RUT, Razón Social y Dirección.</span>
+        </div>
+        <label class="field"><span>RUT</span><input id="f_emp_rut" type="text" autocomplete="off" placeholder="96.612.980-8" /></label>
+        <label class="field"><span>Razón Social</span><input id="f_emp_razon" type="text" autocomplete="off" /></label>
+        <label class="field"><span>Giro</span><input id="f_emp_giro" type="text" autocomplete="off" /></label>
+        <label class="field"><span>Dirección</span><input id="f_emp_dir" type="text" autocomplete="off" /></label>
+        <label class="field"><span>Comuna</span><input id="f_emp_comuna" type="text" autocomplete="off" /></label>
+        <label class="field"><span>Correo electrónico</span><input id="f_emp_email" type="email" autocomplete="off" /></label>
+      </div>
+    </div>
+
+    <!-- Modal cámara QR -->
+    <div id="qrModal" class="qr-modal hidden">
+      <div class="qr-modal-box">
+        <video id="qrVideo" playsinline muted></video>
+        <canvas id="qrCanvas" class="hidden"></canvas>
+        <p id="qrStatus" class="muted small">Iniciando cámara…</p>
+        <div class="qr-modal-btns">
+          <button id="qrCerrar" class="btn-outline" type="button">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Historial local de cotizaciones recientes -->
+    <div id="wHistorial" class="hidden">
+      <div class="hist-head">
+        <h2 class="section">Cotizaciones recientes</h2>
+        <div class="hist-actions">
+          <button id="btnExportHistCsv" type="button" class="btn-outline small">Exportar CSV</button>
+          <button id="btnExportHistXlsx" type="button" class="btn-outline small">Exportar Excel</button>
+          <button id="btnImportarHist" type="button" class="btn-outline small">Importar respaldo</button>
+          <button id="btnLimpiarHist" type="button" class="btn-outline small">Borrar historial</button>
+          <input id="fileImportarHist" type="file" accept="application/json,.json" class="hidden" />
+        </div>
+      </div>
+      <p class="muted small">Toca una para reconstruir toda la cotización y sugerir la versión siguiente. Se sincronizan con tu Google Sheet (hoja HISTORIAL), así no se pierden aunque borres datos del navegador.</p>
+
+      <!-- Visualizador rápido (galería): últimas cotizaciones de los últimos 7 días, 5 por página -->
+      <div class="hist-galeria">
+        <button id="histGalPrev" type="button" class="hist-gal-arrow" title="Más recientes" aria-label="Más recientes">‹</button>
+        <div id="histGalTrack" class="hist-gal-track"></div>
+        <button id="histGalNext" type="button" class="hist-gal-arrow" title="Más antiguas (dentro de la semana)" aria-label="Más antiguas">›</button>
+      </div>
+      <p id="histGalEmpty" class="muted small hidden"></p>
+
+      <!-- Lista por filtros: solo muestra registros cuando hay al menos un filtro activo -->
+      <div class="hist-filtros">
+        <input id="histFNombre" type="text" class="hist-f" placeholder="Nombre de cliente" />
+        <input id="histFCorrel" type="text" inputmode="numeric" class="hist-f" placeholder="N° de cotización" />
+        <label class="hist-f-fecha">Desde <input id="histFDesde" type="date" /></label>
+        <label class="hist-f-fecha">Hasta <input id="histFHasta" type="date" /></label>
+        <select id="histFTipo" class="hist-f">
+          <option value="">Todos los tipos</option>
+          <option value="Uniforme">Uniforme</option>
+          <option value="Compuesto">Compuesto</option>
+          <option value="Preliminar">Preliminar</option>
+        </select>
+        <button id="histFLimpiar" type="button" class="btn-outline small">Limpiar filtros</button>
+      </div>
+      <div id="histList" class="hist-list"></div>
+    </div>
+
+    <!-- Productos a granel: catálogo (drill-down) + comparador interno de equivalentes -->
+    <div id="wGranel" class="hidden">
+      <h2 class="section">Productos a granel</h2>
+      <p class="muted small">Productos estándar (venta por metro o unidad). Navega Categoría → Proveedor → Tipo y elige una variedad; abajo aparece el comparador con los equivalentes de otros proveedores (uso interno, no va al PDF).</p>
+      <div id="granelLineas" class="granel-lineas"></div>
+      <div id="granelNavCrumb" class="granel-crumb"></div>
+      <div id="granelLevel" class="granel-level"></div>
+      <div id="granelCompare" class="granel-compare"></div>
+    </div>
+
+    <h2 class="section">Producto</h2>
+
+    <!-- Tipo de producto (solo formal) -->
+    <div id="wProdToggle" class="mode-switch">
+      <label class="mode-opt"><input type="radio" name="prodmode" value="uniforme" checked /> <span><b>Producto Uniforme</b><br /><small class="muted">Una sola pieza (carpa/lona).</small></span></label>
+      <label class="mode-opt"><input type="radio" name="prodmode" value="compuesto" /> <span><b>Producto Compuesto</b><br /><small class="muted">Varias piezas distintas en un mismo documento.</small></span></label>
+    </div>
+
+    <!-- Factor de diseño: acceso rápido (botón) dentro de Producto -->
+    <div id="wFactorTop">
+      <button id="btnFactorTop" type="button" class="factor-top-btn">Factor de diseño: <b id="factorTopVal">1</b> <span class="muted small">· tocar para ajustar</span></button>
+      <div id="factorTopPanel" class="hidden factor-top-panel">
+        <p class="muted small">Multiplica <b>solo</b> el valor de la tela (no ojetillos ni materiales). 1 = normal; hasta 5. Es el mismo factor de abajo.</p>
+        <div class="slider-row">
+          <input id="f_factor_top" type="range" min="1" max="5" step="0.1" value="1" />
+          <input id="f_factor_top_num" type="text" inputmode="decimal" autocomplete="off" class="slider-num" value="1" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Dimensiones (uniforme + preliminar) -->
+    <div id="wDimensiones">
+      <label class="field"><span>Largo (m)</span><input id="f_largo" type="text" inputmode="text" autocomplete="off" /></label>
+      <label class="field"><span>Ancho (m)</span><input id="f_ancho" type="text" inputmode="text" autocomplete="off" /></label>
+      <p class="muted small">Puedes escribir operaciones, por ejemplo <b>240/100</b> o <b>2,4*2</b>; al salir del campo se calcula el resultado.</p>
+      <label class="chk"><input type="checkbox" id="f_usaAlto" /> <span>Producto volumétrico (agregar alto)</span></label>
+      <label class="field hidden" id="wAltura"><span>Alto (m)</span><input id="f_altura" type="text" inputmode="text" autocomplete="off" placeholder="se suma 2× alto al largo y al ancho" /></label>
+    </div>
+
+    <!-- Cantidad (uniforme) -->
+    <div id="wCantidad">
+      <label class="field"><span>Cantidad (unidades)</span><input id="f_cantidad" type="text" inputmode="numeric" autocomplete="off" value="1" /></label>
+    </div>
+
+    <!-- Tela única (uniforme) -->
+    <div id="wTelaUnica">
+      <label class="field"><span>Tela</span><select id="f_tela"></select></label>
+      <p id="telaInfo" class="muted small"></p>
+      <div id="favWrap" class="field full hidden">
+        <span>Selección rápida por categoría (FAV)</span>
+        <p class="muted small">Un clic marca todas las telas de esa categoría para cotizarlas juntas. Vuelve a pincharla para limpiar. Abajo puedes des-marcar telas puntuales.</p>
+        <div id="favBtns" class="fav-btns"></div>
+      </div>
+      <div id="telaOpcWrap" class="field full">
+        <span>Cotizar también en estas telas (opcional)</span>
+        <p class="muted small">Marca telas adicionales: se emite una cotización por cada una (versión correlativa) en un único PDF. El plano listará las telas consideradas separadas por «o».</p>
+        <div id="telaOpcList" class="tela-multi"></div>
+      </div>
+      <label class="field"><span>Color (opcional)</span><input id="f_color" type="text" autocomplete="off" placeholder="N/A · solo para el plano de taller" /></label>
+    </div>
+
+    <!-- Tela múltiple (preliminar) -->
+    <div id="telaMultiWrap" class="hidden">
+      <h2 class="section">Telas recomendadas</h2>
+      <p class="muted small">Marca una o más telas. El documento mostrará un valor preliminar por cada una.</p>
+      <div id="telaMulti" class="tela-multi"></div>
+      <p id="telaMultiErr" class="oj-err hidden">Selecciona al menos una tela.</p>
+    </div>
+
+    <!-- Piezas (compuesto) -->
+    <div id="wPiezas" class="hidden">
+      <h2 class="section">Piezas del producto</h2>
+      <p class="muted small">Agrega cada pieza con su etiqueta, formato, tela, cantidad, ojetillos y orientación. Cada pieza tendrá su propia fila en la cotización.</p>
+      <div id="piezasList"></div>
+      <button id="btnAgregarPieza" class="btn-outline" type="button">+ Agregar pieza</button>
+      <p id="piezasErr" class="oj-err hidden"></p>
+      <div id="piezasResumen" class="cmp"></div>
+
+      <!-- Selector global de tela (compuesto) -->
+      <div id="wTelaGlobal" class="tela-global-box">
+        <label class="chk"><input id="f_telaGlobalOn" type="checkbox" /> <b>Comparar opciones de tela a nivel global</b></label>
+        <div id="telaGlobalBody" class="hidden">
+          <p class="muted small">Marca una o más telas: se emite una cotización por cada una (versión correlativa 01, 02, 03…) en un único PDF, aplicando esa tela al <b>paño base y a los anexos de todas las piezas</b>. Los paños inscritos (ventanas) conservan su tela. No modifica la tela que elegiste pieza por pieza: solo reemplaza para esta comparación.</p>
+          <div id="telaGlobalList" class="tela-multi"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vista previa de planos por pieza (compuesto) -->
+    <div id="wPreviewCompuesto">
+      <h2 class="section" data-nav="Vista del producto">Vista previa (planos por pieza)</h2>
+      <p class="muted small">Planimetría de todas las piezas, ordenada. Pliega cada plano por separado y descárgalo individualmente.</p>
+      <div id="previewCompuesto"></div>
+    </div>
+
+    <!-- Título del producto (formal: uniforme y compuesto) -->
+    <div id="wTitulo">
+      <label class="field"><span>Título del producto</span><input id="f_titulo" type="text" placeholder="Automático según el producto" /></label>
+    </div>
+
+    <!-- Representación gráfica (plano) on/off -->
+    <div id="wPlanoToggle">
+      <label class="chk"><input type="checkbox" id="f_usarPlano" checked /> <span>Generar representación gráfica (plano, archivo aparte)</span></label>
+      <label class="chk"><input type="checkbox" id="f_suprimirCotas" /> <span>Suprimir cotas (plano y cotización "de aprobación": sin cotas, observaciones, resumen de materiales ni "Diseño aprobado")</span></label>
+      <label class="chk"><input type="checkbox" id="f_planoTaller" /> <span>🧵 Plano de corte (Taller): layout de corte sobre el rollo (paño base + anexos), archivo aparte. Se descarga al generar la cotización.</span></label>
+    </div>
+
+    <!-- Ojetillos: conteo (uniforme + preliminar) -->
+    <div id="wOjetillos">
+      <h2 class="section">Ojetillos por carpa (1ú)</h2>
+      <div class="radios">
+        <label><input type="radio" name="ojmode" value="total" checked /> Total ojetillos</label>
+        <label><input type="radio" name="ojmode" value="arista" /> Por arista</label>
+      </div>
+      <div id="ojDyn"></div>
+    </div>
+
+    <!-- Valor ojetillo (uniforme + preliminar + compuesto) -->
+    <div id="wValorOj">
+      <label class="field"><span>Valor ojetillo ($ neto)</span><input id="f_ojvalor" type="text" inputmode="text" autocomplete="off" value="450" /></label>
+    </div>
+
+    <!-- Bordes y uniones (uniforme) -->
+    <div id="wBordes">
+      <h2 class="section">Bordes y uniones</h2>
+      <label class="field"><span>Unión entre paños (m)</span><input id="f_union" type="text" inputmode="text" autocomplete="off" value="0.045" /></label>
+      <div class="radios">
+        <label><input type="radio" name="bordemodo" value="uniforme" checked /> Mismo borde en todo el perímetro</label>
+        <label><input type="radio" name="bordemodo" value="arista" /> Personalizar por arista</label>
+      </div>
+      <div id="bordeDyn"></div>
+    </div>
+
+    <!-- Cortes / Calados (uniforme) -->
+    <div id="wCortesUnif">
+      <h2 class="section">Cortes / Calados</h2>
+      <p class="muted small">Huecos o calados de diseño. Costo $0 y sin consumo de material; van solo al plano de taller.</p>
+      <div id="cortesUnif"></div>
+    </div>
+
+    <!-- Complementos (uniforme) -->
+    <div id="wComplementosUnif">
+      <h2 class="section">Complementos</h2>
+      <div id="compUnif"></div>
+    </div>
+
+    <!-- Aletas / Solapas / Faldón / Cenefa (uniforme) -->
+    <div id="wAletasUnif">
+      <h2 class="section">Aletas / Solapas / Faldón / Cenefa</h2>
+      <p class="muted small">Paños anexos fusionados al paño base. SÍ consumen tela y suman al precio.</p>
+      <div id="aletasUnif"></div>
+    </div>
+
+    <!-- Straps / cintas (uniforme) -->
+    <div id="wStrapsUnif">
+      <h2 class="section">Straps / cintas</h2>
+      <p class="muted small">Bandas de webbing (cinta) sobre el paño. El ancho lo da la cinta; el largo lo defines tú. Suman al precio por metro lineal.</p>
+      <div id="strapsUnif"></div>
+    </div>
+
+    <!-- Cintas / cierres (uniforme) -->
+    <div id="wCintasUnif">
+      <h2 class="section">Cintas / cierres</h2>
+      <p class="muted small">Cinta o cierre que corre en continuo paralelo a una arista. Admite tramos de bolsillo (Ω), costura de seguridad (!) y huecos (✕) vía el campo Edición.</p>
+      <div id="cintasUnif"></div>
+    </div>
+
+    <!-- Condiciones (formal) -->
+    <div id="wCondiciones">
+      <h2 class="section">Condiciones</h2>
+      <label class="field"><span>Días de entrega (hábiles)</span><input id="f_dias" type="text" inputmode="numeric" autocomplete="off" value="3" /></label>
+      <div class="field"><span>Descuento</span>
+        <div class="desc-row">
+          <div class="desc-wrap"><input id="f_descuento" type="text" inputmode="decimal" autocomplete="off" value="0" /><span id="descSuffix" class="desc-suffix">%</span></div>
+          <label class="chk desc-monto-chk"><input id="f_descMonto" type="checkbox" /> monto&nbsp;$</label>
+        </div>
+      </div>
+      <input id="f_version" type="hidden" value="01" />
+    </div>
+
+    <!-- Observaciones (formal: uniforme y compuesto) -->
+    <div id="wObservaciones">
+      <label class="field"><span>Observaciones</span><textarea id="f_observaciones" rows="3" placeholder="Anotaciones importantes para el cliente. Ej: Ancho al borde derecho baja de 2,8 m a 1,5 m."></textarea></label>
+    </div>
+
+    <!-- Orientación de uniones (uniforme) -->
+    <div id="wOrientFormal">
+      <h2 class="section">Orientación de uniones</h2>
+      <p class="muted small">Elige la orientación de los paños. La app marca la más económica.</p>
+      <div id="cmpCards"></div>
+      <div id="resumenTelas"></div>
+      <div id="avisosUnif"></div>
+    </div>
+
+    <!-- Vista del producto (uniforme) -->
+    <div id="wSketchUnif">
+      <h2 class="section">Vista del producto</h2>
+      <p class="muted small">Plano a escala: contorno, ojetillos y cotas (referencial).</p>
+      <label class="chk"><input type="checkbox" id="f_trasUnif" /> <span>Incluir vista trasera (espejo)</span></label>
+      <p id="trasUnifHint" class="muted small hidden">Define primero el diseño frontal (largo y ancho) para habilitar la vista trasera.</p>
+      <div id="wTraseraUnif" class="hidden trasera-box">
+        <h3 class="section">Diseño de la vista trasera <span class="muted small">(solo plano · costo $0)</span></h3>
+        <p class="muted small">Calados y materiales propios del reverso. No afectan el consumo ni la cotización.</p>
+        <div id="backCortesUnif"></div>
+        <div id="backCompUnif"></div>
+        <p class="muted small">Aletas de la cara trasera (SÍ suman al precio):</p>
+        <div id="backAletasUnif"></div>
+      </div>
+      <div id="sketchUnif" class="sketch"></div>
+      <div class="plano-dl-row">
+        <button id="btnDescargarSketch" class="btn-outline" type="button">Descargar plano (PDF)</button>
+        <button id="btnDescargarCorte" class="btn-outline" type="button">Descargar plano de corte (Taller)</button>
+        <div id="subtotalUnifHint" class="subtotal-hint muted small"></div>
+      </div>
+    </div>
+
+    <!-- Orientación de uniones (preliminar) -->
+    <div id="prelimOrientWrap" class="hidden">
+      <h2 class="section">Orientación de uniones</h2>
+      <p class="muted small">Elige la orientación con la que se generará el documento. Por defecto, paralelas al lado más largo.</p>
+      <div id="prelimOrient" class="cmp"></div>
+    </div>
+
+    <!-- Vista previa de valores preliminares -->
+    <div id="prelimPreview" class="hidden">
+      <h2 class="section">Valores preliminares (netos · 1 unidad)</h2>
+      <div id="prelimCards" class="cmp"></div>
+    </div>
+
+    <!-- Factor de diseño (sección completa) — justo encima de Generar -->
+    <div id="wFactorUnif">
+      <h2 class="section">Factor de diseño del producto</h2>
+      <p class="muted small">Un solo factor para todo el producto (todas las piezas), por mayor tiempo y recursos de taller. Multiplica <b>solo</b> el valor de la tela (no ojetillos ni materiales). 1 = normal; hasta 5.</p>
+      <div class="slider-row">
+        <input id="f_factor" type="range" min="1" max="5" step="0.1" value="1" />
+        <input id="f_factor_num" type="text" inputmode="decimal" autocomplete="off" class="slider-num" value="1" />
+      </div>
+      <div id="factorUnifInfo" class="muted small"></div>
+    </div>
+
+    <!-- Resumen del compuesto, replicado justo encima de Generar -->
+    <div id="piezasResumenBottom" class="cmp hidden"></div>
+
+    <div id="editHistBanner" class="edit-hist-banner hidden"></div>
+    <div class="actions">
+      <button id="btnGenerar" class="btn-gen btn-lg" type="button">Generar cotización (PDF)</button>
+      <button id="btnLimpiar" class="btn-outline" type="button">Limpiar</button>
+    </div>
+    <label class="chk" style="margin-top:8px"><input type="checkbox" id="f_noHist" /> <span>No guardar esta cotización en el historial (borrador / reimpresión / prueba)</span></label>
+    <label class="chk" style="margin-top:8px"><input type="checkbox" id="f_suprimirCotas2" /> <span>Suprimir cotas (plano y cotización "de aprobación": sin cotas, observaciones, resumen de materiales ni "Diseño aprobado")</span></label>
+    <div id="resultHolder" class="result"></div>
+    <p id="formStatus" class="status"></p>
+  </main>
+
+  <!-- Modal de progreso -->
+  <div id="progressModal" class="modal hidden">
+    <div class="modal-box">
+      <p id="progressMsg" class="section">Generando cotización…</p>
+      <div class="bar"><div id="progressFill" class="bar-fill"></div></div>
+      <p id="progressPct" class="pct">0%</p>
+      <div id="progressDone" class="done hidden">
+        <div class="check">✓</div>
+        <p class="done-text">Listo</p>
+        <p id="doneFile" class="muted small"></p>
+        <div class="links">
+          <a id="lnkAbrir" href="#">Abrir / Descargar</a>
+          <a id="lnkCompartir" href="#" class="hidden">Compartir</a>
+          <a id="lnkWhatsapp" href="#" class="wa-btn">
+            <svg viewBox="0 0 32 32" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M16 3C9.4 3 4 8.3 4 14.9c0 2.4.7 4.6 1.9 6.5L4 29l7.9-1.8c1.8 1 3.9 1.6 6.1 1.6 6.6 0 12-5.3 12-11.9C30 8.3 24.6 3 18 3h-2zm0 2.2h2c5.4 0 9.8 4.3 9.8 9.7s-4.4 9.7-9.8 9.7c-2 0-3.8-.6-5.4-1.5l-.4-.2-4.1.9.9-3.9-.3-.4a9.5 9.5 0 0 1-1.6-5.3c0-5.4 4.4-9.7 9.8-9.7zm-3.5 4.6c-.2 0-.5 0-.7.4-.3.4-1 .9-1 2.3s1 2.7 1.2 2.9c.1.2 2 3.2 4.9 4.3 2.4 1 2.9.8 3.5.7.5 0 1.6-.6 1.8-1.3.2-.6.2-1.2.2-1.3-.1-.1-.3-.2-.6-.3-.3-.2-1.6-.8-1.9-.9-.3-.1-.4-.1-.6.1-.2.3-.7.9-.8 1-.1.2-.3.2-.5.1-.3-.1-1.1-.4-2.1-1.3-.8-.7-1.3-1.5-1.4-1.8-.2-.3 0-.4.1-.5l.4-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.1-.6-1.5-.8-2-.2-.5-.4-.4-.6-.4h-.5z"/></svg>
+            WhatsApp
+          </a>
+        </div>
+        <p id="autoCierreMsg" class="muted small">Esta ventana se cerrará sola en <span id="autoCierreSeg">6</span> s.</p>
+        <div class="modal-actions">
+          <button id="btnCerrarModal" class="btn-accent" type="button">Cerrar ventana</button>
+          <button id="btnNoCerrar" class="btn-outline" type="button">No cerrar ventana</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Calculadora emergente (para campos que aceptan expresiones, p. ej. ojetillos) -->
+  <div id="calcModal" class="calc-modal hidden">
+    <div class="calc-box">
+      <div id="calcDisp" class="calc-disp">0</div>
+      <div class="calc-grid">
+        <button type="button" data-k="C">C</button><button type="button" data-k="(">(</button><button type="button" data-k=")">)</button><button type="button" data-k="/">÷</button>
+        <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button><button type="button" data-k="*">×</button>
+        <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button><button type="button" data-k="-">−</button>
+        <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button><button type="button" data-k="+">+</button>
+        <button type="button" data-k="0">0</button><button type="button" data-k=".">.</button><button type="button" data-k="back">⌫</button><button type="button" data-k="eq" class="calc-eq">=</button>
+      </div>
+      <div class="calc-actions">
+        <button id="calcUsar" class="btn-accent" type="button">Usar</button>
+        <button id="calcCerrar" class="btn-outline" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lupa: amplía el plano a pantalla completa; clic/toque o ✕ para volver -->
+  <div id="planoZoom" class="plano-zoom hidden">
+    <button id="planoZoomClose" class="plano-zoom-x" type="button" aria-label="Volver al tamaño original">✕</button>
+    <div id="planoZoomBody" class="plano-zoom-body"></div>
+  </div>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/logos.js"></script>
+  <script src="js/calc.js"></script>
+  <script src="js/sketch.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/sheets.js"></script>
+  <script src="js/dte.js"></script>
+  <script src="js/factura.js"></script>
+  <script src="js/pdf.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
