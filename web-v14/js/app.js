@@ -491,9 +491,11 @@
     if (noGuardarHist()) { _histSkip = true; return true; }
     if (_forzarNueva) { _histReplace = false; return true; }   // "nueva versión desde un registro": f_version ya fijado, guarda como registro nuevo (sin diálogo)
     const nom = (nombre || "").trim(), ape = (apellido || "").trim();
-    if (!nom || !ape) return true;   // sin cliente: guardarHistorial no guarda igual
+    const emp = empresaDatos(); const razon = (emp && emp.razon ? emp.razon : "").trim();
+    const nomK = nom || razon;   // empresa sin contacto → la razón social hace de nombre (igual que en guardarHistorial)
+    if (!nomK && !ape) return true;   // sin identificación de cliente: guardarHistorial no guarda igual
     const tipo = histTipo(), k = (s) => (s || "").trim().toLowerCase();
-    const mismos = histPrune(histLoad()).filter((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === tipo);
+    const mismos = histPrune(histLoad()).filter((e) => k(e.nombre) === k(nomK) && k(e.apellido) === k(ape) && e.tipo === tipo);
     if (!mismos.length) return true;   // primera cotización de este cliente/tipo → se guarda tal cual
     const maxVer = mismos.reduce((m, e) => Math.max(m, parseInt(e.version, 10) || 1), 0);
     const ch = await preguntarVersion(maxVer);
@@ -505,17 +507,22 @@
   function guardarHistorial(nombre, apellido, version) {
     _forzarNueva = false;   // consumido en prepararVersionHistorial; se limpia siempre
     const nom = (nombre || "").trim(), ape = (apellido || "").trim();
-    if (!nom || !ape) return; // solo cotizaciones formales con cliente
+    const emp = empresaDatos();
+    const razon = (emp && emp.razon ? emp.razon : "").trim();
+    // Guarda si hay ALGUNA identificación de cliente (nombre, apellido o razón social). Antes exigía nombre Y
+    // apellido → las cotizaciones de EMPRESA sin apellido se perdían. Para empresa sin contacto, la razón social
+    // hace de "nombre" (clave del registro).
+    const nomK = nom || razon;
+    if (!nomK && !ape) return; // sin ninguna identificación de cliente
     if (_histSkip) return null;   // borrador / reimpresión: NO guarda en el historial y NO genera número de cotización
     const tipo = histTipo(), vNum = parseInt(version, 10) || 1;
     const k = (s) => (s || "").trim().toLowerCase();
-    const corr = correlativoDe(nom, ape, version);
+    const corr = correlativoDe(nomK, ape, version);
     correlMaxBump(corr); // avanza la marca de máximo histórico (dispositivo + nube), salvo que reuse un número ya existente
     let arr = histPrune(histLoad());
-    const i = arr.findIndex((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === tipo && (parseInt(e.version, 10) || 1) === vNum);
-    const emp = empresaDatos();
+    const i = arr.findIndex((e) => k(e.nombre) === k(nomK) && k(e.apellido) === k(ape) && e.tipo === tipo && (parseInt(e.version, 10) || 1) === vNum);
     const editando = !!_editHist;
-    const ent = { ts: editando ? _editHist.ts : Date.now(), fecha: editando ? _editHist.fecha : histFechaCorta(new Date()), nombre: nom, apellido: ape, razonSocial: emp ? emp.razon : "", tipo: tipo, modo: state.docMode, prod: state.prodMode, version: vNum, snap: snapshotCotizacion() };
+    const ent = { ts: editando ? _editHist.ts : Date.now(), fecha: editando ? _editHist.fecha : histFechaCorta(new Date()), nombre: nomK, apellido: ape, razonSocial: razon, tipo: tipo, modo: state.docMode, prod: state.prodMode, version: vNum, snap: snapshotCotizacion() };
     if (ent.snap) ent.snap.correlativo = corr;
     if (editando) { ent.editado = edFechaHora(new Date()); if (ent.snap) ent.snap.editado = ent.editado; }   // marca "editado" (se persiste en el snap → al Sheet)
     if (i >= 0 && _histReplace) arr.splice(i, 1); // sobrescribir SOLO si se eligió (o se está editando); si no, se guarda como registro nuevo
