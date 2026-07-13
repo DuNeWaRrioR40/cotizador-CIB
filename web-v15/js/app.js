@@ -2343,10 +2343,10 @@
   function cantUnif() { return Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1); }
   function valorOjUnif() { return num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT); }
   function renderAletasUnif() {
-    const c = $("aletasUnif"); if (c) renderAletas(c, { aletas: state.aletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, factor: facUnif, onChange: recompute, telaBase: () => $("f_tela").value, baseListo: () => (num("f_largo", null) > 0 && num("f_ancho", null) > 0 && !!$("f_tela").value) });
+    const c = $("aletasUnif"); if (c) renderAletas(c, { getAncho: () => num("f_ancho", null), getLargo: () => num("f_largo", null), aletas: state.aletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, factor: facUnif, onChange: recompute, telaBase: () => $("f_tela").value, baseListo: () => (num("f_largo", null) > 0 && num("f_ancho", null) > 0 && !!$("f_tela").value) });
   }
   function renderBackAletasUnif() {
-    const c = $("backAletasUnif"); if (c) renderAletas(c, { aletas: state.backAletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, factor: facUnif, onChange: recompute, telaBase: () => $("f_tela").value, baseListo: () => (num("f_largo", null) > 0 && num("f_ancho", null) > 0 && !!$("f_tela").value) });
+    const c = $("backAletasUnif"); if (c) renderAletas(c, { getAncho: () => num("f_ancho", null), getLargo: () => num("f_largo", null), aletas: state.backAletasUnif, cantidad: cantUnif, valorOj: valorOjUnif, factor: facUnif, onChange: recompute, telaBase: () => $("f_tela").value, baseListo: () => (num("f_largo", null) > 0 && num("f_ancho", null) > 0 && !!$("f_tela").value) });
   }
   function renderStrapsUnif() {
     const c = $("strapsUnif"); if (c) renderStraps(c, { straps: state.strapsUnif, cantidad: cantUnif, getAncho: () => num("f_ancho", null), getLargo: () => num("f_largo", null), onChange: recompute });
@@ -3015,14 +3015,67 @@
         lt.appendChild(selT); lt.appendChild(mtA); pintTelaInfoA();
         card.appendChild(addHelpTo(lt, "Tela del anexo. Por defecto es la del paño base; puedes cambiarla. En cotización multi-tela, si mantienes la del paño base, el anexo sigue a cada tela; si eliges otra distinta, se conserva fija en todas las variantes.", "ALETA-TELA"));
         const grid = document.createElement("div"); grid.className = "pieza-grid";
-        grid.appendChild(addHelpTo(selField("Cuelga del borde", [["inf", "Inferior"], ["sup", "Superior"], ["izq", "Izquierda"], ["der", "Derecha"]], "baseEdge", false, () => pintarOjArista()), "Borde del paño base del que se fusiona y cuelga el anexo (desde ahí se extiende hacia afuera).", "ALETA-BORDE-BASE"));
+        grid.appendChild(addHelpTo(selField("Cuelga del borde", [["inf", "Inferior"], ["sup", "Superior"], ["izq", "Izquierda"], ["der", "Derecha"]], "baseEdge", false, () => { pintarOjArista(); pintarPosicion(); }), "Borde del paño base del que se fusiona y cuelga el anexo (desde ahí se extiende hacia afuera).", "ALETA-BORDE-BASE"));
         grid.appendChild(addHelpTo(numField("Distancia al borde (m, ≥ unión)", "dBorde"), "A qué distancia del borde elegido se cose el anexo. Debe ser ≥ la unión (típico 0,045 m).", "ALETA-DIST"));
         grid.appendChild(addHelpTo(numField("Largo / caída (m)", "largo"), "Cuánto cae o sobresale el anexo desde su línea de fusión, en metros.", "ALETA-CAIDA"));
-        grid.appendChild(addHelpTo(numField("Ancho (m)", "ancho"), "Ancho del anexo a lo largo del borde, en metros.", "ALETA-ANCHO"));
-        grid.appendChild(addHelpTo(numField("Offset (m)", "offset"), "Desplazamiento del anexo a lo largo del borde, medido desde la esquina, en metros (0 = pegado a la esquina).", "ALETA-OFFSET"));
+        { const fAncho = numField("Ancho (m)", "ancho"); fAncho.querySelector("input").addEventListener("input", () => pintarPosicion());
+          grid.appendChild(addHelpTo(fAncho, "Ancho del anexo a lo largo del borde, en metros.", "ALETA-ANCHO")); }
         grid.appendChild(addHelpTo(numField("Borde perimetral (m)", "bordeValor"), "Dobladillo de los bordes libres del anexo, en metros.", "ALETA-DOBLADILLO"));
         grid.appendChild(addHelpTo(numField("Ojetillos (hem libre)", "ojetillos"), "Cuántos ojetillos repartir en el borde libre del anexo. Se ignora si activas \"ojetillos por arista\".", "ALETA-OJET"));
         card.appendChild(grid);
+        // --- Posición a lo largo del borde: referencias a AMBAS aristas perpendiculares del paño
+        // base (vértices), con autocompletado — mismo sistema que los calados. Internamente sigue
+        // guardándose solo a.offset (distancia al primer vértice), así el plano y el PDF no cambian.
+        const posWrap = document.createElement("div"); card.appendChild(posWrap);
+        function aletaBaseDim() { const be = a.baseEdge || "inf"; return (be === "inf" || be === "sup") ? (ctx.getAncho && ctx.getAncho()) : (ctx.getLargo && ctx.getLargo()); }
+        function pintarPosicion() {
+          posWrap.innerHTML = "";
+          const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
+          const be = a.baseEdge || "inf", horiz = (be === "inf" || be === "sup");
+          const labA = horiz ? "Desde vértice izquierdo (m)" : "Desde vértice superior (m)";
+          const labB = horiz ? "Desde vértice derecho (m)" : "Desde vértice inferior (m)";
+          const cap = document.createElement("p"); cap.className = "muted small";
+          cap.textContent = "Posición a lo largo del borde — distancia a cada vértice del paño base (editar una completa la otra):";
+          posWrap.appendChild(addHelpTo(cap, "Posiciona el anexo respecto de los DOS vértices del borde elegido (las aristas perpendiculares del paño base), como en los calados. 0 = pegado a esa esquina. Al escribir una distancia, la otra se calcula sola usando el ancho del anexo y la dimensión del paño.", "ALETA-POS"));
+          const libre = () => { const base = aletaBaseDim(), W = ev(a.ancho); return (base != null && !isNaN(base) && W != null && !isNaN(W)) ? Math.max(0, base - W) : null; };
+          const pg = document.createElement("div"); pg.className = "pieza-grid";
+          const mkPos = (lab) => {
+            const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
+            const i = document.createElement("input"); i.type = "text"; i.inputMode = "decimal";
+            agregarCalc(i); l.appendChild(i); pg.appendChild(l); return i;
+          };
+          const iA = mkPos(labA), iB = mkPos(labB);
+          iA.value = a.offset || "0";
+          { const li = libre(), o = ev(a.offset); iB.value = (li != null && o != null && !isNaN(o)) ? f(Math.max(0, li - o)) : ""; }
+          iA.addEventListener("input", () => {
+            a.offset = iA.value;
+            const li = libre(), o = ev(iA.value);
+            if (li != null && o != null && !isNaN(o)) iB.value = f(Math.max(0, li - o));
+            refresh(); onChange();
+          });
+          iB.addEventListener("input", () => {
+            const li = libre(), m = ev(iB.value);
+            if (li == null || m == null || isNaN(m)) return;
+            a.offset = f(Math.max(0, li - m)); iA.value = a.offset;
+            refresh(); onChange();
+          });
+          posWrap.appendChild(pg);
+          const acc = document.createElement("div"); acc.className = "pz-actions"; acc.style.flexWrap = "wrap";
+          const mkBtn = (txt, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "pz-btn"; b.textContent = txt; b.addEventListener("click", fn); return b; };
+          const setOff = (v) => { a.offset = f(Math.max(0, v)); pintarPosicion(); refresh(); onChange(); };
+          const conLibre = (fn) => { const li = libre(); if (li == null) { alert("Completa el ancho del anexo y las dimensiones del paño base para usar las referencias."); return; } fn(li); };
+          acc.appendChild(mkBtn("◫ Centrar", () => conLibre((li) => setOff(li / 2))));
+          acc.appendChild(mkBtn(horiz ? "⇤ Pegar al vértice izq." : "⇤ Pegar al vértice sup.", () => setOff(0)));
+          acc.appendChild(mkBtn(horiz ? "⇥ Pegar al vértice der." : "⇥ Pegar al vértice inf.", () => conLibre((li) => setOff(li))));
+          posWrap.appendChild(acc);
+          const hint = document.createElement("p"); hint.className = "muted small";
+          const base = aletaBaseDim(), W2 = ev(a.ancho);
+          hint.textContent = (base != null && !isNaN(base))
+            ? ("Borde del paño: " + f(base) + " m · anexo: " + (W2 != null && !isNaN(W2) ? f(W2) : "—") + " m · espacio libre: " + (libre() != null ? f(libre()) + " m" : "—") + ".")
+            : "Ingresa largo y ancho del paño base para activar las referencias.";
+          posWrap.appendChild(hint);
+        }
+        pintarPosicion();
         // "+ opciones": ojetillos por arista del anexo (3 aristas libres, sin el punto de unión).
         const ojWrap = document.createElement("div"); card.appendChild(ojWrap);
         function pintarOjArista() {
@@ -5254,7 +5307,7 @@
       renderComplementos(q(".pz-comp"), pz.complementos, recomputeCompuesto);
       renderInscritos(q(".pz-ins"), pz);
       renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
-      renderAletas(q(".pz-aletas"), { aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto, telaBase: () => pz.telaNombre, baseListo: () => (window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0 && !!pz.telaNombre) });
+      renderAletas(q(".pz-aletas"), { getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto, telaBase: () => pz.telaNombre, baseListo: () => (window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0 && !!pz.telaNombre) });
       renderStraps(q(".pz-straps"), { straps: (pz.straps || (pz.straps = [])), cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
       renderCintas(q(".pz-cintas"), { cintas: (pz.cintas || (pz.cintas = [])), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
       subColapsar(q(".pz-oj-wrap"), "Ojetillos", pz, "_cOj", () => (pz.ojMode === "arista") || (parseInt(pz.ojetillos || 0, 10) > 0));
@@ -5317,7 +5370,7 @@
         const backC = q(".pz-back"), trasHint = q(".pz-tras-hint"), trasCb = q(".pz-tras");
         backC.innerHTML = '<div class="pz-back-cortes"></div><div class="pz-back-aletas"></div><div class="pz-back-comp"></div>';
         renderTraseraDiseno(backC.querySelector(".pz-back-cortes"), backC.querySelector(".pz-back-comp"), () => pz.backCortes, () => pz.backComplementos, () => window.CalcCIBSA.evalExpr(pz.largo), () => window.CalcCIBSA.evalExpr(pz.ancho), recomputeCompuesto);
-        renderAletas(backC.querySelector(".pz-back-aletas"), { aletas: pz.backAletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto, telaBase: () => pz.telaNombre, baseListo: () => (window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0 && !!pz.telaNombre) });
+        renderAletas(backC.querySelector(".pz-back-aletas"), { getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), aletas: pz.backAletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto, telaBase: () => pz.telaNombre, baseListo: () => (window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0 && !!pz.telaNombre) });
         trasCb.checked = !!pz.trasera;
         const actualizarTrasPz = () => {
           const ok = window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0;
