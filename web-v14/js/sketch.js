@@ -515,6 +515,17 @@
   // Cotas con origen en el CENTRO del producto para la posición de los elementos (ventanas/calados),
   // tamaño de cada elemento, dimensiones base, y cotas de aletas (tamaño propio + total exterior).
   // Cada cota lleva 'side' (top/bottom/left/right) para ubicarse del lado correcto.
+  // Empaca cotas en NIVELES por lado: las que NO se solapan en su tramo [a,b] comparten nivel (quedan alineadas);
+  // solo se apilan las que se cruzarían. Minimiza niveles (partición de intervalos, primer hueco por 'a').
+  function empacarNiveles(items, off0) {
+    const lanes = [];
+    items.slice().sort((p, q) => (p.a - q.a) || (p.b - q.b)).forEach((it) => {
+      let k = 0;
+      while (k < lanes.length && it.a < lanes[k] - EPS) k++;
+      it.off = off0 + k * OFF_STEP;
+      lanes[k] = it.b;
+    });
+  }
   function cotasDe(sk) {
     const out = [];
     const A = sk.ancho, L = sk.largo;
@@ -572,8 +583,13 @@
       const ys = uniq(cutPts.map((p) => p.y), L);
       let bOff = OFF_MIN0, rOff = OFF_MIN0;
       out.forEach((c) => { if (c.side === "bottom" && c.off >= bOff) bOff = c.off + OFF_STEP; if (c.side === "right" && c.off >= rOff) rOff = c.off + OFF_STEP; });
-      xs.forEach((x, k) => { out.push({ axis: "h", a: 0, b: x, off: bOff, value: x, side: "bottom", corte: true, key: "cut-x" + k }); bOff += OFF_STEP; });
-      ys.forEach((y, k) => { out.push({ axis: "v", a: 0, b: y, off: rOff, value: y, side: "right", corte: true, key: "cut-y" + k }); rOff += OFF_STEP; });
+      // X: cada corte se mide desde la arista vertical MÁS CERCANA (izq/der) → cotas cortas que no se cruzan.
+      // Y: desde la arista horizontal más cercana (sup/inf) → los cortes de arriba y abajo no se montan.
+      // Luego se EMPACAN en niveles: las que no se solapan comparten nivel → quedan alineadas.
+      const cutX = xs.map((x, k) => { const izq = x <= A / 2; return { axis: "h", a: izq ? 0 : x, b: izq ? x : A, value: izq ? x : (A - x), side: "bottom", corte: true, key: "cut-x" + k }; });
+      empacarNiveles(cutX, bOff); cutX.forEach((c) => out.push(c));
+      const cutY = ys.map((y, k) => { const sup = y <= L / 2; return { axis: "v", a: sup ? 0 : y, b: sup ? y : L, value: sup ? y : (L - y), side: "right", corte: true, key: "cut-y" + k }; });
+      empacarNiveles(cutY, rOff); cutY.forEach((c) => out.push(c));
     }
     return out;
   }
