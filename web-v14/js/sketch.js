@@ -540,20 +540,22 @@
     // Base (general): ancho arriba, largo a la izquierda.
     out.push({ axis: "h", a: 0, b: A, off: baseOff, value: A, side: "top", key: "base-anc" });
     out.push({ axis: "v", a: 0, b: L, off: baseOff, value: L, side: "left", key: "base-lar" });
-    // Elementos: tamaño + posición desde el centro (al borde que mira al centro).
+    // Elementos: tamaño + posición (margen desde la arista MÁS CERCANA, colineal con el tamaño). Se recolectan
+    // por lado y se EMPACAN: los que no se solapan comparten nivel (quedan alineados / encadenados como
+    // "quiebre" de la cota general); solo se apilan los que de verdad se cruzarían.
+    const elTop = [], elLeft = [];
     rects.forEach((v, i) => {
-      const off = OFF_MIN0 + i * OFF_STEP;
-      out.push({ axis: "h", a: v.x, b: v.x + v.w, off: off, value: v.w, side: "top", key: "el" + i + "-w" });
-      out.push({ axis: "v", a: v.y, b: v.y + v.h, off: off, value: v.h, side: "left", key: "el" + i + "-h" });
-      // Posición: cota del MARGEN (borde del elemento → borde del paño), del lado más cercano, colineal
-      // con la cota de tamaño. Así el operario ubica el elemento midiendo desde la arista del paño.
+      elTop.push({ axis: "h", a: v.x, b: v.x + v.w, value: v.w, side: "top", key: "el" + i + "-w" });
+      elLeft.push({ axis: "v", a: v.y, b: v.y + v.h, value: v.h, side: "left", key: "el" + i + "-h" });
       const izqM = v.x, derM = A - (v.x + v.w);
-      if (izqM <= derM) { if (izqM > EPS) out.push({ axis: "h", a: 0, b: v.x, off: off, value: izqM, side: "top", margen: true, key: "el" + i + "-mx" }); }
-      else { if (derM > EPS) out.push({ axis: "h", a: v.x + v.w, b: A, off: off, value: derM, side: "top", margen: true, key: "el" + i + "-mx" }); }
+      if (izqM <= derM) { if (izqM > EPS) elTop.push({ axis: "h", a: 0, b: v.x, value: izqM, side: "top", margen: true, key: "el" + i + "-mx" }); }
+      else { if (derM > EPS) elTop.push({ axis: "h", a: v.x + v.w, b: A, value: derM, side: "top", margen: true, key: "el" + i + "-mx" }); }
       const supM = v.y, infM = L - (v.y + v.h);
-      if (supM <= infM) { if (supM > EPS) out.push({ axis: "v", a: 0, b: v.y, off: off, value: supM, side: "left", margen: true, key: "el" + i + "-my" }); }
-      else { if (infM > EPS) out.push({ axis: "v", a: v.y + v.h, b: L, off: off, value: infM, side: "left", margen: true, key: "el" + i + "-my" }); }
+      if (supM <= infM) { if (supM > EPS) elLeft.push({ axis: "v", a: 0, b: v.y, value: supM, side: "left", margen: true, key: "el" + i + "-my" }); }
+      else { if (infM > EPS) elLeft.push({ axis: "v", a: v.y + v.h, b: L, value: infM, side: "left", margen: true, key: "el" + i + "-my" }); }
     });
+    empacarNiveles(elTop, OFF_MIN0); elTop.forEach((c) => out.push(c));
+    empacarNiveles(elLeft, OFF_MIN0); elLeft.forEach((c) => out.push(c));
     // Aletas (opción A): ancho propio (lado exterior) + caída (apilada del lado de la base) + total exterior.
     (sk.aletas || []).forEach((a, j) => {
       const below = a.y >= L - EPS, above = (a.y + a.h) <= EPS;
