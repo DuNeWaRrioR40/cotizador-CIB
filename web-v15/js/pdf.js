@@ -42,6 +42,20 @@
     return out;
   }
 
+  // Tipografía de los PDF: Poppins (≈ DM Sans del documento de referencia) embebida vía fontkit.
+  // Si fontkit o las fuentes no cargaron (offline con caché vieja), cae a Helvetica sin romper nada.
+  async function embedFonts(doc) {
+    try {
+      if (global.fontkit && global.FONTSCIBSA) {
+        doc.registerFontkit(global.fontkit);
+        const font = await doc.embedFont(b64ToBytes(global.FONTSCIBSA.regular), { subset: true });
+        const bold = await doc.embedFont(b64ToBytes(global.FONTSCIBSA.bold), { subset: true });
+        return { font: font, bold: bold };
+      }
+    } catch (e) { /* cae a Helvetica */ }
+    const SF = PDFLib.StandardFonts;
+    return { font: await doc.embedFont(SF.Helvetica), bold: await doc.embedFont(SF.HelveticaBold) };
+  }
   function b64ToBytes(dataURL) {
     const b64 = dataURL.split(",")[1];
     const bin = atob(b64);
@@ -624,8 +638,7 @@
   async function generarCotizacion(datos) {
     const { PDFDocument, StandardFonts } = PDFLib;
     const doc = await PDFDocument.create();
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const { font, bold } = await embedFonts(doc);
     const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
 
     const W = 612, H = 792, M = 50;
@@ -691,12 +704,12 @@
     }
     function hline(yy) {
       page.drawLine({ start: { x: M, y: yy }, end: { x: right, y: yy },
-        thickness: 0.5, color: PDFLib.rgb(0.6, 0.6, 0.6) });
+        thickness: 0.5, color: PDFLib.rgb(0.84, 0.84, 0.82) });
     }
     function vlines(yTop, yBot) {
       [cols[0], cols[1], cols[2], cols[3], right].forEach((x) =>
         page.drawLine({ start: { x, y: yTop }, end: { x, y: yBot },
-          thickness: 0.5, color: PDFLib.rgb(0.6, 0.6, 0.6) }));
+          thickness: 0.5, color: PDFLib.rgb(0.84, 0.84, 0.82) }));
     }
 
     // Cabecera de tabla (repetible al paginar) + paginación de filas
@@ -788,7 +801,7 @@
     function totalRow(label, value, fill) {
       const h = 20;
       asegurar(h);
-      if (fill) page.drawRectangle({ x: M, y: y - h, width: right - M, height: h, color: fill });
+      page.drawRectangle({ x: M, y: y - h, width: right - M, height: h, color: fill || GRAYBOX() });
       txt(page, label, cols[3] - pad - bold.widthOfTextAtSize(label, 11), y - 14, { f: bold, color: BLACK() });
       txt(page, value, cols[3] + (colW[3] - bold.widthOfTextAtSize(value, 11)) / 2, y - 14, { f: bold, color: BLACK() });
       y -= h; hline(y);
@@ -927,8 +940,7 @@
   async function generarPreliminar(datos) {
     const { PDFDocument, StandardFonts } = PDFLib;
     const doc = await PDFDocument.create();
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const { font, bold } = await embedFonts(doc);
     const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
 
     const W = 612, H = 792, M = 50;
@@ -972,12 +984,12 @@
 
     function hline(yy) {
       page.drawLine({ start: { x: M, y: yy }, end: { x: right, y: yy },
-        thickness: 0.5, color: PDFLib.rgb(0.6, 0.6, 0.6) });
+        thickness: 0.5, color: PDFLib.rgb(0.84, 0.84, 0.82) });
     }
     function vlines(yTop, yBot) {
       [cols[0], cols[1], right].forEach((x) =>
         page.drawLine({ start: { x, y: yTop }, end: { x, y: yBot },
-          thickness: 0.5, color: PDFLib.rgb(0.6, 0.6, 0.6) }));
+          thickness: 0.5, color: PDFLib.rgb(0.84, 0.84, 0.82) }));
     }
 
     // Cabecera
@@ -1042,12 +1054,11 @@
   async function generarCotizacionCompuesta(datos) {
     const { PDFDocument, StandardFonts } = PDFLib;
     const doc = await PDFDocument.create();
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const { font, bold } = await embedFonts(doc);
     const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
 
     const W = 612, H = 792, M = 50;
-    const GRAY = () => PDFLib.rgb(0.6, 0.6, 0.6);
+    const GRAY = () => PDFLib.rgb(0.84, 0.84, 0.82);
     let page = doc.addPage([W, H]);
     let y = H - 40;
 
@@ -1196,7 +1207,7 @@
       const h = 20;
       asegurar(h);
       const top = y;
-      if (fill) page.drawRectangle({ x: M, y: y - h, width: right - M, height: h, color: fill });
+      page.drawRectangle({ x: M, y: y - h, width: right - M, height: h, color: fill || GRAYBOX() });
       txt(label, cols[3] - pad - bold.widthOfTextAtSize(label, 11), y - 14, { f: bold, color: BLACK() });
       txt(value, cols[3] + (colW[3] - bold.widthOfTextAtSize(value, 11)) / 2, y - 14, { f: bold, color: BLACK() });
       y -= h; hline(y); vsegs(top, y);
@@ -1276,8 +1287,7 @@
   async function generarSketchPDF(datos) {
     const { PDFDocument, StandardFonts } = PDFLib;
     const doc = await PDFDocument.create();
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const { font, bold } = await embedFonts(doc);
     const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
     const W = 612, H = 792, M = 50;
     const page = doc.addPage([W, H]);
@@ -1380,8 +1390,7 @@
   async function generarPlanoCorte(datos) {
     const { PDFDocument, StandardFonts, rgb } = PDFLib;
     const doc = await PDFDocument.create();
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const { font, bold } = await embedFonts(doc);
     const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
     const W = 612, H = 792, M = 50;
     const f = (n) => (Math.round((+n) * 1000) / 1000).toString().replace(".", ",");
