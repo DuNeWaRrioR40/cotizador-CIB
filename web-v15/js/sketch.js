@@ -397,7 +397,7 @@
       const A = ancho, mp = (p) => ({ x: A - p.x, y: p.y });
       const swapLR = (f) => ({ sup: !!(f && f.sup), inf: !!(f && f.inf), izq: !!(f && f.der), der: !!(f && f.izq) });
       const swapAr = (a) => (a === "izq" ? "der" : a === "der" ? "izq" : a);
-      ojetillos = ojetillos.map(mp);
+      ojetillos = ojetillos.map((p) => { const q = mp(p); if (p.ar) q.ar = swapAr(p.ar); return q; });
       ventanas = ventanas.map((v) => Object.assign({}, v, { x: A - (v.x + v.w), fusion: swapLR(v.fusion) }));
       bolsillos = bolsillos.map((b) => Object.assign({}, b, { arista: swapAr(b.arista) }));
       cortes = cortes.map((c) => Object.assign({}, c, {
@@ -1118,10 +1118,11 @@
   function ojetillosVolExterno(pts, A, L, H) {
     const E = 1e-6;
     return (pts || []).map((p) => {
-      if (Math.abs(p.y) < E) return { x: p.x, y: -H };          // arista superior → borde externo sup
-      if (Math.abs(p.y - L) < E) return { x: p.x, y: L + H };   // inferior
-      if (Math.abs(p.x) < E) return { x: -H, y: p.y };          // izquierda
-      if (Math.abs(p.x - A) < E) return { x: A + H, y: p.y };   // derecha
+      const ar = p.ar; // arista de ORIGEN (resuelve las esquinas, que tocan dos aristas a la vez)
+      if (ar === "sup" || (!ar && Math.abs(p.y) < E)) return { x: p.x, y: -H };
+      if (ar === "inf" || (!ar && Math.abs(p.y - L) < E)) return { x: p.x, y: L + H };
+      if (ar === "izq" || (!ar && Math.abs(p.x) < E)) return { x: -H, y: p.y };
+      if (ar === "der" || (!ar && Math.abs(p.x - A) < E)) return { x: A + H, y: p.y };
       return p;
     });
   }
@@ -1227,6 +1228,27 @@
       s += vCota(Y(0), Y(Ld), pbx - 12, Ld); // largo total = L+2·alto
       s += vCota(Y(0), Y(H), X(H + A) + 12, H); // alto (ala) marcado en una esquina
       s += `<text class="cota-lbl" x="${f1(X(H / 2))}" y="${f1(Y(H + L / 2))}" text-anchor="middle" transform="rotate(-90 ${f1(X(H / 2))} ${f1(Y(H + L / 2))})">calado ${fmt(H)}m</text>`;
+    }
+    // Numeración NumOj (1er/último ojetillo por arista, con flecha) — solo en el plano en vivo.
+    // En modo "externo" el marcador se proyecta al borde extremo del ala, junto a su ojetillo.
+    if (opts.live && skVol.ojNumeros && skVol.ojNumeros.length) {
+      const ojExtN = (spec.volumetrico.ojEn || "externo") === "externo";
+      skVol.ojNumeros.forEach((m) => {
+        let mx = m.x, my = m.y;
+        if (ojExtN) {
+          if (m.ny === -1) my = -H; else if (m.ny === 1) my = L + H;
+          else if (m.nx === -1) mx = -H; else if (m.nx === 1) mx = A + H;
+        }
+        const sx = X(H + mx), sy = Y(H + my), G = 8, AL = 12, HB = 3.5;
+        const bx = sx + m.nx * G, by = sy + m.ny * G;
+        const ex = bx + m.dx * AL, ey = by + m.dy * AL;
+        const ang = Math.atan2(ey - by, ex - bx);
+        s += `<line class="oj-num" x1="${f1(bx)}" y1="${f1(by)}" x2="${f1(ex)}" y2="${f1(ey)}"/>`;
+        s += `<line class="oj-num" x1="${f1(ex)}" y1="${f1(ey)}" x2="${f1(ex + Math.cos(ang + 2.6) * HB)}" y2="${f1(ey + Math.sin(ang + 2.6) * HB)}"/>`;
+        s += `<line class="oj-num" x1="${f1(ex)}" y1="${f1(ey)}" x2="${f1(ex + Math.cos(ang - 2.6) * HB)}" y2="${f1(ey + Math.sin(ang - 2.6) * HB)}"/>`;
+        const tx = bx + m.nx * 7 - m.dx * 4, ty = by + m.ny * 7 - m.dy * 4 + 3;
+        s += `<text class="oj-num-lbl" x="${f1(tx)}" y="${f1(ty)}" text-anchor="middle">${esc(m.text)}</text>`;
+      });
     }
     // Leyenda de simbología (parte inferior izquierda).
     if (legH) {

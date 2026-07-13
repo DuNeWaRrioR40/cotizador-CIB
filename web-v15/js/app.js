@@ -4780,7 +4780,7 @@
           const gaps = []; for (let i = 1; i < kept.length; i++) gaps.push(kept[i] - kept[i - 1]);
           gaps.sort((a, b) => a - b); detalle[k].esp = gaps[Math.floor(gaps.length / 2)];
         }
-        kept.forEach((p) => out.push(mapFn(p)));
+        kept.forEach((p) => { const q = mapFn(p); q.ar = k; out.push(q); });
         // 2da línea: paralela a la arista, hacia adentro (inset). 0 y n se suprimen solos si se solapan con el perímetro.
         const l2 = e.linea2;
         if (l2 && l2.on) {
@@ -4807,7 +4807,9 @@
     proc("izq", largo, rem.izq, spl.izq, (p) => ({ x: 0, y: p }));
     proc("der", largo, rem.der, spl.der, (p) => ({ x: ancho, y: p }));
     const seen = new Set(), pos = [];
-    out.forEach((p) => { const key = Math.round(p.x * 1000) + "_" + Math.round(p.y * 1000); if (!seen.has(key)) { seen.add(key); pos.push(p); } });
+    // En plano las esquinas coincidentes se funden (un solo ojetillo). En volumétrico-externo cada
+    // ala es independiente: la esquina de la arista vertical y la de la horizontal son ojetillos DISTINTOS.
+    out.forEach((p) => { const key = (mantenerEsquinas ? (p.ar || "") + "|" : "") + Math.round(p.x * 1000) + "_" + Math.round(p.y * 1000); if (!seen.has(key)) { seen.add(key); pos.push(p); } });
     return { pos: pos, total: pos.length, errores: errs, detalle: detalle, numeros: numeros };
   }
   function ojTotalPieza(pz) {
