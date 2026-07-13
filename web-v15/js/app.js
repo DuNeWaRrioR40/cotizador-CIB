@@ -3410,6 +3410,7 @@
       angulo: base ? base.angulo : "0", pivX: base ? base.pivX : "0.5", pivY: base ? base.pivY : "0.5",
       oj: base ? Object.assign({}, base.oj) : { sup: "0", inf: "0", izq: "0", der: "0" },
       complementos: base ? (base.complementos || []).map((c) => Object.assign({}, c, { cantAristas: (c.cantAristas || []).slice() })) : [],
+      tapa: (base && base.tapa) ? JSON.parse(JSON.stringify(base.tapa)) : null,
     };
   }
   function centrarCorte(baseL, baseA, c) {
@@ -3442,6 +3443,17 @@
     if (!(len > 0)) return;
     c.padIzq = f(cx); c.padSup = f(cy); c.largo = f(len); c.angulo = f(Math.atan2(ey - cy, ex - cx) * 180 / Math.PI); c.pivX = "0";
   }
+  // Tapa/solapa del corte → spec: números evaluados; strings de campos quedan en el objeto crudo.
+  function tapaSpec(c) {
+    const T = c.tapa; if (!T || !T.on) return null;
+    const ev = window.CalcCIBSA.evalExpr;
+    const n = (v, d) => { const r = ev(v); return (r == null || isNaN(r)) ? d : r; };
+    const ar = {};
+    ["sup", "inf", "izq", "der"].forEach((k) => { const a = (T.ar || {})[k] || {}; ar[k] = { fus: a.fus !== false, ojD: n(a.ojD, 0) }; });
+    return { on: true, nombre: (T.nombre || "").trim(), lado: T.lado || "B",
+      mSup: n(T.mSup, 0.045), mInf: n(T.mInf, 0.045), mIzq: n(T.mIzq, 0.045), mDer: n(T.mDer, 0.045),
+      caida: n(T.caida, 0.2), ar: ar };
+  }
   function rectCorte(c) {
     const ev = window.CalcCIBSA.evalExpr;
     const num01 = (v, d) => { const r = window.CalcCIBSA.evalExpr(v); return (r == null || isNaN(r)) ? d : Math.max(0, Math.min(1, r)); };
@@ -3449,7 +3461,7 @@
       const esGuia = c.tipo === "guia";            // guía = línea de construcción: NO secciona el paño
       const Ln = ev(c.largo); if (Ln == null || Ln <= 0) return null;
       const x = ev(c.padIzq), y = ev(c.padSup);
-      return { tipo: c.tipo, guia: esGuia, x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: Ln, h: 0, circ: false, ojCirc: 0, oj: { sup: 0, inf: 0, izq: 0, der: 0 }, lados: {}, angulo: ev(c.angulo) || 0, pivX: num01(c.pivX, 0), pivY: 0, fade: esGuia ? "" : (c.fade || ""), fadeKill: !esGuia && !!c.fadeKill, ojAristaLado: c.ojAristaLado || "", ojAristaD: ev(c.ojAristaD) || 0, ojAristaInset: ev(c.ojAristaInset) || 0, ojAristaSupr: parseSupr(c.ojAristaSupr), strapAncho: anchoCintaM((c.strapMatId != null && state.materiales[c.strapMatId]) || null), strapPrecioM: ((c.strapMatId != null && state.materiales[c.strapMatId] && state.materiales[c.strapMatId].precio) || 0), strapLado: c.strapLado || "A", strapD: ev(c.strapD) || 0, strapOffset: ev(c.strapOffset) || 0, strapInset: ev(c.strapInset) || 0, strapSupr: parseSupr(c.strapSupr), strapNombre: (c.strapNombre || "").trim() };
+      return { tipo: c.tipo, guia: esGuia, x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: Ln, h: 0, circ: false, ojCirc: 0, oj: { sup: 0, inf: 0, izq: 0, der: 0 }, lados: {}, angulo: ev(c.angulo) || 0, pivX: num01(c.pivX, 0), pivY: 0, fade: esGuia ? "" : (c.fade || ""), fadeKill: !esGuia && !!c.fadeKill, ojAristaLado: c.ojAristaLado || "", ojAristaD: ev(c.ojAristaD) || 0, ojAristaInset: ev(c.ojAristaInset) || 0, ojAristaSupr: parseSupr(c.ojAristaSupr), strapAncho: anchoCintaM((c.strapMatId != null && state.materiales[c.strapMatId]) || null), strapPrecioM: ((c.strapMatId != null && state.materiales[c.strapMatId] && state.materiales[c.strapMatId].precio) || 0), strapLado: c.strapLado || "A", strapD: ev(c.strapD) || 0, strapOffset: ev(c.strapOffset) || 0, strapInset: ev(c.strapInset) || 0, strapSupr: parseSupr(c.strapSupr), strapNombre: (c.strapNombre || "").trim(), tapa: tapaSpec(c) };
     }
     const w = ev(c.ancho), h = ev(c.largo); if (w == null || h == null || w <= 0 || h <= 0) return null;
     const x = ev(c.padIzq), y = ev(c.padSup);
@@ -3460,6 +3472,7 @@
       oj: { sup: ojIntPz(c.oj.sup), inf: ojIntPz(c.oj.inf), izq: ojIntPz(c.oj.izq), der: ojIntPz(c.oj.der) },
       lados: { sup: L.sup !== false, inf: L.inf !== false, izq: L.izq !== false, der: L.der !== false },
       angulo: window.CalcCIBSA.evalExpr(c.angulo) || 0, pivX: num01(c.pivX, 0.5), pivY: num01(c.pivY, 0.5),
+      tapa: tapaSpec(c),
     };
   }
   function cortesSpec(list) { return visibles(list).map(rectCorte).filter(Boolean); }
@@ -3750,6 +3763,81 @@
             l.appendChild(cb); l.appendChild(document.createTextNode(" " + lab)); lrow.appendChild(l);
           });
           card.appendChild(lrow);
+        }
+        // ----- Tapa (calado) / Solapa (corte): paño de cobertura del quiebre -----
+        if (!esLinea || c.tipo === "corte") {
+          const tapaWrap = document.createElement("div"); card.appendChild(tapaWrap);
+          const U = "0.045";
+          const defTapa = () => ({ on: true, nombre: "", lado: "B", caida: "0.2", mSup: U, mInf: U, mIzq: U, mDer: U,
+            ar: { sup: { fus: true, ojD: "" }, inf: { fus: true, ojD: "" }, izq: { fus: true, ojD: "" }, der: { fus: true, ojD: "" } } });
+          const pintarTapa = () => {
+            tapaWrap.innerHTML = "";
+            const lbl = document.createElement("label"); lbl.className = "chk";
+            const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!(c.tapa && c.tapa.on);
+            cb.addEventListener("change", () => { if (cb.checked) { if (!c.tapa) c.tapa = defTapa(); c.tapa.on = true; } else if (c.tapa) c.tapa.on = false; pintarTapa(); refresh(); onChange(); });
+            const sp = document.createElement("span"); sp.textContent = esLinea ? "Instalar solapa (cubre el corte)" : "Instalar tapa (cubre el calado)";
+            lbl.appendChild(cb); lbl.appendChild(sp);
+            tapaWrap.appendChild(addHelpTo(lbl, "Paño de cobertura que se cose sobre el " + (esLinea ? "corte" : "calado") + " para poder abrirlo y cerrarlo (p. ej. una puerta). Por defecto cubre el quiebre con 1 unión (0,045 m) de traslape por lado. Se dibuja naranjo translúcido sobre el plano.", "TAPA-ON"));
+            if (!c.tapa || !c.tapa.on) return;
+            const T = c.tapa;
+            const panel = document.createElement("div"); panel.className = "adv-panel";
+            const nEv = (v, d) => { const r = window.CalcCIBSA.evalExpr(v); return (r == null || isNaN(r)) ? d : r; };
+            const fld = (lab, key, ph) => {
+              const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
+              const i = document.createElement("input"); i.type = "text"; i.inputMode = "decimal"; i.value = T[key] != null ? T[key] : ""; if (ph) i.placeholder = ph;
+              i.addEventListener("input", () => { T[key] = i.value; refresh(); onChange(); });
+              agregarCalc(i); l.appendChild(i); return l;
+            };
+            { const l = document.createElement("label"); l.className = "field full"; l.innerHTML = "<span>Nombre (plano)</span>";
+              const i = document.createElement("input"); i.type = "text"; i.value = T.nombre || ""; i.placeholder = esLinea ? "Solapa" : "Tapa";
+              i.addEventListener("input", () => { T.nombre = i.value; refresh(); onChange(); }); l.appendChild(i); panel.appendChild(l); }
+            if (esLinea) {
+              const rr = document.createElement("div"); rr.className = "radios";
+              [["A", "Crece hacia lado A"], ["B", "Crece hacia lado B"]].forEach(([v, t]) => {
+                const rl = document.createElement("label"); const ri = document.createElement("input"); ri.type = "radio"; ri.name = "tapaLado" + c.id; ri.checked = (T.lado || "B") === v;
+                ri.addEventListener("change", () => { T.lado = v; refresh(); onChange(); });
+                rl.appendChild(ri); rl.appendChild(document.createTextNode(" " + t)); rr.appendChild(rl);
+              });
+              panel.appendChild(addHelpTo(rr, "Hacia qué lado del corte se extiende la solapa (mismos lados A/B que usan Difuminar y los ojetillos de arista del corte).", "TAPA-LADO"));
+            }
+            const pg = document.createElement("div"); pg.className = "pieza-grid";
+            if (esLinea) {
+              pg.appendChild(fld("Caída hacia el lado elegido (m)", "caida", "0.2"));
+              pg.appendChild(fld("Traslape al otro lado (m)", "mSup", U));
+              pg.appendChild(fld("Extremo inicial +/− (m)", "mIzq", U));
+              pg.appendChild(fld("Extremo final +/− (m)", "mDer", U));
+            } else {
+              pg.appendChild(fld("Crece arriba +/− (m)", "mSup", U));
+              pg.appendChild(fld("Crece abajo +/− (m)", "mInf", U));
+              pg.appendChild(fld("Crece izquierda +/− (m)", "mIzq", U));
+              pg.appendChild(fld("Crece derecha +/− (m)", "mDer", U));
+            }
+            panel.appendChild(addHelpTo(pg, "Cuánto crece (o se recoge, con valores menores) la " + (esLinea ? "solapa" : "tapa") + " más allá de cada arista del quiebre, en metros. 0,045 = 1 unión.", "TAPA-MARGENES"));
+            const capA = document.createElement("p"); capA.className = "muted small";
+            capA.textContent = "Aristas de la " + (esLinea ? "solapa" : "tapa") + " — fusionar al paño base y/o accesorios (ojetillos cada X m):";
+            panel.appendChild(capA);
+            const NOM = esLinea ? { sup: "Sobre el corte (traslape)", inf: "Caída", izq: "Extremo inicial", der: "Extremo final" }
+                                : { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha" };
+            const MKEY = { sup: "mSup", inf: esLinea ? "caida" : "mInf", izq: "mIzq", der: "mDer" };
+            ["sup", "inf", "izq", "der"].forEach((k) => {
+              if (!T.ar) T.ar = {}; if (!T.ar[k]) T.ar[k] = { fus: true, ojD: "" };
+              const e = T.ar[k];
+              const sobre = nEv(T[MKEY[k]], k === "inf" && esLinea ? 0.2 : 0.045) <= 0.002 && !(esLinea && k === "inf");
+              const row = document.createElement("div"); row.className = "aleta-oj-row";
+              const fl = document.createElement("label"); fl.className = "chk aleta-oj-on";
+              const fc = document.createElement("input"); fc.type = "checkbox"; fc.checked = !sobre && e.fus !== false; fc.disabled = sobre;
+              fc.addEventListener("change", () => { e.fus = fc.checked; refresh(); onChange(); });
+              const fs = document.createElement("span"); fs.textContent = NOM[k] + (sobre ? " — sobre el corte: solo accesorios" : " · fusionar");
+              fl.appendChild(fc); fl.appendChild(fs); row.appendChild(fl);
+              const ol = document.createElement("label"); ol.className = "field aleta-oj-f"; ol.innerHTML = "<span>ojetillos cada (m)</span>";
+              const oi = document.createElement("input"); oi.type = "text"; oi.inputMode = "decimal"; oi.value = e.ojD || ""; oi.placeholder = "0 = sin";
+              oi.addEventListener("input", () => { e.ojD = oi.value; refresh(); onChange(); });
+              agregarCalc(oi); ol.appendChild(oi); row.appendChild(ol);
+              panel.appendChild(row);
+            });
+            tapaWrap.appendChild(panel);
+          };
+          pintarTapa();
         }
         // Opciones avanzadas (colapsable): ángulo/pivote + ojetillos + materiales.
         const advBtn = document.createElement("button"); advBtn.type = "button"; advBtn.className = "btn-outline adv-btn";
@@ -4121,6 +4209,7 @@
       activarArrastreCallouts(sk);
       const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); recompute(); };
       activarClicOcultarCotas(sk, state.cotasOcultas, refrescarOcUnif);
+      activarMenuAristas(sk, accionesAristaUnif);
       menuPlano(sk, [
         { label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
         { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
@@ -4860,6 +4949,96 @@
   // en state.rotDrag[clave] y re-renderiza (la flecha se redibuja al destino). Se re-cablea en cada render.
   // Clic en una cota del plano → aparece una ✕; al pincharla, esa cota se oculta. Alternativa ágil a la lista
   // de cotas cuando hay muchas. `ocultas` = mapa cotasOcultas; `onChange` = re-render del plano.
+  // ----- Menú de arista: clic en una arista del paño (plano en vivo) → instalar elemento ahí -----
+  let _arMenu = null;
+  function cerrarMenuAristas() { if (_arMenu) { _arMenu.remove(); _arMenu = null; } }
+  document.addEventListener("click", (e) => { if (_arMenu && !_arMenu.contains(e.target)) cerrarMenuAristas(); });
+  // Expande la sección colapsada que contenga el elemento, hace scroll y destella su título.
+  function irASeccion(el) {
+    if (!el) return;
+    const sec = el.closest ? el.closest(".colap") : null;
+    if (sec && sec.classList.contains("collapsed") && typeof toggleColap === "function") toggleColap(sec);
+    const destino = sec || el;
+    try { destino.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { destino.scrollIntoView(); }
+    const h = destino.querySelector && destino.querySelector("h2.section, h3.section");
+    if (h && typeof flashTitulo === "function") flashTitulo(h);
+  }
+  function activarMenuAristas(container, acciones) {
+    if (!container || !acciones) return;
+    const NOM_AR = { sup: "superior", inf: "inferior", izq: "izquierda", der: "derecha" };
+    container.querySelectorAll("svg.sketch-svg .arista-hit").forEach((ln) => {
+      ln.addEventListener("click", (e) => {
+        e.stopPropagation();
+        cerrarMenuAristas();
+        const k = ln.getAttribute("data-arista");
+        const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
+        const cap = document.createElement("p"); cap.className = "arista-menu-cap"; cap.textContent = "Arista " + NOM_AR[k] + " — instalar"; menu.appendChild(cap);
+        [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]].forEach(([t, a]) => {
+          if (!acciones[a]) return;
+          const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); acciones[a](k); });
+          menu.appendChild(b);
+        });
+        document.body.appendChild(menu); _arMenu = menu;
+        const mw = menu.offsetWidth || 200, mh = menu.offsetHeight || 180;
+        menu.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, e.clientX - mw / 2)) + "px";
+        menu.style.top = Math.max(8, Math.min(window.innerHeight - mh - 8, e.clientY + 12)) + "px";
+      });
+    });
+  }
+  // Acciones del menú de arista para el paño UNIFORME: crean/activan el elemento YA referenciado
+  // a la arista elegida y llevan al editor correspondiente.
+  const accionesAristaUnif = {
+    oj: (k) => {
+      state.ojMode = "arista";
+      const r = document.querySelector('input[name="ojmode"][value="arista"]'); if (r) r.checked = true;
+      if (!state.ojEdges) state.ojEdges = ojEdgesDefault();
+      const e = state.ojEdges[k] || (state.ojEdges[k] = defOjEdge());
+      e.on = true; if (!(window.CalcCIBSA.evalExpr(e.d) > 0)) e.d = "0.5";
+      renderOjetillos(); recompute();
+      irASeccion($("wOjetillos") || $("ojDyn"));
+    },
+    strap: (k) => {
+      state.strapsUnif.push({ matId: null, modo: "unica", arista: k, d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "", inset: "0", offBorde: "0.01", legend: "", sets: [] });
+      renderStrapsUnif(); recompute();
+      irASeccion($("strapsUnif"));
+    },
+    cinta: (k) => {
+      state.cintasUnif.push(nuevaCinta({ modo: "arista", arista: k }));
+      renderCintasUnif(); recompute();
+      irASeccion($("cintasUnif"));
+    },
+    corte: (k) => {
+      const c = nuevaCorte(); c.tipo = "calado"; c.forma = "rect"; c.largo = "0.5"; c.ancho = "0.5";
+      const bL = num("f_largo", null), bA = num("f_ancho", null), f = window.CalcCIBSA.fmtNum;
+      // Pegado a la arista elegida, centrado a lo largo de ella.
+      if (bL != null && bA != null) {
+        if (k === "sup") { c.padSup = "0"; c.padInf = f(Math.max(0, bL - 0.5)); c.padIzq = f(Math.max(0, (bA - 0.5) / 2)); c.padDer = c.padIzq; }
+        if (k === "inf") { c.padInf = "0"; c.padSup = f(Math.max(0, bL - 0.5)); c.padIzq = f(Math.max(0, (bA - 0.5) / 2)); c.padDer = c.padIzq; }
+        if (k === "izq") { c.padIzq = "0"; c.padDer = f(Math.max(0, bA - 0.5)); c.padSup = f(Math.max(0, (bL - 0.5) / 2)); c.padInf = c.padSup; }
+        if (k === "der") { c.padDer = "0"; c.padIzq = f(Math.max(0, bA - 0.5)); c.padSup = f(Math.max(0, (bL - 0.5) / 2)); c.padInf = c.padSup; }
+      }
+      c._colap = false;
+      state.cortesUnif.push(c);
+      renderCortesUnif(); recompute();
+      irASeccion($("wCortesUnif") || $("cortesUnif"));
+    },
+    guia: (k) => {
+      const c = nuevaCorte(); c.tipo = "guia";
+      const bL = num("f_largo", null), bA = num("f_ancho", null), f = window.CalcCIBSA.fmtNum;
+      // Línea de construcción SOBRE la arista elegida, de extremo a extremo.
+      if (bL != null && bA != null) {
+        if (k === "sup") { c.largo = f(bA); c.padIzq = "0"; c.padSup = "0"; c.angulo = "0"; }
+        if (k === "inf") { c.largo = f(bA); c.padIzq = "0"; c.padSup = f(bL); c.angulo = "0"; }
+        if (k === "izq") { c.largo = f(bL); c.padIzq = "0"; c.padSup = "0"; c.angulo = "90"; c.pivX = "0"; }
+        if (k === "der") { c.largo = f(bL); c.padIzq = f(bA); c.padSup = "0"; c.angulo = "90"; c.pivX = "0"; }
+      }
+      c._colap = false;
+      state.cortesUnif.push(c);
+      renderCortesUnif(); recompute();
+      irASeccion($("wCortesUnif") || $("cortesUnif"));
+    },
+  };
   function activarClicOcultarCotas(container, ocultas, onChange) {
     if (!container || !ocultas) return;
     const NS = "http://www.w3.org/2000/svg";

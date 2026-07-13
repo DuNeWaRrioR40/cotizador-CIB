@@ -272,6 +272,20 @@ button:active { transform: scale(0.97); }
 .sketch-svg .cut-fade { fill: #6b7480; fill-opacity: 0.5; stroke: none; }
 .sketch-svg .cut-kill { fill: var(--surface, #ffffff); fill-opacity: 1; stroke: none; }
 .sketch-svg .cut-piv { stroke: #8e44ad; stroke-width: 0.8; fill: none; }
+/* Tapa / solapa de cobertura sobre cortes y calados: naranjo muy translúcido (se lee el paño debajo) */
+.sketch-svg .tapa-fill { fill: #ff8c1a; fill-opacity: 0.09; stroke: none; }
+.sketch-svg .tapa-fus { stroke: #e8590c; stroke-width: 1.3; }
+.sketch-svg .tapa-lib { stroke: #e8590c; stroke-width: 0.55; stroke-dasharray: 2 2; }
+.sketch-svg .tapa-oje { fill: var(--surface); stroke: #e8590c; stroke-width: 0.5; }
+.sketch-svg .tapa-oje-in { fill: none; stroke: #e8590c; stroke-width: 0.4; }
+.sketch-svg .tapa-lbl { fill: #b34700; font-size: 6px; font-weight: 600; font-family: inherit; }
+/* Aristas del paño clicables en el plano en vivo (menú "instalar en esta arista") */
+.sketch-svg .arista-hit { stroke: transparent; stroke-width: 11; cursor: pointer; }
+.sketch-svg .arista-hit:hover { stroke: rgba(232, 89, 12, 0.22); }
+.arista-menu { padding: 8px; }
+.arista-menu .arista-menu-cap { font-size: 11px; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.08em; }
+.arista-menu-it { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 6px; padding: 7px 10px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; }
+.arista-menu-it:hover { background: var(--sel); }
 .sketch-svg .ins-lbl { fill: var(--text); font-size: 6.5px; font-family: inherit; }
 .sketch-svg .ins-dim { fill: var(--muted); font-size: 5.5px; font-family: inherit; }
 .sketch-svg .fusion { stroke: #d23b2e; stroke-width: 1; }

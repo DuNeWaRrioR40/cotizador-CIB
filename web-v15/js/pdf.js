@@ -321,6 +321,24 @@
     (sk.setsRot || []).forEach((sr) => { callout(px(sr.x), py(sr.y), sr.text, sr.detail, sr); });
     // Cortes / calados
     (sk.cortes || []).forEach((c) => {
+      // Tapa / solapa de cobertura: polígono naranjo muy translúcido + aristas según su estado.
+      if (c.tapa && c.tapa.poly && c.tapa.poly.length >= 3) {
+        const NAR = PDFLib.rgb(0.91, 0.35, 0.05);
+        const dPoly = "M " + c.tapa.poly.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";
+        page.drawSvgPath(dPoly, { color: NAR, opacity: 0.09, borderColor: NAR, borderWidth: 0.7, borderDashArray: [4, 2.5], borderOpacity: 0.9 });
+        (c.tapa.edges || []).forEach((e) => {
+          page.drawLine({ start: { x: px(e.a.x), y: py(e.a.y) }, end: { x: px(e.b.x), y: py(e.b.y) },
+            thickness: e.fus ? 1.2 : 0.5, color: NAR, dashArray: e.fus ? undefined : [1.6, 1.6] });
+          (e.oj || []).forEach((p) => {
+            page.drawCircle({ x: px(p.x), y: py(p.y), size: r, borderColor: NAR, borderWidth: 0.4, color: WHITE() });
+            page.drawCircle({ x: px(p.x), y: py(p.y), size: r * 0.42, borderColor: NAR, borderWidth: 0.35 });
+          });
+        });
+        const cxT = c.tapa.poly.reduce((m, p) => m + p.x, 0) / c.tapa.poly.length;
+        const cyT = c.tapa.poly.reduce((m, p) => m + p.y, 0) / c.tapa.poly.length;
+        const lbl = san(c.tapa.nombre || "Tapa");
+        page.drawText(lbl, { x: px(cxT) - font.widthOfTextAtSize(lbl, 6) / 2, y: py(cyT) - 2, size: 6, font: font, color: NAR });
+      }
       // Difuminar: gris visible. Eliminar: la parte se va del CONTORNO (no se rellena ni se dibuja su línea).
       if (c.fadePoly && c.fadePoly.length >= 3 && !c.fadeKill) {
         const d = "M " + c.fadePoly.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";

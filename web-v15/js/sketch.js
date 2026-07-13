@@ -295,6 +295,60 @@
     return ny >= 0 ? "Sur (abajo)" : "Norte (arriba)";
   }
   // Procesa una config de corte a su geometría dibujable (segmentos, ojetillos, achurado…).
+  // Tapa (calado) / solapa (corte): paño de cobertura sobre el quiebre. Devuelve { poly, edges }
+  // en coords del paño base. Cada edge: { k, a, b, fus (fusionable y elegida), sobre (está sobre el
+  // corte → solo accesorios), oj: [pts] }. Los márgenes crecen (+) o recogen (−) cada arista.
+  function tapaDeCorte(c, aLin, bLin) {
+    const T = c.tapa; if (!T || !T.on) return null;
+    const nm = (v, d) => { const r = parseFloat(v); return (r == null || isNaN(r)) ? d : r; };
+    const U = 0.045;
+    const mS = nm(T.mSup, U), mI = nm(T.mInf, U), mZ = nm(T.mIzq, U), mD = nm(T.mDer, U);
+    const arCfg = T.ar || {};
+    const mkEdge = (k, a, b, margen) => {
+      const cfg = arCfg[k] || {};
+      const sobre = margen <= 0.002;                       // arista sobre el corte → solo accesorios
+      const fus = !sobre && cfg.fus !== false;
+      const oj = [];
+      const d = nm(cfg.ojD, 0);
+      if (d > 0) {
+        const Ls = Math.hypot(b.x - a.x, b.y - a.y);
+        if (Ls > 0) {
+          const ux = (b.x - a.x) / Ls, uy = (b.y - a.y) / Ls;
+          posicionesArista(Ls, d, false).forEach((t) => oj.push({ x: a.x + ux * t, y: a.y + uy * t }));
+        }
+      }
+      return { k: k, a: a, b: b, fus: fus, sobre: sobre, oj: oj };
+    };
+    if (c.tipo === "corte" || c.tipo === "guia") {
+      // Solapa de un corte-línea: crece hacia el lado elegido (A/B) con "caída", traslapa el otro
+      // lado en mSup, y se extiende mIzq/mDer más allá de cada extremo de la línea.
+      const L = Math.hypot(bLin.x - aLin.x, bLin.y - aLin.y); if (!(L > 0)) return null;
+      const ux = (bLin.x - aLin.x) / L, uy = (bLin.y - aLin.y) / L;
+      const nx = -uy, ny = ux, sgn = (T.lado === "A") ? 1 : -1;
+      const caida = Math.max(0.01, nm(T.caida, 0.2)), tras = mS;
+      const P = (t, sv) => ({ x: aLin.x + ux * t + nx * sv * sgn, y: aLin.y + uy * t + ny * sv * sgn });
+      const p00 = P(-mZ, -tras), p10 = P(L + mD, -tras), p11 = P(L + mD, caida), p01 = P(-mZ, caida);
+      return { poly: [p00, p10, p11, p01], nombre: (T.nombre || "Solapa"), edges: [
+        mkEdge("sup", p00, p10, tras),   // borde que cruza el corte (traslape)
+        mkEdge("inf", p01, p11, caida),  // borde de la caída (siempre sobre paño del lado elegido)
+        mkEdge("izq", p00, p01, mZ), mkEdge("der", p10, p11, mD),
+      ] };
+    }
+    // Tapa de un calado (rect o circular: cubre su caja envolvente), con la MISMA rotación del calado.
+    const x0 = c.x - mZ, y0 = c.y - mS, x1 = c.x + c.w + mD, y1 = c.y + c.h + mI;
+    let p00 = { x: x0, y: y0 }, p10 = { x: x1, y: y0 }, p11 = { x: x1, y: y1 }, p01 = { x: x0, y: y1 };
+    const ang = (parseFloat(c.angulo) || 0) * Math.PI / 180;
+    if (Math.abs(ang) > 1e-6 && !c.circ) {
+      const Px = c.x + (c.pivX != null ? c.pivX : 0.5) * c.w, Py = c.y + (c.pivY != null ? c.pivY : 0.5) * c.h;
+      const co = Math.cos(ang), si = Math.sin(ang);
+      const rot = (p) => ({ x: Px + (p.x - Px) * co - (p.y - Py) * si, y: Py + (p.x - Px) * si + (p.y - Py) * co });
+      p00 = rot(p00); p10 = rot(p10); p11 = rot(p11); p01 = rot(p01);
+    }
+    return { poly: [p00, p10, p11, p01], nombre: (T.nombre || "Tapa"), edges: [
+      mkEdge("sup", p00, p10, mS), mkEdge("inf", p01, p11, mI),
+      mkEdge("izq", p00, p01, mZ), mkEdge("der", p10, p11, mD),
+    ] };
+  }
   function procesarCorte(c, ancho, largo) {
       const x = c.x, y = c.y, w = c.w, h = c.h;
       // --- Corte (línea recta): un solo segmento de largo w (horizontal), rotado por ángulo/pivote. ---
@@ -329,7 +383,7 @@
             if (posA.length >= 1) { aristaNum.push(mkN(posA[0], 0)); if (posA.length > 1) aristaNum.push(mkN(posA[posA.length - 1], posA.length - 1)); }
           }
         }
-        return { x: x, y: y, w: w, h: 0, corte: true, guia: esGuia, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, ojNum: aristaNum, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, fadePoly: fadePoly, fadeKill: !esGuia && !!c.fadeKill, fade: esGuia ? "" : (c.fade || ""), strapAncho: parseFloat(c.strapAncho) || 0, strapPrecioM: parseFloat(c.strapPrecioM) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
+        return { x: x, y: y, w: w, h: 0, corte: true, guia: esGuia, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, ojNum: aristaNum, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, tapa: tapaDeCorte(c, a, b), fadePoly: fadePoly, fadeKill: !esGuia && !!c.fadeKill, fade: esGuia ? "" : (c.fade || ""), strapAncho: parseFloat(c.strapAncho) || 0, strapPrecioM: parseFloat(c.strapPrecioM) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
       }
       // --- Corte circular: se recorta al paño base; lo que sale, desaparece. ---
       if (c.circ) {
@@ -343,7 +397,7 @@
         for (let k = 0; k < nOj; k++) { const t = 2 * Math.PI * k / nOj; const p = { x: cx + rr * Math.cos(t), y: cy + rr * Math.sin(t) }; if (dentro(p)) pts.push(p); }
         const tij = [];
         for (let k = 0; k < 8; k++) { const t = 2 * Math.PI * (k + 0.5) / 8; const p = { x: cx + rr * Math.cos(t), y: cy + rr * Math.sin(t) }; if (dentro(p)) tij.push(p); }
-        return { x: x, y: y, w: w, h: h, circ: true, sides: {}, segments: segs, ojetillos: pts, tijeras: tij, hatch: [], pivote: { x: cx, y: cy }, rotated: false, angulo: 0 };
+        return { x: x, y: y, w: w, h: h, circ: true, sides: {}, segments: segs, ojetillos: pts, tijeras: tij, hatch: [], pivote: { x: cx, y: cy }, rotated: false, angulo: 0, tapa: tapaDeCorte(c) };
       }
       const lados = c.lados || { sup: true, inf: true, izq: true, der: true };
       const ang = (parseFloat(c.angulo) || 0) * Math.PI / 180;
@@ -382,7 +436,7 @@
         pts = pts.map(rot);
         hatch = hatch.map((s) => ({ a: rot(s.a), b: rot(s.b) }));
       }
-      return { x: x, y: y, w: w, h: h, sides: sides, segments: segs, ojetillos: pts, hatch: hatch, pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0 };
+      return { x: x, y: y, w: w, h: h, sides: sides, segments: segs, ojetillos: pts, hatch: hatch, pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, tapa: tapaDeCorte(c) };
   }
 
   // spec: { ancho, largo, ojTotal|ojetillosPos, ventanas, cortes, bolsillos, espejo, vista, extraCortes, extraVentanas }
@@ -406,6 +460,7 @@
         ojetillos: (c.ojetillos || []).map(mp),
         hatch: (c.hatch || []).map((s) => ({ a: mp(s.a), b: mp(s.b) })),
         tijeras: c.tijeras ? c.tijeras.map(mp) : c.tijeras,
+        tapa: c.tapa ? { poly: c.tapa.poly.map(mp), nombre: c.tapa.nombre, edges: (c.tapa.edges || []).map((e) => ({ k: e.k, a: mp(e.a), b: mp(e.b), fus: e.fus, sobre: e.sobre, oj: (e.oj || []).map(mp) })) } : c.tapa,
         pivote: c.pivote ? mp(c.pivote) : c.pivote,
         sides: c.sides ? { t: c.sides.t, b: c.sides.b, l: c.sides.r, r: c.sides.l } : c.sides,
       }));
@@ -916,6 +971,19 @@
         if (c.tijeras) c.tijeras.forEach((tp) => { s += tijeraSVG(px(tp.x), py(tp.y)); });
       }
       c.ojetillos.forEach((p) => { s += ojeSVG(px(p.x), py(p.y), "cut-oje"); });
+      // Tapa / solapa: paño de cobertura naranjo muy translúcido sobre el corte/calado. Aristas:
+      // fusionadas = trazo sólido grueso; libres/accesorios = punteado fino; ojetillos propios.
+      if (c.tapa && c.tapa.poly && c.tapa.poly.length >= 3) {
+        s += `<polygon class="tapa-fill" points="${c.tapa.poly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
+        (c.tapa.edges || []).forEach((e) => {
+          const cls = e.fus ? "tapa-fus" : "tapa-lib";
+          s += `<line class="${cls}" x1="${f1(px(e.a.x))}" y1="${f1(py(e.a.y))}" x2="${f1(px(e.b.x))}" y2="${f1(py(e.b.y))}"/>`;
+          (e.oj || []).forEach((p) => { s += ojeSVG(px(p.x), py(p.y), "tapa-oje"); });
+        });
+        const cxT = c.tapa.poly.reduce((m, p) => m + p.x, 0) / c.tapa.poly.length;
+        const cyT = c.tapa.poly.reduce((m, p) => m + p.y, 0) / c.tapa.poly.length;
+        s += `<text class="tapa-lbl" x="${f1(px(cxT))}" y="${f1(py(cyT))}" text-anchor="middle">${esc(c.tapa.nombre)}</text>`;
+      }
       if (!c.fadeKill && c.rotated && c.pivote) {
         const cx = px(c.pivote.x), cy = py(c.pivote.y);
         s += `<circle class="cut-piv" cx="${f1(cx)}" cy="${f1(cy)}" r="2.6"/>`;
@@ -1419,6 +1487,13 @@
     s += resumenStrapsSVG(sk, 108, boundsBot + mBot + 2);
     s += resumenCintasSVG(sk, 108, boundsBot + mBot + 2 + (resH ? resH + 6 : 0));
     if (cintaDetN) s += resumenCintaDetalleSVG(sk, 6, boundsBot + mBot + bottomH + 8, totalW - 14);
+    // Aristas del paño base CLICABLES (menú "instalar en esta arista") — solo en el plano en vivo.
+    if (live && sk.ancho > 0 && sk.largo > 0) {
+      const hx0 = px(0), hy0 = py(0), hx1 = px(sk.ancho), hy1 = py(sk.largo);
+      [["sup", hx0, hy0, hx1, hy0], ["inf", hx0, hy1, hx1, hy1], ["izq", hx0, hy0, hx0, hy1], ["der", hx1, hy0, hx1, hy1]].forEach((e) => {
+        s += `<line class="arista-hit" data-arista="${e[0]}" x1="${f1(e[1])}" y1="${f1(e[2])}" x2="${f1(e[3])}" y2="${f1(e[4])}"/>`;
+      });
+    }
     // Numeración de ojetillos (1er/último por arista, con flecha) — SOLO en el plano en vivo de la app.
     if (live && sk.ojNumeros && sk.ojNumeros.length) {
       sk.ojNumeros.forEach((m) => {
