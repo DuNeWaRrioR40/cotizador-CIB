@@ -625,7 +625,7 @@
     const cibsa = await doc.embedPng(b64ToBytes(LOGOS.cibsa));
 
     const W = 612, H = 792, M = 50;
-    const page = doc.addPage([W, H]);
+    let page = doc.addPage([W, H]);
     let y = H - 40;
 
     const txt = (p, s, x, yy, { f = font, size = 11, color = BLUE() } = {}) =>
@@ -695,17 +695,27 @@
           thickness: 0.5, color: PDFLib.rgb(0.6, 0.6, 0.6) }));
     }
 
-    // Cabecera
-    const headH = 22;
-    page.drawRectangle({ x: M, y: y - headH, width: right - M, height: headH, color: HEADERBLUE() });
-    const headers = ["Cantidad", "Detalle", "Valor Unitario", "Valor Total Neto"];
-    headers.forEach((h, i) => {
-      const size = 10;
-      let x = cols[i] + pad;
-      if (i !== 1) { x = cols[i] + (colW[i] - bold.widthOfTextAtSize(h, size)) / 2; }
-      txt(page, h, x, y - 15, { f: bold, size, color: BRAND() });
-    });
-    let yTop = y; y -= headH; hline(y);
+    // Cabecera de tabla (repetible al paginar) + paginación de filas
+    const headH = 22, BOTTOM = 70;
+    let yTop = y;
+    function dibujarCabecera() {
+      page.drawRectangle({ x: M, y: y - headH, width: right - M, height: headH, color: HEADERBLUE() });
+      const headers = ["Cantidad", "Detalle", "Valor Unitario", "Valor Total Neto"];
+      headers.forEach((h, i) => {
+        const size = 10;
+        let x = cols[i] + pad;
+        if (i !== 1) { x = cols[i] + (colW[i] - bold.widthOfTextAtSize(h, size)) / 2; }
+        txt(page, h, x, y - 15, { f: bold, size, color: BRAND() });
+      });
+      yTop = y; y -= headH; hline(y);
+    }
+    function asegurar(h) {
+      if (y - h >= BOTTOM) return;
+      vlines(yTop, y);
+      page = doc.addPage([W, H]); y = H - 50;
+      dibujarCabecera();
+    }
+    dibujarCabecera();
 
     // Filas de ítems. Cada entrada de 'detail' = [texto, negrita, tamaño?]; "" o tamaño 0 = espaciador.
     const lineH = (sz) => Math.round(sz + 2.5);
@@ -718,6 +728,7 @@
       });
       let alto = 8; lines.forEach((L) => { alto += (L.size === 0 ? 6 : lineH(L.size)); });
       const h = Math.max(22, alto);
+      asegurar(h);
       const cy = y - 14;
       txt(page, String(cantidad), cols[0] + (colW[0] - font.widthOfTextAtSize(String(cantidad), 11)) / 2, cy, { color: BLACK() });
       let dy = y - 13;
@@ -772,6 +783,7 @@
     // Filas de totales
     function totalRow(label, value, fill) {
       const h = 20;
+      asegurar(h);
       if (fill) page.drawRectangle({ x: M, y: y - h, width: right - M, height: h, color: fill });
       txt(page, label, cols[3] - pad - bold.widthOfTextAtSize(label, 11), y - 14, { f: bold, color: BLACK() });
       txt(page, value, cols[3] + (colW[3] - bold.widthOfTextAtSize(value, 11)) / 2, y - 14, { f: bold, color: BLACK() });
@@ -798,6 +810,7 @@
     nota += c.descuentoPct > 0 ? (c.descuentoEsMonto ? " y el descuento por pago contado." : ` y el ${c.descuentoPct}% de descuento por pago contado.`) : ".";
     nota += " Productos sujetos a disponibilidad de stock.";
     const notaLines = wrap(nota, bold, 11, W - 2 * M - 8);
+    if (y - (notaLines.length * 13 + 10) < 40) { page = doc.addPage([W, H]); y = H - 50; }
     page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: right - M, height: notaLines.length * 13 + 6, color: GRAYBOX() });
     page.drawRectangle({ x: M, y: y - notaLines.length * 13 - 4, width: 4, height: notaLines.length * 13 + 6, color: BRAND() });
     let ny = y - 12;

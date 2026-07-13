@@ -56,9 +56,9 @@ body {
 .logo-word {
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent; color: var(--brand);
-  font-weight: 900; font-size: 26px; letter-spacing: 0.04em; line-height: 1;
+  font-weight: 900; font-size: 26px; letter-spacing: 0.09em; line-height: 1;
 }
-.logo-word-big { font-size: 56px; letter-spacing: 0.03em; }
+.logo-word-big { font-size: 56px; letter-spacing: 0.08em; }
 .login-tag { text-transform: uppercase; letter-spacing: 0.22em; font-size: 11px; font-weight: 700; color: var(--text); margin: 10px 0 2px; }
 
 /* Header */

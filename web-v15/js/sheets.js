@@ -439,6 +439,32 @@
     return true;
   }
 
+  // --- Lápidas del historial: claves borradas (con fecha) para que un registro eliminado no
+  // "resucite" desde el localStorage de otro dispositivo. Viven en J1:K1 de la hoja HISTORIAL
+  // (J1 = rótulo, K1 = JSON {claves:[{k,ts}]}), fuera del rango de datos A:G y del correlativo H1:I1.
+  async function leerTombstones(token, hoja) {
+    const rango = `'${hoja}'!K1`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}/values/` +
+      `${encodeURIComponent(rango)}?valueRenderOption=UNFORMATTED_VALUE`;
+    const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) return [];
+    const data = await r.json();
+    const v = data.values && data.values[0] && data.values[0][0];
+    try { const o = JSON.parse(v || "null"); return (o && Array.isArray(o.claves)) ? o.claves : []; } catch (e) { return []; }
+  }
+  async function guardarTombstones(token, hoja, claves) {
+    const rango = `'${hoja}'!J1:K1`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEET_ID}/values/` +
+      `${encodeURIComponent(rango)}?valueInputOption=RAW`;
+    const r = await fetch(url, {
+      method: "PUT",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [["Borrados", JSON.stringify({ claves: (claves || []).slice(0, 80) })]] }),
+    });
+    if (!r.ok) throw new Error("No se pudieron guardar las lápidas (código " + r.status + ").");
+    return true;
+  }
+
   // --- Carga de facturas: lectores de PROVEEDORES y FACTOR + append genérico ---
   async function cargarProveedores(token) {
     const hoja = CFG.HOJA_PROVEEDORES || "PROVEEDORES";
@@ -524,5 +550,5 @@
     return r.json();
   }
 
-  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, materialesDesdeGranel, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, borrarFilasHistorialClave, reemplazarHistorial, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, cargarUnidades, anexarHoja, anexarGranel, leerHojaRaw, actualizarCeldas, parseNumero };
+  global.SheetsCIBSA = { cargarTelas, cargarVendedores, cargarMateriales, materialesDesdeGranel, cargarGranel, cargarWiki, leerHistorialRaw, escribirHistorial, borrarFilaHistorial, borrarFilasHistorialClave, reemplazarHistorial, leerTombstones, guardarTombstones, leerCorrelMax, guardarCorrelMax, cargarProveedores, cargarFactores, cargarUnidades, anexarHoja, anexarGranel, leerHojaRaw, actualizarCeldas, parseNumero };
 })(typeof window !== "undefined" ? window : globalThis);

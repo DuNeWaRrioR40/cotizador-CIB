@@ -140,8 +140,9 @@
   // Une historial local + remoto (Sheet), deduplica por cliente+tipo (mayor versión / ts más reciente),
   // sube al Sheet las entradas locales que aún no estén allí (migración), y deja el resultado en localStorage.
   function sincronizarHistorial(token, remotas) {
-    const locales = histLoad();
-    const tsRemotos = new Set((remotas || []).map((e) => e.ts));
+    const locales = histLoad().filter((e) => !tombEntierra(e));
+    remotas = (remotas || []).filter((e) => !tombEntierra(e));
+    const tsRemotos = new Set(remotas.map((e) => e.ts));
     const faltan = locales.filter((e) => e && e.ts && e.snap && !tsRemotos.has(e.ts));
     if (faltan.length && token) {
       window.SheetsCIBSA.escribirHistorial(token, HIST_HOJA, faltan.map(entryToRow), HIST_ENC)
@@ -166,6 +167,21 @@
       return false;
     }
   }
+  // --- Lápidas (tombstones): memoria de registros borrados, local + nube, para que no resuciten
+  // al sincronizar desde otro dispositivo. Un registro queda "enterrado" si existe una lápida de su
+  // clave MÁS NUEVA que él; re-crear la misma clave después del borrado la revive (ts mayor).
+  const HIST_DEL_KEY = "cibsa_hist_del_v1";
+  function tombClave(e) { const k = (s) => (s || "").trim().toLowerCase(); return k(e.nombre) + "|" + k(e.apellido) + "|" + k(e.tipo) + "|" + (parseInt(e.version, 10) || 1); }
+  function tombLoad() { try { const a = JSON.parse(localStorage.getItem(HIST_DEL_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function tombStore(arr) { try { localStorage.setItem(HIST_DEL_KEY, JSON.stringify((arr || []).slice(0, 80))); } catch (e) {} }
+  function tombMerge(a, b) {
+    const m = {};
+    [].concat(a || [], b || []).forEach((t) => { if (!t || !t.k) return; if (!m[t.k] || (t.ts || 0) > m[t.k].ts) m[t.k] = { k: t.k, ts: t.ts || 0 }; });
+    return Object.keys(m).map((k) => m[k]).sort((x, y) => (y.ts || 0) - (x.ts || 0));
+  }
+  function tombAdd(ent) { tombStore(tombMerge(tombLoad(), [{ k: tombClave(ent), ts: Date.now() }])); }
+  function tombRemove(ent) { const k = tombClave(ent); tombStore(tombLoad().filter((t) => t.k !== k)); }
+  function tombEntierra(e) { const k = tombClave(e), ts = e.ts || 0; return tombLoad().some((t) => t.k === k && (t.ts || 0) > ts); }
   function histPrune(arr) { const lim = Date.now() - HIST_DIAS * 86400000; return arr.filter((e) => e && e.ts >= lim); }
   function histTipo() { return state.docMode === "preliminar" ? "Preliminar" : (state.prodMode === "compuesto" ? "Compuesto" : "Uniforme"); }
   function histFechaCorta(d) { return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2); }
@@ -491,9 +507,11 @@
     if (noGuardarHist()) { _histSkip = true; return true; }
     if (_forzarNueva) { _histReplace = false; return true; }   // "nueva versión desde un registro": f_version ya fijado, guarda como registro nuevo (sin diálogo)
     const nom = (nombre || "").trim(), ape = (apellido || "").trim();
-    if (!nom || !ape) return true;   // sin cliente: guardarHistorial no guarda igual
+    const emp = empresaDatos(); const razon = (emp && emp.razon ? emp.razon : "").trim();
+    const nomK = nom || razon;   // empresa sin contacto → la razón social hace de nombre (igual que en guardarHistorial)
+    if (!nomK && !ape) return true;   // sin identificación de cliente: guardarHistorial no guarda igual
     const tipo = histTipo(), k = (s) => (s || "").trim().toLowerCase();
-    const mismos = histPrune(histLoad()).filter((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === tipo);
+    const mismos = histPrune(histLoad()).filter((e) => k(e.nombre) === k(nomK) && k(e.apellido) === k(ape) && e.tipo === tipo);
     if (!mismos.length) return true;   // primera cotización de este cliente/tipo → se guarda tal cual
     const maxVer = mismos.reduce((m, e) => Math.max(m, parseInt(e.version, 10) || 1), 0);
     const ch = await preguntarVersion(maxVer);
@@ -505,17 +523,22 @@
   function guardarHistorial(nombre, apellido, version) {
     _forzarNueva = false;   // consumido en prepararVersionHistorial; se limpia siempre
     const nom = (nombre || "").trim(), ape = (apellido || "").trim();
-    if (!nom || !ape) return; // solo cotizaciones formales con cliente
+    const emp = empresaDatos();
+    const razon = (emp && emp.razon ? emp.razon : "").trim();
+    // Guarda si hay ALGUNA identificación de cliente (nombre, apellido o razón social). Antes exigía nombre Y
+    // apellido → las cotizaciones de EMPRESA sin apellido se perdían. Para empresa sin contacto, la razón social
+    // hace de "nombre" (clave del registro).
+    const nomK = nom || razon;
+    if (!nomK && !ape) return; // sin ninguna identificación de cliente
     if (_histSkip) return null;   // borrador / reimpresión: NO guarda en el historial y NO genera número de cotización
     const tipo = histTipo(), vNum = parseInt(version, 10) || 1;
     const k = (s) => (s || "").trim().toLowerCase();
-    const corr = correlativoDe(nom, ape, version);
+    const corr = correlativoDe(nomK, ape, version);
     correlMaxBump(corr); // avanza la marca de máximo histórico (dispositivo + nube), salvo que reuse un número ya existente
     let arr = histPrune(histLoad());
-    const i = arr.findIndex((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === tipo && (parseInt(e.version, 10) || 1) === vNum);
-    const emp = empresaDatos();
+    const i = arr.findIndex((e) => k(e.nombre) === k(nomK) && k(e.apellido) === k(ape) && e.tipo === tipo && (parseInt(e.version, 10) || 1) === vNum);
     const editando = !!_editHist;
-    const ent = { ts: editando ? _editHist.ts : Date.now(), fecha: editando ? _editHist.fecha : histFechaCorta(new Date()), nombre: nom, apellido: ape, razonSocial: emp ? emp.razon : "", tipo: tipo, modo: state.docMode, prod: state.prodMode, version: vNum, snap: snapshotCotizacion() };
+    const ent = { ts: editando ? _editHist.ts : Date.now(), fecha: editando ? _editHist.fecha : histFechaCorta(new Date()), nombre: nomK, apellido: ape, razonSocial: razon, tipo: tipo, modo: state.docMode, prod: state.prodMode, version: vNum, snap: snapshotCotizacion() };
     if (ent.snap) ent.snap.correlativo = corr;
     if (editando) { ent.editado = edFechaHora(new Date()); if (ent.snap) ent.snap.editado = ent.editado; }   // marca "editado" (se persiste en el snap → al Sheet)
     if (i >= 0 && _histReplace) arr.splice(i, 1); // sobrescribir SOLO si se eligió (o se está editando); si no, se guarda como registro nuevo
@@ -1070,19 +1093,19 @@
     const vtxt = "v" + ("0" + (parseInt(ent.version, 10) || 1)).slice(-2);
     if (!confirm("¿Borrar el registro «" + nom + " · " + (ent.tipo || "") + " " + vtxt + "»?\n\nSe quitará del historial y de la nube. Si crees que podrías necesitarlo, descárgalo antes con el botón ⬇.")) return;
     if (!confirm("ÚLTIMA CONFIRMACIÓN: esta acción NO se puede deshacer.\n\n¿Borrar definitivamente «" + nom + " " + vtxt + "»?")) return;
-    const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
-    let nNube = -1;
-    if (tok) {
-      // Borra TODAS las filas de esta cotización en la nube (no solo el ts visible): cada generación apendía
-      // una fila, y borrar solo una dejaba duplicados que reaparecían al sincronizar.
-      try { nNube = await window.SheetsCIBSA.borrarFilasHistorialClave(tok, HIST_HOJA, ent); }
-      catch (e) { return alert("No se pudo borrar de la nube (" + (e.message || e) + ").\nEl registro NO se borró; inténtalo con conexión."); }
-    }
+    // Lápida ANTES que nada: aunque el borrado en nube falle, el registro no reaparecerá al sincronizar
+    // (ni aquí ni en otros dispositivos, porque la lápida también se sube a la nube).
+    tombAdd(ent);
     const k = (s) => (s || "").trim().toLowerCase(), ver = (v) => parseInt(v, 10) || 1;
     histStore(histLoad().filter((x) => !(k(x.nombre) === k(ent.nombre) && k(x.apellido) === k(ent.apellido) && k(x.tipo) === k(ent.tipo) && ver(x.version) === ver(ent.version))));
     renderHistorial();
-    // Si la nube borró 0 filas (con sesión activa), la fila puede volver al sincronizar → avisar para diagnosticar.
-    if (tok && nNube === 0) alert("Aviso: en la nube no encontré filas de este registro (0 borradas). Si reaparece al recargar, hay que quitarlo directo en la hoja HISTORIAL del Sheet. Avísame el caso para revisarlo.");
+    const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+    if (tok) {
+      // Borra TODAS las filas de esta cotización en la nube y publica la lápida (mejor esfuerzo).
+      try { await window.SheetsCIBSA.borrarFilasHistorialClave(tok, HIST_HOJA, ent); }
+      catch (e) { alert("Aviso: no se pudo borrar de la nube ahora (" + (e.message || e) + ").\nEl registro ya quedó eliminado aquí y se reintentará el borrado en la nube al sincronizar."); }
+      window.SheetsCIBSA.guardarTombstones(tok, HIST_HOJA, tombLoad()).catch(() => {});
+    }
   }
   function importarRegistro(file) {
     const reader = new FileReader();
@@ -1092,9 +1115,13 @@
       const arr = histLoad(); const k = (s) => (s || "").trim().toLowerCase();
       const i = arr.findIndex((e) => k(e.nombre) === k(ent.nombre) && k(e.apellido) === k(ent.apellido) && e.tipo === ent.tipo && (parseInt(e.version, 10) || 1) === (parseInt(ent.version, 10) || 1));
       if (i >= 0) arr.splice(i, 1);
+      tombRemove(ent);   // reponer un respaldo levanta la lápida de esa clave
       arr.unshift(ent); histStore(arr.slice(0, HIST_MAX)); renderHistorial();
       const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
-      if (tok) window.SheetsCIBSA.escribirHistorial(tok, HIST_HOJA, [entryToRow(ent)], HIST_ENC).catch(() => {});
+      if (tok) {
+        window.SheetsCIBSA.escribirHistorial(tok, HIST_HOJA, [entryToRow(ent)], HIST_ENC).catch(() => {});
+        window.SheetsCIBSA.guardarTombstones(tok, HIST_HOJA, tombLoad()).catch(() => {});
+      }
       alert("Registro repuesto: " + ((ent.nombre || "") + " " + (ent.apellido || "")).trim());
     };
     reader.readAsText(file);
@@ -1917,8 +1944,20 @@
     }
     // Historial en la nube: lee la hoja HISTORIAL, fusiona con lo local y sube lo que falte.
     try {
+      // Lápidas primero: la unión nube+local hace efectivos aquí los borrados de otros dispositivos.
+      try {
+        const tNube = await window.SheetsCIBSA.leerTombstones(token, HIST_HOJA);
+        const union = tombMerge(tombLoad(), tNube);
+        tombStore(union);
+        if (JSON.stringify(union) !== JSON.stringify(tombMerge(tNube, [])))
+          window.SheetsCIBSA.guardarTombstones(token, HIST_HOJA, union).catch(() => {});
+      } catch (e) {}
       const info = await window.SheetsCIBSA.leerHistorialRaw(token, HIST_HOJA);
       const remotas = (info && info.existe) ? (info.filas || []).map(rowToEntry).filter(Boolean) : [];
+      // Reintento (mejor esfuerzo): filas enterradas que sigan en la nube se borran de nuevo.
+      remotas.filter((e) => tombEntierra(e)).slice(0, 5).forEach((e) => {
+        window.SheetsCIBSA.borrarFilasHistorialClave(token, HIST_HOJA, e).catch(() => {});
+      });
       sincronizarHistorial(token, remotas);
     } catch (e) { console.warn("CIBSA: no se pudo sincronizar el historial —", e && e.message ? e.message : e); }
     // Correlativo: concilia la marca de máximo histórico. Baja la celda durable del Sheet al dispositivo,
@@ -5539,13 +5578,27 @@
   { const t = $("f_trasUnif"); if (t) t.addEventListener("change", () => { state.trasUnif = t.checked; recompute(); }); }
   { const cb = $("f_usarPlano"); if (cb) cb.addEventListener("change", () => { document.body.classList.toggle("no-plano", !cb.checked); recompute(); }); }
 
+  // Campos obligatorios para REGISTRAR la cotización en el historial. Devuelve la lista de
+  // faltantes (vacía = OK): se acepta contacto completo (nombre + apellido) O razón social de empresa.
+  function faltantesRegistro(nombre, apellido) {
+    if (empresaDatos()) return [];               // empresa con razón social: suficiente
+    const falta = [];
+    if (!nombre) falta.push("Nombre del cliente");
+    if (!apellido) falta.push("Apellido del cliente");
+    if (empresaActiva() && !empVal("f_emp_razon")) falta.push("Razón social de la empresa (está activada pero vacía)");
+    return falta;
+  }
+  function alertaFaltantes(falta) {
+    alert("No se puede generar la cotización: faltan datos obligatorios para registrarla en el historial.\n\nCompleta:\n• " +
+      falta.join("\n• ") + "\n\n(O activa \u201CEmpresa\u201D y completa la razón social.)");
+  }
   async function generar() {
     if (state.docMode === "preliminar") return generarPrelim();
     if (state.docMode === "formal" && state.prodMode === "compuesto") return generarCompuesto();
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
     const largo = num("f_largo", null), ancho = num("f_ancho", null), tela = telaActual();
     // Basta con identificar al destinatario: el contacto (nombre+apellido) O la empresa (razón social).
-    if ((!nombre || !apellido) && !empresaDatos()) return alert("Ingresa el nombre y apellido del cliente, o al menos la razón social de la empresa.");
+    { const falta = faltantesRegistro(nombre, apellido); if (falta.length) return alertaFaltantes(falta); }
     if (!(await prepararVersionHistorial(nombre, apellido))) return;   // pregunta nueva versión / sobrescribir (o cancela)
     // Sin carpa válida: si hay productos a granel, se genera una cotización SOLO de granel.
     const hayCarpa = !!tela && largo != null && ancho != null && largo > 0 && ancho > 0;
@@ -5801,7 +5854,7 @@
 
   async function generarCompuesto() {
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
-    if ((!nombre || !apellido) && !empresaDatos()) return alert("Ingresa el nombre y apellido del cliente, o al menos la razón social de la empresa.");
+    { const falta = faltantesRegistro(nombre, apellido); if (falta.length) return alertaFaltantes(falta); }
     if (!(await prepararVersionHistorial(nombre, apellido))) return;   // pregunta nueva versión / sobrescribir (o cancela)
     if (!state.piezas.length) {
       if (granelLineasPDF().length) return generarGranelSolo(nombre, apellido);
