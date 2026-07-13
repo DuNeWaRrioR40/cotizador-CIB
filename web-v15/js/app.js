@@ -3144,17 +3144,24 @@
       navFichas(rows, (ctx.aletas || []).map((a, i) => ({ titulo: "Anexo " + (i + 1), nombre: a.legend || "", oculto: !!a._oculto })));
     }
     pintar();
-    // No se puede diseñar anexos antes de definir el paño base (tela + largo + ancho).
-    const baseOK = !ctx.baseListo || ctx.baseListo();
     const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline"; add.textContent = "+ Aleta / solapa / faldón / cenefa";
-    add.disabled = state.telas.length === 0 || !baseOK;
-    add.addEventListener("click", () => {
+    const agregar = () => {
+      // El botón nunca va disabled: si falta algo, se explica al tocar (feedback en vez de silencio).
+      if (!state.telas.length) return alert("Las telas aún no cargan desde el Sheet; espera un momento y reintenta.");
+      if (ctx.baseListo && !ctx.baseListo()) return alert("Define primero el paño base (tela, largo y ancho) para poder diseñar el anexo.");
       const a = nuevaAleta();
       const tb = ctx.telaBase && ctx.telaBase(); if (tb) a.telaNombre = tb; // por defecto: la tela del paño base
       ctx.aletas.push(a); pintar(); onChange();
+    };
+    // Clic robusto: si el foco estaba en un campo, su blur re-renderiza esta sección ENTRE el mousedown
+    // y el mouseup — el botón se reemplaza bajo el cursor y el "click" clásico se pierde. Con mouse se
+    // agrega en pointerdown (antes del re-render); en táctil el click sintético llega igual al botón nuevo.
+    add.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && e.button === 0) { e.preventDefault(); add._pd = true; agregar(); }
     });
+    add.addEventListener("click", () => { if (add._pd) { add._pd = false; return; } agregar(); });
     container.appendChild(add);
-    if (!baseOK) { const h = document.createElement("p"); h.className = "muted small"; h.textContent = "Define primero el paño base (tela, largo y ancho) para diseñar anexos."; container.appendChild(h); }
+    if (ctx.baseListo && !ctx.baseListo()) { const h = document.createElement("p"); h.className = "muted small"; h.textContent = "Define primero el paño base (tela, largo y ancho) para diseñar anexos."; container.appendChild(h); }
   }
   // Calcula un paño inscrito: dimensiones propias (las ingresa el usuario); se confecciona como pieza.
   function calcInscrito(pz, ins) {
