@@ -902,7 +902,18 @@
   }
   function granelAgregar(p, cant, colorElegido) {
     const color = (colorElegido != null && colorElegido !== "") ? colorElegido : (p.color || "");
-    state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, formato: p.formato, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, divisible: !!p.divisible, color: color, materialidad: p.materialidad, largo: p.largo, cantidad: String(cant), descPct: granelDescInicial(p), descMonto: false });
+    // Mismo producto (SKU o identidad completa) y mismo color ya en el carro → SUMA la cantidad
+    // a esa línea en vez de crear una ficha nueva (conserva el descuento que la línea ya tenga).
+    const idSku = (l) => l.sku || [l.categoria, l.tipo, l.variedad, l.modelo, l.formato].filter(Boolean).join("|");
+    const pSku = p.sku || [p.categoria, p.tipo, p.variedad, p.modelo, p.formato].filter(Boolean).join("|");
+    const ya = (state.granelLineas || []).find((l) => idSku(l) === pSku && (l.color || "") === color && l.precio === p.precio);
+    if (ya) {
+      const ev = window.CalcCIBSA.evalExpr;
+      const prev = ev(ya.cantidad); const suma = ((prev != null && prev > 0) ? prev : 0) + cant;
+      ya.cantidad = String(ya.divisible ? Math.round(suma * 100) / 100 : Math.round(suma));
+    } else {
+      state.granelLineas.push({ id: "gl" + (++granelSeq), categoria: p.categoria, tipo: p.tipo, variedad: p.variedad, modelo: p.modelo, specs: p.specs, unidad: p.unidad, formato: p.formato, precio: p.precio, nombreCliente: p.nombreCliente, sku: p.sku, divisible: !!p.divisible, color: color, materialidad: p.materialidad, largo: p.largo, cantidad: String(cant), descPct: granelDescInicial(p), descMonto: false });
+    }
     granelSel = p; // el comparador interno sigue al último producto agregado
     renderGranelLineas(); renderGranel(); recompute();
   }
