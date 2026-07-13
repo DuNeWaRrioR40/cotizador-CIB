@@ -581,7 +581,10 @@
   // Margen necesario por lado (para que las cotas no se salgan del lienzo).
   function margenCotasLados(sk) {
     const m = { top: 0, bottom: 0, left: 0, right: 0 };
-    cotasDe(sk).forEach((c) => { if (c.off > m[c.side]) m[c.side] = c.off; });
+    cotasDe(sk).forEach((c) => {
+      if (sk.cotasOcultas && c.key && sk.cotasOcultas[c.key]) return; // cota oculta: no reserva margen → al suprimir, el plano se re-encuadra y crece
+      if (c.off > m[c.side]) m[c.side] = c.off;
+    });
     ["top", "bottom", "left", "right"].forEach((k) => { if (m[k] > 0) m[k] += 14; });
     return m;
   }
