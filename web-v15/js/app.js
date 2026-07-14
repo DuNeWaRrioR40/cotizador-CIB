@@ -4392,6 +4392,7 @@
       '<p class="qr-url">' + url + "</p>" +
       '<p class="muted small">El cliente escanea y ve SOLO el plano, en vivo. Vigente ' + VC_QR_MIN + " min o hasta que termines la sesión.</p>" +
       '<div class="qr-acciones"><button type="button" class="btn-outline" id="qrWsp">Compartir por WhatsApp</button>' +
+      '<button type="button" class="btn-outline" id="qrCopiar">Copiar link</button>' +
       '<button type="button" class="btn-outline" id="qrDescargar">Descargar QR (PNG)</button>' +
       '<button type="button" class="btn-outline" id="qrCerrar">Cerrar (sigue activo)</button>' +
       '<button type="button" class="btn-outline" id="qrFin">Terminar sesión</button></div></div>';
@@ -4401,7 +4402,26 @@
     div.querySelector("#qrFin").addEventListener("click", terminarVistaQR);
     div.querySelector("#qrWsp").addEventListener("click", () => {
       const msg = "Te comparto el plano del producto EN VIVO (vigente " + VC_QR_MIN + " min): " + url;
+      // Preferencia: hoja de compartir del sistema con QR (imagen) + link CLICABLE en el mismo
+      // mensaje. Conversión sin await para no perder el gesto del usuario (Safari lo exige).
+      try {
+        const b64 = qrPngDataUrl(url).split(",")[1], bin = atob(b64), arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        const file = new File([arr], "QR_vista_cliente.png", { type: "image/png" });
+        if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], text: msg }).catch(() => {});
+          return;
+        }
+      } catch (_) {}
+      // Respaldo (escritorio sin hoja de compartir): WhatsApp con el link como texto.
       try { window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank"); } catch (_) {}
+    });
+    div.querySelector("#qrCopiar").addEventListener("click", (ev2) => {
+      const b = ev2.currentTarget;
+      const listo = () => { b.textContent = "¡Link copiado!"; setTimeout(() => { b.textContent = "Copiar link"; }, 1600); };
+      try { navigator.clipboard.writeText(url).then(listo, () => {}); } catch (_) {
+        try { const ta = document.createElement("textarea"); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); listo(); } catch (_) {}
+      }
     });
     div.querySelector("#qrDescargar").addEventListener("click", () => {
       try { const a = document.createElement("a"); a.href = qrPngDataUrl(url); a.download = "QR_vista_cliente.png"; a.click(); } catch (_) {}
