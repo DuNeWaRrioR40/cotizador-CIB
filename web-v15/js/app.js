@@ -4281,6 +4281,101 @@
       "<span class=\"sh-cap\">neto, sin IVA" + uds + " · se actualiza al ocultar o editar elementos</span>";
   }
 
+  // ---------- Visor 3D interactivo del producto volumétrico (Three.js, carga perezosa) ----------
+  let _v3d = null;
+  function cerrarVol3D() {
+    if (!_v3d) return;
+    cancelAnimationFrame(_v3d.raf);
+    window.removeEventListener("resize", _v3d.onResize);
+    document.removeEventListener("keydown", _v3d.onKey);
+    try { _v3d.renderer.dispose(); } catch (e) {}
+    _v3d.overlay.remove(); _v3d = null;
+  }
+  async function abrirVol3D() {
+    const A = num("f_ancho", null), L = num("f_largo", null), H = alturaUnif();
+    if (!(A > 0) || !(L > 0) || !(H > 0)) return alert("Define largo, ancho y alto para ver el 3D.");
+    try {
+      await ensureLib("THREE", [
+        "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
+        "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js",
+        "https://unpkg.com/three@0.128.0/build/three.min.js",
+      ]);
+    } catch (e) { return alert("No se pudo cargar el visor 3D (revisa la conexión; tras la primera carga queda disponible sin internet)."); }
+    cerrarVol3D();
+    const T = window.THREE, diag = Math.hypot(A, L, H);
+    const overlay = document.createElement("div"); overlay.className = "plano-zoom";
+    const x = document.createElement("button"); x.className = "plano-zoom-x"; x.type = "button"; x.textContent = "✕";
+    const body = document.createElement("div"); body.className = "plano-zoom-body";
+    const canvas = document.createElement("canvas"); canvas.className = "vol3d-canvas";
+    const hint = document.createElement("div"); hint.className = "vol3d-hint"; hint.textContent = "Arrastra para rotar · rueda o pellizco para acercar";
+    body.appendChild(canvas); overlay.appendChild(x); overlay.appendChild(body); overlay.appendChild(hint);
+    document.body.appendChild(overlay);
+
+    const renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setClearColor(0xffffff, 1);
+    const scene = new T.Scene();
+    const cam = new T.PerspectiveCamera(42, 1, diag / 100, diag * 20);
+    // Caja del producto: ancho (X) × alto (Y) × largo (Z), apoyada en el suelo.
+    const grp = new T.Group(); scene.add(grp);
+    const box = new T.Mesh(new T.BoxGeometry(A, H, L), new T.MeshBasicMaterial({ color: 0x8fa3b8, transparent: true, opacity: 0.16, depthWrite: false }));
+    box.position.y = H / 2; grp.add(box);
+    grp.add(new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(A, H, L)).translate(0, H / 2, 0), new T.LineBasicMaterial({ color: 0x111111 })));
+    const grid = new T.GridHelper(Math.max(A, L) * 2.2, 12, 0xd8d8d2, 0xecece6);
+    scene.add(grid);
+    // Ojetillos según el diseño actual: rim inferior (externo, por defecto) o perímetro de la tapa.
+    try {
+      const skOj = window.SketchCIBSA.construirSketch(Object.assign({ ancho: A, largo: L, ventanas: [], cortes: [] }, ojSpecUnif()));
+      const rimY = (ojEnUnif() === "tapa") ? H : 0.02 * H;
+      const rOj = Math.max(0.02, diag * 0.006);
+      const geo = new T.SphereGeometry(rOj, 10, 10), mat = new T.MeshBasicMaterial({ color: 0x111111 });
+      (skOj.ojetillos || []).forEach((p) => {
+        const m = new T.Mesh(geo, mat);
+        m.position.set(p.x - A / 2, rimY, p.y - L / 2); grp.add(m);
+      });
+    } catch (e) {}
+    // Rótulos de cotas (sprites siempre de cara a la cámara).
+    const f = window.CalcCIBSA.fmtNum;
+    const label = (txt) => {
+      const cv = document.createElement("canvas"); cv.width = 512; cv.height = 128;
+      const g = cv.getContext("2d"); g.font = "600 52px -apple-system, sans-serif"; g.fillStyle = "#111"; g.textAlign = "center"; g.fillText(txt, 256, 80);
+      const sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(cv), transparent: true, depthTest: false }));
+      const sc = diag * 0.34; sp.scale.set(sc, sc / 4, 1); return sp;
+    };
+    const lA = label("ancho " + f(A) + " m"); lA.position.set(0, -diag * 0.02, L / 2 + diag * 0.06); grp.add(lA);
+    const lL = label("largo " + f(L) + " m"); lL.position.set(A / 2 + diag * 0.10, -diag * 0.02, 0); grp.add(lL);
+    const lH = label("alto " + f(H) + " m"); lH.position.set(-A / 2 - diag * 0.09, H / 2, L / 2 + diag * 0.02); grp.add(lH);
+    // Órbita propia (sin dependencias): arrastre rota, rueda/pellizco acerca. Autogira hasta el 1er toque.
+    let theta = Math.PI / 4, phi = Math.PI / 3.1, radio = diag * 1.9, auto = true;
+    const target = new T.Vector3(0, H / 2, 0);
+    const colocar = () => {
+      phi = Math.max(0.12, Math.min(Math.PI - 0.35, phi)); radio = Math.max(diag * 0.7, Math.min(diag * 6, radio));
+      cam.position.set(target.x + radio * Math.sin(phi) * Math.cos(theta), target.y + radio * Math.cos(phi), target.z + radio * Math.sin(phi) * Math.sin(theta));
+      cam.lookAt(target);
+    };
+    let drag = null, pinch = null;
+    canvas.addEventListener("pointerdown", (e) => { auto = false; canvas.setPointerCapture(e.pointerId); drag = { x: e.clientX, y: e.clientY }; });
+    canvas.addEventListener("pointermove", (e) => { if (!drag) return; theta += (e.clientX - drag.x) * 0.008; phi -= (e.clientY - drag.y) * 0.008; drag = { x: e.clientX, y: e.clientY }; colocar(); });
+    canvas.addEventListener("pointerup", () => { drag = null; });
+    canvas.addEventListener("wheel", (e) => { e.preventDefault(); auto = false; radio *= (e.deltaY > 0 ? 1.08 : 0.93); colocar(); }, { passive: false });
+    canvas.addEventListener("touchstart", (e) => { if (e.touches.length === 2) { drag = null; pinch = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); } }, { passive: true });
+    canvas.addEventListener("touchmove", (e) => { if (pinch != null && e.touches.length === 2) { const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); radio *= pinch / d; pinch = d; colocar(); } }, { passive: true });
+    canvas.addEventListener("touchend", () => { pinch = null; });
+    const onResize = () => {
+      const w = Math.min(window.innerWidth * 0.96, 980), h = Math.min(window.innerHeight * 0.84, 760);
+      renderer.setSize(w, h, false); canvas.style.width = w + "px"; canvas.style.height = h + "px";
+      cam.aspect = w / h; cam.updateProjectionMatrix();
+    };
+    const onKey = (e) => { if (e.key === "Escape") cerrarVol3D(); };
+    x.addEventListener("click", cerrarVol3D);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay || e.target === body) cerrarVol3D(); });
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
+    onResize(); colocar();
+    _v3d = { renderer: renderer, overlay: overlay, onResize: onResize, onKey: onKey, raf: 0 };
+    const loop = () => { if (!_v3d) return; if (auto) { theta += 0.004; colocar(); } renderer.render(scene, cam); _v3d.raf = requestAnimationFrame(loop); };
+    loop();
+  }
   // ---------- Lupa: ampliar el plano a pantalla completa ----------
   // Coloca un botón "🔍+" en cada contenedor de plano que tenga un SVG (se re-coloca tras cada render).
   function addZoomBtns() {
@@ -4294,6 +4389,18 @@
         cont.appendChild(b);
       }
       if (cont.id === "sketchUnif") montarRotCtrls(cont, svg);
+      // Visor 3D interactivo: solo para el paño uniforme volumétrico (con alto definido).
+      if (cont.id === "sketchUnif") {
+        const prev3d = cont.querySelector(":scope > .sketch-3d-btn");
+        if (alturaUnif() > 0) {
+          if (!prev3d) {
+            const b3 = document.createElement("button");
+            b3.type = "button"; b3.className = "sketch-3d-btn"; b3.title = "Ver en 3D interactivo (rotar y acercar)"; b3.textContent = "🧊";
+            b3.addEventListener("click", (e) => { e.stopPropagation(); abrirVol3D(); });
+            cont.appendChild(b3);
+          }
+        } else if (prev3d) prev3d.remove();
+      }
     });
   }
   // Controles del plano en vivo (arriba a la izquierda): colapsar rótulos, modo reubicar (congela scroll),
