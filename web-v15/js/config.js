@@ -3,7 +3,11 @@
 (function (global) {
   const CONFIG = {
     // Versión visible del build (debe coincidir con el SW). Sirve para confirmar que cargó la última.
-    APP_VERSION: "v15-51",
+    APP_VERSION: "v15-52",
+    // --- Vista cliente remota (compartir por QR) ---
+    // URL de tu Firebase Realtime Database. Vacío = el botón QR queda deshabilitado (la vista
+    // espejo local por monitor sigue funcionando igual). Ej: "https://cibsa-vc-default-rtdb.firebaseio.com"
+    VC_FIREBASE_URL: "https://cibsa-vc-default-rtdb.firebaseio.com",
     // --- Google ---
     // Pega aquí el "ID de cliente" del cliente OAuth tipo WEB (lo creas en Google Cloud).
     GOOGLE_CLIENT_ID: "844999785397-fncjlgv5l9eqhp9f1mv98t6gcdo4l9nc.apps.googleusercontent.com",

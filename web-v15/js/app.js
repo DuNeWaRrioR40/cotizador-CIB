@@ -4251,12 +4251,149 @@
     return null;
   }
   function publicarVistaCliente() {
+    publicarVistaRemota();
     if (!_vcActivo) return;
     const cont = contenedorPlanoVC(); if (!cont) return;
     const data = { t: tituloConMedidas() || "", html: cont.innerHTML };
     const str = JSON.stringify(data); if (str === _vcUlt) return; _vcUlt = str;
     const ch = vcCanal(); if (ch) { try { ch.postMessage(data); } catch (_) {} }
     try { localStorage.setItem("cibsaVC", str); } catch (_) {}
+  }
+  // Visor REMOTO: se suscribe a la sesión de Firebase (SSE) y renderiza los specs con sketch.js.
+  function iniciarVCRemota(sid) {
+    const base = vcFirebaseUrl();
+    const pl = () => document.getElementById("vcPlano");
+    const fin = (msg) => { const p = pl(); if (p) p.innerHTML = '<p class="vc-wait">' + msg + "</p>"; };
+    if (!base) { fin("Compartir por QR no está configurado en esta App."); return; }
+    const url = base + "/vc/" + encodeURIComponent(sid) + ".json";
+    let expTimer = null;
+    const pinta = (d) => {
+      if (!d) return;
+      if (d.fin || (d.exp && Date.now() > d.exp)) { fin("Sesión finalizada. ¡Gracias!"); return; }
+      const t = document.getElementById("vcTit"); if (t) t.textContent = d.t || "";
+      const p = pl(); if (!p) return;
+      try {
+        p.innerHTML = (d.planos || []).map((x) =>
+          (x.tit ? '<div class="vc-sub">' + x.tit + "</div>" : "") + sketchDualSVG(x.spec, x.tras, x.bc, x.ba)
+        ).join("") || '<p class="vc-wait">Esperando el plano…</p>';
+      } catch (_) {}
+      clearTimeout(expTimer);
+      if (d.exp) expTimer = setTimeout(() => fin("Sesión finalizada. ¡Gracias!"), Math.max(0, d.exp - Date.now()) + 500);
+    };
+    let ok = false, es = null;
+    try {
+      es = new EventSource(url);
+      es.addEventListener("put", (e2) => { ok = true; try { const j = JSON.parse(e2.data); pinta(j && j.data); } catch (_) {} });
+    } catch (_) {}
+    // Respaldo: si el SSE no conecta en 4 s (proxies móviles), sondeo cada 3 s.
+    setTimeout(() => {
+      if (ok) return;
+      if (es) { try { es.close(); } catch (_) {} }
+      const poll = () => fetch(url).then((r) => r.json()).then(pinta).catch(() => {});
+      poll(); setInterval(poll, 3000);
+    }, 4000);
+  }
+  // ---------- Compartir vista por QR (fase 2: dispositivo del cliente) ----------
+  // El botón genera una SESIÓN con código aleatorio no adivinable; la app publica el SPEC del
+  // plano (JSON compacto, no el SVG) a Firebase Realtime Database vía REST en cada edición, y el
+  // visor remoto (?vista=cliente&s=CODIGO) se suscribe por SSE y lo renderiza con sketch.js.
+  // Vigencia: 30 min o hasta pinchar de nuevo el botón (se escribe un marcador de fin).
+  let _vcEspecUnif = null, _vcRem = null, _vcRemTimer = null, _vcRemUlt = "";
+  const VC_QR_MIN = 30;
+  function vcFirebaseUrl() { return String(CFG.VC_FIREBASE_URL || "").replace(/\/+$/, ""); }
+  function vcSid() {
+    const abc = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let out = "";
+    try { const a = new Uint32Array(10); crypto.getRandomValues(a); for (let i = 0; i < 10; i++) out += abc[a[i] % abc.length]; }
+    catch (_) { for (let i = 0; i < 10; i++) out += abc[Math.floor(Math.random() * abc.length)]; }
+    return out;
+  }
+  function vcPlanosRemoto() {
+    const escT = (t) => String(t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    if (state.docMode === "formal" && state.prodMode === "compuesto") {
+      return (state.piezas || []).map((pz, i) => ({
+        tit: escT("Pieza " + (i + 1) + (pz.etiqueta && pz.etiqueta.trim() ? " — " + pz.etiqueta.trim() : "")),
+        spec: sketchPieza(pz), tras: !!pz.trasera, bc: cortesSpec(pz.backCortes), ba: aletasSpec(pz.backAletas),
+      }));
+    }
+    if (_vcEspecUnif) return [{ tit: "", spec: _vcEspecUnif, tras: !!state.trasUnif, bc: cortesSpec(state.backCortesUnif), ba: aletasSpec(state.backAletasUnif) }];
+    return [];
+  }
+  function publicarVistaRemota() {
+    if (!_vcRem) return;
+    if (Date.now() > _vcRem.exp) { terminarVistaQR(); return; }
+    clearTimeout(_vcRemTimer);
+    _vcRemTimer = setTimeout(() => {
+      if (!_vcRem) return;
+      let data;
+      try { data = JSON.stringify({ ts: Date.now(), exp: _vcRem.exp, t: tituloConMedidas() || "", planos: vcPlanosRemoto() }); } catch (_) { return; }
+      if (data === _vcRemUlt) return; _vcRemUlt = data;
+      fetch(vcFirebaseUrl() + "/vc/" + _vcRem.sid + ".json", { method: "PUT", body: data }).catch(() => {});
+    }, 600);
+  }
+  function cargarLibQR() {
+    return new Promise((res) => {
+      if (window.qrcode) return res();
+      const urls = [
+        "https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js",
+        "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js",
+      ];
+      const tryN = (i) => {
+        if (i >= urls.length || window.qrcode) return res();
+        const sc = document.createElement("script"); sc.src = urls[i];
+        sc.onload = () => res(); sc.onerror = () => tryN(i + 1);
+        document.head.appendChild(sc);
+      };
+      tryN(0);
+    });
+  }
+  function refrescarBtnQR() {
+    ["btnVistaQR", "btnVistaQRComp"].forEach((id) => {
+      const b = $(id); if (!b) return;
+      if (_vcRem) {
+        const m = Math.max(0, _vcRem.exp - Date.now());
+        const mm = Math.floor(m / 60000), ss = Math.floor((m % 60000) / 1000);
+        b.textContent = "QR activo · " + mm + ":" + String(ss).padStart(2, "0") + " — terminar";
+        b.classList.add("qr-on");
+      } else { b.textContent = "Compartir vista (QR)"; b.classList.remove("qr-on"); }
+    });
+  }
+  function cerrarModalQR() { const d = document.getElementById("vcQrModal"); if (d) d.remove(); }
+  function mostrarModalQR() {
+    cerrarModalQR(); if (!_vcRem) return;
+    const url = location.origin + location.pathname + "?vista=cliente&s=" + _vcRem.sid;
+    let qrHtml = "";
+    try { const q = window.qrcode(0, "M"); q.addData(url); q.make(); qrHtml = q.createImgTag(5, 10); } catch (_) {}
+    const div = document.createElement("div"); div.className = "qr-modal"; div.id = "vcQrModal";
+    div.innerHTML = '<div class="qr-card"><h3>Vista cliente por QR</h3>' +
+      (qrHtml || "<p>No se pudo generar la imagen del QR (sin conexión a CDN); comparte el link.</p>") +
+      '<p class="qr-url">' + url + "</p>" +
+      '<p class="muted small">El cliente escanea y ve SOLO el plano, en vivo. Vigente ' + VC_QR_MIN + " min o hasta que termines la sesión.</p>" +
+      '<div class="qr-acciones"><button type="button" class="btn-outline" id="qrCerrar">Cerrar (sigue activo)</button>' +
+      '<button type="button" class="btn-outline" id="qrFin">Terminar sesión</button></div></div>';
+    document.body.appendChild(div);
+    div.addEventListener("click", (e) => { if (e.target === div) cerrarModalQR(); });
+    div.querySelector("#qrCerrar").addEventListener("click", cerrarModalQR);
+    div.querySelector("#qrFin").addEventListener("click", terminarVistaQR);
+  }
+  function terminarVistaQR() {
+    if (!_vcRem) return;
+    const url = vcFirebaseUrl() + "/vc/" + _vcRem.sid + ".json";
+    clearTimeout(_vcRemTimer); clearInterval(_vcRem.tick);
+    _vcRem = null; _vcRemUlt = "";
+    fetch(url, { method: "PUT", body: JSON.stringify({ ts: Date.now(), fin: true }) }).catch(() => {});
+    cerrarModalQR(); refrescarBtnQR();
+  }
+  async function toggleVistaQR() {
+    if (_vcRem) { terminarVistaQR(); return; }   // 2º clic: revoca la sesión
+    if (!vcFirebaseUrl()) {
+      alert("Compartir por QR requiere configurar Firebase (VC_FIREBASE_URL en js/config.js).\n\n1) console.firebase.google.com → crear proyecto\n2) Realtime Database → crear (modo bloqueado)\n3) Reglas: permitir lectura/escritura bajo /vc/$sid\n4) Pegar la URL de la base en config.js");
+      return;
+    }
+    _vcRem = { sid: vcSid(), exp: Date.now() + VC_QR_MIN * 60 * 1000 };
+    await cargarLibQR();
+    mostrarModalQR(); refrescarBtnQR();
+    publicarVistaRemota();
+    _vcRem.tick = setInterval(() => { if (_vcRem && Date.now() > _vcRem.exp) { terminarVistaQR(); return; } refrescarBtnQR(); }, 1000);
   }
   function abrirVistaCliente() {
     _vcActivo = true; vcCanal(); _vcUlt = "";
@@ -4269,6 +4406,8 @@
     document.body.className = "vista-cliente";
     document.body.innerHTML = '<div class="vc-head"><span class="vc-logo">CIBSA</span><span id="vcTit" class="vc-tit"></span></div>' +
       '<div id="vcPlano" class="vc-plano"><p class="vc-wait">Esperando el plano… (edítalo en la ventana principal de la App)</p></div>';
+    const sid = new URLSearchParams(location.search).get("s");
+    if (sid) { iniciarVCRemota(sid); return; }
     const pinta = (d) => {
       if (!d || !d.html) return;
       const t = document.getElementById("vcTit"); if (t) t.textContent = d.t || "";
@@ -4307,6 +4446,7 @@
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
       const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar, anclas: anclasSpecDe(state.anclasUnif, state.cortesUnif, ancho || 0, largo || 0) }, ojSpecUnif());
       if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif(), ojEn: ojEnUnif(), alas: alasUnif() };
+      _vcEspecUnif = especUnif;
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
       activarArrastreCallouts(sk);
       const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); recompute(); };
@@ -6776,6 +6916,8 @@
   { const b = $("btnDescargarSketch"); if (b) b.addEventListener("click", descargarSketchUnif); }
   { const b = $("btnVistaCliente"); if (b) b.addEventListener("click", abrirVistaCliente); }
   { const b = $("btnVistaClienteComp"); if (b) b.addEventListener("click", abrirVistaCliente); }
+  { const b = $("btnVistaQR"); if (b) b.addEventListener("click", toggleVistaQR); }
+  { const b = $("btnVistaQRComp"); if (b) b.addEventListener("click", toggleVistaQR); }
   { const b = $("btnDescargarCorte"); if (b) b.addEventListener("click", descargarCorte); }
   { const t = $("f_trasUnif"); if (t) t.addEventListener("change", () => { state.trasUnif = t.checked; recompute(); }); }
   { const cb = $("f_usarPlano"); if (cb) cb.addEventListener("change", () => { document.body.classList.toggle("no-plano", !cb.checked); recompute(); }); }
