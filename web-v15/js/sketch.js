@@ -1277,7 +1277,7 @@
       const dy = a.fused === "t" ? H : a.fused === "b" ? -H : 0;
       return Object.assign({}, a, { x: a.x + dx, y: a.y + dy, ojetillos: (a.ojetillos || []).map((p) => ({ x: p.x + dx, y: p.y + dy })) });
     });
-    const skVol = Object.assign({}, sk0, { aletas: aletasV, straps: (sk0.straps || []).filter((st) => st && st.origen === "corte") });
+    const skVol = Object.assign({}, sk0, { aletas: aletasV, straps: sk0.straps || [] });
     if ((spec.volumetrico.ojEn || "externo") === "externo") skVol.ojetillos = ojetillosVolExterno(skVol.ojetillos, A, L, H, alasV);
     const simbVol = simbologia(skVol);
     const legH = simbVol.length ? (11 + simbVol.length * 11 + 8) : 0;
@@ -1406,6 +1406,17 @@
           if (!st.corners || st.corners.length !== 4) return;
           const ps = st.corners.map((p2) => vol3(p2.x, p2.y));
           s += `<polygon class="strap" points="${ps.map((p2) => f1(p2[0]) + "," + f1(p2[1])).join(" ")}"/>`;
+        });
+        // Cintas / cierres: recorrido proyectado sobre la cara correspondiente.
+        (skVol.cintas || []).forEach((cn) => {
+          if (!(cn && isFinite(cn.ax) && isFinite(cn.ay) && cn.L > 0)) return;
+          const NPC = Math.max(2, Math.ceil(cn.L / 0.5));
+          let prev = null;
+          for (let j = 0; j <= NPC; j++) {
+            const t = cn.L * j / NPC, pt = vol3(cn.ax + cn.ux * t, cn.ay + cn.uy * t);
+            if (prev) s += `<line class="cinta-edge" x1="${f1(prev[0])}" y1="${f1(prev[1])}" x2="${f1(pt[0])}" y2="${f1(pt[1])}"/>`;
+            prev = pt;
+          }
         });
         // Ventanas de la tapa: contorno sobre la cara superior.
         (skVol.ventanas || []).forEach((v) => {

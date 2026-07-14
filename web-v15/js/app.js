@@ -4756,14 +4756,48 @@
     scene.add(grid);
     // Ojetillos según el diseño actual: rim inferior (externo, por defecto) o perímetro de la tapa.
     try {
-      if (fig) throw 0; // las figuras generadas no proyectan ojetillos del uniforme
-      const skOj = window.SketchCIBSA.construirSketch(Object.assign({ ancho: A, largo: L, ventanas: [], cortes: [] }, ojSpecUnif()));
+      if (fig) throw 0; // las figuras generadas proyectan sus accesorios por cara (más abajo)
+      // Diseño REAL del uniforme: cortes/calados, guías (con sus ojetillos/straps) y straps.
+      const alas0 = alasUnif(), va0 = (k) => !alas0 || alas0[k] !== false;
+      const skOj = window.SketchCIBSA.construirSketch(Object.assign({
+        ancho: A, largo: L, ventanas: [],
+        cortes: cortesSpec(state.cortesUnif),
+        straps: strapsSpec(state.strapsUnif, { ancho: A, largo: L }),
+        volumetrico: { alto: H, ojEn: ojEnUnif(), alas: alas0 },
+      }, ojSpecUnif()));
       const rimY = (ojEnUnif() === "tapa") ? H : 0.02 * H;
       const rOj = Math.max(0.02, diag * 0.006);
       const geo = new T.SphereGeometry(rOj, 10, 10), mat = new T.MeshBasicMaterial({ color: 0x111111 });
       (skOj.ojetillos || []).forEach((p) => {
         const m = new T.Mesh(geo, mat);
         m.position.set(p.x - A / 2, rimY, p.y - L / 2); grp.add(m);
+      });
+      // Hoja desplegada → 3D: la tapa queda arriba (y=H) y cada pared cuelga de su pliegue.
+      // Coords fuera de la tapa (y<0, y>L, x<0, x>A) caen sobre la pared correspondiente.
+      const p3 = (mx, my) => {
+        const cx = Math.max(0, Math.min(A, mx)), cz = Math.max(0, Math.min(L, my));
+        if (my > L && va0("inf")) return new T.Vector3(cx - A / 2, H - Math.min(H, my - L), L / 2 + 0.012);
+        if (my < 0 && va0("sup")) return new T.Vector3(cx - A / 2, H - Math.min(H, -my), -L / 2 - 0.012);
+        if (mx < 0 && va0("izq")) return new T.Vector3(-A / 2 - 0.012, H - Math.min(H, -mx), cz - L / 2);
+        if (mx > A && va0("der")) return new T.Vector3(A / 2 + 0.012, H - Math.min(H, mx - A), cz - L / 2);
+        return new T.Vector3(cx - A / 2, H + 0.012, cz - L / 2);
+      };
+      // Calados / cortes / guías: contorno morado sobre la cara que corresponda + sus ojetillos.
+      const matCut = new T.LineBasicMaterial({ color: 0x8e44ad });
+      (skOj.cortes || []).forEach((c) => {
+        (c.segments || []).forEach((sg) => {
+          grp.add(new T.Line(new T.BufferGeometry().setFromPoints([p3(sg.a.x, sg.a.y), p3(sg.b.x, sg.b.y)]), matCut));
+        });
+        (c.ojetillos || []).forEach((p) => { const m = new T.Mesh(geo, mat); m.position.copy(p3(p.x, p.y)); grp.add(m); });
+      });
+      // Straps (por arista, manuales y de cortes/guías): banda roja proyectada.
+      const matStr = new T.MeshBasicMaterial({ color: 0xd23b2e, transparent: true, opacity: 0.85, side: T.DoubleSide });
+      (skOj.straps || []).forEach((st) => {
+        if (!st.corners || st.corners.length !== 4) return;
+        const vs = st.corners.map((p) => p3(p.x, p.y));
+        const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]);
+        g2.computeVertexNormals();
+        grp.add(new T.Mesh(g2, matStr));
       });
     } catch (e) {}
     // Rótulos de cotas (sprites siempre de cara a la cámara).
