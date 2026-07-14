@@ -2828,6 +2828,7 @@
           if (s.modo === "arista") html += " · <b>" + inst + "</b> strap(s)";
           if (inst * Math.max(1, N) > 1) html += " · total <b>" + money(tot) + "</b>";
           if (Math.abs(ancho - ANCHO_CINTA_DEFAULT) < 1e-9) html += " · <span class=\"muted\">(ancho no encontrado en la BD → 5 cm por defecto; solo afecta el dibujo, no el precio)</span>";
+          if (!(m.precio > 0)) html += " · <span style=\"color:#d8443a\">⚠ este material NO tiene precio en la BD → suma $0 a la cotización</span>";
           dims.innerHTML = html;
         }
         refresh();
@@ -2840,7 +2841,7 @@
     pintar();
     const add = document.createElement("button"); add.type = "button"; add.className = "btn-outline"; add.textContent = "+ Strap (cinta)";
     add.disabled = !hayCintas;
-    add.addEventListener("click", () => { ctx.straps.push({ matId: null, modo: "unica", arista: "sup", d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "", inset: "0", offBorde: "0.01", legend: "", sets: [] }); pintar(); onChange(); });
+    add.addEventListener("click", () => { ctx.straps.push({ matId: null, modo: "unica", arista: "sup", d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "0.1", inset: "0.1", offBorde: "0.01", legend: "", sets: [] }); pintar(); onChange(); });
     container.appendChild(add);
   }
   // ---------- Cintas / cierres ----------
@@ -2972,6 +2973,7 @@
           const runs = cintaRuns(c, ctx);
           const mat = runs.reduce((s, r) => s + (r.seg.mMaterial || 0), 0), cos = runs.reduce((s, r) => s + (r.seg.mCostura || 0), 0);
           const nOpen = runs.reduce((s, r) => s + (r.seg.opens || []).length, 0), nGap = runs.reduce((s, r) => s + (r.seg.gaps || []).length, 0), mSaf = runs.reduce((s, r) => s + (r.seg.mSafety || 0), 0);
+          if (!(m.precio > 0)) { dims.innerHTML = "<span style=\"color:#d8443a\">⚠ este material NO tiene precio en la BD → suma $0 a la cotización.</span>"; return; }
           let html = "Ancho cinta <b>" + f(ancho * 100) + " cm</b>" + (runs.length > 1 ? " · <b>" + runs.length + "</b> cintas" : "") + " · material <b>" + f(mat) + " m</b> · costura <b>" + f(cos) + " m</b>";
           if (mSaf > 0) html += " (seguridad " + f(mSaf) + " m)";
           if (nOpen) html += " · " + nOpen + " bolsillo(s)";
@@ -5374,7 +5376,7 @@
       irASeccion($("wOjetillos") || $("ojDyn"));
     },
     strap: (k) => {
-      state.strapsUnif.push({ matId: null, modo: "unica", arista: k, d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "", inset: "0", offBorde: "0.01", legend: "", sets: [] });
+      state.strapsUnif.push({ matId: null, modo: "unica", arista: k, d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "0.1", inset: "0.1", offBorde: "0.01", legend: "", sets: [] });
       renderStrapsUnif(); recompute();
       irASeccion($("strapsUnif"));
     },
@@ -5435,7 +5437,7 @@
         e.on = true; if (!(ev(e.d) > 0)) e.d = "0.5";
         irAPieza();
       },
-      strap: (k) => { (pz.straps || (pz.straps = [])).push({ matId: null, modo: "unica", arista: k, d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "", inset: "0", offBorde: "0.01", legend: "", sets: [] }); irAPieza(); },
+      strap: (k) => { (pz.straps || (pz.straps = [])).push({ matId: null, modo: "unica", arista: k, d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "0.1", inset: "0.1", offBorde: "0.01", legend: "", sets: [] }); irAPieza(); },
       cinta: (k) => { (pz.cintas || (pz.cintas = [])).push(nuevaCinta({ modo: "arista", arista: k })); irAPieza(); },
       corte: (k) => {
         const c = nuevaCorte(); c.tipo = "calado"; c.forma = "rect"; c.largo = "0.5"; c.ancho = "0.5";
