@@ -4456,8 +4456,9 @@
   function iniciarVistaCliente() {
     document.title = "CIBSA — Vista cliente";
     document.body.className = "vista-cliente";
-    document.body.innerHTML = '<div class="vc-head"><span class="vc-logo">CIBSA</span><span id="vcTit" class="vc-tit"></span><span id="vcSubT" class="vc-subtotal"></span></div>' +
-      '<div id="vcPlano" class="vc-plano"><p class="vc-wait">Esperando el plano… (edítalo en la ventana principal de la App)</p></div>';
+    document.body.innerHTML = '<div class="vc-head"><span class="vc-logo">CIBSA</span><span id="vcTit" class="vc-tit"></span></div>' +
+      '<div id="vcPlano" class="vc-plano"><p class="vc-wait">Esperando el plano… (edítalo en la ventana principal de la App)</p></div>' +
+      '<div id="vcSubT" class="vc-subtotal"></div>';
     const sid = new URLSearchParams(location.search).get("s");
     if (sid) { iniciarVCRemota(sid); return; }
     const pinta = (d) => {

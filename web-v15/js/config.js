@@ -3,7 +3,7 @@
 (function (global) {
   const CONFIG = {
     // Versión visible del build (debe coincidir con el SW). Sirve para confirmar que cargó la última.
-    APP_VERSION: "v15-60",
+    APP_VERSION: "v15-61",
     // --- Vista cliente remota (compartir por QR) ---
     // URL de tu Firebase Realtime Database. Vacío = el botón QR queda deshabilitado (la vista
     // espejo local por monitor sigue funcionando igual). Ej: "https://cibsa-vc-default-rtdb.firebaseio.com"

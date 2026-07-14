@@ -307,7 +307,7 @@ button:active { transform: scale(0.97); }
 .qr-acciones { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
 button.qr-on { background: #16171a; color: #ffdf26; border-color: #16171a; }
 .vc-sub { font-weight: 700; font-size: 14px; margin: 6px 0 2px; align-self: flex-start; }
-.vc-subtotal { margin-left: auto; font-weight: 800; font-size: 16px; background: #ffdf26; color: #16171a; padding: 5px 12px; border-radius: 8px; white-space: nowrap; }
+.vc-subtotal { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 10; font-weight: 800; font-size: 17px; background: #ffdf26; color: #16171a; padding: 8px 18px; border-radius: 10px; white-space: nowrap; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22); }
 .vc-subtotal:empty { display: none; }
 .vc-sub-chk { font-size: 12.5px; }
 /* Vista cliente (monitor espejo): solo el plano, en grande, sin controles ni ayudas de edición */
