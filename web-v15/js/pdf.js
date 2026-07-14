@@ -1405,9 +1405,22 @@
       txt(notaCotas, W - M - font.widthOfTextAtSize(notaCotas, 8), bottomM + matBlockH + 4, { size: 8, color: PDFLib.rgb(0.82, 0.23, 0.18) });
     }
 
-    // Sketch entre el detalle y la lista de materiales (más alto en modo de aprobación).
+    // Sketch entre el detalle y la lista de materiales. Si el texto (observaciones largas, pasos
+    // del volumétrico, ojetillos por arista) dejó POCO alto, el dibujo pasa COMPLETO a una página
+    // nueva con toda la altura — nunca se achica a estampilla. El volumétrico exige más alto
+    // porque dibuja dos paneles (representación 3D + hoja desplegada).
     const boxTop = detalleBottom, boxBottom = bottomM + matBlockH + 16;
-    dibujarSketchPDF(page, datos.sketch, { x: M, top: boxTop, w: W - 2 * M, h: boxTop - boxBottom }, font, { cotas: !limpio });
+    const esVol = !!(datos.sketch && datos.sketch.volumetrico && (parseFloat(datos.sketch.volumetrico.alto) || 0) > 0);
+    const minAltoPlano = esVol ? 460 : 340;
+    let pgSk = page, skTop = boxTop, skBottom = boxBottom;
+    if (boxTop - boxBottom < minAltoPlano) {
+      pgSk = doc.addPage([W, H]);
+      let ys = dibujarEncabezado(pgSk, cibsa, null, W, M, H - 40);
+      tituloCentrado(pgSk, "PLANO DEL PRODUCTO", W, ys, bold, 13, BLUE()); ys -= 16;
+      if (datos.titulo) { pgSk.drawText(san('"' + datos.titulo + '"'), { x: M, y: ys, size: 12, font: bold, color: BLUE() }); ys -= 18; }
+      skTop = ys; skBottom = 52;
+    }
+    dibujarSketchPDF(pgSk, datos.sketch, { x: M, top: skTop, w: W - 2 * M, h: skTop - skBottom }, font, { cotas: !limpio });
 
     // Página ADICIONAL con la vista 3D elegida en el visor (complementa el plano, no lo sustituye).
     if (datos.vista3D && datos.sketch && datos.sketch.volumetrico) {
