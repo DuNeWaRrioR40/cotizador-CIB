@@ -7,7 +7,7 @@
   const state = {
     telas: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
-    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, figura3D: null, anclasUnif: [], cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
+    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, figura3D: null, anclasUnif: [], subVC: false, cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [], cintasUnif: [],
@@ -4254,7 +4254,7 @@
     publicarVistaRemota();
     if (!_vcActivo) return;
     const cont = contenedorPlanoVC(); if (!cont) return;
-    const data = { t: tituloConMedidas() || "", html: cont.innerHTML };
+    const data = { t: tituloConMedidas() || "", html: cont.innerHTML, sub: vcSubTexto() };
     const str = JSON.stringify(data); if (str === _vcUlt) return; _vcUlt = str;
     const ch = vcCanal(); if (ch) { try { ch.postMessage(data); } catch (_) {} }
     try { localStorage.setItem("cibsaVC", str); } catch (_) {}
@@ -4271,6 +4271,7 @@
       if (!d) return;
       if (d.fin || (d.exp && Date.now() > d.exp)) { fin("Sesión finalizada. ¡Gracias!"); return; }
       const t = document.getElementById("vcTit"); if (t) t.textContent = d.t || "";
+      const sb = document.getElementById("vcSubT"); if (sb) sb.textContent = d.sub || "";
       const p = pl(); if (!p) return;
       try {
         p.innerHTML = (d.planos || []).map((x) =>
@@ -4299,6 +4300,17 @@
   // visor remoto (?vista=cliente&s=CODIGO) se suscribe por SSE y lo renderiza con sketch.js.
   // Vigencia: 30 min o hasta pinchar de nuevo el botón (se escribe un marcador de fin).
   let _vcEspecUnif = null, _vcRem = null, _vcRemTimer = null, _vcRemUlt = "";
+  let _vcSubUnif = "", _vcSubComp = "";   // textos de subtotal listos para la vista cliente
+  function vcSubTexto() {
+    if (!state.subVC) return "";
+    return (state.docMode === "formal" && state.prodMode === "compuesto") ? _vcSubComp : _vcSubUnif;
+  }
+  function setSubVC(v) {
+    state.subVC = !!v;
+    ["f_subVC", "f_subVCc"].forEach((id) => { const el = $(id); if (el) el.checked = state.subVC; });
+    _vcUlt = ""; _vcRemUlt = "";
+    publicarVistaCliente();
+  }
   const VC_QR_MIN = 30;
   function vcFirebaseUrl() { return String(CFG.VC_FIREBASE_URL || "").replace(/\/+$/, ""); }
   function vcSid() {
@@ -4325,10 +4337,21 @@
     _vcRemTimer = setTimeout(() => {
       if (!_vcRem) return;
       let data;
-      try { data = JSON.stringify({ ts: Date.now(), exp: _vcRem.exp, t: tituloConMedidas() || "", planos: vcPlanosRemoto() }); } catch (_) { return; }
+      try { data = JSON.stringify({ ts: Date.now(), exp: _vcRem.exp, t: tituloConMedidas() || "", sub: vcSubTexto(), planos: vcPlanosRemoto() }); } catch (_) { return; }
       if (data === _vcRemUlt) return; _vcRemUlt = data;
       fetch(vcFirebaseUrl() + "/vc/" + _vcRem.sid + ".json", { method: "PUT", body: data }).catch(() => {});
     }, 600);
+  }
+  // QR como PNG (canvas propio: nítido y descargable; el <img> de la lib es un GIF pequeño).
+  function qrPngDataUrl(url) {
+    const q = window.qrcode(0, "M"); q.addData(url); q.make();
+    const n = q.getModuleCount(), cell = 10, m = 4, size = (n + m * 2) * cell;
+    const cv = document.createElement("canvas"); cv.width = size; cv.height = size;
+    const g = cv.getContext("2d");
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, size, size);
+    g.fillStyle = "#16171a";
+    for (let r = 0; r < n; r++) for (let c2 = 0; c2 < n; c2++) if (q.isDark(r, c2)) g.fillRect((m + c2) * cell, (m + r) * cell, cell, cell);
+    return cv.toDataURL("image/png");
   }
   function cargarLibQR() {
     return new Promise((res) => {
@@ -4368,12 +4391,21 @@
       (qrHtml || "<p>No se pudo generar la imagen del QR (sin conexión a CDN); comparte el link.</p>") +
       '<p class="qr-url">' + url + "</p>" +
       '<p class="muted small">El cliente escanea y ve SOLO el plano, en vivo. Vigente ' + VC_QR_MIN + " min o hasta que termines la sesión.</p>" +
-      '<div class="qr-acciones"><button type="button" class="btn-outline" id="qrCerrar">Cerrar (sigue activo)</button>' +
+      '<div class="qr-acciones"><button type="button" class="btn-outline" id="qrWsp">Compartir por WhatsApp</button>' +
+      '<button type="button" class="btn-outline" id="qrDescargar">Descargar QR (PNG)</button>' +
+      '<button type="button" class="btn-outline" id="qrCerrar">Cerrar (sigue activo)</button>' +
       '<button type="button" class="btn-outline" id="qrFin">Terminar sesión</button></div></div>';
     document.body.appendChild(div);
     div.addEventListener("click", (e) => { if (e.target === div) cerrarModalQR(); });
     div.querySelector("#qrCerrar").addEventListener("click", cerrarModalQR);
     div.querySelector("#qrFin").addEventListener("click", terminarVistaQR);
+    div.querySelector("#qrWsp").addEventListener("click", () => {
+      const msg = "Te comparto el plano del producto EN VIVO (vigente " + VC_QR_MIN + " min): " + url;
+      try { window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank"); } catch (_) {}
+    });
+    div.querySelector("#qrDescargar").addEventListener("click", () => {
+      try { const a = document.createElement("a"); a.href = qrPngDataUrl(url); a.download = "QR_vista_cliente.png"; a.click(); } catch (_) {}
+    });
   }
   function terminarVistaQR() {
     if (!_vcRem) return;
@@ -4404,13 +4436,14 @@
   function iniciarVistaCliente() {
     document.title = "CIBSA — Vista cliente";
     document.body.className = "vista-cliente";
-    document.body.innerHTML = '<div class="vc-head"><span class="vc-logo">CIBSA</span><span id="vcTit" class="vc-tit"></span></div>' +
+    document.body.innerHTML = '<div class="vc-head"><span class="vc-logo">CIBSA</span><span id="vcTit" class="vc-tit"></span><span id="vcSubT" class="vc-subtotal"></span></div>' +
       '<div id="vcPlano" class="vc-plano"><p class="vc-wait">Esperando el plano… (edítalo en la ventana principal de la App)</p></div>';
     const sid = new URLSearchParams(location.search).get("s");
     if (sid) { iniciarVCRemota(sid); return; }
     const pinta = (d) => {
       if (!d || !d.html) return;
       const t = document.getElementById("vcTit"); if (t) t.textContent = d.t || "";
+      const sb = document.getElementById("vcSubT"); if (sb) sb.textContent = d.sub || "";
       const pl = document.getElementById("vcPlano"); if (pl) pl.innerHTML = d.html;
     };
     try { const s0 = localStorage.getItem("cibsaVC"); if (s0) pinta(JSON.parse(s0)); } catch (_) {}
@@ -4517,6 +4550,7 @@
     return o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal + cintaTotal;
   }
   function setSubtotalUnifHint(info) {
+    _vcSubUnif = (!info || !(info.neto > 0)) ? "" : ("Subtotal del producto: " + money(info.neto) + " neto, sin IVA" + (info.N > 1 ? " · " + info.N + " uds." : ""));
     const el = $("subtotalUnifHint"); if (!el) return;
     if (!info || !(info.neto > 0)) { el.innerHTML = ""; return; }
     const uds = info.N > 1 ? (" · " + info.N + " uds.") : "";
@@ -6846,6 +6880,7 @@
     const neto = subtotalGen - descuento;
     const iva = Math.round(neto * CFG.IVA_PCT / 100);
     const total = neto + iva;
+    _vcSubComp = calcs.length ? ("Subtotal neto: " + money(subtotalGen)) : "";
     let resumenHTML;
     if (!calcs.length) {
       resumenHTML = '<p class="muted small">Agrega piezas con largo, ancho y tela para ver el total.</p>';
@@ -6975,6 +7010,8 @@
   { const b = $("btnVistaCliente"); if (b) b.addEventListener("click", abrirVistaCliente); }
   { const b = $("btnVistaClienteComp"); if (b) b.addEventListener("click", abrirVistaCliente); }
   { const b = $("btnVistaQR"); if (b) b.addEventListener("click", toggleVistaQR); }
+  { const el = $("f_subVC"); if (el) el.addEventListener("change", () => setSubVC(el.checked)); }
+  { const el = $("f_subVCc"); if (el) el.addEventListener("change", () => setSubVC(el.checked)); }
   { const b = $("btnVistaQRComp"); if (b) b.addEventListener("click", toggleVistaQR); }
   { const b = $("btnDescargarCorte"); if (b) b.addEventListener("click", descargarCorte); }
   { const t = $("f_trasUnif"); if (t) t.addEventListener("change", () => { state.trasUnif = t.checked; recompute(); }); }
