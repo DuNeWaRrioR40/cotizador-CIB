@@ -1296,7 +1296,7 @@
     // soloDesplegado: omite el 3D (p. ej. vista interior/espejo, donde el volumen ya se mostró).
     const soloDesp = !!opts.soloDesplegado;
     const paTop = 14, paH = soloDesp ? -8 : 150;
-    let s = `<svg class="sketch-svg" viewBox="0 0 ${VW} 0H" xmlns="http://www.w3.org/2000/svg">`;
+    let s = `<svg class="sketch-svg" viewBox="0 0 ${VW} 0H" data-mscale="0MS" data-ox="0OX" data-oy="0OY" xmlns="http://www.w3.org/2000/svg">`;
     if (!soloDesp) {
       const dep = 0.5, k = 0.707;
       const needW = A + L * dep * k, needH = H + L * dep * k;
@@ -1324,6 +1324,48 @@
         const mlx = (FTR[0] + BTR[0]) / 2 + 3, mly = (FTR[1] + BTR[1]) / 2 - 2;
         s += `<text class="cota-lbl" x="${f1(mlx)}" y="${f1(mly)}">largo ${fmt(L)}m</text>`;
       }
+      // ---- REPRESENTACIÓN 3D EDITABLE (solo plano en vivo): las aristas del cubo abren el mismo
+      // menú que las del desplegado, y los cortes/anchors/ojetillos del diseño se dibujan encima.
+      // Cara superior del cubo = tapa (frente = arista inferior del plano); bordes de abajo = rim
+      // de las alas. Cada arista lleva sus extremos en coords del MODELO (data-ax/ay/bx/by) para
+      // que el clic se proyecte al punto real aunque la proyección sea oblicua.
+      if (opts.live && !spec.espejo) {
+        const top3 = (x, y) => [x0 + x * sc3 + (L - y) * dep * k * sc3, (y0 - hH) - (L - y) * dep * k * sc3];
+        const rim3 = (x, y) => [x0 + x * sc3 + (L - y) * dep * k * sc3, y0 - (L - y) * dep * k * sc3];
+        const hit3 = (pq, qq, kAr, aM, bM) => {
+          s += `<line class="arista-hit" data-arista="${kAr}" data-ax="${aM[0]}" data-ay="${aM[1]}" data-bx="${bM[0]}" data-by="${bM[1]}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+        };
+        hit3(top3(0, 0), top3(A, 0), "sup", [0, 0], [A, 0]);
+        hit3(top3(0, L), top3(A, L), "inf", [0, L], [A, L]);
+        hit3(top3(0, 0), top3(0, L), "izq", [0, 0], [0, L]);
+        hit3(top3(A, 0), top3(A, L), "der", [A, 0], [A, L]);
+        if (va("sup")) hit3(rim3(0, 0), rim3(A, 0), "sup", [0, 0], [A, 0]);
+        if (va("inf")) hit3(rim3(0, L), rim3(A, L), "inf", [0, L], [A, L]);
+        if (va("izq")) hit3(rim3(0, 0), rim3(0, L), "izq", [0, 0], [0, L]);
+        if (va("der")) hit3(rim3(A, 0), rim3(A, L), "der", [A, 0], [A, L]);
+        // Cortes/guías de la tapa: línea visible + clicable sobre la cara superior.
+        (skVol.cortes || []).forEach((c, i) => {
+          if (!c.corte || !c.segments || !c.segments[0]) return;
+          const cl = clipSeg(c.segments[0].a, c.segments[0].b, 0, A, 0, L); if (!cl) return;
+          const pq = top3(cl.a.x, cl.a.y), qq = top3(cl.b.x, cl.b.y);
+          s += `<line class="${c.guia ? "vol-fold" : "cut"}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+          s += `<line class="arista-hit" data-corte="${i}" data-ax="${cl.a.x}" data-ay="${cl.a.y}" data-bx="${cl.b.x}" data-by="${cl.b.y}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+        });
+        // Anchors (indicativos: el arrastre fino vive en el desplegado).
+        (skVol.anclas || []).forEach((an) => {
+          const pq = top3(Math.max(0, Math.min(A, an.x)), Math.max(0, Math.min(L, an.y)));
+          s += `<g class="ancla3${an.emp ? " ancla-emp" : ""}${an.tipo === "corte" ? " ancla-corte" : ""}">` +
+            `<circle class="ancla-dot" cx="${f1(pq[0])}" cy="${f1(pq[1])}" r="3"/>` +
+            `<circle class="ancla-dot-in" cx="${f1(pq[0])}" cy="${f1(pq[1])}" r="1.1"/></g>`;
+        });
+        // Ojetillos según el diseño (rim externo o perímetro de la tapa).
+        const ojExt3 = (spec.volumetrico.ojEn || "externo") === "externo";
+        (skVol.ojetillos || []).forEach((p2) => {
+          const cx2 = Math.max(0, Math.min(A, p2.x)), cy2 = Math.max(0, Math.min(L, p2.y));
+          const pt = ojExt3 ? rim3(cx2, cy2) : top3(cx2, cy2);
+          s += `<circle class="oje" cx="${f1(pt[0])}" cy="${f1(pt[1])}" r="1.7"/><circle class="oje-in" cx="${f1(pt[0])}" cy="${f1(pt[1])}" r="0.7"/>`;
+        });
+      }
     }
     // -------- Panel B: hoja de corte desplegada --------
     const pbTit = paTop + paH;
@@ -1342,7 +1384,8 @@
     const X = (x) => pbx + (extL + x) * scB, Y = (y) => pby + (extT + y) * scB;
     const sheetBot = pby + Ld2 * scB + 20;
     const totalH = sheetBot + legH;
-    s = s.replace("0H", f1(totalH)); // fijar alto del viewBox
+    // Fijar alto del viewBox + origen/escala de la TAPA (para menú de aristas y anchors de la app).
+    s = s.replace("0H", f1(totalH)).replace("0MS", scB.toFixed(3)).replace("0OX", f1(X(hz))).replace("0OY", f1(Y(hs)));
     s += `<text class="vista-tit" x="${f1(VW / 2)}" y="${f1(pbTit + 12)}" text-anchor="middle">${spec.vista === "trasera" ? "PLANO DESPLEGADO — VISTA INTERIOR (espejo)" : "PLANO DESPLEGADO (hoja de corte)"}</text>`;
     // Contorno (tapa central + solo las alas PRESENTES); los puntos duplicados degeneran sin dibujo.
     const cross = [[hz, 0], [hz + A, 0], [hz + A, hs], [Wd, hs], [Wd, hs + L], [hz + A, hs + L], [hz + A, Ld], [hz, Ld], [hz, hs + L], [0, hs + L], [0, hs], [hz, hs]];
@@ -1397,6 +1440,32 @@
         s += `<line class="oj-num" x1="${f1(ex)}" y1="${f1(ey)}" x2="${f1(ex + Math.cos(ang - 2.6) * HB)}" y2="${f1(ey + Math.sin(ang - 2.6) * HB)}"/>`;
         const tx = bx + m.nx * 7 - m.dx * 4, ty = by + m.ny * 7 - m.dy * 4 + 3;
         s += `<text class="oj-num-lbl" x="${f1(tx)}" y="${f1(ty)}" text-anchor="middle">${esc(m.text)}</text>`;
+      });
+    }
+    // Aristas de la TAPA y líneas de cortes/guías CLICABLES + anchors — igual que en el plano
+    // plano, sobre el desplegado (solo plano en vivo; la vista interior/espejo no edita).
+    if (opts.live && !spec.espejo) {
+      const pxT = (x) => X(hz + x), pyT = (y) => Y(hs + y);
+      const hitV = (x1, y1, x2, y2, attr) => { s += `<line class="arista-hit" ${attr} x1="${f1(x1)}" y1="${f1(y1)}" x2="${f1(x2)}" y2="${f1(y2)}"/>`; };
+      hitV(pxT(0), pyT(0), pxT(A), pyT(0), 'data-arista="sup"');
+      hitV(pxT(0), pyT(L), pxT(A), pyT(L), 'data-arista="inf"');
+      hitV(pxT(0), pyT(0), pxT(0), pyT(L), 'data-arista="izq"');
+      hitV(pxT(A), pyT(0), pxT(A), pyT(L), 'data-arista="der"');
+      (skVol.cortes || []).forEach((c, i) => {
+        if (!c.corte || !c.segments || !c.segments[0]) return;
+        const sg = c.segments[0];
+        if (Math.hypot(sg.b.x - sg.a.x, sg.b.y - sg.a.y) < 1e-9) return;
+        hitV(pxT(sg.a.x), pyT(sg.a.y), pxT(sg.b.x), pyT(sg.b.y), 'data-corte="' + i + '"');
+      });
+      (skVol.anclas || []).forEach((an) => {
+        const ax = pxT(an.x), ay = pyT(an.y);
+        const izqL = an.x <= A / 2, tx = izqL ? 9 : -9, tanc = izqL ? "start" : "end";
+        s += `<g class="ancla${an.tipo === "corte" ? " ancla-corte" : ""}${an.emp ? " ancla-emp" : ""}" data-ancla="${esc(String(an.id))}" data-x="${f1(ax)}" data-y="${f1(ay)}">`;
+        s += `<circle class="ancla-halo" cx="${f1(ax)}" cy="${f1(ay)}" r="11"/>`;
+        s += `<circle class="ancla-dot" cx="${f1(ax)}" cy="${f1(ay)}" r="4"/>`;
+        s += `<circle class="ancla-dot-in" cx="${f1(ax)}" cy="${f1(ay)}" r="1.5"/>`;
+        s += `<text class="ancla-lbl" x="${f1(ax + tx)}" y="${f1(ay - 6)}" text-anchor="${tanc}">${esc(an.lbl || "")}</text>`;
+        s += `</g>`;
       });
     }
     // Leyenda de simbología (parte inferior izquierda).

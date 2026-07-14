@@ -4228,6 +4228,61 @@
   function ojEnUnif() { const c = $("f_ojVolExt"); return (c && !c.checked) ? "tapa" : "externo"; }
   function alasUnif() { return state.volAlas || { sup: true, inf: true, izq: true, der: true }; }
 
+  // ---------- Vista cliente (monitor espejo, fase 1: mismo equipo) ----------
+  // Una 2ª ventana de la app (?vista=cliente) muestra SOLO el plano en grande, en vivo, sin
+  // precios ni controles. Canal: BroadcastChannel (mismo navegador) + snapshot en localStorage
+  // (bootstrap instantáneo al abrir y respaldo si el navegador no soporta BroadcastChannel).
+  // Aislamiento: cada navegador/perfil es su propia sesión (nada sale del equipo).
+  let _vcActivo = false, _vcUlt = "", _vcChan = null;
+  function vcCanal() {
+    if (_vcChan === null) {
+      try {
+        _vcChan = new BroadcastChannel("cibsa-vc");
+        _vcChan.onmessage = (e) => { if (e && e.data === "hola") { _vcActivo = true; _vcUlt = ""; publicarVistaCliente(); } };
+      } catch (_) { _vcChan = false; }
+    }
+    return _vcChan;
+  }
+  function contenedorPlanoVC() {
+    if (state.docMode === "formal" && state.prodMode === "compuesto") {
+      const c = $("previewCompuesto"); if (c && c.querySelector("svg.sketch-svg")) return c;
+    }
+    const u = $("sketchUnif"); if (u && u.querySelector("svg.sketch-svg")) return u;
+    return null;
+  }
+  function publicarVistaCliente() {
+    if (!_vcActivo) return;
+    const cont = contenedorPlanoVC(); if (!cont) return;
+    const data = { t: tituloConMedidas() || "", html: cont.innerHTML };
+    const str = JSON.stringify(data); if (str === _vcUlt) return; _vcUlt = str;
+    const ch = vcCanal(); if (ch) { try { ch.postMessage(data); } catch (_) {} }
+    try { localStorage.setItem("cibsaVC", str); } catch (_) {}
+  }
+  function abrirVistaCliente() {
+    _vcActivo = true; vcCanal(); _vcUlt = "";
+    try { window.open(location.pathname + "?vista=cliente", "cibsaVC"); } catch (_) {}
+    setTimeout(publicarVistaCliente, 250);
+  }
+  // Modo VISOR: reemplaza la App por la vista limpia del plano (no requiere login: solo pinta lo recibido).
+  function iniciarVistaCliente() {
+    document.title = "CIBSA — Vista cliente";
+    document.body.className = "vista-cliente";
+    document.body.innerHTML = '<div class="vc-head"><span class="vc-logo">CIBSA</span><span id="vcTit" class="vc-tit"></span></div>' +
+      '<div id="vcPlano" class="vc-plano"><p class="vc-wait">Esperando el plano… (edítalo en la ventana principal de la App)</p></div>';
+    const pinta = (d) => {
+      if (!d || !d.html) return;
+      const t = document.getElementById("vcTit"); if (t) t.textContent = d.t || "";
+      const pl = document.getElementById("vcPlano"); if (pl) pl.innerHTML = d.html;
+    };
+    try { const s0 = localStorage.getItem("cibsaVC"); if (s0) pinta(JSON.parse(s0)); } catch (_) {}
+    try {
+      const ch = new BroadcastChannel("cibsa-vc");
+      ch.onmessage = (e) => { if (e && e.data && e.data.html) pinta(e.data); };
+      ch.postMessage("hola");
+      setInterval(() => { try { ch.postMessage("hola"); } catch (_) {} }, 15000); // si la principal se recarga, retoma la publicación
+    } catch (_) {}
+    window.addEventListener("storage", (e) => { if (e.key === "cibsaVC" && e.newValue) { try { pinta(JSON.parse(e.newValue)); } catch (_) {} } });
+  }
   function recompute() {
     if (typeof sincBotonFigura3D === "function") sincBotonFigura3D();
     if (state.docMode === "preliminar") recomputePrelim();
@@ -4236,6 +4291,7 @@
     refreshRotuloChks();
     addZoomBtns();
     actualizarColapsables();
+    publicarVistaCliente();
   }
 
   function recomputeUniforme() {
@@ -5660,11 +5716,23 @@
         // Solo disponible en el plano plano (el volumétrico no expone data-ox).
         let pm = null;
         const svgA = ln.ownerSVGElement;
-        if (svgA && svgA.dataset && svgA.dataset.ox != null && svgA.getScreenCTM) {
+        if (svgA && svgA.getScreenCTM) {
           try {
             const mm = svgA.getScreenCTM(), pt = svgA.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
-            const q = pt.matrixTransform(mm.inverse()), msc = parseFloat(svgA.dataset.mscale) || 1;
-            pm = { x: (q.x - (parseFloat(svgA.dataset.ox) || 0)) / msc, y: (q.y - (parseFloat(svgA.dataset.oy) || 0)) / msc };
+            const q = pt.matrixTransform(mm.inverse());
+            if (ln.dataset && ln.dataset.ax != null) {
+              // La arista declara sus extremos en coords del MODELO (p. ej. representación 3D oblicua):
+              // proyectar el clic sobre la propia línea → parámetro → punto real en metros.
+              const x1 = +ln.getAttribute("x1"), y1 = +ln.getAttribute("y1"), x2 = +ln.getAttribute("x2"), y2 = +ln.getAttribute("y2");
+              const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy;
+              let sp = L2 > 0 ? (((q.x - x1) * dx + (q.y - y1) * dy) / L2) : 0;
+              sp = Math.max(0, Math.min(1, sp));
+              const ax = parseFloat(ln.dataset.ax), ay = parseFloat(ln.dataset.ay), bx = parseFloat(ln.dataset.bx), by = parseFloat(ln.dataset.by);
+              pm = { x: ax + (bx - ax) * sp, y: ay + (by - ay) * sp };
+            } else if (svgA.dataset && svgA.dataset.ox != null) {
+              const msc = parseFloat(svgA.dataset.mscale) || 1;
+              pm = { x: (q.x - (parseFloat(svgA.dataset.ox) || 0)) / msc, y: (q.y - (parseFloat(svgA.dataset.oy) || 0)) / msc };
+            }
           } catch (_) {}
         }
         const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
@@ -6595,6 +6663,7 @@
     { const rb = $("piezasResumenBottom"); if (rb) rb.innerHTML = resumenHTML; }
     state.compuesto = { calcs, subtotalGen, desc, descuento, neto, iva, total };
     renderPreviewCompuesto();
+    publicarVistaCliente();
   }
 
   // Vista previa consolidada de los planos de todas las piezas (compuesto): cada plano plegable + descarga.
@@ -6705,6 +6774,8 @@
     if (a && b) { a.addEventListener("change", () => { b.checked = a.checked; }); b.addEventListener("change", () => { a.checked = b.checked; }); } }
   $("btnGenerar").addEventListener("click", generar);
   { const b = $("btnDescargarSketch"); if (b) b.addEventListener("click", descargarSketchUnif); }
+  { const b = $("btnVistaCliente"); if (b) b.addEventListener("click", abrirVistaCliente); }
+  { const b = $("btnVistaClienteComp"); if (b) b.addEventListener("click", abrirVistaCliente); }
   { const b = $("btnDescargarCorte"); if (b) b.addEventListener("click", descargarCorte); }
   { const t = $("f_trasUnif"); if (t) t.addEventListener("change", () => { state.trasUnif = t.checked; recompute(); }); }
   { const cb = $("f_usarPlano"); if (cb) cb.addEventListener("change", () => { document.body.classList.toggle("no-plano", !cb.checked); recompute(); }); }
@@ -8201,10 +8272,12 @@
 
   // ---------- Inicio ----------
   (function init() {
+    try { if (new URLSearchParams(location.search).get("vista") === "cliente") { iniciarVistaCliente(); return; } } catch (_) {}
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
     }
     try { const av = $("appVersion"); if (av) av.textContent = (CFG.APP_VERSION || ""); } catch (e) {}
+    vcCanal(); // escucha desde el arranque: si el monitor ya está abierto, su "hola" reactiva la publicación
     let t = "A";
     try { t = localStorage.getItem("cibsa_tema") || "A"; } catch (e) {}
     aplicarTema(t);
