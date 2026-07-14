@@ -56,6 +56,14 @@
     const SF = PDFLib.StandardFonts;
     return { font: await doc.embedFont(SF.Helvetica), bold: await doc.embedFont(SF.HelveticaBold) };
   }
+  // pdf-lib interpreta drawSvgPath con eje Y HACIA ABAJO desde el ancla {x,y}. Nuestros puntos van
+  // en coordenadas de página (Y hacia arriba): este helper convierte y ancla en el tope de la hoja.
+  function drawPolyPDF(page, pts, opts) {
+    if (!pts || pts.length < 3) return;
+    const Hp = page.getHeight();
+    const d = "M " + pts.map((p) => p.x + " " + (Hp - p.y)).join(" L ") + " Z";
+    page.drawSvgPath(d, Object.assign({ x: 0, y: Hp }, opts));
+  }
   function b64ToBytes(dataURL) {
     const b64 = dataURL.split(",")[1];
     const bin = atob(b64);
@@ -188,8 +196,7 @@
     }
     // Straps (cintas): banda con relleno suave translúcido + borde fino rojo + línea media + remates + etiqueta.
     (sk.straps || []).forEach((st) => {
-      const d = "M " + st.corners.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";
-      page.drawSvgPath(d, { color: STRAP, opacity: 0.10, borderColor: STRAP, borderWidth: 0.5, borderOpacity: 1 });
+      drawPolyPDF(page, st.corners.map((p) => ({ x: px(p.x), y: py(p.y) })), { color: STRAP, opacity: 0.10, borderColor: STRAP, borderWidth: 0.5, borderOpacity: 1 });
       page.drawLine({ start: { x: px(st.a.x), y: py(st.a.y) }, end: { x: px(st.b.x), y: py(st.b.y) }, thickness: 0.4, color: STRAPF, dashArray: [4, 3], opacity: 0.45 });
       [st.rem0, st.rem1].forEach((rm) => {
         const zz = SK.zigzagPts(px(rm.a.x), py(rm.a.y), px(rm.b.x), py(rm.b.y), 2.2, 4);
@@ -324,8 +331,7 @@
       // Tapa / solapa de cobertura: polígono naranjo muy translúcido + aristas según su estado.
       if (c.tapa && c.tapa.poly && c.tapa.poly.length >= 3) {
         const NAR = PDFLib.rgb(0.91, 0.35, 0.05);
-        const dPoly = "M " + c.tapa.poly.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";
-        page.drawSvgPath(dPoly, { color: NAR, opacity: 0.09, borderColor: NAR, borderWidth: 0.7, borderDashArray: [4, 2.5], borderOpacity: 0.9 });
+        drawPolyPDF(page, c.tapa.poly.map((p) => ({ x: px(p.x), y: py(p.y) })), { color: NAR, opacity: 0.09, borderColor: NAR, borderWidth: 0.7, borderDashArray: [4, 2.5], borderOpacity: 0.9 });
         (c.tapa.edges || []).forEach((e) => {
           page.drawLine({ start: { x: px(e.a.x), y: py(e.a.y) }, end: { x: px(e.b.x), y: py(e.b.y) },
             thickness: e.fus ? 1.2 : 0.5, color: NAR, dashArray: e.fus ? undefined : [1.6, 1.6] });
@@ -341,8 +347,7 @@
       }
       // Difuminar: gris visible. Eliminar: la parte se va del CONTORNO (no se rellena ni se dibuja su línea).
       if (c.fadePoly && c.fadePoly.length >= 3 && !c.fadeKill) {
-        const d = "M " + c.fadePoly.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";
-        page.drawSvgPath(d, { color: PDFLib.rgb(0.42, 0.46, 0.52), opacity: 0.5, borderWidth: 0 });
+        drawPolyPDF(page, c.fadePoly.map((p) => ({ x: px(p.x), y: py(p.y) })), { color: PDFLib.rgb(0.42, 0.46, 0.52), opacity: 0.5, borderWidth: 0 });
       }
       (c.hatch || []).forEach((sg) => {
         page.drawLine({ start: { x: px(sg.a.x), y: py(sg.a.y) }, end: { x: px(sg.b.x), y: py(sg.b.y) }, thickness: 0.35, color: PURPLE, opacity: 0.32 });
@@ -604,8 +609,10 @@
     const TICK = 3, EXTGAP = 3;
     // Contorno del paño: rectángulo, o el polígono recortado si hay cortes "Eliminar" (la parte se va).
     if (sk.panoPoly && sk.panoPoly.length >= 3) {
-      const dEdge = "M " + sk.panoPoly.map((p) => px(p.x) + " " + py(p.y)).join(" L ") + " Z";
-      page.drawSvgPath(dEdge, { borderColor: GRAY, borderWidth: 1.3 });
+      for (let i = 0; i < sk.panoPoly.length; i++) {
+        const pa = sk.panoPoly[i], pb = sk.panoPoly[(i + 1) % sk.panoPoly.length];
+        page.drawLine({ start: { x: px(pa.x), y: py(pa.y) }, end: { x: px(pb.x), y: py(pb.y) }, thickness: 1.3, color: GRAY });
+      }
     } else {
       page.drawRectangle({ x: x0, y: topRect - hpx, width: wpx, height: hpx, borderColor: GRAY, borderWidth: 1.3 });
     }

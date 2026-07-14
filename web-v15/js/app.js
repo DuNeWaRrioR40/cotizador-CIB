@@ -7,7 +7,7 @@
   const state = {
     telas: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
-    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
+    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, figura3D: null, cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [], cintasUnif: [],
@@ -188,7 +188,7 @@
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
   const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "cotasOcultas", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "cotasOcultas", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -2509,7 +2509,31 @@
     }).filter(Boolean);
   }
   // ---------- Straps (cintas/webbing): banda recta sobre el paño ----------
-  function anchoCintaM(mat) { if (!mat) return 0; const v = parseFloat(String(mat.modelo == null ? "" : mat.modelo).replace(",", ".")); return (v > 0) ? v / 100 : 0; } // MODELO en cm → m
+  // Ancho de una cinta/strap desde la BD — SOLO afecta el dibujo del plano (el costeo va por
+  // precio × metro). Busca un número con unidad en MODELO, FORMATO, VARIEDAD o ITEM ("50 mm",
+  // "5cm", "0,05 m"); en MODELO también acepta un número pelado (histórico: se asume cm).
+  // Si no encuentra nada usa 5 cm por defecto: la falta de ancho NUNCA bloquea el diseño.
+  const ANCHO_CINTA_DEFAULT = 0.05;
+  function anchoCintaM(mat) {
+    if (!mat) return 0;
+    const buscar = (c, aceptaPelado) => {
+      if (c == null || c === "") return null;
+      const mm = String(c).replace(",", ".").match(/(\d+(?:\.\d+)?)\s*(mm|cm|mts?|m)?(?![a-z0-9])/i);
+      if (!mm) return null;
+      const v = parseFloat(mm[1]); if (!(v > 0)) return null;
+      const u = (mm[2] || "").toLowerCase();
+      if (u === "mm") return v / 1000;
+      if (u === "cm") return v / 100;
+      if (u === "m" || u === "mt" || u === "mts") return (v > 3) ? null : v; // "50 m de rollo" no es un ancho
+      if (!aceptaPelado) return null;
+      return (v >= 1) ? v / 100 : v;   // número pelado en MODELO: ≥1 se asume cm; <1, metros
+    };
+    let r = buscar(mat.modelo, true);
+    if (r == null) r = buscar(mat.formato, false);
+    if (r == null) r = buscar(mat.variedad, false);
+    if (r == null) r = buscar(mat.item || mat.nombre, false);
+    return (r != null && r > 0) ? r : ANCHO_CINTA_DEFAULT;
+  }
   function strapMat(s) { return (s && s.matId != null && state.materiales[s.matId]) || null; }
   function strapLargo(s) { const ev = window.CalcCIBSA.evalExpr; return Math.max(0, ev(s.offset) || 0) + Math.max(0, ev(s.inset) || 0); }
   // Arista del perímetro: endpoints + ángulo de la perpendicular hacia AFUERA + largo de la arista.
@@ -2803,7 +2827,7 @@
           let html = "Cinta <b>" + m.item + "</b> · largo <b>" + f(largo) + " m</b> · ancho <b>" + (ancho > 0 ? f(ancho * 100) + " cm" : "?") + "</b> · " + money(pu) + "/u";
           if (s.modo === "arista") html += " · <b>" + inst + "</b> strap(s)";
           if (inst * Math.max(1, N) > 1) html += " · total <b>" + money(tot) + "</b>";
-          if (!(ancho > 0)) html += " · <span style=\"color:#d8443a\">⚠ la cinta no tiene ancho (col. MODELO) en cm</span>";
+          if (Math.abs(ancho - ANCHO_CINTA_DEFAULT) < 1e-9) html += " · <span class=\"muted\">(ancho no encontrado en la BD → 5 cm por defecto; solo afecta el dibujo, no el precio)</span>";
           dims.innerHTML = html;
         }
         refresh();
@@ -2948,7 +2972,7 @@
           const runs = cintaRuns(c, ctx);
           const mat = runs.reduce((s, r) => s + (r.seg.mMaterial || 0), 0), cos = runs.reduce((s, r) => s + (r.seg.mCostura || 0), 0);
           const nOpen = runs.reduce((s, r) => s + (r.seg.opens || []).length, 0), nGap = runs.reduce((s, r) => s + (r.seg.gaps || []).length, 0), mSaf = runs.reduce((s, r) => s + (r.seg.mSafety || 0), 0);
-          let html = "Ancho cinta <b>" + (ancho > 0 ? f(ancho * 100) + " cm" : "?") + "</b>" + (runs.length > 1 ? " · <b>" + runs.length + "</b> cintas" : "") + " · material <b>" + f(mat) + " m</b> · costura <b>" + f(cos) + " m</b>";
+          let html = "Ancho cinta <b>" + f(ancho * 100) + " cm</b>" + (runs.length > 1 ? " · <b>" + runs.length + "</b> cintas" : "") + " · material <b>" + f(mat) + " m</b> · costura <b>" + f(cos) + " m</b>";
           if (mSaf > 0) html += " (seguridad " + f(mSaf) + " m)";
           if (nOpen) html += " · " + nOpen + " bolsillo(s)";
           if (nGap) html += " · " + nGap + " hueco(s)";
@@ -4193,6 +4217,7 @@
   function alasUnif() { return state.volAlas || { sup: true, inf: true, izq: true, der: true }; }
 
   function recompute() {
+    if (typeof sincBotonFigura3D === "function") sincBotonFigura3D();
     if (state.docMode === "preliminar") recomputePrelim();
     else if (state.docMode === "formal" && state.prodMode === "compuesto") recomputeCompuesto();
     else recomputeUniforme();
@@ -4303,9 +4328,12 @@
     try { _v3d.renderer.dispose(); } catch (e) {}
     _v3d.overlay.remove(); _v3d = null;
   }
-  async function abrirVol3D() {
-    const A = num("f_ancho", null), L = num("f_largo", null), H = alturaUnif();
-    if (!(A > 0) || !(L > 0) || !(H > 0)) return alert("Define largo, ancho y alto para ver el 3D.");
+  async function abrirVol3D(fig) {
+    let A, L, H;
+    if (fig && fig.tipo === "piramide") { if (fig.lado) { const Dc = fig.lado / Math.sin(Math.PI / Math.max(3, fig.n || 4)); A = Dc; L = Dc; } else { A = fig.A; L = fig.L; } H = fig.h; }
+    else if (fig && fig.tipo === "cilindro") { A = fig.D; L = fig.D; H = fig.h; }
+    else { fig = null; A = num("f_ancho", null); L = num("f_largo", null); H = alturaUnif(); }
+    if (!(A > 0) || !(L > 0) || !(H > 0)) return alert("Define las dimensiones para ver el 3D.");
     try {
       await ensureLib("THREE", [
         "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
@@ -4337,16 +4365,45 @@
     // Aspecto de producto: caras sombreadas tipo lona (no wireframe) con luz suave direccional.
     scene.add(new T.AmbientLight(0xffffff, 0.72));
     const luz = new T.DirectionalLight(0xffffff, 0.55); luz.position.set(diag, diag * 1.4, diag * 0.7); scene.add(luz);
-    // Tapa + solo las PAREDES (alas) presentes; los lados sin ala quedan abiertos.
-    const alas3 = alasUnif(), va3 = (k) => alas3[k] !== false;
+    const alas3 = alasUnif(), va3 = (k) => !fig && alas3[k] !== false;
     const matLona = new T.MeshLambertMaterial({ color: 0xd9d2c2, transparent: true, opacity: 0.94, side: T.DoubleSide });
     const matBorde = new T.LineBasicMaterial({ color: 0x555048 });
+    const matFus = new T.LineBasicMaterial({ color: 0xd23b2e, linewidth: 2 });
+    // ----- Figuras generadas: pirámide (4 caras al vértice) o cilindro (manto + tapas presentes) -----
+    if (fig && fig.tipo === "piramide") {
+      const ap = new T.Vector3(0, H, 0);
+      let baseV = [];
+      if (fig.lado) { // base poligonal regular de n lados
+        const nC = Math.max(3, fig.n || 4), R = fig.lado / (2 * Math.sin(Math.PI / nC));
+        for (let i = 0; i < nC; i++) { const t = 2 * Math.PI * i / nC - Math.PI / 2; baseV.push(new T.Vector3(R * Math.cos(t), 0, R * Math.sin(t))); }
+      } else { // base rectangular (4 caras, largo ≠ ancho permitido)
+        baseV = [new T.Vector3(-A / 2, 0, -L / 2), new T.Vector3(A / 2, 0, -L / 2), new T.Vector3(A / 2, 0, L / 2), new T.Vector3(-A / 2, 0, L / 2)];
+      }
+      baseV.forEach((b, i) => {
+        const b2 = baseV[(i + 1) % baseV.length];
+        const g = new T.BufferGeometry().setFromPoints([b, b2, ap]);
+        g.setIndex([0, 1, 2]); g.computeVertexNormals();
+        grp.add(new T.Mesh(g, matLona));
+        grp.add(new T.Line(new T.BufferGeometry().setFromPoints([b, ap]), matFus)); // aristas al vértice = fusiones
+        grp.add(new T.Line(new T.BufferGeometry().setFromPoints([b, b2]), matBorde));
+      });
+      const lF = label("fusión de caras"); lF.position.set(A / 2 * 0.7 + diag * 0.06, H * 0.6, L / 2 * 0.7); lF.material.color = new T.Color(0xd23b2e); grp.add(lF);
+    } else if (fig && fig.tipo === "cilindro") {
+      const R = fig.D / 2;
+      const manto = new T.Mesh(new T.CylinderGeometry(R, R, H, 48, 1, true), matLona);
+      manto.position.y = H / 2; grp.add(manto);
+      const aro = (yy) => { const pts = []; for (let i = 0; i <= 48; i++) { const t = 2 * Math.PI * i / 48; pts.push(new T.Vector3(R * Math.cos(t), yy, R * Math.sin(t))); } grp.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), matBorde)); };
+      aro(0); aro(H);
+      if (fig.tapaSup) { const c = new T.Mesh(new T.CircleGeometry(R, 48), matLona); c.rotation.x = -Math.PI / 2; c.position.y = H; grp.add(c); }
+      if (fig.tapaInf) { const c = new T.Mesh(new T.CircleGeometry(R, 48), matLona); c.rotation.x = -Math.PI / 2; c.position.y = 0.001; grp.add(c); }
+      grp.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(R, 0, 0), new T.Vector3(R, H, 0)]), matFus)); // unión del manto
+    }
     const panel = (w, h, px2, py2, pz2, rx, ry) => {
       const g = new T.PlaneGeometry(w, h);
       const m = new T.Mesh(g, matLona); m.position.set(px2, py2, pz2); m.rotation.x = rx || 0; m.rotation.y = ry || 0; grp.add(m);
       const e = new T.LineSegments(new T.EdgesGeometry(g), matBorde); e.position.copy(m.position); e.rotation.copy(m.rotation); grp.add(e);
     };
-    panel(A, L, 0, H, 0, -Math.PI / 2, 0);                       // tapa (arriba)
+    if (!fig) panel(A, L, 0, H, 0, -Math.PI / 2, 0);             // tapa (arriba)
     if (va3("sup")) panel(A, H, 0, H / 2, -L / 2, 0, 0);          // pared del lado superior del plano
     if (va3("inf")) panel(A, H, 0, H / 2, L / 2, 0, 0);
     if (va3("izq")) panel(L, H, -A / 2, H / 2, 0, 0, Math.PI / 2);
@@ -4362,6 +4419,7 @@
     scene.add(grid);
     // Ojetillos según el diseño actual: rim inferior (externo, por defecto) o perímetro de la tapa.
     try {
+      if (fig) throw 0; // las figuras generadas no proyectan ojetillos del uniforme
       const skOj = window.SketchCIBSA.construirSketch(Object.assign({ ancho: A, largo: L, ventanas: [], cortes: [] }, ojSpecUnif()));
       const rimY = (ojEnUnif() === "tapa") ? H : 0.02 * H;
       const rOj = Math.max(0.02, diag * 0.006);
@@ -4380,8 +4438,10 @@
       const sc = diag * 0.34; sp.scale.set(sc, sc / 4, 1); return sp;
     };
     // Rótulos de caras: qué es cada parte (claridad para el cliente).
-    const lTapa = label("TAPA " + f(L) + " × " + f(A) + " m"); lTapa.position.set(0, H + diag * 0.05, 0); grp.add(lTapa);
-    { const alas4 = alasUnif();
+    if (!fig) { const lTapa = label("TAPA " + f(L) + " × " + f(A) + " m"); lTapa.position.set(0, H + diag * 0.05, 0); grp.add(lTapa); }
+    if (fig && fig.tipo === "piramide") { const lP = label(fig.lado ? ("PIRÁMIDE " + fig.n + " caras · lado " + f(fig.lado) + " × h " + f(fig.h) + " m") : ("PIRÁMIDE " + f(fig.L) + " × " + f(fig.A) + " × h " + f(fig.h) + " m")); lP.position.set(0, H + diag * 0.06, 0); grp.add(lP); }
+    if (fig && fig.tipo === "cilindro") { const lC = label("CILINDRO Ø" + f(fig.D) + " × " + f(fig.h) + " m"); lC.position.set(0, H + diag * 0.06, 0); grp.add(lC); }
+    if (!fig) { const alas4 = alasUnif();
       const pos = (alas4.inf !== false) ? [0, H * 0.5, L / 2 + diag * 0.04] : (alas4.sup !== false) ? [0, H * 0.5, -L / 2 - diag * 0.04] : (alas4.der !== false) ? [A / 2 + diag * 0.04, H * 0.5, 0] : (alas4.izq !== false) ? [-A / 2 - diag * 0.04, H * 0.5, 0] : null;
       if (pos) { const lAla = label("ALA · alto " + f(H) + " m"); lAla.position.set(pos[0], pos[1], pos[2]); grp.add(lAla); } }
     const lFus = label("fusión de esquinas"); lFus.position.set(A / 2 + diag * 0.09, H * 0.6, L / 2 * 0.6); lFus.material.color = new T.Color(0xd23b2e); grp.add(lFus);
@@ -4415,6 +4475,7 @@
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", onResize);
     onResize(); colocar();
+    if (fig) cap3d.style.display = "none"; // en figuras, usa "Descargar imagen" (el plano del uniforme no aplica)
     cap3d.addEventListener("click", (e) => {
       e.stopPropagation();
       renderer.render(scene, cam);
@@ -4662,7 +4723,7 @@
     const mk = (leg, ang, fade) => {
       const c = nuevaCorte(); c.tipo = "corte"; c.legend = leg;
       c.largo = f(hyp); c.padIzq = f(base / 2); c.padSup = "0"; c.pivX = "0";
-      c.angulo = String(Math.round(ang * 10) / 10); c.fade = fade; c.fadeKill = true; c._colap = true;
+      c.angulo = String(Math.round(ang * 100000) / 100000); c.fade = fade; c.fadeKill = true; c._colap = true;
       return c;
     };
     return [
@@ -4681,41 +4742,68 @@
     };
     state.piezas.push(mkCara("Pirámide — cara frontal/trasera (△ base " + f(A) + " × alt. " + f(s1) + " m)", A, s1));
     state.piezas.push(mkCara("Pirámide — cara lateral (△ base " + f(L) + " × alt. " + f(s2) + " m)", L, s2));
+    state.figura3D = { tipo: "piramide", n: 4, L: L, A: A, h: h };
   }
-  function crearFiguraCilindro(D, h, conTapa) {
+  // Pirámide de base POLIGONAL REGULAR (n caras, lado s): las n caras son triángulos iguales de
+  // base s y altura inclinada √(h² + apotema²). Una sola pieza con cantidad n.
+  function crearFiguraPiramideN(n, s, h) {
+    const f = window.CalcCIBSA.fmtNum;
+    const apotema = s / (2 * Math.tan(Math.PI / n));
+    const sl = Math.hypot(h, apotema);
+    const pz = nuevaPieza();
+    pz.etiqueta = "Pirámide " + n + " caras — cara (△ base " + f(s) + " × alt. " + f(sl) + " m)";
+    pz.cantidad = String(n); pz.largo = f(sl); pz.ancho = f(s); pz.ojetillos = "0";
+    pz.cortes = cortesTrianguloInscrito(s, sl);
+    state.piezas.push(pz);
+    state.figura3D = { tipo: "piramide", n: n, lado: s, h: h };
+  }
+  function crearFiguraCilindro(D, h, tapaSup, tapaInf) {
     const f = window.CalcCIBSA.fmtNum;
     const manto = nuevaPieza();
     manto.etiqueta = "Cilindro — manto Ø" + f(D) + " m (desarrollo π·D)";
     manto.largo = f(h); manto.ancho = f(Math.PI * D); manto.cantidad = "1"; manto.ojetillos = "0";
     state.piezas.push(manto);
-    if (conTapa) {
+    const nTapas = (tapaSup ? 1 : 0) + (tapaInf ? 1 : 0);
+    if (nTapas > 0) {
       const tapa = nuevaPieza();
-      tapa.etiqueta = "Cilindro — tapa circular Ø" + f(D) + " m (círculo inscrito)";
-      tapa.largo = f(D); tapa.ancho = f(D); tapa.cantidad = "1"; tapa.ojetillos = "0";
+      tapa.etiqueta = "Cilindro — tapa circular Ø" + f(D) + " m (círculo inscrito" + (nTapas === 2 ? " · superior e inferior" : (tapaSup ? " · superior" : " · inferior")) + ")";
+      tapa.largo = f(D); tapa.ancho = f(D); tapa.cantidad = String(nTapas); tapa.ojetillos = "0";
       const c = nuevaCorte(); c.tipo = "calado"; c.forma = "circ"; c.legend = "Recorte del círculo Ø" + f(D) + " m";
       c.largo = f(D); c.ancho = f(D); c.padSup = "0"; c.padInf = "0"; c.padIzq = "0"; c.padDer = "0"; c._colap = true;
       tapa.cortes = [c];
       state.piezas.push(tapa);
     }
+    state.figura3D = { tipo: "cilindro", D: D, h: h, tapaSup: !!tapaSup, tapaInf: !!tapaInf };
   }
   function abrirGeneradorFigura() {
     const ov = document.createElement("div"); ov.className = "calc-modal";
     const box = document.createElement("div"); box.className = "calc-box";
     box.innerHTML = '<p class="section" style="margin:0 0 10px">Generador de figuras</p>' +
       '<label class="field"><span>Figura</span><select id="figSel"><option value="piramide">Pirámide (base rectangular)</option><option value="cilindro">Cilindro</option></select></label>' +
-      '<div id="figPir"><div class="pieza-grid">' +
+      '<div id="figPir">' +
+      '<label class="field"><span>N° de caras (mín. 3)</span><input id="figN" type="text" inputmode="numeric" value="4" /></label>' +
+      '<div class="pieza-grid" id="figRectDims">' +
       '<label class="field"><span>Base — largo (m)</span><input id="figL" type="text" inputmode="decimal" placeholder="16" /></label>' +
       '<label class="field"><span>Base — ancho (m)</span><input id="figA" type="text" inputmode="decimal" placeholder="16" /></label></div>' +
+      '<label class="field hidden" id="figLadoWrap"><span>Lado de la base (polígono regular, m)</span><input id="figLado" type="text" inputmode="decimal" placeholder="4" /></label>' +
       '<label class="field"><span>Alto al vértice (m)</span><input id="figH" type="text" inputmode="decimal" placeholder="2" /></label></div>' +
       '<div id="figCil" class="hidden"><div class="pieza-grid">' +
       '<label class="field"><span>Diámetro (m)</span><input id="figD" type="text" inputmode="decimal" placeholder="1.2" /></label>' +
       '<label class="field"><span>Alto / largo (m)</span><input id="figHC" type="text" inputmode="decimal" placeholder="2" /></label></div>' +
-      '<label class="chk"><input id="figTapa" type="checkbox" checked /> <span>Incluir tapa circular</span></label></div>' +
+      '<label class="chk"><input id="figTapaSup" type="checkbox" checked /> <span>Tapa superior</span></label>' +
+      '<label class="chk"><input id="figTapaInf" type="checkbox" checked /> <span>Tapa inferior</span></label></div>' +
       '<p class="muted small">Cada cara se inscribe en su rectángulo de tela y se crea como pieza del producto compuesto: se cotiza con el motor de paños y fusiones de siempre, y su plano trae la sección marcada para el taller.</p>' +
       '<div class="calc-actions"><button id="figCrear" class="btn-accent" type="button">Crear piezas</button><button id="figCerrar" class="btn-outline" type="button">Cancelar</button></div>';
     ov.appendChild(box); document.body.appendChild(ov);
     const q = (id) => box.querySelector("#" + id);
-    ["figL", "figA", "figH", "figD", "figHC"].forEach((id) => agregarCalc(q(id)));
+    ["figL", "figA", "figH", "figD", "figHC", "figLado"].forEach((id) => agregarCalc(q(id)));
+    // 4 caras = base rectangular (largo/ancho); cualquier otro n = polígono regular (lado)
+    const sincCaras = () => {
+      const n = parseInt(window.CalcCIBSA.evalExpr(q("figN").value), 10) || 4;
+      q("figRectDims").classList.toggle("hidden", n !== 4);
+      q("figLadoWrap").classList.toggle("hidden", n === 4);
+    };
+    q("figN").addEventListener("input", sincCaras); sincCaras();
     q("figSel").addEventListener("change", () => { const p = q("figSel").value === "piramide"; q("figPir").classList.toggle("hidden", !p); q("figCil").classList.toggle("hidden", p); });
     const cerrar = () => ov.remove();
     q("figCerrar").addEventListener("click", cerrar);
@@ -4723,13 +4811,22 @@
     q("figCrear").addEventListener("click", () => {
       const ev = window.CalcCIBSA.evalExpr;
       if (q("figSel").value === "piramide") {
-        const L = ev(q("figL").value), A = ev(q("figA").value), h = ev(q("figH").value);
-        if (!(L > 0) || !(A > 0) || !(h > 0)) return alert("Completa largo, ancho y alto de la pirámide.");
-        crearFiguraPiramide(L, A, h);
+        const n = Math.round(ev(q("figN").value) || 4), h = ev(q("figH").value);
+        if (!(n >= 3)) return alert("Una pirámide necesita al menos 3 caras.");
+        if (!(h > 0)) return alert("Completa el alto al vértice.");
+        if (n === 4) {
+          const L = ev(q("figL").value), A = ev(q("figA").value);
+          if (!(L > 0) || !(A > 0)) return alert("Completa largo y ancho de la base.");
+          crearFiguraPiramide(L, A, h);
+        } else {
+          const s2 = ev(q("figLado").value);
+          if (!(s2 > 0)) return alert("Completa el lado de la base del polígono.");
+          crearFiguraPiramideN(n, s2, h);
+        }
       } else {
         const D = ev(q("figD").value), h = ev(q("figHC").value);
         if (!(D > 0) || !(h > 0)) return alert("Completa diámetro y alto del cilindro.");
-        crearFiguraCilindro(D, h, q("figTapa").checked);
+        crearFiguraCilindro(D, h, q("figTapaSup").checked, q("figTapaInf").checked);
       }
       // La figura vive como producto COMPUESTO formal: cambia los modos si hace falta.
       if (state.docMode === "preliminar") { const rf = document.querySelector('input[name="docmode"][value="formal"]'); if (rf) rf.checked = true; aplicarModo("formal"); }
@@ -4740,6 +4837,8 @@
     });
   }
   { const b = $("btnGenFigura"); if (b) b.addEventListener("click", abrirGeneradorFigura); }
+  { const b = $("btnVerFigura3D"); if (b) b.addEventListener("click", () => { if (state.figura3D) abrirVol3D(state.figura3D); }); }
+  function sincBotonFigura3D() { const b = $("btnVerFigura3D"); if (b) b.classList.toggle("hidden", !(state.figura3D && state.prodMode === "compuesto")); }
   function nuevaPieza(base) {
     piezaSeq += 1;
     const defBordes = () => ({
@@ -6099,6 +6198,7 @@
     $("f_usaAlto").checked = false; $("f_altura").value = ""; $("wAltura").classList.add("hidden");
     { const c = $("f_ojVolExt"); if (c) c.checked = true; } { const w = $("wOjVol"); if (w) w.classList.add("hidden"); }
     state.volAlas = { sup: true, inf: true, izq: true, der: true }; sincAlasUI(); { const w = $("wAlas"); if (w) w.classList.add("hidden"); }
+    state.figura3D = null;
     state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
     state.cortesUnif = []; state.backCortesUnif = []; state.backComplementosUnif = []; state.aletasUnif = []; state.backAletasUnif = []; state.strapsUnif = []; state.cintasUnif = []; state.factorUnif = "1";
     { const t = $("f_trasUnif"); if (t) t.checked = false; }
