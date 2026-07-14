@@ -387,22 +387,24 @@
             const ux = (b.x - a.x) / Ls, uy = (b.y - a.y) / Ls, inx = -uy, iny = ux;
             const ins = parseFloat(c.ojAristaInset) || 0, sgn = (c.ojAristaLado === "A") ? 1 : -1;
             const supr = new Set(Array.isArray(c.ojAristaSupr) ? c.ojAristaSupr : []);
-            // Tramo VIVO [T0,T1] de la línea: recortado al paño base y al lado que queda de los
-            // demás cortes que seccionan, para que los ojetillos partan EN los vértices reales
-            // (p. ej. los vértices de un triángulo hecho con cortes). El borde compartido (f=0) vive.
+            // La FILA real de ojetillos es la línea del corte DESPLAZADA el inset hacia el lado vivo.
+            // Se recorta ESA línea (no la del corte) al paño y a los demás cortes: así el 1er y último
+            // ojetillo quedan pegados a cada vértice aunque el inset > 0 (en el rincón, el punto
+            // desplazado se corre a lo largo de la línea justo hasta donde sigue habiendo tela).
+            const aO = { x: a.x + inx * ins * sgn, y: a.y + iny * ins * sgn };
             let T0 = 0, T1 = Ls;
-            const clipR = clipSeg(a, b, 0, ancho, 0, largo);
+            const clipR = clipSeg(aO, { x: aO.x + ux * Ls, y: aO.y + uy * Ls }, 0, ancho, 0, largo);
             if (!clipR) { T1 = T0 - 1; }
             else {
-              T0 = (clipR.a.x - a.x) * ux + (clipR.a.y - a.y) * uy;
-              T1 = (clipR.b.x - a.x) * ux + (clipR.b.y - a.y) * uy;
+              T0 = (clipR.a.x - aO.x) * ux + (clipR.a.y - aO.y) * uy;
+              T1 = (clipR.b.x - aO.x) * ux + (clipR.b.y - aO.y) * uy;
             }
             (todos || []).forEach((cc) => {
               if (!cc || cc === c || T1 <= T0) return;
               if (cc.tipo !== "corte" || !(cc.w > 0) || !(cc.fade === "A" || cc.fade === "B")) return;
               const ln = lineaDeCorte(cc);
               const nx2 = -(ln.b.y - ln.a.y), ny2 = (ln.b.x - ln.a.x);
-              const f = (t) => nx2 * (a.x + ux * t - ln.a.x) + ny2 * (a.y + uy * t - ln.a.y);
+              const f = (t) => nx2 * (aO.x + ux * t - ln.a.x) + ny2 * (aO.y + uy * t - ln.a.y);
               const keep = (v) => (cc.fade === "B") ? (v >= -1e-9) : (v <= 1e-9); // complemento del fade (borde incluido)
               const f0 = f(T0), f1 = f(T1);
               if (keep(f0) && keep(f1)) return;
@@ -411,10 +413,10 @@
               if (keep(f0)) T1 = tX; else T0 = tX;
             });
             const posA = (T1 > T0 + 1e-9) ? posicionesArista(T1 - T0, dd, false).map((t) => T0 + t) : [];
-            posA.forEach((t, i) => { if (supr.has(i)) return; aristaOje.push({ x: a.x + ux * t + inx * ins * sgn, y: a.y + uy * t + iny * ins * sgn }); });
+            posA.forEach((t, i) => { if (supr.has(i)) return; aristaOje.push({ x: aO.x + ux * t, y: aO.y + uy * t }); });
             // Marcadores de numeración (1er/último) — índices 0..n-1 sobre la distribución COMPLETA de la
             // arista del corte (los que usa "Suprimir posiciones" del corte). Se muestran con NumOj.
-            const mkN = (t, idx) => ({ x: a.x + ux * t + inx * ins * sgn, y: a.y + uy * t + iny * ins * sgn, text: String(idx), dx: ux, dy: uy, nx: inx * sgn, ny: iny * sgn });
+            const mkN = (t, idx) => ({ x: aO.x + ux * t, y: aO.y + uy * t, text: String(idx), dx: ux, dy: uy, nx: inx * sgn, ny: iny * sgn });
             if (posA.length >= 1) { aristaNum.push(mkN(posA[0], 0)); if (posA.length > 1) aristaNum.push(mkN(posA[posA.length - 1], posA.length - 1)); }
           }
         }
