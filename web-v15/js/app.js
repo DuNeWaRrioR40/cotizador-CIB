@@ -4381,6 +4381,42 @@
       } else { // base rectangular (4 caras, largo ≠ ancho permitido)
         baseV = [new T.Vector3(-A / 2, 0, -L / 2), new T.Vector3(A / 2, 0, -L / 2), new T.Vector3(A / 2, 0, L / 2), new T.Vector3(-A / 2, 0, L / 2)];
       }
+      // Accesorios REALES de la pieza de cada cara (ojetillos/straps), mapeados del plano al 3D.
+      const evF = window.CalcCIBSA.evalExpr;
+      const rAcc = Math.max(0.02, diag * 0.006);
+      const geoOj = new T.SphereGeometry(rAcc, 10, 10), matOj = new T.MeshBasicMaterial({ color: 0x111111 });
+      const matStrap = new T.MeshBasicMaterial({ color: 0xd23b2e, transparent: true, opacity: 0.85, side: T.DoubleSide });
+      const accesoriosDeCara = (pzId, p1, p2, apex) => {
+        try {
+          if (!pzId || !window.SketchCIBSA) return;
+          const pzF2 = (state.piezas || []).find((p) => p.id === pzId); if (!pzF2) return;
+          const base = evF(pzF2.ancho), sl = evF(pzF2.largo); if (!(base > 0) || !(sl > 0)) return;
+          const sk2 = window.SketchCIBSA.construirSketch(sketchPieza(pzF2));
+          // Triángulo plano: A2 = base-izq (0, sl), B2 = base-der (base, sl), C2 = vértice (base/2, 0)
+          // → baricéntricas → combinación de p1/p2/apex en 3D.
+          const to3D = (pt) => {
+            const x = pt.x, y = pt.y;
+            const det = (0 - base / 2) * (sl - 0) - (base - base / 2) * (sl - 0); // (Ax−Cx)(By−Cy)−(Bx−Cx)(Ay−Cy)
+            const a = ((x - base / 2) * (sl - 0) - (base - base / 2) * (y - 0)) / det;
+            const b3 = ((0 - base / 2) * (y - 0) - (x - base / 2) * (sl - 0)) / det;
+            const c3 = 1 - a - b3;
+            if (a < -0.02 || b3 < -0.02 || c3 < -0.02) return null; // fuera del triángulo (esquinas de merma)
+            return new T.Vector3(
+              a * p1.x + b3 * p2.x + c3 * apex.x,
+              a * p1.y + b3 * p2.y + c3 * apex.y + 0.005,
+              a * p1.z + b3 * p2.z + c3 * apex.z);
+          };
+          (sk2.ojetillos || []).forEach((pt) => { const v = to3D(pt); if (v) { const m = new T.Mesh(geoOj, matOj); m.position.copy(v); grp.add(m); } });
+          (sk2.straps || []).forEach((st) => {
+            const vs = (st.corners || []).map(to3D);
+            if (vs.length === 4 && vs.every(Boolean)) {
+              const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]);
+              g2.computeVertexNormals();
+              grp.add(new T.Mesh(g2, matStrap));
+            }
+          });
+        } catch (e) { /* accesorios son decorativos: nunca rompen el visor */ }
+      };
       baseV.forEach((b, i) => {
         const b2 = baseV[(i + 1) % baseV.length];
         const g = new T.BufferGeometry().setFromPoints([b, b2, ap]);
@@ -4388,6 +4424,7 @@
         grp.add(new T.Mesh(g, matLona));
         grp.add(new T.Line(new T.BufferGeometry().setFromPoints([b, ap]), matFus)); // aristas al vértice = fusiones
         grp.add(new T.Line(new T.BufferGeometry().setFromPoints([b, b2]), matBorde));
+        if (fig.caras) accesoriosDeCara(fig.caras[i], b, b2, ap);
       });
     } else if (fig && fig.tipo === "cilindro") {
       const R = fig.D / 2;
@@ -4398,6 +4435,22 @@
       if (fig.tapaSup) { const c = new T.Mesh(new T.CircleGeometry(R, 48), matLona); c.rotation.x = -Math.PI / 2; c.position.y = H; grp.add(c); }
       if (fig.tapaInf) { const c = new T.Mesh(new T.CircleGeometry(R, 48), matLona); c.rotation.x = -Math.PI / 2; c.position.y = 0.001; grp.add(c); }
       grp.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(R, 0, 0), new T.Vector3(R, H, 0)]), matFus)); // unión del manto
+      // Accesorios reales del MANTO (ojetillos/straps) envueltos sobre el cilindro: u → ángulo, v → altura.
+      try {
+        const pzM = fig.mantoId && (state.piezas || []).find((p) => p.id === fig.mantoId);
+        if (pzM && window.SketchCIBSA) {
+          const evF = window.CalcCIBSA.evalExpr;
+          const skM = window.SketchCIBSA.construirSketch(sketchPieza(pzM));
+          const rAcc = Math.max(0.02, diag * 0.006);
+          const geoOj = new T.SphereGeometry(rAcc, 10, 10), matOj = new T.MeshBasicMaterial({ color: 0x111111 });
+          const wrap = (pt) => { const th = pt.x / R; return new T.Vector3((R + 0.005) * Math.cos(th), Math.max(0, Math.min(H, H - pt.y)), (R + 0.005) * Math.sin(th)); };
+          (skM.ojetillos || []).forEach((pt) => { const m = new T.Mesh(geoOj, matOj); m.position.copy(wrap(pt)); grp.add(m); });
+          (skM.straps || []).forEach((st) => {
+            const vs = (st.corners || []).map(wrap);
+            if (vs.length === 4) { const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]); g2.computeVertexNormals(); grp.add(new T.Mesh(g2, new T.MeshBasicMaterial({ color: 0xd23b2e, transparent: true, opacity: 0.85, side: T.DoubleSide }))); }
+          });
+        }
+      } catch (e) { /* decorativo */ }
     }
     const panel = (w, h, px2, py2, pz2, rx, ry) => {
       const g = new T.PlaneGeometry(w, h);
@@ -4746,11 +4799,13 @@
       return pz;
     };
     // Una pieza POR CARA (editables por separado: accesorios, ojetillos, etiquetas).
-    state.piezas.push(mkCara("Pirámide — cara frontal (△ base " + f(A) + " × alt. " + f(s1) + " m)", A, s1));
-    state.piezas.push(mkCara("Pirámide — cara trasera (△ base " + f(A) + " × alt. " + f(s1) + " m)", A, s1));
-    state.piezas.push(mkCara("Pirámide — cara lateral izquierda (△ base " + f(L) + " × alt. " + f(s2) + " m)", L, s2));
-    state.piezas.push(mkCara("Pirámide — cara lateral derecha (△ base " + f(L) + " × alt. " + f(s2) + " m)", L, s2));
-    state.figura3D = { tipo: "piramide", n: 4, L: L, A: A, h: h };
+    const pzF = mkCara("Pirámide — cara frontal (△ base " + f(A) + " × alt. " + f(s1) + " m)", A, s1);
+    const pzT = mkCara("Pirámide — cara trasera (△ base " + f(A) + " × alt. " + f(s1) + " m)", A, s1);
+    const pzI = mkCara("Pirámide — cara lateral izquierda (△ base " + f(L) + " × alt. " + f(s2) + " m)", L, s2);
+    const pzD = mkCara("Pirámide — cara lateral derecha (△ base " + f(L) + " × alt. " + f(s2) + " m)", L, s2);
+    state.piezas.push(pzF, pzT, pzI, pzD);
+    // caras[] en el ORDEN del visor 3D: [trasera(-z), der(+x), frontal(+z), izq(-x)]
+    state.figura3D = { tipo: "piramide", n: 4, L: L, A: A, h: h, caras: [pzT.id, pzD.id, pzF.id, pzI.id] };
   }
   // Pirámide de base POLIGONAL REGULAR (n caras, lado s): las n caras son triángulos iguales de
   // base s y altura inclinada √(h² + apotema²). Una sola pieza con cantidad n.
@@ -4758,15 +4813,16 @@
     const f = window.CalcCIBSA.fmtNum;
     const apotema = s / (2 * Math.tan(Math.PI / n));
     const sl = Math.hypot(h, apotema);
+    const ids = [];
     for (let i = 1; i <= n; i++) {
       const pz = nuevaPieza();
       pz.etiqueta = "Pirámide — cara " + i + "/" + n + " (△ base " + f(s) + " × alt. " + f(sl) + " m)";
       pz.cantidad = "1"; pz.largo = f(sl); pz.ancho = f(s); pz.ojetillos = "0";
       pz.cortes = cortesTrianguloInscrito(s, sl);
       pz._colap = true;
-      state.piezas.push(pz);
+      state.piezas.push(pz); ids.push(pz.id);
     }
-    state.figura3D = { tipo: "piramide", n: n, lado: s, h: h };
+    state.figura3D = { tipo: "piramide", n: n, lado: s, h: h, caras: ids };
   }
   function crearFiguraCilindro(D, h, tapaSup, tapaInf) {
     const f = window.CalcCIBSA.fmtNum;
@@ -4784,7 +4840,7 @@
       tapa.cortes = [c];
       state.piezas.push(tapa);
     }
-    state.figura3D = { tipo: "cilindro", D: D, h: h, tapaSup: !!tapaSup, tapaInf: !!tapaInf };
+    state.figura3D = { tipo: "cilindro", D: D, h: h, tapaSup: !!tapaSup, tapaInf: !!tapaInf, mantoId: manto.id };
   }
   function abrirGeneradorFigura() {
     const ov = document.createElement("div"); ov.className = "calc-modal";
