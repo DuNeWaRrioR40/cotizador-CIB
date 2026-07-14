@@ -349,7 +349,19 @@
       mkEdge("izq", p00, p01, mZ), mkEdge("der", p10, p11, mD),
     ] };
   }
-  function procesarCorte(c, ancho, largo) {
+  // Línea (a,b) de un corte-línea en coords del paño (misma rotación/pivote que procesarCorte).
+  function lineaDeCorte(cc) {
+    let a2 = { x: cc.x, y: cc.y }, b2 = { x: cc.x + cc.w, y: cc.y };
+    const ang2 = (parseFloat(cc.angulo) || 0) * Math.PI / 180;
+    if (Math.abs(ang2) > 1e-6) {
+      const Px2 = cc.x + (cc.pivX != null ? cc.pivX : 0) * cc.w, Py2 = cc.y;
+      const co = Math.cos(ang2), si = Math.sin(ang2);
+      const rot = (p) => ({ x: Px2 + (p.x - Px2) * co - (p.y - Py2) * si, y: Py2 + (p.x - Px2) * si + (p.y - Py2) * co });
+      a2 = rot(a2); b2 = rot(b2);
+    }
+    return { a: a2, b: b2 };
+  }
+  function procesarCorte(c, ancho, largo, todos) {
       const x = c.x, y = c.y, w = c.w, h = c.h;
       // --- Corte (línea recta): un solo segmento de largo w (horizontal), rotado por ángulo/pivote. ---
       if (c.tipo === "corte" || c.tipo === "guia") {
@@ -375,7 +387,30 @@
             const ux = (b.x - a.x) / Ls, uy = (b.y - a.y) / Ls, inx = -uy, iny = ux;
             const ins = parseFloat(c.ojAristaInset) || 0, sgn = (c.ojAristaLado === "A") ? 1 : -1;
             const supr = new Set(Array.isArray(c.ojAristaSupr) ? c.ojAristaSupr : []);
-            const posA = posicionesArista(Ls, dd, false);
+            // Tramo VIVO [T0,T1] de la línea: recortado al paño base y al lado que queda de los
+            // demás cortes que seccionan, para que los ojetillos partan EN los vértices reales
+            // (p. ej. los vértices de un triángulo hecho con cortes). El borde compartido (f=0) vive.
+            let T0 = 0, T1 = Ls;
+            const clipR = clipSeg(a, b, 0, ancho, 0, largo);
+            if (!clipR) { T1 = T0 - 1; }
+            else {
+              T0 = (clipR.a.x - a.x) * ux + (clipR.a.y - a.y) * uy;
+              T1 = (clipR.b.x - a.x) * ux + (clipR.b.y - a.y) * uy;
+            }
+            (todos || []).forEach((cc) => {
+              if (!cc || cc === c || T1 <= T0) return;
+              if (cc.tipo !== "corte" || !(cc.w > 0) || !(cc.fade === "A" || cc.fade === "B")) return;
+              const ln = lineaDeCorte(cc);
+              const nx2 = -(ln.b.y - ln.a.y), ny2 = (ln.b.x - ln.a.x);
+              const f = (t) => nx2 * (a.x + ux * t - ln.a.x) + ny2 * (a.y + uy * t - ln.a.y);
+              const keep = (v) => (cc.fade === "B") ? (v >= -1e-9) : (v <= 1e-9); // complemento del fade (borde incluido)
+              const f0 = f(T0), f1 = f(T1);
+              if (keep(f0) && keep(f1)) return;
+              if (!keep(f0) && !keep(f1)) { T1 = T0 - 1; return; }
+              const tX = T0 + (T1 - T0) * (f0 / (f0 - f1));
+              if (keep(f0)) T1 = tX; else T0 = tX;
+            });
+            const posA = (T1 > T0 + 1e-9) ? posicionesArista(T1 - T0, dd, false).map((t) => T0 + t) : [];
             posA.forEach((t, i) => { if (supr.has(i)) return; aristaOje.push({ x: a.x + ux * t + inx * ins * sgn, y: a.y + uy * t + iny * ins * sgn }); });
             // Marcadores de numeración (1er/último) — índices 0..n-1 sobre la distribución COMPLETA de la
             // arista del corte (los que usa "Suprimir posiciones" del corte). Se muestran con NumOj.
@@ -442,7 +477,7 @@
   // spec: { ancho, largo, ojTotal|ojetillosPos, ventanas, cortes, bolsillos, espejo, vista, extraCortes, extraVentanas }
   function construirSketch(spec) {
     const ancho = parseFloat(spec.ancho), largo = parseFloat(spec.largo);
-    let cortes = (spec.cortes || []).filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte" || c.tipo === "guia")).map((c) => procesarCorte(c, ancho, largo));
+    let cortes = (spec.cortes || []).filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte" || c.tipo === "guia")).map((c, _i, arr) => procesarCorte(c, ancho, largo, arr));
     let ojetillos = Array.isArray(spec.ojetillosPos) ? spec.ojetillosPos : ojetillosPerimetro(spec.ojTotal, ancho, largo);
     let ventanas = (spec.ventanas || []).filter((v) => v && v.w > 0 && v.h > 0).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, circ: !!v.circ, legend: v.legend || "", fusion: v.fusion || {}, rotulo: !!v.rotulo, id: (v.id != null ? v.id : null) }));
     let bolsillos = (spec.bolsillos || []).filter((b) => b && (b.arista === "sup" || b.arista === "inf" || b.arista === "izq" || b.arista === "der"));
@@ -467,7 +502,7 @@
     }
     // Elementos propios de la vista trasera (NO se espejan: ya van en coordenadas de la trasera).
     if (spec.extraCortes && spec.extraCortes.length) {
-      cortes = cortes.concat(spec.extraCortes.filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte" || c.tipo === "guia")).map((c) => procesarCorte(c, ancho, largo)));
+      cortes = cortes.concat(spec.extraCortes.filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte" || c.tipo === "guia")).map((c, _i, arr) => procesarCorte(c, ancho, largo, arr)));
     }
     if (spec.extraVentanas && spec.extraVentanas.length) {
       ventanas = ventanas.concat(spec.extraVentanas.filter((v) => v && v.w > 0 && v.h > 0).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, circ: !!v.circ, legend: v.legend || "", fusion: v.fusion || {} })));
@@ -479,14 +514,31 @@
     if (cortes.length) {
       const fades = cortes.map((c) => (c.fadePoly && c.fadePoly.length >= 3) ? c.fadePoly : null);
       const dentroRect = (p) => p.x >= -EPS && p.x <= ancho + EPS && p.y >= -EPS && p.y <= largo + EPS;
+      // ¿p está sobre la línea del corte cj? (distancia < 1e-6). Los puntos en el BORDE del fade
+      // (vértices compartidos entre cortes) pertenecen al lado que queda → no se eliminan.
+      const sobreLineaDe = (p, cj) => (cj.segments || []).some((sg) => {
+        const dx = sg.b.x - sg.a.x, dy = sg.b.y - sg.a.y, L2 = dx * dx + dy * dy;
+        if (!(L2 > 0)) return false;
+        let t = ((p.x - sg.a.x) * dx + (p.y - sg.a.y) * dy) / L2; t = Math.max(0, Math.min(1, t));
+        const qx = sg.a.x + dx * t - p.x, qy = sg.a.y + dy * t - p.y;
+        return (qx * qx + qy * qy) < 1e-12;
+      });
+      // Dedup: un mismo punto físico (p. ej. el vértice donde se encuentran dos cortes, o un
+      // ojetillo de corte que coincide con uno del perímetro) se instala UNA sola vez.
+      const vistos = new Set();
+      const kOj = (p) => Math.round(p.x * 1000) + "," + Math.round(p.y * 1000);
+      (ojetillos || []).forEach((p) => vistos.add(kOj(p)));
       cortes.forEach((c) => {
         if (!c.ojetillos || !c.ojetillos.length) return;
         c.ojetillos = c.ojetillos.filter((p) => {
           if (!dentroRect(p)) return false;
           for (let j = 0; j < fades.length; j++) {
             if (!fades[j]) continue;
-            if (puntoEnPoligono(p, fades[j])) return false;
+            if (puntoEnPoligono(p, fades[j]) && !sobreLineaDe(p, cortes[j])) return false;
           }
+          const k = kOj(p);
+          if (vistos.has(k)) return false;
+          vistos.add(k);
           return true;
         });
       });

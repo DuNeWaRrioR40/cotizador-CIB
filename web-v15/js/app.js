@@ -2490,6 +2490,15 @@
   }
   // Las fichas marcadas con _oculto se excluyen por completo (plano + costo + detalle).
   function visibles(list) { return (list || []).filter((x) => !x._oculto); }
+  // Ojetillos instalados en las aletas/faldones visibles (van cobrados dentro de la línea de cada aleta;
+  // aquí solo se cuentan para el encabezado del plano).
+  function ojEnAletasN(list) {
+    const ev = window.CalcCIBSA.evalExpr;
+    return visibles(list || []).reduce((s, a) => {
+      const al = ev(a.largo), aa = ev(a.ancho);
+      return s + ((al > 0 && aa > 0) ? aletaOjN(a, al, aa) : 0);
+    }, 0);
+  }
   function aletasTotal(list, cantidad, valorOj, factor) {
     return visibles(list).reduce((s, a) => { const r = calcAleta(a, cantidad, valorOj, factor); return s + (r ? r.subtotal : 0); }, 0);
   }
@@ -4417,13 +4426,51 @@
           });
         } catch (e) { /* accesorios son decorativos: nunca rompen el visor */ }
       };
+      // Cara 3D desde el CONTORNO REAL de su pieza (cortes "Eliminar" incluidos): una pirámide
+      // truncada por un corte paralelo a la base se arma trunca, con su calado arriba.
+      const caraRecortada = (pzId, p1, p2, apex) => {
+        try {
+          if (!pzId || !window.SketchCIBSA) return false;
+          const pzF2 = (state.piezas || []).find((p) => p.id === pzId); if (!pzF2) return false;
+          const base = evF(pzF2.ancho), sl = evF(pzF2.largo); if (!(base > 0) || !(sl > 0)) return false;
+          const sk2 = window.SketchCIBSA.construirSketch(sketchPieza(pzF2));
+          const poly = sk2.panoPoly; if (!poly || poly.length < 3) return false;
+          const det = (0 - base / 2) * sl - (base / 2) * sl;
+          const to3 = (pt) => {
+            const a = ((pt.x - base / 2) * sl - (base / 2) * pt.y) / det;
+            const b3 = ((0 - base / 2) * pt.y - (pt.x - base / 2) * sl) / det;
+            const c3 = 1 - a - b3;
+            if (a < -0.03 || b3 < -0.03 || c3 < -0.03) return null;
+            return new T.Vector3(a * p1.x + b3 * p2.x + c3 * apex.x, a * p1.y + b3 * p2.y + c3 * apex.y, a * p1.z + b3 * p2.z + c3 * apex.z);
+          };
+          const vs = poly.map(to3); if (!vs.every(Boolean)) return false;
+          // Malla en abanico (el contorno recortado por semiplanos es convexo)
+          const tris = [];
+          for (let j = 1; j < vs.length - 1; j++) tris.push(vs[0], vs[j], vs[j + 1]);
+          const g = new T.BufferGeometry().setFromPoints(tris); g.computeVertexNormals();
+          grp.add(new T.Mesh(g, matLona));
+          // Bordes clasificados: base → normal; aristas inclinadas (líneas al vértice) → fusión roja.
+          const sobre = (P, Q, R) => Math.abs((Q.x - P.x) * (R.y - P.y) - (Q.y - P.y) * (R.x - P.x)) < 1e-5 * (Math.hypot(Q.x - P.x, Q.y - P.y) || 1);
+          const A2 = { x: 0, y: sl }, B2 = { x: base, y: sl }, C2 = { x: base / 2, y: 0 };
+          for (let j = 0; j < poly.length; j++) {
+            const pa = poly[j], pb = poly[(j + 1) % poly.length];
+            if (Math.hypot(pb.x - pa.x, pb.y - pa.y) < 1e-9) continue;
+            const esFus = (sobre(C2, A2, pa) && sobre(C2, A2, pb)) || (sobre(C2, B2, pa) && sobre(C2, B2, pb));
+            grp.add(new T.Line(new T.BufferGeometry().setFromPoints([vs[j], vs[(j + 1) % vs.length]]), esFus ? matFus : matBorde));
+          }
+          return true;
+        } catch (e) { return false; }
+      };
       baseV.forEach((b, i) => {
         const b2 = baseV[(i + 1) % baseV.length];
-        const g = new T.BufferGeometry().setFromPoints([b, b2, ap]);
-        g.setIndex([0, 1, 2]); g.computeVertexNormals();
-        grp.add(new T.Mesh(g, matLona));
-        grp.add(new T.Line(new T.BufferGeometry().setFromPoints([b, ap]), matFus)); // aristas al vértice = fusiones
-        grp.add(new T.Line(new T.BufferGeometry().setFromPoints([b, b2]), matBorde));
+        const pzIdCara = fig.caras ? fig.caras[i] : null;
+        if (!caraRecortada(pzIdCara, b, b2, ap)) {
+          const g = new T.BufferGeometry().setFromPoints([b, b2, ap]);
+          g.setIndex([0, 1, 2]); g.computeVertexNormals();
+          grp.add(new T.Mesh(g, matLona));
+          grp.add(new T.Line(new T.BufferGeometry().setFromPoints([b, ap]), matFus)); // aristas al vértice = fusiones
+          grp.add(new T.Line(new T.BufferGeometry().setFromPoints([b, b2]), matBorde));
+        }
         if (fig.caras) accesoriosDeCara(fig.caras[i], b, b2, ap);
       });
     } else if (fig && fig.tipo === "cilindro") {
@@ -5714,6 +5761,14 @@
     if ((state.aletasUnif || []).filter((a) => !a._oculto).length) pasos.push("PASO " + (n++) + " — Confeccionar y fusionar los anexos (aletas/faldones) en la posición indicada por sus referencias de vértice.");
     return pasos;
   }
+  // Ojetillos instalados sobre las líneas de cortes/calados (los cuenta el sketch procesado).
+  function ojEnCortesN(cortesRaw, ancho, largo) {
+    if (!window.SketchCIBSA || !(ancho > 0) || !(largo > 0)) return 0;
+    try {
+      const sk = window.SketchCIBSA.construirSketch({ ancho: ancho, largo: largo, ojTotal: 0, ventanas: [], cortes: cortesSpec(cortesRaw) });
+      return (sk.cortes || []).reduce((a, c) => a + (c.ojetillos || []).length, 0);
+    } catch (e) { return 0; }
+  }
   async function descargarSketchUnif() {
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
     if (largo == null || ancho == null || largo <= 0 || ancho <= 0) return alert("Ingresa largo y ancho para descargar el plano.");
@@ -5727,7 +5782,7 @@
       tela: telaPlano,
       color: $("f_color").value.trim(),
       largo: largo, ancho: ancho,
-      ojetillos: nOjetillos(), unidades: N,
+      ojetillos: nOjetillos() + ojEnCortesN(state.cortesUnif, ancho, largo) + ojEnAletasN(state.aletasUnif), unidades: N,
       ojetillosAristas: state.ojMode === "arista" ? ojDetalleAristas(ancho, largo, state.ojEdges, state.ojParejo, cortesSpec(state.cortesUnif), volExtUnif()) : [],
       strapsAristas: strapsDetalleAristas(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }),
       observaciones: (alturaUnif() > 0 ? pasosConfeccionVol(num("f_ancho", 0), num("f_largo", 0), alturaUnif()) : []).concat(terminacionesTexto(state.orientUnif)).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
@@ -5796,7 +5851,7 @@
       tela: tela ? telaCli(tela) : "N/A",
       color: pz.color || "",
       largo: largo, ancho: ancho,
-      ojetillos: ojTotalPieza(pz), unidades: N,
+      ojetillos: ojTotalPieza(pz) + ojEnCortesN(pz.cortes, window.CalcCIBSA.evalExpr(pz.ancho), window.CalcCIBSA.evalExpr(pz.largo)) + ojEnAletasN(pz.aletas), unidades: N,
       ojetillosAristas: pz.ojMode === "arista" ? ojDetalleAristas(window.CalcCIBSA.evalExpr(pz.ancho), window.CalcCIBSA.evalExpr(pz.largo), pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), volExtPz(pz)) : [],
       strapsAristas: strapsDetalleAristas(pz.straps, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 }),
       observaciones: terminacionesPieza(pz).concat(obsComplementos(pz.complementos)).concat(obsVentanas(pz)).concat(obsCortes(pz.cortes)),

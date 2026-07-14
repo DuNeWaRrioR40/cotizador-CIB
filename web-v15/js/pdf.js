@@ -817,10 +817,12 @@
       }
       detTela.push(["Valores aproximados. La confección tiene un margen de error de aprox. ±4 cm.", false, 8.5]);
       itemRow(String(c.cantidad), detTela, money(c.material), money(c.materialTotal));
-      const ojBase = datos.ojetillosDetalle || `${c.nOjetillos} ojetillos en total.`;
-      const ojTxt = ojBase + (c.cantidad > 1 ? ` (por unidad; ${c.cantidad} unidades).` : "");
-      itemRow(String(c.nOjetillosTotal), [["Ojetillos", true], [ojTxt, false]],
-        `${money(c.valorOjetillo)} c/u`, money(c.ojetillosValorTotal));
+      if (c.nOjetillosTotal > 0) { // sin ojetillos de arista (p. ej. aristas eliminadas por cortes): no imprimir fila en $0
+        const ojBase = datos.ojetillosDetalle || `${c.nOjetillos} ojetillos en total.`;
+        const ojTxt = ojBase + (c.cantidad > 1 ? ` (por unidad; ${c.cantidad} unidades).` : "");
+        itemRow(String(c.nOjetillosTotal), [["Ojetillos", true], [ojTxt, false]],
+          `${money(c.valorOjetillo)} c/u`, money(c.ojetillosValorTotal));
+      }
     }
     // Complementos (insumos / accesorios / estructurales) — una fila por ítem
     (datos.complementos || []).forEach((cmp) => {
