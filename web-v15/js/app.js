@@ -5928,20 +5928,21 @@
           if (pm) items.push(["Anchor sobre la línea", "corteAncla"]);
         } else if (esLibre && seg) {
           // Borde lateral de un ala (la ALTURA): elementos posicionados en SU propio segmento.
-          items = [["Corte / calado (en este borde)", "corteLibre"], ["Línea de construcción (en este borde)", "guiaLibre"]];
+          items = [["Ojetillos (en este borde)", "ojLibre"], ["Strap (en este borde)", "strapLibre"], ["Corte / calado (en este borde)", "corteLibre"], ["Línea de construcción (en este borde)", "guiaLibre"]];
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"]);
         } else if (esRim && seg) {
           // Rim (borde externo del ala): ojetillos externos por arista + elementos en el rim mismo.
-          items = [["Ojetillos (borde externo)", "oj"], ["Corte / calado (en el rim)", "corteLibre"], ["Línea de construcción (en el rim)", "guiaLibre"]];
+          items = [["Ojetillos (borde externo)", "oj"], ["Ojetillos (fila en el rim)", "ojLibre"], ["Strap (en el rim)", "strapLibre"], ["Corte / calado (en el rim)", "corteLibre"], ["Línea de construcción (en el rim)", "guiaLibre"]];
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"]);
         } else {
           items = [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]];
+          if (seg) items.push(["Ojetillos sobre el pliegue (fila)", "ojLibre"], ["Strap sobre el pliegue", "strapLibre"]);
           if (pm) items.push(["Anchor (punto de anclaje)", "ancla"]);
         }
         items.forEach(([t, a]) => {
           if (!acciones[a]) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (idxCorte != null) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (idxCorte != null) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -5960,6 +5961,26 @@
     if (modo === "oj") { c.ojAristaLado = ladoVivo; if (!(ev(c.ojAristaD) > 0)) c.ojAristaD = "0.5"; }
     if (modo === "strap") { c.strapLado = ladoVivo; if (!(ev(c.strapD) > 0)) c.strapD = "0.5"; }
     c._colap = false; c._advOpen = true;
+  }
+  // ¿Hacia qué lado (A/B) de la línea seg hay TELA? (tapa o un ala presente). Para prefigurar
+  // ojetillos/straps de guías creadas sobre un borde: siempre hacia adentro de la hoja.
+  function ladoHaciaAdentro(seg, A, L, H, alas) {
+    const va = (k) => !alas || alas[k] !== false;
+    const dentro = (p) => {
+      if (p.x >= 0 && p.x <= A && p.y >= 0 && p.y <= L) return true;
+      if (H > 0) {
+        if (va("sup") && p.x >= 0 && p.x <= A && p.y >= -H && p.y <= 0) return true;
+        if (va("inf") && p.x >= 0 && p.x <= A && p.y >= L && p.y <= L + H) return true;
+        if (va("izq") && p.y >= 0 && p.y <= L && p.x >= -H && p.x <= 0) return true;
+        if (va("der") && p.y >= 0 && p.y <= L && p.x >= A && p.x <= A + H) return true;
+      }
+      return false;
+    };
+    const len = Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y); if (!(len > 0)) return "A";
+    const ux = (seg.b.x - seg.a.x) / len, uy = (seg.b.y - seg.a.y) / len;
+    const mx = (seg.a.x + seg.b.x) / 2, my = (seg.a.y + seg.b.y) / 2;
+    const eps = Math.max(0.02, Math.min(0.2, len * 0.05));
+    return dentro({ x: mx - uy * eps, y: my + ux * eps }) ? "A" : "B"; // lado A = normal (-uy, ux)
   }
   // Crea un corte/guía A LO LARGO de un segmento propio (rim o lateral de un ala): la línea nace
   // exactamente sobre ese borde y luego se ajusta con sus campos o con anchors.
@@ -6009,6 +6030,18 @@
       recompute();
     },
     guiaLibre: (seg, pm) => { crearLineaEnSeg(state.cortesUnif, seg, "guia"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
+    ojLibre: (seg, pm) => {
+      const c = crearLineaEnSeg(state.cortesUnif, seg, "guia"); if (!c) return;
+      c.ojAristaLado = ladoHaciaAdentro(seg, num("f_ancho", 0), num("f_largo", 0), alturaUnif(), alasUnif());
+      c.ojAristaD = "0.5"; c.ojAristaInset = "0.025"; c._advOpen = true;
+      renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif"));
+    },
+    strapLibre: (seg, pm) => {
+      const c = crearLineaEnSeg(state.cortesUnif, seg, "guia"); if (!c) return;
+      c.strapLado = ladoHaciaAdentro(seg, num("f_ancho", 0), num("f_largo", 0), alturaUnif(), alasUnif());
+      c.strapD = "0.5"; c.strapOffset = "0"; c.strapInset = "0.15"; c._advOpen = true;
+      renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif"));
+    },
     corteLibre: (seg, pm) => { crearLineaEnSeg(state.cortesUnif, seg, "corte"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
     oj: (k) => {
       state.ojMode = "arista";
@@ -6106,6 +6139,18 @@
         recomputeCompuesto();
       },
       guiaLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "guia")) irAPieza(); },
+      ojLibre: (seg, pm) => {
+        const c = crearLineaEnSeg(pz.cortes, seg, "guia"); if (!c) return;
+        c.ojAristaLado = ladoHaciaAdentro(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0, pz.usaAlto ? (ev(pz.altura) || 0) : 0, null);
+        c.ojAristaD = "0.5"; c.ojAristaInset = "0.025"; c._advOpen = true;
+        irAPieza();
+      },
+      strapLibre: (seg, pm) => {
+        const c = crearLineaEnSeg(pz.cortes, seg, "guia"); if (!c) return;
+        c.strapLado = ladoHaciaAdentro(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0, pz.usaAlto ? (ev(pz.altura) || 0) : 0, null);
+        c.strapD = "0.5"; c.strapOffset = "0"; c.strapInset = "0.15"; c._advOpen = true;
+        irAPieza();
+      },
       corteLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "corte")) irAPieza(); },
       oj: (k) => {
         pz.ojMode = "arista";

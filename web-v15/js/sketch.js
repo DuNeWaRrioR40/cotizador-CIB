@@ -1277,7 +1277,7 @@
       const dy = a.fused === "t" ? H : a.fused === "b" ? -H : 0;
       return Object.assign({}, a, { x: a.x + dx, y: a.y + dy, ojetillos: (a.ojetillos || []).map((p) => ({ x: p.x + dx, y: p.y + dy })) });
     });
-    const skVol = Object.assign({}, sk0, { aletas: aletasV, straps: [] });
+    const skVol = Object.assign({}, sk0, { aletas: aletasV, straps: (sk0.straps || []).filter((st) => st && st.origen === "corte") });
     if ((spec.volumetrico.ojEn || "externo") === "externo") skVol.ojetillos = ojetillosVolExterno(skVol.ojetillos, A, L, H, alasV);
     const simbVol = simbologia(skVol);
     const legH = simbVol.length ? (11 + simbVol.length * 11 + 8) : 0;
@@ -1379,13 +1379,51 @@
         else { if (va("izq")) vert3(0, L, [[0, L], [-H, L]]); if (va("der")) vert3(A, L, [[A, L], [A + H, L]]); }
         if (va("sup")) { vert3(0, 0, [[0, 0], [0, -H]]); vert3(A, 0, [[A, 0], [A, -H]]); }
         else { if (va("izq")) vert3(0, 0, [[0, 0], [-H, 0]]); if (va("der")) vert3(A, 0, [[A, 0], [A + H, 0]]); }
-        // Cortes/guías de la tapa: línea visible + clicable sobre la cara superior.
+        // Cortes y CALADOS (rect/circ/línea) sobre el cubo: se dibujan TODOS sus lados mapeados a
+        // la cara que corresponda (tapa o pared), con sus ojetillos. Clicable: solo cortes-línea
+        // (igual criterio que el desplegado).
+        const bx0 = va("izq") ? -H : 0, bx1 = A + (va("der") ? H : 0), by0 = va("sup") ? -H : 0, by1 = L + (va("inf") ? H : 0);
         (skVol.cortes || []).forEach((c, i) => {
-          if (!c.corte || !c.segments || !c.segments[0]) return;
-          const cl = clipSeg(c.segments[0].a, c.segments[0].b, va("izq") ? -H : 0, A + (va("der") ? H : 0), va("sup") ? -H : 0, L + (va("inf") ? H : 0)); if (!cl) return;
-          const pq = vol3(cl.a.x, cl.a.y), qq = vol3(cl.b.x, cl.b.y);
-          s += `<line class="${c.guia ? "vol-fold" : "cut"}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
-          s += `<line class="arista-hit" data-corte="${i}" data-ax="${cl.a.x}" data-ay="${cl.a.y}" data-bx="${cl.b.x}" data-by="${cl.b.y}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+          (c.segments || []).forEach((sg) => {
+            const cl = clipSeg(sg.a, sg.b, bx0, bx1, by0, by1); if (!cl) return;
+            const pq = vol3(cl.a.x, cl.a.y), qq = vol3(cl.b.x, cl.b.y);
+            s += `<line class="${c.guia ? "vol-fold" : "cut"}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+          });
+          (c.ojetillos || []).forEach((p2) => {
+            const pt = vol3(p2.x, p2.y);
+            s += `<circle class="cut-oje" cx="${f1(pt[0])}" cy="${f1(pt[1])}" r="1.7"/><circle class="cut-oje-in" cx="${f1(pt[0])}" cy="${f1(pt[1])}" r="0.7"/>`;
+          });
+          if (c.corte && c.segments && c.segments[0]) {
+            const cl = clipSeg(c.segments[0].a, c.segments[0].b, bx0, bx1, by0, by1);
+            if (cl) {
+              const pq = vol3(cl.a.x, cl.a.y), qq = vol3(cl.b.x, cl.b.y);
+              s += `<line class="arista-hit" data-corte="${i}" data-ax="${cl.a.x}" data-ay="${cl.a.y}" data-bx="${cl.b.x}" data-by="${cl.b.y}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+            }
+          }
+        });
+        // Straps de cortes/guías: banda proyectada sobre la cara correspondiente.
+        (skVol.straps || []).forEach((st) => {
+          if (!st.corners || st.corners.length !== 4) return;
+          const ps = st.corners.map((p2) => vol3(p2.x, p2.y));
+          s += `<polygon class="strap" points="${ps.map((p2) => f1(p2[0]) + "," + f1(p2[1])).join(" ")}"/>`;
+        });
+        // Ventanas de la tapa: contorno sobre la cara superior.
+        (skVol.ventanas || []).forEach((v) => {
+          if (v.circ) {
+            const cx3 = v.x + v.w / 2, cy3 = v.y + v.h / 2, rr = Math.min(v.w, v.h) / 2, NP = 36;
+            let prev = null;
+            for (let j = 0; j <= NP; j++) {
+              const th = 2 * Math.PI * j / NP, pt = vol3(cx3 + rr * Math.cos(th), cy3 + rr * Math.sin(th));
+              if (prev) s += `<line class="cut" x1="${f1(prev[0])}" y1="${f1(prev[1])}" x2="${f1(pt[0])}" y2="${f1(pt[1])}"/>`;
+              prev = pt;
+            }
+          } else {
+            const cs = [[v.x, v.y], [v.x + v.w, v.y], [v.x + v.w, v.y + v.h], [v.x, v.y + v.h]];
+            for (let j = 0; j < 4; j++) {
+              const pq = vol3(cs[j][0], cs[j][1]), qq = vol3(cs[(j + 1) % 4][0], cs[(j + 1) % 4][1]);
+              s += `<line class="cut" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+            }
+          }
         });
         // Anchors (indicativos: el arrastre fino vive en el desplegado).
         (skVol.anclas || []).forEach((an) => {
