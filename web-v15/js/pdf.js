@@ -379,6 +379,8 @@
     const SK = global.SketchCIBSA; if (!SK) return;
     const A = parseFloat(spec.ancho) || 0, L = parseFloat(spec.largo) || 0, H = parseFloat(spec.volumetrico.alto) || 0;
     if (!(A > 0) || !(L > 0) || !(H > 0)) return;
+    const alasV = spec.volumetrico.alas || null, va = (k) => !alasV || alasV[k] !== false;
+    const hs = va("sup") ? H : 0, hi = va("inf") ? H : 0, hz = va("izq") ? H : 0, hd = va("der") ? H : 0;
     const conCotas = opts.cotas !== false, fmt = SK.fmt;
     // Simbología presente (hoja desplegada, sin aletas): reserva alto para la leyenda.
     const sk0 = SK.construirSketch(spec);
@@ -388,7 +390,7 @@
       return Object.assign({}, a, { x: a.x + adx, y: a.y + ady, ojetillos: (a.ojetillos || []).map((p) => ({ x: p.x + adx, y: p.y + ady })) });
     });
     const skVol = Object.assign({}, sk0, { aletas: aletasV, straps: [] });
-    if ((spec.volumetrico.ojEn || "externo") === "externo" && SK.ojetillosVolExterno) skVol.ojetillos = SK.ojetillosVolExterno(skVol.ojetillos, A, L, H);
+    if ((spec.volumetrico.ojEn || "externo") === "externo" && SK.ojetillosVolExterno) skVol.ojetillos = SK.ojetillosVolExterno(skVol.ojetillos, A, L, H, alasV);
     const simb = SK.simbologia(skVol);
     const legH = simb.length ? (9 + simb.length * 9 + 6) : 0;
     const EDGE = PDFLib.rgb(0.12, 0.12, 0.12), FOLD = PDFLib.rgb(0.54, 0.63, 0.72), CUT = PDFLib.rgb(0.557, 0.267, 0.678);
@@ -420,11 +422,11 @@
       }
     }
     // ----- Panel B: hoja desplegada -----
-    const Wd = A + 2 * H, Ld = L + 2 * H;
+    const Wd = A + hz + hd, Ld = L + hs + hi;
     let extL = 0, extR = 0, extT = 0, extB = 0;
     aletasV.forEach((a) => {
-      extL = Math.max(extL, -H - a.x); extR = Math.max(extR, (a.x + a.w) - (A + H));
-      extT = Math.max(extT, -H - a.y); extB = Math.max(extB, (a.y + a.h) - (L + H));
+      extL = Math.max(extL, -hz - a.x); extR = Math.max(extR, (a.x + a.w) - (A + hd));
+      extT = Math.max(extT, -hs - a.y); extB = Math.max(extB, (a.y + a.h) - (L + hi));
     });
     extL = Math.max(0, extL); extR = Math.max(0, extR); extT = Math.max(0, extT); extB = Math.max(0, extB);
     const Wd2 = Wd + extL + extR, Ld2 = Ld + extT + extB;
@@ -432,10 +434,17 @@
     const scB = Math.min((VW - 120) / Wd2, (box.h - pby - 40 - legH) / Ld2);
     const X = (x) => pbx + (extL + x) * scB, Y = (y) => pby + (extT + y) * scB;
     dtC(spec.vista === "trasera" ? "PLANO DESPLEGADO - VISTA INTERIOR (espejo)" : "PLANO DESPLEGADO (hoja de corte)", VW / 2, pbyTit, 8.5, INK);
-    const cross = [[H, 0], [H + A, 0], [H + A, H], [Wd, H], [Wd, H + L], [H + A, H + L], [H + A, Ld], [H, Ld], [H, H + L], [0, H + L], [0, H], [H, H]];
-    for (let i = 0; i < cross.length; i++) { const a = cross[i], b = cross[(i + 1) % cross.length]; dl(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]), EDGE, 1); }
-    [[[H, H], [H + A, H]], [[H, H + L], [H + A, H + L]], [[H, H], [H, H + L]], [[H + A, H], [H + A, H + L]]].forEach((e) => dl(X(e[0][0]), Y(e[0][1]), X(e[1][0]), Y(e[1][1]), FOLD, 0.7, [4, 3]));
-    const notch = [[0, 0], [A + H, 0], [0, L + H], [A + H, L + H]];
+    const cross = [[hz, 0], [hz + A, 0], [hz + A, hs], [Wd, hs], [Wd, hs + L], [hz + A, hs + L], [hz + A, Ld], [hz, Ld], [hz, hs + L], [0, hs + L], [0, hs], [hz, hs]];
+    for (let i = 0; i < cross.length; i++) { const a = cross[i], b = cross[(i + 1) % cross.length]; if (Math.abs(a[0] - b[0]) > 1e-9 || Math.abs(a[1] - b[1]) > 1e-9) dl(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]), EDGE, 1); }
+    const foldsV = [];
+    if (hs) foldsV.push([[hz, hs], [hz + A, hs]]);
+    if (hi) foldsV.push([[hz, hs + L], [hz + A, hs + L]]);
+    if (hz) foldsV.push([[hz, hs], [hz, hs + L]]);
+    if (hd) foldsV.push([[hz + A, hs], [hz + A, hs + L]]);
+    foldsV.forEach((e) => dl(X(e[0][0]), Y(e[0][1]), X(e[1][0]), Y(e[1][1]), FOLD, 0.7, [4, 3]));
+    const notch = [];
+    if (hs && hz) notch.push([0, 0]); if (hs && hd) notch.push([hz + A, 0]);
+    if (hi && hz) notch.push([0, hs + L]); if (hi && hd) notch.push([hz + A, hs + L]);
     notch.forEach((n) => {
       page.drawRectangle({ x: PX(X(n[0])), y: PY(Y(n[1] + H)), width: H * scB, height: H * scB, borderColor: CUT, borderWidth: 1.1, borderDashArray: [4, 2] });
       dtC(fmt(H) + "x" + fmt(H), X(n[0] + H / 2), Y(n[1] + H / 2) + 2, 5.5, CUT);
@@ -443,12 +452,13 @@
     // Elementos del paño (ventanas, calados, bolsillos, ojetillos) sobre la tapa central, offset por el alto.
     const skT = skVol;
     const rT = Math.max(1.4, Math.min(2.6, scB * 0.022));
-    elementosPDF(page, skT, { px: (ex) => box.x + X(H + ex), py: (ey) => box.top - Y(H + ey), scale: scB, x0: box.x + X(H), topRect: box.top - Y(H), wpx: A * scB, hpx: L * scB, r: rT }, font);
-    dtL("TAPA " + fmt(L) + "x" + fmt(A) + "m", X(H) + 3, Y(H) + 9, 6.5, INK);
+    elementosPDF(page, skT, { px: (ex) => box.x + X(hz + ex), py: (ey) => box.top - Y(hs + ey), scale: scB, x0: box.x + X(hz), topRect: box.top - Y(hs), wpx: A * scB, hpx: L * scB, r: rT }, font);
+    dtL("TAPA " + fmt(L) + "x" + fmt(A) + "m", X(hz) + 3, Y(hs) + 9, 6.5, INK);
     if (conCotas) {
       hCota(X(0), X(Wd), pby - 12, Wd);
       vCota(Y(0), Y(Ld), pbx - 14, Ld);
-      vCota(Y(0), Y(H), X(H + A) + 14, H);
+      if (hs) vCota(Y(0), Y(hs), X(hz + A) + 14, H);
+      else if (hi) vCota(Y(hs + L), Y(Ld), X(hz + A) + 14, H);
     }
     // Leyenda de simbología en el borde inferior izquierdo.
     if (legH) leyendaPDF(page, simb, box.x + 3, box.top - box.h + legH, font);
@@ -1388,7 +1398,23 @@
 
     // Sketch entre el detalle y la lista de materiales (más alto en modo de aprobación).
     const boxTop = detalleBottom, boxBottom = bottomM + matBlockH + 16;
-    dibujarSketchPDF(page, datos.sketch, { x: M, top: boxTop, w: W - 2 * M, h: boxTop - boxBottom }, font, { cotas: !limpio });
+    // Vista 3D congelada por el usuario: reemplaza la proyección 3D estática; el desplegado va debajo.
+    let topSk = boxTop, conVista = false;
+    if (datos.vista3D && datos.sketch && datos.sketch.volumetrico) {
+      try {
+        const img3d = await doc.embedPng(b64ToBytes(datos.vista3D));
+        const availH = boxTop - boxBottom;
+        const maxH = Math.min(availH * 0.42, 235);
+        const esc = Math.min((W - 2 * M) / img3d.width, maxH / img3d.height);
+        const iw = img3d.width * esc, ih = img3d.height * esc;
+        const cap = "REPRESENTACION 3D — vista elegida (referencial)";
+        page.drawText(san(cap), { x: (W - bold.widthOfTextAtSize(cap, 8.5)) / 2, y: boxTop - 8, size: 8.5, font: bold, color: BLACK() });
+        page.drawImage(img3d, { x: (W - iw) / 2, y: boxTop - 14 - ih, width: iw, height: ih });
+        topSk = boxTop - 14 - ih - 6;
+        conVista = true;
+      } catch (e) { /* si la imagen falla, cae al panel 3D dibujado */ }
+    }
+    dibujarSketchPDF(page, datos.sketch, { x: M, top: topSk, w: W - 2 * M, h: topSk - boxBottom }, font, { cotas: !limpio, soloDesplegado: conVista });
 
     // Página de vista trasera (espejo + diseño trasero $0), si corresponde.
     if (datos.trasera && datos.sketch) {

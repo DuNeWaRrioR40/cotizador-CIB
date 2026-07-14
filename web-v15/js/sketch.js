@@ -1183,14 +1183,14 @@
   // desplegada (la arista extrema de las alas de altura). Es el comportamiento por defecto en
   // volumétricos: los ojetillos van en el contorno exterior, no en el perímetro interno L×A.
   // Puntos que no están sobre el perímetro (p. ej. ojetillos de calados) se dejan en la tapa.
-  function ojetillosVolExterno(pts, A, L, H) {
-    const E = 1e-6;
+  function ojetillosVolExterno(pts, A, L, H, alas) {
+    const E = 1e-6, va = (k) => !alas || alas[k] !== false; // sin ala, el ojetillo queda en el borde de la tapa
     return (pts || []).map((p) => {
       const ar = p.ar; // arista de ORIGEN (resuelve las esquinas, que tocan dos aristas a la vez)
-      if (ar === "sup" || (!ar && Math.abs(p.y) < E)) return { x: p.x, y: -H };
-      if (ar === "inf" || (!ar && Math.abs(p.y - L) < E)) return { x: p.x, y: L + H };
-      if (ar === "izq" || (!ar && Math.abs(p.x) < E)) return { x: -H, y: p.y };
-      if (ar === "der" || (!ar && Math.abs(p.x - A) < E)) return { x: A + H, y: p.y };
+      if (ar === "sup" || (!ar && Math.abs(p.y) < E)) return va("sup") ? { x: p.x, y: -H } : p;
+      if (ar === "inf" || (!ar && Math.abs(p.y - L) < E)) return va("inf") ? { x: p.x, y: L + H } : p;
+      if (ar === "izq" || (!ar && Math.abs(p.x) < E)) return va("izq") ? { x: -H, y: p.y } : p;
+      if (ar === "der" || (!ar && Math.abs(p.x - A) < E)) return va("der") ? { x: A + H, y: p.y } : p;
       return p;
     });
   }
@@ -1199,6 +1199,9 @@
     opts = opts || {};
     const A = parseFloat(spec.ancho) || 0, L = parseFloat(spec.largo) || 0, H = parseFloat(spec.volumetrico.alto) || 0;
     if (!(A > 0) || !(L > 0) || !(H > 0)) return '<p class="muted small">Ingresa largo, ancho y alto para ver la vista volumétrica.</p>';
+    // Alas presentes (paredes del volumen): sin ala, ese lado del desplegado no existe.
+    const alasV = spec.volumetrico.alas || null, va = (k) => !alasV || alasV[k] !== false;
+    const hs = va("sup") ? H : 0, hi = va("inf") ? H : 0, hz = va("izq") ? H : 0, hd = va("der") ? H : 0;
     const conCotas = opts.cotas !== false;
     const f1 = (n) => n.toFixed(1);
     const VW = 380;
@@ -1211,7 +1214,7 @@
       return Object.assign({}, a, { x: a.x + dx, y: a.y + dy, ojetillos: (a.ojetillos || []).map((p) => ({ x: p.x + dx, y: p.y + dy })) });
     });
     const skVol = Object.assign({}, sk0, { aletas: aletasV, straps: [] });
-    if ((spec.volumetrico.ojEn || "externo") === "externo") skVol.ojetillos = ojetillosVolExterno(skVol.ojetillos, A, L, H);
+    if ((spec.volumetrico.ojEn || "externo") === "externo") skVol.ojetillos = ojetillosVolExterno(skVol.ojetillos, A, L, H, alasV);
     const simbVol = simbologia(skVol);
     const legH = simbVol.length ? (11 + simbVol.length * 11 + 8) : 0;
     const hCota = (xa, xb, y, val) => {
@@ -1270,13 +1273,13 @@
     }
     // -------- Panel B: hoja de corte desplegada --------
     const pbTit = paTop + paH;
-    const Wd = A + 2 * H, Ld = L + 2 * H;
+    const Wd = A + hz + hd, Ld = L + hs + hi;
     // Márgenes extra si alguna aleta sobresale de la cruz (en coords del paño base, la cruz cubre
-    // x ∈ [-H, A+H], y ∈ [-H, L+H]).
+    // x ∈ [-hz, A+hd], y ∈ [-hs, L+hi]).
     let extL = 0, extR = 0, extT = 0, extB = 0;
     aletasV.forEach((a) => {
-      extL = Math.max(extL, -H - a.x); extR = Math.max(extR, (a.x + a.w) - (A + H));
-      extT = Math.max(extT, -H - a.y); extB = Math.max(extB, (a.y + a.h) - (L + H));
+      extL = Math.max(extL, -hz - a.x); extR = Math.max(extR, (a.x + a.w) - (A + hd));
+      extT = Math.max(extT, -hs - a.y); extB = Math.max(extB, (a.y + a.h) - (L + hi));
     });
     extL = Math.max(0, extL); extR = Math.max(0, extR); extT = Math.max(0, extT); extB = Math.max(0, extB);
     const Wd2 = Wd + extL + extR, Ld2 = Ld + extT + extB;
@@ -1287,15 +1290,22 @@
     const totalH = sheetBot + legH;
     s = s.replace("0H", f1(totalH)); // fijar alto del viewBox
     s += `<text class="vista-tit" x="${f1(VW / 2)}" y="${f1(pbTit + 12)}" text-anchor="middle">${spec.vista === "trasera" ? "PLANO DESPLEGADO — VISTA INTERIOR (espejo)" : "PLANO DESPLEGADO (hoja de corte)"}</text>`;
-    // Contorno en cruz (tapa central + 4 alas), sin las esquinas (calados)
-    const cross = [[H, 0], [H + A, 0], [H + A, H], [Wd, H], [Wd, H + L], [H + A, H + L], [H + A, Ld], [H, Ld], [H, H + L], [0, H + L], [0, H], [H, H]];
+    // Contorno (tapa central + solo las alas PRESENTES); los puntos duplicados degeneran sin dibujo.
+    const cross = [[hz, 0], [hz + A, 0], [hz + A, hs], [Wd, hs], [Wd, hs + L], [hz + A, hs + L], [hz + A, Ld], [hz, Ld], [hz, hs + L], [0, hs + L], [0, hs], [hz, hs]];
     s += `<polygon class="edge" points="${cross.map((p) => f1(X(p[0])) + "," + f1(Y(p[1]))).join(" ")}" fill="rgba(120,140,170,0.06)"/>`;
-    // Líneas de plegado (rectángulo interno = tapa)
-    [[[H, H], [H + A, H]], [[H, H + L], [H + A, H + L]], [[H, H], [H, H + L]], [[H + A, H], [H + A, H + L]]].forEach((e) => {
+    // Líneas de plegado (solo donde hay ala)
+    const foldsV = [];
+    if (hs) foldsV.push([[hz, hs], [hz + A, hs]]);
+    if (hi) foldsV.push([[hz, hs + L], [hz + A, hs + L]]);
+    if (hz) foldsV.push([[hz, hs], [hz, hs + L]]);
+    if (hd) foldsV.push([[hz + A, hs], [hz + A, hs + L]]);
+    foldsV.forEach((e) => {
       s += `<line class="vol-fold" x1="${f1(X(e[0][0]))}" y1="${f1(Y(e[0][1]))}" x2="${f1(X(e[1][0]))}" y2="${f1(Y(e[1][1]))}"/>`;
     });
-    // Calados en las 4 esquinas (cuadrados H×H que se recortan)
-    const notch = [[0, 0], [A + H, 0], [0, L + H], [A + H, L + H]];
+    // Calados de esquina: solo donde se ENCUENTRAN dos alas
+    const notch = [];
+    if (hs && hz) notch.push([0, 0]); if (hs && hd) notch.push([hz + A, 0]);
+    if (hi && hz) notch.push([0, hs + L]); if (hi && hd) notch.push([hz + A, hs + L]);
     notch.forEach((n) => {
       s += `<rect class="cut" x="${f1(X(n[0]))}" y="${f1(Y(n[1]))}" width="${f1(H * scB)}" height="${f1(H * scB)}" fill="rgba(216,68,58,0.06)"/>`;
       s += scSVG(X(n[0] + H / 2), Y(n[1] + H / 2));
@@ -1304,14 +1314,15 @@
     const skT = skVol;
     const rT = Math.max(1.4, Math.min(2.6, scB * 0.022));
     const ojeT = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rT)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rT * 0.42)}"/>`;
-    s += elementosSketch(skT, { px: (x) => X(H + x), py: (y) => Y(H + y), scale: scB, r: rT, ojeSVG: ojeT, ox: X(H), oy: Y(H), w: A * scB, h: L * scB });
+    s += elementosSketch(skT, { px: (x) => X(hz + x), py: (y) => Y(hs + y), scale: scB, r: rT, ojeSVG: ojeT, ox: X(hz), oy: Y(hs), w: A * scB, h: L * scB });
     // Etiqueta de la tapa (esquina sup-izq, para no chocar con los elementos).
-    s += `<text class="ins-lbl" x="${f1(X(H) + 3)}" y="${f1(Y(H) + 8)}">TAPA ${fmt(L)}×${fmt(A)}m</text>`;
+    s += `<text class="ins-lbl" x="${f1(X(hz) + 3)}" y="${f1(Y(hs) + 8)}">TAPA ${fmt(L)}×${fmt(A)}m</text>`;
     if (conCotas) {
-      s += hCota(X(0), X(Wd), pby - 10, Wd); // ancho total = A+2·alto
-      s += vCota(Y(0), Y(Ld), pbx - 12, Ld); // largo total = L+2·alto
-      s += vCota(Y(0), Y(H), X(H + A) + 12, H); // alto (ala) marcado en una esquina
-      s += `<text class="cota-lbl" x="${f1(X(H / 2))}" y="${f1(Y(H + L / 2))}" text-anchor="middle" transform="rotate(-90 ${f1(X(H / 2))} ${f1(Y(H + L / 2))})">calado ${fmt(H)}m</text>`;
+      s += hCota(X(0), X(Wd), pby - 10, Wd); // ancho total de la hoja
+      s += vCota(Y(0), Y(Ld), pbx - 12, Ld); // largo total de la hoja
+      if (hs) s += vCota(Y(0), Y(hs), X(hz + A) + 12, H); // alto (ala) marcado en una esquina
+      else if (hi) s += vCota(Y(hs + L), Y(Ld), X(hz + A) + 12, H);
+      if (notch.length && hz) s += `<text class="cota-lbl" x="${f1(X(hz / 2))}" y="${f1(Y(hs + L / 2))}" text-anchor="middle" transform="rotate(-90 ${f1(X(hz / 2))} ${f1(Y(hs + L / 2))})">calado ${fmt(H)}m</text>`;
     }
     // Numeración NumOj (1er/último ojetillo por arista, con flecha) — solo en el plano en vivo.
     // En modo "externo" el marcador se proyecta al borde extremo del ala, junto a su ojetillo.
@@ -1320,10 +1331,10 @@
       skVol.ojNumeros.forEach((m) => {
         let mx = m.x, my = m.y;
         if (ojExtN) {
-          if (m.ny === -1) my = -H; else if (m.ny === 1) my = L + H;
-          else if (m.nx === -1) mx = -H; else if (m.nx === 1) mx = A + H;
+          if (m.ny === -1 && hs) my = -H; else if (m.ny === 1 && hi) my = L + H;
+          else if (m.nx === -1 && hz) mx = -H; else if (m.nx === 1 && hd) mx = A + H;
         }
-        const sx = X(H + mx), sy = Y(H + my), G = 8, AL = 12, HB = 3.5;
+        const sx = X(hz + mx), sy = Y(hs + my), G = 8, AL = 12, HB = 3.5;
         const bx = sx + m.nx * G, by = sy + m.ny * G;
         const ex = bx + m.dx * AL, ey = by + m.dy * AL;
         const ang = Math.atan2(ey - by, ex - bx);

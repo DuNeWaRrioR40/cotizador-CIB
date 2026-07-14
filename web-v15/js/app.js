@@ -7,7 +7,7 @@
   const state = {
     telas: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
-    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
+    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [], cintasUnif: [],
@@ -188,7 +188,7 @@
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
   const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "cotasOcultas", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "cotasOcultas", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -226,6 +226,8 @@
     favCatActiva = snap.favCat || null; renderCategoriasFav();
     if ($("f_ojVolExt")) $("f_ojVolExt").checked = snap.ojVolExt !== false;
     if ($("wOjVol")) $("wOjVol").classList.toggle("hidden", !snap.usaAlto);
+    if ($("wAlas")) $("wAlas").classList.toggle("hidden", !snap.usaAlto);
+    if (typeof sincAlasUI === "function") sincAlasUI();
     if ($("f_usaAlto")) { $("f_usaAlto").checked = !!snap.usaAlto; if ($("wAltura")) $("wAltura").classList.toggle("hidden", !snap.usaAlto); }
     if ($("f_empresaOn")) { $("f_empresaOn").checked = !!snap.empresaOn; toggleEmpresa(); }
     if ($("f_descMonto")) { $("f_descMonto").checked = !!snap.descMonto; actualizarDescSuffix(); }
@@ -4179,10 +4181,16 @@
     }));
   // Producto volumétrico (alto) — uniforme
   { const c = $("f_ojVolExt"); if (c) c.addEventListener("change", recompute); }
-  $("f_usaAlto").addEventListener("change", (e) => { if ($("wOjVol")) $("wOjVol").classList.toggle("hidden", !e.target.checked); $("wAltura").classList.toggle("hidden", !e.target.checked); recompute(); });
+  document.querySelectorAll(".ala-chk").forEach((c) => c.addEventListener("change", () => {
+    if (!state.volAlas) state.volAlas = { sup: true, inf: true, izq: true, der: true };
+    state.volAlas[c.getAttribute("data-k")] = c.checked; recompute();
+  }));
+  function sincAlasUI() { document.querySelectorAll(".ala-chk").forEach((c) => { c.checked = alasUnif()[c.getAttribute("data-k")] !== false; }); }
+  $("f_usaAlto").addEventListener("change", (e) => { if ($("wAlas")) $("wAlas").classList.toggle("hidden", !e.target.checked); if ($("wOjVol")) $("wOjVol").classList.toggle("hidden", !e.target.checked); $("wAltura").classList.toggle("hidden", !e.target.checked); recompute(); });
   function alturaUnif() { return $("f_usaAlto").checked ? num("f_altura", 0) : 0; }
   // Dónde van los ojetillos del volumétrico: "externo" (borde extremo de las alas, por defecto) o "tapa".
   function ojEnUnif() { const c = $("f_ojVolExt"); return (c && !c.checked) ? "tapa" : "externo"; }
+  function alasUnif() { return state.volAlas || { sup: true, inf: true, izq: true, der: true }; }
 
   function recompute() {
     if (state.docMode === "preliminar") recomputePrelim();
@@ -4204,7 +4212,7 @@
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
       const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar }, ojSpecUnif());
-      if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif(), ojEn: ojEnUnif() };
+      if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif(), ojEn: ojEnUnif(), alas: alasUnif() };
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
       activarArrastreCallouts(sk);
       const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); recompute(); };
@@ -4283,6 +4291,10 @@
 
   // ---------- Visor 3D interactivo del producto volumétrico (Three.js, carga perezosa) ----------
   let _v3d = null;
+  // Vista 3D "congelada" por el usuario para el plano PDF: { png (dataURL), firma (AxLxH) }.
+  // La firma invalida la captura si cambian las dimensiones del producto.
+  let _vista3D = null;
+  function firmaVol() { const f = window.CalcCIBSA.fmtNum; return f(num("f_ancho", 0)) + "x" + f(num("f_largo", 0)) + "x" + f(alturaUnif()); }
   function cerrarVol3D() {
     if (!_v3d) return;
     cancelAnimationFrame(_v3d.raf);
@@ -4308,7 +4320,8 @@
     const body = document.createElement("div"); body.className = "plano-zoom-body";
     const canvas = document.createElement("canvas"); canvas.className = "vol3d-canvas";
     const hint = document.createElement("div"); hint.className = "vol3d-hint"; hint.textContent = "Arrastra para rotar · rueda o pellizco para acercar";
-    body.appendChild(canvas); overlay.appendChild(x); overlay.appendChild(body); overlay.appendChild(hint);
+    const cap3d = document.createElement("button"); cap3d.type = "button"; cap3d.className = "btn-accent vol3d-cap"; cap3d.textContent = "📸 Usar esta vista en el plano";
+    body.appendChild(canvas); overlay.appendChild(x); overlay.appendChild(body); overlay.appendChild(hint); overlay.appendChild(cap3d);
     document.body.appendChild(overlay);
 
     const renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true });
@@ -4318,9 +4331,30 @@
     const cam = new T.PerspectiveCamera(42, 1, diag / 100, diag * 20);
     // Caja del producto: ancho (X) × alto (Y) × largo (Z), apoyada en el suelo.
     const grp = new T.Group(); scene.add(grp);
-    const box = new T.Mesh(new T.BoxGeometry(A, H, L), new T.MeshBasicMaterial({ color: 0x8fa3b8, transparent: true, opacity: 0.16, depthWrite: false }));
-    box.position.y = H / 2; grp.add(box);
-    grp.add(new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(A, H, L)).translate(0, H / 2, 0), new T.LineBasicMaterial({ color: 0x111111 })));
+    // Aspecto de producto: caras sombreadas tipo lona (no wireframe) con luz suave direccional.
+    scene.add(new T.AmbientLight(0xffffff, 0.72));
+    const luz = new T.DirectionalLight(0xffffff, 0.55); luz.position.set(diag, diag * 1.4, diag * 0.7); scene.add(luz);
+    // Tapa + solo las PAREDES (alas) presentes; los lados sin ala quedan abiertos.
+    const alas3 = alasUnif(), va3 = (k) => alas3[k] !== false;
+    const matLona = new T.MeshLambertMaterial({ color: 0xd9d2c2, transparent: true, opacity: 0.94, side: T.DoubleSide });
+    const matBorde = new T.LineBasicMaterial({ color: 0x555048 });
+    const panel = (w, h, px2, py2, pz2, rx, ry) => {
+      const g = new T.PlaneGeometry(w, h);
+      const m = new T.Mesh(g, matLona); m.position.set(px2, py2, pz2); m.rotation.x = rx || 0; m.rotation.y = ry || 0; grp.add(m);
+      const e = new T.LineSegments(new T.EdgesGeometry(g), matBorde); e.position.copy(m.position); e.rotation.copy(m.rotation); grp.add(e);
+    };
+    panel(A, L, 0, H, 0, -Math.PI / 2, 0);                       // tapa (arriba)
+    if (va3("sup")) panel(A, H, 0, H / 2, -L / 2, 0, 0);          // pared del lado superior del plano
+    if (va3("inf")) panel(A, H, 0, H / 2, L / 2, 0, 0);
+    if (va3("izq")) panel(L, H, -A / 2, H / 2, 0, 0, Math.PI / 2);
+    if (va3("der")) panel(L, H, A / 2, H / 2, 0, 0, Math.PI / 2);
+    // Costuras de FUSIÓN: solo en las esquinas donde se encuentran DOS alas.
+    { const fus = new T.LineBasicMaterial({ color: 0xd23b2e, linewidth: 2 });
+      [["sup", "izq", -A/2, -L/2], ["sup", "der", A/2, -L/2], ["inf", "der", A/2, L/2], ["inf", "izq", -A/2, L/2]].forEach(([k1, k2, vx, vz]) => {
+        if (!va3(k1) || !va3(k2)) return;
+        const g2 = new T.BufferGeometry().setFromPoints([new T.Vector3(vx, 0, vz), new T.Vector3(vx, H, vz)]);
+        grp.add(new T.Line(g2, fus));
+      }); }
     const grid = new T.GridHelper(Math.max(A, L) * 2.2, 12, 0xd8d8d2, 0xecece6);
     scene.add(grid);
     // Ojetillos según el diseño actual: rim inferior (externo, por defecto) o perímetro de la tapa.
@@ -4342,6 +4376,12 @@
       const sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(cv), transparent: true, depthTest: false }));
       const sc = diag * 0.34; sp.scale.set(sc, sc / 4, 1); return sp;
     };
+    // Rótulos de caras: qué es cada parte (claridad para el cliente).
+    const lTapa = label("TAPA " + f(L) + " × " + f(A) + " m"); lTapa.position.set(0, H + diag * 0.05, 0); grp.add(lTapa);
+    { const alas4 = alasUnif();
+      const pos = (alas4.inf !== false) ? [0, H * 0.5, L / 2 + diag * 0.04] : (alas4.sup !== false) ? [0, H * 0.5, -L / 2 - diag * 0.04] : (alas4.der !== false) ? [A / 2 + diag * 0.04, H * 0.5, 0] : (alas4.izq !== false) ? [-A / 2 - diag * 0.04, H * 0.5, 0] : null;
+      if (pos) { const lAla = label("ALA · alto " + f(H) + " m"); lAla.position.set(pos[0], pos[1], pos[2]); grp.add(lAla); } }
+    const lFus = label("fusión de esquinas"); lFus.position.set(A / 2 + diag * 0.09, H * 0.6, L / 2 * 0.6); lFus.material.color = new T.Color(0xd23b2e); grp.add(lFus);
     const lA = label("ancho " + f(A) + " m"); lA.position.set(0, -diag * 0.02, L / 2 + diag * 0.06); grp.add(lA);
     const lL = label("largo " + f(L) + " m"); lL.position.set(A / 2 + diag * 0.10, -diag * 0.02, 0); grp.add(lL);
     const lH = label("alto " + f(H) + " m"); lH.position.set(-A / 2 - diag * 0.09, H / 2, L / 2 + diag * 0.02); grp.add(lH);
@@ -4372,6 +4412,13 @@
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", onResize);
     onResize(); colocar();
+    cap3d.addEventListener("click", (e) => {
+      e.stopPropagation();
+      renderer.render(scene, cam); // render inmediato antes de capturar (sin preserveDrawingBuffer)
+      _vista3D = { png: canvas.toDataURL("image/png"), firma: firmaVol() };
+      cap3d.textContent = "✓ Vista congelada — saldrá en el plano PDF";
+      setTimeout(() => { if (cap3d.isConnected) cap3d.textContent = "📸 Usar esta vista en el plano"; }, 2400);
+    });
     _v3d = { renderer: renderer, overlay: overlay, onResize: onResize, onKey: onKey, raf: 0 };
     const loop = () => { if (!_v3d) return; if (auto) { theta += 0.004; colocar(); } renderer.render(scene, cam); _v3d.raf = requestAnimationFrame(loop); };
     loop();
@@ -5320,6 +5367,27 @@
     if ((!nombre || !apellido) && !emp) return "Plano";
     return window.PDFCotizacion.nombreArchivo({ cliente: { nombre, apellido }, empresa: emp, version: $("f_version").value.trim() || "01", fecha: new Date() });
   }
+  // Secuencia de confección del producto volumétrico: instrucciones claras para el taller,
+  // derivadas del diseño actual (hoja, esquinas, plegado, fusión, ojetillos, tapas, aletas).
+  function pasosConfeccionVol(A, L, H) {
+    const f = window.CalcCIBSA.fmtNum, pasos = [];
+    const al = alasUnif(), NOMA = { sup: "superior", inf: "inferior", izq: "izquierda", der: "derecha" };
+    const conAlas = ["sup", "inf", "izq", "der"].filter((k) => al[k] !== false);
+    const hz2 = al.izq !== false ? H : 0, hd2 = al.der !== false ? H : 0, hs2 = al.sup !== false ? H : 0, hi2 = al.inf !== false ? H : 0;
+    const nNotch = (al.sup !== false && al.izq !== false ? 1 : 0) + (al.sup !== false && al.der !== false ? 1 : 0) + (al.inf !== false && al.izq !== false ? 1 : 0) + (al.inf !== false && al.der !== false ? 1 : 0);
+    pasos.push("PASO 1 — Cortar la hoja desplegada de " + f(A + hz2 + hd2) + " × " + f(L + hs2 + hi2) + " m (ancho × largo, uniones de paño según rollo).");
+    if (nNotch > 0) pasos.push("PASO 2 — Recortar " + (nNotch === 1 ? "el calado" : "los " + nNotch + " calados") + " de esquina de " + f(H) + " × " + f(H) + " m (marcados con tijera en el plano).");
+    pasos.push("PASO " + (nNotch > 0 ? 3 : 2) + " — Plegar por las líneas segmentadas para levantar " + (conAlas.length === 4 ? "las 4 alas" : (conAlas.length === 1 ? "el ala " + NOMA[conAlas[0]] : "las alas " + conAlas.map((k) => NOMA[k]).join(", "))) + " (alto " + f(H) + " m); la tapa central queda de " + f(L) + " × " + f(A) + " m.");
+    if (nNotch > 0) pasos.push("PASO " + (nNotch > 0 ? 4 : 3) + " — Fusionar " + (nNotch === 1 ? "la arista vertical" : "las " + nNotch + " aristas verticales") + " donde se encuentran las alas (esquinas del volumen).");
+    let n = pasos.length + 1;
+    if (nOjetillos() > 0) pasos.push("PASO " + (n++) + " — " + ojDetalle() + " Instalados en el " + (ojEnUnif() === "tapa" ? "perímetro de la tapa" : "borde externo de las alas (rim inferior)") + ", según plano.");
+    (state.cortesUnif || []).filter((c) => c.tapa && c.tapa.on).forEach((c) => {
+      const esL = c.tipo === "corte" || c.tipo === "guia";
+      pasos.push("PASO " + (n++) + " — Instalar " + (esL ? "solapa" : "tapa") + (c.legend ? " sobre «" + c.legend + "»" : " sobre el " + (esL ? "corte" : "calado")) + ": fusionar las aristas marcadas con trazo grueso naranjo y colocar accesorios en las punteadas (ver plano).");
+    });
+    if ((state.aletasUnif || []).filter((a) => !a._oculto).length) pasos.push("PASO " + (n++) + " — Confeccionar y fusionar los anexos (aletas/faldones) en la posición indicada por sus referencias de vértice.");
+    return pasos;
+  }
   async function descargarSketchUnif() {
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
     if (largo == null || ancho == null || largo <= 0 || ancho <= 0) return alert("Ingresa largo y ancho para descargar el plano.");
@@ -5336,9 +5404,10 @@
       ojetillos: nOjetillos(), unidades: N,
       ojetillosAristas: state.ojMode === "arista" ? ojDetalleAristas(ancho, largo, state.ojEdges, state.ojParejo, cortesSpec(state.cortesUnif), volExtUnif()) : [],
       strapsAristas: strapsDetalleAristas(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }),
-      observaciones: terminacionesTexto(state.orientUnif).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
+      observaciones: (alturaUnif() > 0 ? pasosConfeccionVol(num("f_ancho", 0), num("f_largo", 0), alturaUnif()) : []).concat(terminacionesTexto(state.orientUnif)).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, []).concat(materialesCortes(state.cortesUnif)),
-      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif(), ojEn: ojEnUnif() } } : {}),
+      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif(), ojEn: ojEnUnif(), alas: alasUnif() } } : {}),
+      vista3D: (_vista3D && _vista3D.firma === firmaVol()) ? _vista3D.png : null,
       trasera: state.trasUnif,
       backExtra: { cortes: cortesSpec(state.backCortesUnif), aletas: aletasSpec(state.backAletasUnif) },
       materialesTrasera: materialesTraseras(state.backCortesUnif, state.backComplementosUnif),
@@ -5931,6 +6000,7 @@
     $("f_union").value = "0.045";
     $("f_usaAlto").checked = false; $("f_altura").value = ""; $("wAltura").classList.add("hidden");
     { const c = $("f_ojVolExt"); if (c) c.checked = true; } { const w = $("wOjVol"); if (w) w.classList.add("hidden"); }
+    state.volAlas = { sup: true, inf: true, izq: true, der: true }; sincAlasUI(); { const w = $("wAlas"); if (w) w.classList.add("hidden"); }
     state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
     state.cortesUnif = []; state.backCortesUnif = []; state.backComplementosUnif = []; state.aletasUnif = []; state.backAletasUnif = []; state.strapsUnif = []; state.cintasUnif = []; state.factorUnif = "1";
     { const t = $("f_trasUnif"); if (t) t.checked = false; }
@@ -5957,7 +6027,7 @@
     { const t = $("histFTipo"); if (t) t.value = ""; }
     if (typeof renderListaFiltrada === "function") renderListaFiltrada();
     // Navegación / filtros de productos a granel: vuelve al inicio (categorías), sin selección ni comparador.
-    granelNav = {}; granelCantMem = {};
+    granelNav = {}; granelCantMem = {}; _vista3D = null;
     renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); renderTraseraUnif(); setFactorUnifUI(); aplicarVis();
     renderGranelLineas(); renderGranel(); renderOjetillos(); recompute();
   }
