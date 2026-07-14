@@ -1576,6 +1576,15 @@
         hitLn({ x: 0, y: 0 }, { x: 0, y: sk.largo }, 'data-arista="izq"');
         hitLn({ x: sk.ancho, y: 0 }, { x: sk.ancho, y: sk.largo }, 'data-arista="der"');
       }
+      // Toda línea de CORTE/GUÍA es clicable a lo largo de TODA su extensión, aunque (aún) no
+      // seccione el paño: el propósito de los anchors es posicionar el corte respecto de las
+      // aristas ANTES de convertirlo en arista. (Va después de las aristas → gana el clic donde se solapan.)
+      (sk.cortes || []).forEach((c, i) => {
+        if (!c.corte || !c.segments || !c.segments[0]) return;
+        const sg = c.segments[0];
+        if (Math.hypot(sg.b.x - sg.a.x, sg.b.y - sg.a.y) < 1e-9) return;
+        hitLn(sg.a, sg.b, 'data-corte="' + i + '"');
+      });
     }
     // Anchors (puntos de anclaje móviles) — SOLO en el plano en vivo de la app (no van al PDF).
     if (live && sk.anclas && sk.anclas.length) {

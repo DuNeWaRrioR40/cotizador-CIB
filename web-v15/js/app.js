@@ -4419,6 +4419,8 @@
               a * p1.z + b3 * p2.z + c3 * apex.z);
           };
           (sk2.ojetillos || []).forEach((pt) => { const v = to3D(pt); if (v) { const m = new T.Mesh(geoOj, matOj); m.position.copy(v); grp.add(m); } });
+          // Ojetillos instalados SOBRE cortes/calados (p. ej. las diagonales al vértice del triángulo).
+          (sk2.cortes || []).forEach((c2) => (c2.ojetillos || []).forEach((pt) => { const v = to3D(pt); if (v) { const m = new T.Mesh(geoOj, matOj); m.position.copy(v); grp.add(m); } }));
           (sk2.straps || []).forEach((st) => {
             const vs = (st.corners || []).map(to3D);
             if (vs.length === 4 && vs.every(Boolean)) {
@@ -4495,6 +4497,7 @@
           const geoOj = new T.SphereGeometry(rAcc, 10, 10), matOj = new T.MeshBasicMaterial({ color: 0x111111 });
           const wrap = (pt) => { const th = pt.x / R; return new T.Vector3((R + 0.005) * Math.cos(th), Math.max(0, Math.min(H, H - pt.y)), (R + 0.005) * Math.sin(th)); };
           (skM.ojetillos || []).forEach((pt) => { const m = new T.Mesh(geoOj, matOj); m.position.copy(wrap(pt)); grp.add(m); });
+          (skM.cortes || []).forEach((c2) => (c2.ojetillos || []).forEach((pt) => { const m = new T.Mesh(geoOj, matOj); m.position.copy(wrap(pt)); grp.add(m); }));
           (skM.straps || []).forEach((st) => {
             const vs = (st.corners || []).map(wrap);
             if (vs.length === 4) { const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]); g2.computeVertexNormals(); grp.add(new T.Mesh(g2, new T.MeshBasicMaterial({ color: 0xd23b2e, transparent: true, opacity: 0.85, side: T.DoubleSide }))); }
@@ -4536,10 +4539,15 @@
     // Rótulos de cotas (sprites siempre de cara a la cámara).
     const f = window.CalcCIBSA.fmtNum;
     const label = (txt) => {
-      const cv = document.createElement("canvas"); cv.width = 512; cv.height = 128;
-      const g = cv.getContext("2d"); g.font = "600 52px -apple-system, sans-serif"; g.fillStyle = "#111"; g.textAlign = "center"; g.fillText(txt, 256, 80);
+      // Canvas ancho + fuente auto-ajustada: títulos largos ("PIRÁMIDE 3.8 × 2.2 × h 2 m") caben completos.
+      const cv = document.createElement("canvas"); cv.width = 1024; cv.height = 128;
+      const g = cv.getContext("2d"); g.fillStyle = "#111"; g.textAlign = "center";
+      let fpx = 52; g.font = "600 " + fpx + "px -apple-system, sans-serif";
+      const wTxt = g.measureText(txt).width;
+      if (wTxt > 984) { fpx = Math.max(24, Math.floor(fpx * 984 / wTxt)); g.font = "600 " + fpx + "px -apple-system, sans-serif"; }
+      g.fillText(txt, 512, 80);
       const sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(cv), transparent: true, depthTest: false }));
-      const sc = diag * 0.34; sp.scale.set(sc, sc / 4, 1); return sp;
+      const sc = diag * 0.34; sp.scale.set(sc * 2, sc / 4, 1); return sp;   // ancho ×2 = misma densidad de px que antes
     };
     // Rótulos de caras: qué es cada parte (claridad para el cliente).
     if (!fig) { const lTapa = label("TAPA " + f(L) + " × " + f(A) + " m"); lTapa.position.set(0, H + diag * 0.05, 0); grp.add(lTapa); }
