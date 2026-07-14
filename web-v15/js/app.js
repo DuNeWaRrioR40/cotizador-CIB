@@ -5648,9 +5648,15 @@
     if (k === "der") return { a: { x: A, y: 0 }, b: { x: A, y: L } };
     return null;
   }
+  // Carril del ancla: segmento propio (an.seg — rim/lateral de un ala, en coords de la hoja)
+  // o una arista nombrada del paño base.
+  function segDeAncla(an, A, L) {
+    if (an && an.seg && an.seg.a && an.seg.b) return { a: an.seg.a, b: an.seg.b };
+    return aristaSegAncla(an.ar, A, L);
+  }
   function posAnclaArista(an, A, L) {
     if (!(A > 0 && L > 0)) return null;
-    const sgm = aristaSegAncla(an.ar, A, L); if (!sgm) return null;
+    const sgm = segDeAncla(an, A, L); if (!sgm) return null;
     const len = Math.hypot(sgm.b.x - sgm.a.x, sgm.b.y - sgm.a.y); if (!(len > 0)) return null;
     const d = Math.max(0, Math.min(len, parseFloat(an.d) || 0));
     const u = { x: (sgm.b.x - sgm.a.x) / len, y: (sgm.b.y - sgm.a.y) / len };
@@ -5806,7 +5812,7 @@
           movido = true;
           let p;
           if (reg.tipo === "arista") {
-            const sgm = aristaSegAncla(reg.an.ar, A, L); if (!sgm) return;
+            const sgm = segDeAncla(reg.an, A, L); if (!sgm) return;
             const len = Math.hypot(sgm.b.x - sgm.a.x, sgm.b.y - sgm.a.y);
             const u = { x: (sgm.b.x - sgm.a.x) / len, y: (sgm.b.y - sgm.a.y) / len };
             const tA = Math.max(0, Math.min(len, (pm.x - sgm.a.x) * u.x + (pm.y - sgm.a.y) * u.y));
@@ -5877,16 +5883,31 @@
         }
         const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
         const cap = document.createElement("p"); cap.className = "arista-menu-cap";
-        cap.textContent = (idxCorte != null) ? "Arista de corte — instalar" : ("Arista " + NOM_AR[k] + " — instalar");
+        cap.textContent = (idxCorte != null) ? "Arista de corte — instalar" : (ln.getAttribute("data-libre") != null) ? "Borde del ala (altura) — instalar" : (ln.getAttribute("data-rim") != null) ? ("Rim del ala " + (NOM_AR[k] || "") + " — instalar") : ("Arista " + NOM_AR[k] + " — instalar");
         menu.appendChild(cap);
-        const items = (idxCorte != null)
-          ? [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]]
-          : [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]];
-        if (pm) items.push((idxCorte != null) ? ["Anchor sobre la línea", "corteAncla"] : ["Anchor (punto de anclaje)", "ancla"]);
+        const esRim = ln.getAttribute("data-rim") != null, esLibre = ln.getAttribute("data-libre") != null;
+        const seg = (ln.dataset && ln.dataset.ax != null)
+          ? { a: { x: parseFloat(ln.dataset.ax), y: parseFloat(ln.dataset.ay) }, b: { x: parseFloat(ln.dataset.bx), y: parseFloat(ln.dataset.by) } } : null;
+        let items;
+        if (idxCorte != null) {
+          items = [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]];
+          if (pm) items.push(["Anchor sobre la línea", "corteAncla"]);
+        } else if (esLibre && seg) {
+          // Borde lateral de un ala (la ALTURA): elementos posicionados en SU propio segmento.
+          items = [["Corte / calado (en este borde)", "corteLibre"], ["Línea de construcción (en este borde)", "guiaLibre"]];
+          if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"]);
+        } else if (esRim && seg) {
+          // Rim (borde externo del ala): ojetillos externos por arista + elementos en el rim mismo.
+          items = [["Ojetillos (borde externo)", "oj"], ["Corte / calado (en el rim)", "corteLibre"], ["Línea de construcción (en el rim)", "guiaLibre"]];
+          if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"]);
+        } else {
+          items = [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]];
+          if (pm) items.push(["Anchor (punto de anclaje)", "ancla"]);
+        }
         items.forEach(([t, a]) => {
           if (!acciones[a]) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); (idxCorte != null) ? acciones[a](parseInt(idxCorte, 10), pm) : acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (idxCorte != null) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -5905,6 +5926,19 @@
     if (modo === "oj") { c.ojAristaLado = ladoVivo; if (!(ev(c.ojAristaD) > 0)) c.ojAristaD = "0.5"; }
     if (modo === "strap") { c.strapLado = ladoVivo; if (!(ev(c.strapD) > 0)) c.strapD = "0.5"; }
     c._colap = false; c._advOpen = true;
+  }
+  // Crea un corte/guía A LO LARGO de un segmento propio (rim o lateral de un ala): la línea nace
+  // exactamente sobre ese borde y luego se ajusta con sus campos o con anchors.
+  function crearLineaEnSeg(lista, seg, tipo) {
+    if (!seg) return null;
+    const len = Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y); if (!(len > 0)) return null;
+    const f = window.CalcCIBSA.fmtNum;
+    const c = nuevaCorte(); c.tipo = tipo;
+    c.largo = f(len); c.padIzq = String(rd3(seg.a.x)); c.padSup = String(rd3(seg.a.y));
+    c.angulo = String(Math.round(Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) * 180 / Math.PI * 100000) / 100000);
+    c.pivX = "0"; c._colap = false;
+    lista.push(c);
+    return c;
   }
   const accionesAristaUnif = {
     corteOj: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "oj"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
@@ -5930,6 +5964,18 @@
       c.anclas.push({ id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), t: rd3(t), emp: null });
       recompute();
     },
+    anclaLibre: (seg, pm) => {
+      if (!seg) return;
+      const len = Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y); if (!(len > 0)) return;
+      const u = { x: (seg.b.x - seg.a.x) / len, y: (seg.b.y - seg.a.y) / len };
+      let tA = len / 2;
+      if (pm) tA = Math.max(0, Math.min(len, (pm.x - seg.a.x) * u.x + (pm.y - seg.a.y) * u.y));
+      const esq = (tA <= len / 2) ? "ini" : "fin";
+      state.anclasUnif.push({ id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), seg: { a: { x: seg.a.x, y: seg.a.y }, b: { x: seg.b.x, y: seg.b.y } }, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) });
+      recompute();
+    },
+    guiaLibre: (seg, pm) => { crearLineaEnSeg(state.cortesUnif, seg, "guia"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
+    corteLibre: (seg, pm) => { crearLineaEnSeg(state.cortesUnif, seg, "corte"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
     oj: (k) => {
       state.ojMode = "arista";
       const r = document.querySelector('input[name="ojmode"][value="arista"]'); if (r) r.checked = true;
@@ -6015,6 +6061,18 @@
         c.anclas.push({ id: nuevoIdAncla(pz.anclas || [], pz.cortes), t: rd3(t), emp: null });
         recomputeCompuesto();
       },
+      anclaLibre: (seg, pm) => {
+        if (!seg) return;
+        const len = Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y); if (!(len > 0)) return;
+        const u = { x: (seg.b.x - seg.a.x) / len, y: (seg.b.y - seg.a.y) / len };
+        let tA = len / 2;
+        if (pm) tA = Math.max(0, Math.min(len, (pm.x - seg.a.x) * u.x + (pm.y - seg.a.y) * u.y));
+        const esq = (tA <= len / 2) ? "ini" : "fin";
+        (pz.anclas || (pz.anclas = [])).push({ id: nuevoIdAncla(pz.anclas, pz.cortes), seg: { a: { x: seg.a.x, y: seg.a.y }, b: { x: seg.b.x, y: seg.b.y } }, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) });
+        recomputeCompuesto();
+      },
+      guiaLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "guia")) irAPieza(); },
+      corteLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "corte")) irAPieza(); },
       oj: (k) => {
         pz.ojMode = "arista";
         if (!pz.ojEdges) pz.ojEdges = ojEdgesDefault();

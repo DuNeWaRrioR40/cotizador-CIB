@@ -361,7 +361,8 @@
     }
     return { a: a2, b: b2 };
   }
-  function procesarCorte(c, ancho, largo, todos) {
+  function procesarCorte(c, ancho, largo, todos, bnd) {
+      bnd = bnd || { x0: 0, x1: ancho, y0: 0, y1: largo };
       const x = c.x, y = c.y, w = c.w, h = c.h;
       // --- Corte (línea recta): un solo segmento de largo w (horizontal), rotado por ángulo/pivote. ---
       if (c.tipo === "corte" || c.tipo === "guia") {
@@ -393,7 +394,7 @@
             // desplazado se corre a lo largo de la línea justo hasta donde sigue habiendo tela).
             const aO = { x: a.x + inx * ins * sgn, y: a.y + iny * ins * sgn };
             let T0 = 0, T1 = Ls;
-            const clipR = clipSeg(aO, { x: aO.x + ux * Ls, y: aO.y + uy * Ls }, 0, ancho, 0, largo);
+            const clipR = clipSeg(aO, { x: aO.x + ux * Ls, y: aO.y + uy * Ls }, bnd.x0, bnd.x1, bnd.y0, bnd.y1);
             if (!clipR) { T1 = T0 - 1; }
             else {
               T0 = (clipR.a.x - aO.x) * ux + (clipR.a.y - aO.y) * uy;
@@ -479,7 +480,16 @@
   // spec: { ancho, largo, ojTotal|ojetillosPos, ventanas, cortes, bolsillos, espejo, vista, extraCortes, extraVentanas }
   function construirSketch(spec) {
     const ancho = parseFloat(spec.ancho), largo = parseFloat(spec.largo);
-    let cortes = (spec.cortes || []).filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte" || c.tipo === "guia")).map((c, _i, arr) => procesarCorte(c, ancho, largo, arr));
+    // Límites del área editable: el paño base, o la HOJA DESPLEGADA completa (tapa + alas) si es
+    // volumétrico — así cortes/guías/ojetillos pueden vivir sobre las alas, no solo sobre la tapa.
+    const volB = (spec.volumetrico && (parseFloat(spec.volumetrico.alto) || 0) > 0) ? spec.volumetrico : null;
+    const HB = volB ? (parseFloat(volB.alto) || 0) : 0;
+    const alasB = volB ? (volB.alas || null) : null;
+    const vaB = (k) => !alasB || alasB[k] !== false;
+    const BND = volB
+      ? { x0: vaB("izq") ? -HB : 0, x1: ancho + (vaB("der") ? HB : 0), y0: vaB("sup") ? -HB : 0, y1: largo + (vaB("inf") ? HB : 0) }
+      : { x0: 0, x1: ancho, y0: 0, y1: largo };
+    let cortes = (spec.cortes || []).filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte" || c.tipo === "guia")).map((c, _i, arr) => procesarCorte(c, ancho, largo, arr, BND));
     let ojetillos = Array.isArray(spec.ojetillosPos) ? spec.ojetillosPos : ojetillosPerimetro(spec.ojTotal, ancho, largo);
     let ventanas = (spec.ventanas || []).filter((v) => v && v.w > 0 && v.h > 0).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, circ: !!v.circ, legend: v.legend || "", fusion: v.fusion || {}, rotulo: !!v.rotulo, id: (v.id != null ? v.id : null) }));
     let bolsillos = (spec.bolsillos || []).filter((b) => b && (b.arista === "sup" || b.arista === "inf" || b.arista === "izq" || b.arista === "der"));
@@ -504,7 +514,7 @@
     }
     // Elementos propios de la vista trasera (NO se espejan: ya van en coordenadas de la trasera).
     if (spec.extraCortes && spec.extraCortes.length) {
-      cortes = cortes.concat(spec.extraCortes.filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte" || c.tipo === "guia")).map((c, _i, arr) => procesarCorte(c, ancho, largo, arr)));
+      cortes = cortes.concat(spec.extraCortes.filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte" || c.tipo === "guia")).map((c, _i, arr) => procesarCorte(c, ancho, largo, arr, BND)));
     }
     if (spec.extraVentanas && spec.extraVentanas.length) {
       ventanas = ventanas.concat(spec.extraVentanas.filter((v) => v && v.w > 0 && v.h > 0).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, circ: !!v.circ, legend: v.legend || "", fusion: v.fusion || {} })));
@@ -515,7 +525,7 @@
     // conteo ("Ojetillos sobre cortes/calados"). Los del lado que QUEDA están fuera del fadePoly → se conservan.
     if (cortes.length) {
       const fades = cortes.map((c) => (c.fadePoly && c.fadePoly.length >= 3) ? c.fadePoly : null);
-      const dentroRect = (p) => p.x >= -EPS && p.x <= ancho + EPS && p.y >= -EPS && p.y <= largo + EPS;
+      const dentroRect = (p) => p.x >= BND.x0 - EPS && p.x <= BND.x1 + EPS && p.y >= BND.y0 - EPS && p.y <= BND.y1 + EPS;
       // ¿p está sobre la línea del corte cj? (distancia < 1e-6). Los puntos en el BORDE del fade
       // (vértices compartidos entre cortes) pertenecen al lado que queda → no se eliminan.
       const sobreLineaDe = (p, cj) => (cj.segments || []).some((sg) => {
@@ -1335,25 +1345,51 @@
         const hit3 = (pq, qq, kAr, aM, bM) => {
           s += `<line class="arista-hit" data-arista="${kAr}" data-ax="${aM[0]}" data-ay="${aM[1]}" data-bx="${bM[0]}" data-by="${bM[1]}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
         };
+        // Punto de la HOJA (tapa o pared) proyectado sobre el cubo: la tapa va en la cara superior
+        // y cada pared se interpola entre su pliegue (arriba) y su rim (abajo).
+        const clA = (x) => Math.max(0, Math.min(A, x)), clL = (y) => Math.max(0, Math.min(L, y));
+        const mez = (pq, qq, v) => [pq[0] + (qq[0] - pq[0]) * v, pq[1] + (qq[1] - pq[1]) * v];
+        const vol3 = (x, y) => {
+          if (y > L && va("inf")) return mez(top3(clA(x), L), rim3(clA(x), L), Math.min(1, (y - L) / H));
+          if (y < 0 && va("sup")) return mez(top3(clA(x), 0), rim3(clA(x), 0), Math.min(1, -y / H));
+          if (x < 0 && va("izq")) return mez(top3(0, clL(y)), rim3(0, clL(y)), Math.min(1, -x / H));
+          if (x > A && va("der")) return mez(top3(A, clL(y)), rim3(A, clL(y)), Math.min(1, (x - A) / H));
+          return top3(clA(x), clL(y));
+        };
+        // Pliegues (aristas de la tapa): menú completo por arista.
         hit3(top3(0, 0), top3(A, 0), "sup", [0, 0], [A, 0]);
         hit3(top3(0, L), top3(A, L), "inf", [0, L], [A, L]);
         hit3(top3(0, 0), top3(0, L), "izq", [0, 0], [0, L]);
         hit3(top3(A, 0), top3(A, L), "der", [A, 0], [A, L]);
-        if (va("sup")) hit3(rim3(0, 0), rim3(A, 0), "sup", [0, 0], [A, 0]);
-        if (va("inf")) hit3(rim3(0, L), rim3(A, L), "inf", [0, L], [A, L]);
-        if (va("izq")) hit3(rim3(0, 0), rim3(0, L), "izq", [0, 0], [0, L]);
-        if (va("der")) hit3(rim3(A, 0), rim3(A, L), "der", [A, 0], [A, L]);
+        // Rim (borde externo de cada ala): coordenadas PROPIAS de la hoja (y=-H, y=L+H, x=-H, x=A+H).
+        const hitRim = (pq, qq, kAr, aM, bM) => {
+          s += `<line class="arista-hit" data-arista="${kAr}" data-rim="1" data-ax="${aM[0]}" data-ay="${aM[1]}" data-bx="${bM[0]}" data-by="${bM[1]}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+        };
+        const hitLibre = (pq, qq, aM, bM) => {
+          s += `<line class="arista-hit" data-libre="1" data-ax="${aM[0]}" data-ay="${aM[1]}" data-bx="${bM[0]}" data-by="${bM[1]}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+        };
+        if (va("sup")) hitRim(rim3(0, 0), rim3(A, 0), "sup", [0, -H], [A, -H]);
+        if (va("inf")) hitRim(rim3(0, L), rim3(A, L), "inf", [0, L + H], [A, L + H]);
+        if (va("izq")) hitRim(rim3(0, 0), rim3(0, L), "izq", [-H, 0], [-H, L]);
+        if (va("der")) hitRim(rim3(A, 0), rim3(A, L), "der", [A + H, 0], [A + H, L]);
+        // Verticales del cubo (la ALTURA): cada una edita el borde lateral de una pared, con su
+        // propio segmento de hoja (prioridad inf/sup; si esa ala no existe, la izq/der).
+        const vert3 = (x2d, yTapa, segM) => hitLibre(top3(x2d, yTapa), rim3(x2d, yTapa), segM[0], segM[1]);
+        if (va("inf")) { vert3(0, L, [[0, L], [0, L + H]]); vert3(A, L, [[A, L], [A, L + H]]); }
+        else { if (va("izq")) vert3(0, L, [[0, L], [-H, L]]); if (va("der")) vert3(A, L, [[A, L], [A + H, L]]); }
+        if (va("sup")) { vert3(0, 0, [[0, 0], [0, -H]]); vert3(A, 0, [[A, 0], [A, -H]]); }
+        else { if (va("izq")) vert3(0, 0, [[0, 0], [-H, 0]]); if (va("der")) vert3(A, 0, [[A, 0], [A + H, 0]]); }
         // Cortes/guías de la tapa: línea visible + clicable sobre la cara superior.
         (skVol.cortes || []).forEach((c, i) => {
           if (!c.corte || !c.segments || !c.segments[0]) return;
-          const cl = clipSeg(c.segments[0].a, c.segments[0].b, 0, A, 0, L); if (!cl) return;
-          const pq = top3(cl.a.x, cl.a.y), qq = top3(cl.b.x, cl.b.y);
+          const cl = clipSeg(c.segments[0].a, c.segments[0].b, va("izq") ? -H : 0, A + (va("der") ? H : 0), va("sup") ? -H : 0, L + (va("inf") ? H : 0)); if (!cl) return;
+          const pq = vol3(cl.a.x, cl.a.y), qq = vol3(cl.b.x, cl.b.y);
           s += `<line class="${c.guia ? "vol-fold" : "cut"}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
           s += `<line class="arista-hit" data-corte="${i}" data-ax="${cl.a.x}" data-ay="${cl.a.y}" data-bx="${cl.b.x}" data-by="${cl.b.y}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
         });
         // Anchors (indicativos: el arrastre fino vive en el desplegado).
         (skVol.anclas || []).forEach((an) => {
-          const pq = top3(Math.max(0, Math.min(A, an.x)), Math.max(0, Math.min(L, an.y)));
+          const pq = vol3(an.x, an.y);
           s += `<g class="ancla3${an.emp ? " ancla-emp" : ""}${an.tipo === "corte" ? " ancla-corte" : ""}">` +
             `<circle class="ancla-dot" cx="${f1(pq[0])}" cy="${f1(pq[1])}" r="3"/>` +
             `<circle class="ancla-dot-in" cx="${f1(pq[0])}" cy="${f1(pq[1])}" r="1.1"/></g>`;
@@ -1457,6 +1493,14 @@
         if (Math.hypot(sg.b.x - sg.a.x, sg.b.y - sg.a.y) < 1e-9) return;
         hitV(pxT(sg.a.x), pyT(sg.a.y), pxT(sg.b.x), pyT(sg.b.y), 'data-corte="' + i + '"');
       });
+      // Bordes PROPIOS de cada ala en el desplegado: rim (externo) y laterales (la altura).
+      const hitD = (aM, bM, extra) => {
+        s += `<line class="arista-hit" ${extra} data-ax="${aM[0]}" data-ay="${aM[1]}" data-bx="${bM[0]}" data-by="${bM[1]}" x1="${f1(pxT(aM[0]))}" y1="${f1(pyT(aM[1]))}" x2="${f1(pxT(bM[0]))}" y2="${f1(pyT(bM[1]))}"/>`;
+      };
+      if (va("sup")) { hitD([0, -H], [A, -H], 'data-arista="sup" data-rim="1"'); hitD([0, 0], [0, -H], 'data-libre="1"'); hitD([A, 0], [A, -H], 'data-libre="1"'); }
+      if (va("inf")) { hitD([0, L + H], [A, L + H], 'data-arista="inf" data-rim="1"'); hitD([0, L], [0, L + H], 'data-libre="1"'); hitD([A, L], [A, L + H], 'data-libre="1"'); }
+      if (va("izq")) { hitD([-H, 0], [-H, L], 'data-arista="izq" data-rim="1"'); hitD([0, 0], [-H, 0], 'data-libre="1"'); hitD([0, L], [-H, L], 'data-libre="1"'); }
+      if (va("der")) { hitD([A + H, 0], [A + H, L], 'data-arista="der" data-rim="1"'); hitD([A, 0], [A + H, 0], 'data-libre="1"'); hitD([A, L], [A + H, L], 'data-libre="1"'); }
       (skVol.anclas || []).forEach((an) => {
         const ax = pxT(an.x), ay = pyT(an.y);
         const izqL = an.x <= A / 2, tx = izqL ? 9 : -9, tanc = izqL ? "start" : "end";
