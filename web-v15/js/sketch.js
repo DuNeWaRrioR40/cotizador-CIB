@@ -615,7 +615,7 @@
     // cortes/guías (1er/último de sus ojetillos) a los del perímetro base.
     let ojNumeros = spec.ojNumeros || null;
     if (ojNumeros != null) cortes.forEach((c) => { if (c.ojNum && c.ojNum.length) ojNumeros = ojNumeros.concat(c.ojNum); });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar, cintas: (spec.cintas || []) };
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, anclas: spec.espejo ? [] : (spec.anclas || []), bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar, cintas: (spec.cintas || []) };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
@@ -1486,7 +1486,7 @@
     // Ojetillo = anillo + círculo concéntrico menor (borde fino). ojeSVG = dibujo (chico); ojeLeg = leyenda.
     const ojeSVG = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r * 0.42)}"/>`;
     const ojeLeg = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rLeg)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rLeg * 0.42)}"/>`;
-    let s = `<svg class="sketch-svg" viewBox="0 0 ${f1(totalW)} ${f1(totalH)}" data-mscale="${scale.toFixed(3)}" xmlns="http://www.w3.org/2000/svg">`;
+    let s = `<svg class="sketch-svg" viewBox="0 0 ${f1(totalW)} ${f1(totalH)}" data-mscale="${scale.toFixed(3)}" data-ox="${f1(ox)}" data-oy="${f1(oy)}" xmlns="http://www.w3.org/2000/svg">`;
     s += `<defs><pattern id="cinta-hatch" width="5" height="5" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="0" y2="5" stroke="#8a94a0" stroke-width="0.8"/></pattern></defs>`;
     // Contorno del paño: rectángulo, o el polígono recortado si hay cortes "Eliminar" (la parte se va).
     if (sk.panoPoly && sk.panoPoly.length >= 3) {
@@ -1576,6 +1576,20 @@
         hitLn({ x: 0, y: 0 }, { x: 0, y: sk.largo }, 'data-arista="izq"');
         hitLn({ x: sk.ancho, y: 0 }, { x: sk.ancho, y: sk.largo }, 'data-arista="der"');
       }
+    }
+    // Anchors (puntos de anclaje móviles) — SOLO en el plano en vivo de la app (no van al PDF).
+    if (live && sk.anclas && sk.anclas.length) {
+      sk.anclas.forEach((an) => {
+        const ax = px(an.x), ay = py(an.y);
+        const izqLado = an.x <= sk.ancho / 2;
+        const tx = izqLado ? 9 : -9, tanc = izqLado ? "start" : "end";
+        s += `<g class="ancla${an.tipo === "corte" ? " ancla-corte" : ""}${an.emp ? " ancla-emp" : ""}" data-ancla="${esc(String(an.id))}" data-x="${f1(ax)}" data-y="${f1(ay)}">`;
+        s += `<circle class="ancla-halo" cx="${f1(ax)}" cy="${f1(ay)}" r="11"/>`;
+        s += `<circle class="ancla-dot" cx="${f1(ax)}" cy="${f1(ay)}" r="4"/>`;
+        s += `<circle class="ancla-dot-in" cx="${f1(ax)}" cy="${f1(ay)}" r="1.5"/>`;
+        s += `<text class="ancla-lbl" x="${f1(ax + tx)}" y="${f1(ay - 6)}" text-anchor="${tanc}">${esc(an.lbl || "")}</text>`;
+        s += `</g>`;
+      });
     }
     // Numeración de ojetillos (1er/último por arista, con flecha) — SOLO en el plano en vivo de la app.
     if (live && sk.ojNumeros && sk.ojNumeros.length) {

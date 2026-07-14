@@ -286,6 +286,17 @@ button:active { transform: scale(0.97); }
 .arista-menu .arista-menu-cap { font-size: 11px; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.08em; }
 .arista-menu-it { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 6px; padding: 7px 10px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; }
 .arista-menu-it:hover { background: var(--sel); }
+/* Anchors (puntos de anclaje móviles sobre el plano) */
+.sketch-svg .ancla { cursor: grab; }
+.sketch-svg .ancla.dragging { cursor: grabbing; }
+.sketch-svg .ancla-halo { fill: rgba(0, 0, 0, 0.001); stroke: none; }
+.sketch-svg .ancla-dot { fill: var(--brand, #ffdf26); stroke: #16171a; stroke-width: 1.2; }
+.sketch-svg .ancla-dot-in { fill: #16171a; }
+.sketch-svg .ancla-corte .ancla-dot { fill: #fff; stroke: #e8590c; }
+.sketch-svg .ancla-corte .ancla-dot-in { fill: #e8590c; }
+.sketch-svg .ancla-emp .ancla-dot { fill: #e8590c; stroke: #16171a; }
+.sketch-svg .ancla.snap .ancla-dot { stroke-width: 2.4; }
+.sketch-svg .ancla-lbl { font-size: 8.5px; font-weight: 700; fill: #16171a; paint-order: stroke; stroke: rgba(255, 255, 255, 0.9); stroke-width: 2.5px; }
 /* Visor 3D interactivo (volumétricos) */
 .sketch-3d-btn { position: absolute; top: 46px; right: 6px; z-index: 5; width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--accent); font-size: 15px; line-height: 1; cursor: pointer; box-shadow: 0 1px 5px rgba(0,0,0,0.2); }
 .sketch-3d-btn:hover { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }

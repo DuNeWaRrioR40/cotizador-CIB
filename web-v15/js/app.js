@@ -7,7 +7,7 @@
   const state = {
     telas: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
-    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, figura3D: null, cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
+    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, figura3D: null, anclasUnif: [], cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [], cintasUnif: [],
@@ -188,7 +188,7 @@
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
   const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "cotasOcultas", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "cotasOcultas", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -3448,6 +3448,7 @@
       oj: base ? Object.assign({}, base.oj) : { sup: "0", inf: "0", izq: "0", der: "0" },
       complementos: base ? (base.complementos || []).map((c) => Object.assign({}, c, { cantAristas: (c.cantAristas || []).slice() })) : [],
       tapa: (base && base.tapa) ? JSON.parse(JSON.stringify(base.tapa)) : null,
+      anclas: [],
     };
   }
   function centrarCorte(baseL, baseA, c) {
@@ -4245,15 +4246,17 @@
     const tela = telaActual();
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
     actualizarTraseraUnif();
+    aplicarEmpates(state.cortesUnif, state.anclasUnif, ancho || 0, largo || 0);
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
-      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar }, ojSpecUnif());
+      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar, anclas: anclasSpecDe(state.anclasUnif, state.cortesUnif, ancho || 0, largo || 0) }, ojSpecUnif());
       if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif(), ojEn: ojEnUnif(), alas: alasUnif() };
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
       activarArrastreCallouts(sk);
       const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); recompute(); };
       activarClicOcultarCotas(sk, state.cotasOcultas, refrescarOcUnif);
       activarMenuAristas(sk, accionesAristaUnif);
+      activarAnclas(sk, { anclas: state.anclasUnif, cortes: state.cortesUnif, ancho: ancho || 0, largo: largo || 0, onChange: () => { renderCortesUnif(); recompute(); } });
       menuPlano(sk, [
         { label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
         { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
@@ -5396,11 +5399,12 @@
     const ev = window.CalcCIBSA.evalExpr;
     if (!pz.rotDrag) pz.rotDrag = {};   // offsets manuales de los rótulos de esta pieza (persisten en el snapshot)
     const a = ev(pz.ancho), l = ev(pz.largo);
+    aplicarEmpates(pz.cortes, pz.anclas || [], a > 0 ? a : 0, l > 0 ? l : 0);
     const ventanas = visibles(pz.inscritos).map((ins) => {
       const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
       return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {}, rotulo: !!ins.rotulo, id: rotId(ins) } : null;
     }).filter(Boolean);
-    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((telaPorNombre(pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cintas: cintasSpec(pz.cintas || [], { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, rotDrag: pz.rotDrag };
+    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((telaPorNombre(pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cintas: cintasSpec(pz.cintas || [], { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, rotDrag: pz.rotDrag, anclas: anclasSpecDe(pz.anclas || [], pz.cortes, a > 0 ? a : 0, l > 0 ? l : 0) };
     if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh, ojEn: pz.ojVolExt === false ? "tapa" : "externo" }; }
     if (pz.ojMode === "arista") {
       const r = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), !!pz.ojNumerar, volExtPz(pz));
@@ -5428,6 +5432,214 @@
     const h = destino.querySelector && destino.querySelector("h2.section, h3.section");
     if (h && typeof flashTitulo === "function") flashTitulo(h);
   }
+  // ---------- Anchors (puntos de anclaje móviles) ----------
+  // Ancla de ARISTA (paño base): { id, ar: sup|inf|izq|der, esq: "ini"|"fin", d } — d es la
+  // distancia a la esquina donde se generó (esq). Ancla de CORTE/GUÍA (en c.anclas, máx 2):
+  // { id, t, emp } — t es la distancia desde el extremo inicial de la línea; emp = id del ancla
+  // de arista con la que está EMPATADA (vínculo persistente: mover el ancla mueve el corte).
+  function aristaSegAncla(k, A, L) {
+    if (k === "sup") return { a: { x: 0, y: 0 }, b: { x: A, y: 0 } };
+    if (k === "inf") return { a: { x: 0, y: L }, b: { x: A, y: L } };
+    if (k === "izq") return { a: { x: 0, y: 0 }, b: { x: 0, y: L } };
+    if (k === "der") return { a: { x: A, y: 0 }, b: { x: A, y: L } };
+    return null;
+  }
+  function posAnclaArista(an, A, L) {
+    if (!(A > 0 && L > 0)) return null;
+    const sgm = aristaSegAncla(an.ar, A, L); if (!sgm) return null;
+    const len = Math.hypot(sgm.b.x - sgm.a.x, sgm.b.y - sgm.a.y); if (!(len > 0)) return null;
+    const d = Math.max(0, Math.min(len, parseFloat(an.d) || 0));
+    const u = { x: (sgm.b.x - sgm.a.x) / len, y: (sgm.b.y - sgm.a.y) / len };
+    return (an.esq === "fin") ? { x: sgm.b.x - u.x * d, y: sgm.b.y - u.y * d } : { x: sgm.a.x + u.x * d, y: sgm.a.y + u.y * d };
+  }
+  // Línea (a→b) de un corte/guía RAW (mismas reglas de rotación/pivote que rectCorte/procesarCorte).
+  function lineaRawCorte(c) {
+    const ev = window.CalcCIBSA.evalExpr;
+    if (!c || (c.tipo !== "corte" && c.tipo !== "guia")) return null;
+    const w = ev(c.largo); if (!(w > 0)) return null;
+    const x = ev(c.padIzq) || 0, y = ev(c.padSup) || 0;
+    let pv = ev(c.pivX); pv = (pv == null || isNaN(pv)) ? 0 : Math.max(0, Math.min(1, pv));
+    let a = { x: x, y: y }, b = { x: x + w, y: y };
+    const ang = (ev(c.angulo) || 0) * Math.PI / 180;
+    if (Math.abs(ang) > 1e-9) {
+      const Px = x + pv * w, Py = y, co = Math.cos(ang), si = Math.sin(ang);
+      const rot = (pp) => ({ x: Px + (pp.x - Px) * co - (pp.y - Py) * si, y: Py + (pp.x - Px) * si + (pp.y - Py) * co });
+      a = rot(a); b = rot(b);
+    }
+    return { a: a, b: b, u: { x: (b.x - a.x) / w, y: (b.y - a.y) / w }, w: w };
+  }
+  function posAnclaCorte(c, an) {
+    const ln = lineaRawCorte(c); if (!ln) return null;
+    const t = Math.max(0, Math.min(ln.w, parseFloat(an.t) || 0));
+    return { x: ln.a.x + ln.u.x * t, y: ln.a.y + ln.u.y * t, t: t };
+  }
+  function nuevoIdAncla(anclas, cortes) {
+    let m = 0;
+    (anclas || []).forEach((a) => { m = Math.max(m, a.id || 0); });
+    (cortes || []).forEach((c) => (c.anclas || []).forEach((a) => { m = Math.max(m, a.id || 0); }));
+    return m + 1;
+  }
+  const rd3 = (v) => Math.round(v * 1000) / 1000;
+  // EMPATES: cada corte/guía con anclas empatadas se REPOSICIONA para que coincidan con las
+  // anclas de arista. Con 1 empate la línea se traslada (mismo ángulo); con 2 la línea queda
+  // definida por ambos puntos (se ajustan ángulo y, si hace falta, el largo). Idempotente;
+  // corre en cada recompute, así el corte SIGUE al ancla aunque cambien las dimensiones.
+  function aplicarEmpates(cortesRaw, anclas, A, L) {
+    if (!(A > 0 && L > 0) || !anclas || !anclas.length) return;
+    const ev = window.CalcCIBSA.evalExpr;
+    const pos = {}; anclas.forEach((an) => { const pq = posAnclaArista(an, A, L); if (pq) pos[an.id] = pq; });
+    (cortesRaw || []).forEach((c) => {
+      if (!c || !Array.isArray(c.anclas) || !c.anclas.length) return;
+      const ln = lineaRawCorte(c); if (!ln) return;
+      const fijar = (p0, ux, uy) => {
+        c.pivX = "0";
+        const rp = (v) => Math.round(v * 100000) / 100000;
+        c.padIzq = String(rp(p0.x)); c.padSup = String(rp(p0.y));
+        c.angulo = String(Math.round(Math.atan2(uy, ux) * 180 / Math.PI * 100000) / 100000);
+      };
+      const emp = c.anclas.filter((a) => a && a.emp != null && pos[a.emp]).sort((pq, q) => (parseFloat(pq.t) || 0) - (parseFloat(q.t) || 0));
+      if (!emp.length) return;
+      if (emp.length === 1) {
+        const an = emp[0], P = pos[an.emp], t = Math.max(0, Math.min(ln.w, parseFloat(an.t) || 0));
+        an.t = rd3(t);
+        fijar({ x: P.x - ln.u.x * t, y: P.y - ln.u.y * t }, ln.u.x, ln.u.y);
+      } else {
+        const a1 = emp[0], a2 = emp[1], P1 = pos[a1.emp], P2 = pos[a2.emp];
+        const D = Math.hypot(P2.x - P1.x, P2.y - P1.y); if (!(D > 1e-9)) return;
+        const u = { x: (P2.x - P1.x) / D, y: (P2.y - P1.y) / D };
+        const t1 = Math.max(0, parseFloat(a1.t) || 0);
+        const rd5 = (v) => Math.round(v * 100000) / 100000;   // 0.01 mm: la línea llega EXACTA al 2º punto
+        a1.t = rd3(t1); a2.t = rd5(t1 + D);
+        if ((ev(c.largo) || 0) < t1 + D) c.largo = String(rd5(t1 + D));
+        fijar({ x: P1.x - u.x * t1, y: P1.y - u.y * t1 }, u.x, u.y);
+      }
+    });
+  }
+  // Anclas para el DIBUJO (posiciones + rótulo de distancia). Solo plano en vivo, nunca PDF.
+  function anclasSpecDe(anclas, cortesRaw, A, L) {
+    const f = window.CalcCIBSA.fmtNum, out = [];
+    (anclas || []).forEach((an) => {
+      const pq = posAnclaArista(an, A, L);
+      if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: f(rd3(parseFloat(an.d) || 0)) + " m", tipo: "arista" });
+    });
+    visibles(cortesRaw || []).forEach((c) => {
+      (c.anclas || []).forEach((an) => {
+        const pq = posAnclaCorte(c, an);
+        if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: f(rd3(pq.t)) + " m", tipo: "corte", emp: an.emp != null });
+      });
+    });
+    return out;
+  }
+  // Interacción sobre el plano en vivo: arrastrar anclas (las de corte se IMANTAN a las de
+  // arista para empatar) + clic sin arrastre = menú (fijar distancia exacta / desempatar / eliminar).
+  // ctx: { anclas, cortes, ancho, largo, onChange }
+  function activarAnclas(container, ctx) {
+    if (!container || !ctx) return;
+    const svg = container.querySelector("svg.sketch-svg"); if (!svg || !svg.getScreenCTM || svg.dataset.ox == null) return;
+    const mscale = parseFloat(svg.dataset.mscale) || 1, ox = parseFloat(svg.dataset.ox) || 0, oy = parseFloat(svg.dataset.oy) || 0;
+    const f = window.CalcCIBSA.fmtNum, A = ctx.ancho, L = ctx.largo;
+    const toModel = (cx, cy) => {
+      const m = svg.getScreenCTM(); if (!m) return null;
+      const pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy; const q = pt.matrixTransform(m.inverse());
+      return { x: (q.x - ox) / mscale, y: (q.y - oy) / mscale };
+    };
+    const buscar = (id) => {
+      const an = (ctx.anclas || []).find((a) => a.id === id);
+      if (an) return { tipo: "arista", an: an };
+      for (const c of (ctx.cortes || [])) {
+        const a2 = (c.anclas || []).find((a) => a.id === id);
+        if (a2) return { tipo: "corte", an: a2, c: c };
+      }
+      return null;
+    };
+    function menuAncla(reg) {
+      cerrarMenuAristas();
+      const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
+      const cap = document.createElement("p"); cap.className = "arista-menu-cap";
+      cap.textContent = (reg.tipo === "arista") ? "Anchor de arista" : "Anchor del corte/línea";
+      menu.appendChild(cap);
+      const item = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); };
+      item("Fijar distancia exacta…", () => {
+        const cur = (reg.tipo === "arista") ? (parseFloat(reg.an.d) || 0) : (parseFloat(reg.an.t) || 0);
+        const v = parseFloat(String(prompt((reg.tipo === "arista") ? "Distancia desde la esquina (m):" : "Distancia desde el extremo inicial de la línea (m):", String(cur)) || "").replace(",", "."));
+        if (v == null || isNaN(v) || v < 0) return;
+        if (reg.tipo === "arista") reg.an.d = rd3(v); else reg.an.t = rd3(v);
+        aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
+        if (ctx.onChange) ctx.onChange();
+      });
+      if (reg.tipo === "corte" && reg.an.emp != null) item("Desempatar", () => { reg.an.emp = null; if (ctx.onChange) ctx.onChange(); });
+      item("Eliminar anchor", () => {
+        if (reg.tipo === "arista") {
+          const i = ctx.anclas.indexOf(reg.an); if (i >= 0) ctx.anclas.splice(i, 1);
+          (ctx.cortes || []).forEach((c) => (c.anclas || []).forEach((a) => { if (a.emp === reg.an.id) a.emp = null; }));
+        } else {
+          const i = (reg.c.anclas || []).indexOf(reg.an); if (i >= 0) reg.c.anclas.splice(i, 1);
+        }
+        if (ctx.onChange) ctx.onChange();
+      });
+      document.body.appendChild(menu); _arMenu = menu;
+      const gEl = svg.querySelector('g.ancla[data-ancla="' + reg.an.id + '"]');
+      let cx2 = window.innerWidth / 2, cy2 = window.innerHeight / 2;
+      if (gEl) { const bb = gEl.getBoundingClientRect(); cx2 = bb.left + bb.width / 2; cy2 = bb.bottom; }
+      const mw = menu.offsetWidth || 200, mh = menu.offsetHeight || 140;
+      menu.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, cx2 - mw / 2)) + "px";
+      menu.style.top = Math.max(8, Math.min(window.innerHeight - mh - 8, cy2 + 8)) + "px";
+    }
+    svg.querySelectorAll("g.ancla").forEach((g) => {
+      const id = parseInt(g.dataset.ancla, 10), reg = buscar(id); if (!reg) return;
+      const gx = parseFloat(g.dataset.x), gy = parseFloat(g.dataset.y);
+      g.addEventListener("click", (e) => e.stopPropagation());
+      g.addEventListener("pointerdown", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        try { g.setPointerCapture(e.pointerId); } catch (_) {}
+        g.classList.add("dragging");
+        const lbl = g.querySelector(".ancla-lbl");
+        let movido = false, drop = null;
+        const noScroll = (ev2) => ev2.preventDefault();
+        document.addEventListener("touchmove", noScroll, { passive: false });
+        const move = (ev2) => {
+          const pm = toModel(ev2.clientX, ev2.clientY); if (!pm) return;
+          movido = true;
+          let p;
+          if (reg.tipo === "arista") {
+            const sgm = aristaSegAncla(reg.an.ar, A, L); if (!sgm) return;
+            const len = Math.hypot(sgm.b.x - sgm.a.x, sgm.b.y - sgm.a.y);
+            const u = { x: (sgm.b.x - sgm.a.x) / len, y: (sgm.b.y - sgm.a.y) / len };
+            const tA = Math.max(0, Math.min(len, (pm.x - sgm.a.x) * u.x + (pm.y - sgm.a.y) * u.y));
+            p = { x: sgm.a.x + u.x * tA, y: sgm.a.y + u.y * tA };
+            drop = { d: rd3((reg.an.esq === "fin") ? (len - tA) : tA) };
+            if (lbl) lbl.textContent = f(drop.d) + " m";
+          } else {
+            const ln = lineaRawCorte(reg.c); if (!ln) return;
+            const t = Math.max(0, Math.min(ln.w, (pm.x - ln.a.x) * ln.u.x + (pm.y - ln.a.y) * ln.u.y));
+            p = { x: ln.a.x + ln.u.x * t, y: ln.a.y + ln.u.y * t };
+            // Imantación: cerca de un ancla de ARISTA, el punto se pega a ella (soltar = empatar).
+            let emp = null; const R = 14 / mscale;
+            (ctx.anclas || []).forEach((an2) => {
+              if (emp != null) return;
+              const q = posAnclaArista(an2, A, L); if (!q) return;
+              if (Math.hypot(pm.x - q.x, pm.y - q.y) < R) { emp = an2.id; p = q; }
+            });
+            drop = { t: rd3(t), emp: emp };
+            g.classList.toggle("snap", emp != null);
+            if (lbl) lbl.textContent = f(drop.t) + " m";
+          }
+          g.setAttribute("transform", "translate(" + ((ox + p.x * mscale) - gx).toFixed(1) + "," + ((oy + p.y * mscale) - gy).toFixed(1) + ")");
+        };
+        const up = () => {
+          g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); g.removeEventListener("pointercancel", up);
+          document.removeEventListener("touchmove", noScroll, { passive: false });
+          g.classList.remove("dragging");
+          if (!movido || !drop) { setTimeout(() => menuAncla(reg), 0); return; }
+          if (reg.tipo === "arista") reg.an.d = drop.d;
+          else { reg.an.t = drop.t; reg.an.emp = drop.emp; }
+          aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
+          if (ctx.onChange) ctx.onChange();
+        };
+        g.addEventListener("pointermove", move); g.addEventListener("pointerup", up); g.addEventListener("pointercancel", up);
+      });
+    });
+  }
   function activarMenuAristas(container, acciones) {
     if (!container || !acciones) return;
     const NOM_AR = { sup: "superior", inf: "inferior", izq: "izquierda", der: "derecha" };
@@ -5436,6 +5648,17 @@
         e.stopPropagation();
         cerrarMenuAristas();
         const k = ln.getAttribute("data-arista"), idxCorte = ln.getAttribute("data-corte");
+        // Punto del clic en coords del MODELO (metros) — para crear anchors donde se pinchó.
+        // Solo disponible en el plano plano (el volumétrico no expone data-ox).
+        let pm = null;
+        const svgA = ln.ownerSVGElement;
+        if (svgA && svgA.dataset && svgA.dataset.ox != null && svgA.getScreenCTM) {
+          try {
+            const mm = svgA.getScreenCTM(), pt = svgA.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+            const q = pt.matrixTransform(mm.inverse()), msc = parseFloat(svgA.dataset.mscale) || 1;
+            pm = { x: (q.x - (parseFloat(svgA.dataset.ox) || 0)) / msc, y: (q.y - (parseFloat(svgA.dataset.oy) || 0)) / msc };
+          } catch (_) {}
+        }
         const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
         const cap = document.createElement("p"); cap.className = "arista-menu-cap";
         cap.textContent = (idxCorte != null) ? "Arista de corte — instalar" : ("Arista " + NOM_AR[k] + " — instalar");
@@ -5443,10 +5666,11 @@
         const items = (idxCorte != null)
           ? [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]]
           : [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]];
+        if (pm) items.push((idxCorte != null) ? ["Anchor sobre la línea", "corteAncla"] : ["Anchor (punto de anclaje)", "ancla"]);
         items.forEach(([t, a]) => {
           if (!acciones[a]) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); (idxCorte != null) ? acciones[a](parseInt(idxCorte, 10)) : acciones[a](k); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); (idxCorte != null) ? acciones[a](parseInt(idxCorte, 10), pm) : acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -5469,6 +5693,27 @@
   const accionesAristaUnif = {
     corteOj: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "oj"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
     corteStrap: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "strap"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
+    ancla: (k, pm) => {
+      const A = num("f_ancho", null), L = num("f_largo", null); if (!(A > 0 && L > 0)) return;
+      const sgm = aristaSegAncla(k, A, L); if (!sgm) return;
+      const len = Math.hypot(sgm.b.x - sgm.a.x, sgm.b.y - sgm.a.y);
+      const u = { x: (sgm.b.x - sgm.a.x) / len, y: (sgm.b.y - sgm.a.y) / len };
+      let tA = len / 2;
+      if (pm) tA = Math.max(0, Math.min(len, (pm.x - sgm.a.x) * u.x + (pm.y - sgm.a.y) * u.y));
+      const esq = (tA <= len / 2) ? "ini" : "fin";
+      state.anclasUnif.push({ id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), ar: k, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) });
+      recompute();
+    },
+    corteAncla: (i, pm) => {
+      const c = visibles(state.cortesUnif)[i]; if (!c) return;
+      if (!Array.isArray(c.anclas)) c.anclas = [];
+      if (c.anclas.length >= 2) return alert("Cada corte/línea admite máximo 2 anchors.");
+      const ln = lineaRawCorte(c); if (!ln) return;
+      let t = ln.w / 2;
+      if (pm) t = Math.max(0, Math.min(ln.w, (pm.x - ln.a.x) * ln.u.x + (pm.y - ln.a.y) * ln.u.y));
+      c.anclas.push({ id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), t: rd3(t), emp: null });
+      recompute();
+    },
     oj: (k) => {
       state.ojMode = "arista";
       const r = document.querySelector('input[name="ojmode"][value="arista"]'); if (r) r.checked = true;
@@ -5533,6 +5778,27 @@
     return {
       corteOj: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "oj"); irAPieza(); },
       corteStrap: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "strap"); irAPieza(); },
+      ancla: (k, pm) => {
+        const A = ev(pz.ancho), L = ev(pz.largo); if (!(A > 0 && L > 0)) return;
+        const sgm = aristaSegAncla(k, A, L); if (!sgm) return;
+        const len = Math.hypot(sgm.b.x - sgm.a.x, sgm.b.y - sgm.a.y);
+        const u = { x: (sgm.b.x - sgm.a.x) / len, y: (sgm.b.y - sgm.a.y) / len };
+        let tA = len / 2;
+        if (pm) tA = Math.max(0, Math.min(len, (pm.x - sgm.a.x) * u.x + (pm.y - sgm.a.y) * u.y));
+        const esq = (tA <= len / 2) ? "ini" : "fin";
+        (pz.anclas || (pz.anclas = [])).push({ id: nuevoIdAncla(pz.anclas, pz.cortes), ar: k, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) });
+        recomputeCompuesto();
+      },
+      corteAncla: (i, pm) => {
+        const c = visibles(pz.cortes)[i]; if (!c) return;
+        if (!Array.isArray(c.anclas)) c.anclas = [];
+        if (c.anclas.length >= 2) return alert("Cada corte/línea admite máximo 2 anchors.");
+        const ln = lineaRawCorte(c); if (!ln) return;
+        let t = ln.w / 2;
+        if (pm) t = Math.max(0, Math.min(ln.w, (pm.x - ln.a.x) * ln.u.x + (pm.y - ln.a.y) * ln.u.y));
+        c.anclas.push({ id: nuevoIdAncla(pz.anclas || [], pz.cortes), t: rd3(t), emp: null });
+        recomputeCompuesto();
+      },
       oj: (k) => {
         pz.ojMode = "arista";
         if (!pz.ojEdges) pz.ojEdges = ojEdgesDefault();
@@ -6256,6 +6522,7 @@
         activarArrastreCallouts(sketchBox, pz.rotDrag, recomputeCompuesto);
         activarClicOcultarCotas(sketchBox, pz.cotasOcultas, recomputeCompuesto);
         activarMenuAristas(sketchBox, accionesAristaPieza(pz));
+        activarAnclas(sketchBox, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, onChange: () => { renderPiezas(); recompute(); } });
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
         menuPlano(sketchBox, [
           { label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
@@ -6342,7 +6609,7 @@
         body.innerHTML = '<p class="muted small">Completa largo y ancho de esta pieza.</p>';
       } else {
         const sk = document.createElement("div"); sk.className = "sketch"; sk.id = "prevsk_" + pz.id;
-        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); activarMenuAristas(sk, accionesAristaPieza(pz)); }
+        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); activarMenuAristas(sk, accionesAristaPieza(pz)); activarAnclas(sk, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, onChange: () => { renderPiezas(); recompute(); } }); }
         body.appendChild(sk);
         const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn-outline"; dl.textContent = "Descargar plano (PDF)";
         dl.addEventListener("click", () => descargarSketchPieza(pz));
@@ -6384,7 +6651,7 @@
     { const c = $("f_ojVolExt"); if (c) c.checked = true; } { const w = $("wOjVol"); if (w) w.classList.add("hidden"); }
     state.volAlas = { sup: true, inf: true, izq: true, der: true }; sincAlasUI(); { const w = $("wAlas"); if (w) w.classList.add("hidden"); }
     state.figura3D = null;
-    state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
+    state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.anclasUnif = []; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
     state.cortesUnif = []; state.backCortesUnif = []; state.backComplementosUnif = []; state.aletasUnif = []; state.backAletasUnif = []; state.strapsUnif = []; state.cintasUnif = []; state.factorUnif = "1";
     { const t = $("f_trasUnif"); if (t) t.checked = false; }
     document.querySelector('input[name="ojmode"][value="total"]').checked = true;
