@@ -4320,11 +4320,14 @@
     const body = document.createElement("div"); body.className = "plano-zoom-body";
     const canvas = document.createElement("canvas"); canvas.className = "vol3d-canvas";
     const hint = document.createElement("div"); hint.className = "vol3d-hint"; hint.textContent = "Arrastra para rotar · rueda o pellizco para acercar";
-    const cap3d = document.createElement("button"); cap3d.type = "button"; cap3d.className = "btn-accent vol3d-cap"; cap3d.textContent = "📸 Usar esta vista en el plano";
-    body.appendChild(canvas); overlay.appendChild(x); overlay.appendChild(body); overlay.appendChild(hint); overlay.appendChild(cap3d);
+    const acciones = document.createElement("div"); acciones.className = "vol3d-acciones";
+    const cap3d = document.createElement("button"); cap3d.type = "button"; cap3d.className = "vol3d-btn"; cap3d.textContent = "📸 Incluir esta vista en el plano";
+    const dl3d = document.createElement("button"); dl3d.type = "button"; dl3d.className = "vol3d-btn"; dl3d.textContent = "⬇ Descargar imagen";
+    acciones.appendChild(cap3d); acciones.appendChild(dl3d);
+    body.appendChild(canvas); overlay.appendChild(x); overlay.appendChild(body); overlay.appendChild(hint); overlay.appendChild(acciones);
     document.body.appendChild(overlay);
 
-    const renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true });
+    const renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setClearColor(0xffffff, 1);
     const scene = new T.Scene();
@@ -4414,10 +4417,18 @@
     onResize(); colocar();
     cap3d.addEventListener("click", (e) => {
       e.stopPropagation();
-      renderer.render(scene, cam); // render inmediato antes de capturar (sin preserveDrawingBuffer)
+      renderer.render(scene, cam);
       _vista3D = { png: canvas.toDataURL("image/png"), firma: firmaVol() };
-      cap3d.textContent = "✓ Vista congelada — saldrá en el plano PDF";
-      setTimeout(() => { if (cap3d.isConnected) cap3d.textContent = "📸 Usar esta vista en el plano"; }, 2400);
+      cap3d.textContent = "✓ Se agregará como página del plano";
+      setTimeout(() => { if (cap3d.isConnected) cap3d.textContent = "📸 Incluir esta vista en el plano"; }, 2400);
+    });
+    dl3d.addEventListener("click", (e) => {
+      e.stopPropagation();
+      renderer.render(scene, cam);
+      const a = document.createElement("a");
+      a.href = canvas.toDataURL("image/png");
+      a.download = "CIBSA_3D_" + firmaVol().replace(/[^0-9a-zA-Z_.x-]/g, "") + ".png";
+      document.body.appendChild(a); a.click(); a.remove();
     });
     _v3d = { renderer: renderer, overlay: overlay, onResize: onResize, onKey: onKey, raf: 0 };
     const loop = () => { if (!_v3d) return; if (auto) { theta += 0.004; colocar(); } renderer.render(scene, cam); _v3d.raf = requestAnimationFrame(loop); };
@@ -4642,6 +4653,93 @@
   }
 
   // ---------- Producto Compuesto (piezas) ----------
+  // ---------- Generador de figuras volumétricas (pirámide / cilindro) ----------
+  // Filosofía acordada: TODA figura se inscribe en un rectángulo de tela. Cada cara se crea como
+  // PIEZA del producto compuesto (se cotiza con el motor de paños/uniones de siempre) y los cortes
+  // con "Eliminar" seccionan el triángulo en el plano de la pieza (instrucción de taller).
+  function cortesTrianguloInscrito(base, alto) {
+    const f = window.CalcCIBSA.fmtNum, hyp = Math.hypot(base / 2, alto);
+    const mk = (leg, ang, fade) => {
+      const c = nuevaCorte(); c.tipo = "corte"; c.legend = leg;
+      c.largo = f(hyp); c.padIzq = f(base / 2); c.padSup = "0"; c.pivX = "0";
+      c.angulo = String(Math.round(ang * 10) / 10); c.fade = fade; c.fadeKill = true; c._colap = true;
+      return c;
+    };
+    return [
+      mk("Sección triángulo (izquierda)", Math.atan2(alto, -base / 2) * 180 / Math.PI, "A"),
+      mk("Sección triángulo (derecha)", Math.atan2(alto, base / 2) * 180 / Math.PI, "B"),
+    ];
+  }
+  function crearFiguraPiramide(L, A, h) {
+    const f = window.CalcCIBSA.fmtNum;
+    const s1 = Math.hypot(h, L / 2), s2 = Math.hypot(h, A / 2);
+    const mkCara = (nombre, base, sl) => {
+      const pz = nuevaPieza();
+      pz.etiqueta = nombre; pz.cantidad = "2"; pz.largo = f(sl); pz.ancho = f(base); pz.ojetillos = "0";
+      pz.cortes = cortesTrianguloInscrito(base, sl);
+      return pz;
+    };
+    state.piezas.push(mkCara("Pirámide — cara frontal/trasera (△ base " + f(A) + " × alt. " + f(s1) + " m)", A, s1));
+    state.piezas.push(mkCara("Pirámide — cara lateral (△ base " + f(L) + " × alt. " + f(s2) + " m)", L, s2));
+  }
+  function crearFiguraCilindro(D, h, conTapa) {
+    const f = window.CalcCIBSA.fmtNum;
+    const manto = nuevaPieza();
+    manto.etiqueta = "Cilindro — manto Ø" + f(D) + " m (desarrollo π·D)";
+    manto.largo = f(h); manto.ancho = f(Math.PI * D); manto.cantidad = "1"; manto.ojetillos = "0";
+    state.piezas.push(manto);
+    if (conTapa) {
+      const tapa = nuevaPieza();
+      tapa.etiqueta = "Cilindro — tapa circular Ø" + f(D) + " m (círculo inscrito)";
+      tapa.largo = f(D); tapa.ancho = f(D); tapa.cantidad = "1"; tapa.ojetillos = "0";
+      const c = nuevaCorte(); c.tipo = "calado"; c.forma = "circ"; c.legend = "Recorte del círculo Ø" + f(D) + " m";
+      c.largo = f(D); c.ancho = f(D); c.padSup = "0"; c.padInf = "0"; c.padIzq = "0"; c.padDer = "0"; c._colap = true;
+      tapa.cortes = [c];
+      state.piezas.push(tapa);
+    }
+  }
+  function abrirGeneradorFigura() {
+    const ov = document.createElement("div"); ov.className = "calc-modal";
+    const box = document.createElement("div"); box.className = "calc-box";
+    box.innerHTML = '<p class="section" style="margin:0 0 10px">Generador de figuras</p>' +
+      '<label class="field"><span>Figura</span><select id="figSel"><option value="piramide">Pirámide (base rectangular)</option><option value="cilindro">Cilindro</option></select></label>' +
+      '<div id="figPir"><div class="pieza-grid">' +
+      '<label class="field"><span>Base — largo (m)</span><input id="figL" type="text" inputmode="decimal" placeholder="16" /></label>' +
+      '<label class="field"><span>Base — ancho (m)</span><input id="figA" type="text" inputmode="decimal" placeholder="16" /></label></div>' +
+      '<label class="field"><span>Alto al vértice (m)</span><input id="figH" type="text" inputmode="decimal" placeholder="2" /></label></div>' +
+      '<div id="figCil" class="hidden"><div class="pieza-grid">' +
+      '<label class="field"><span>Diámetro (m)</span><input id="figD" type="text" inputmode="decimal" placeholder="1.2" /></label>' +
+      '<label class="field"><span>Alto / largo (m)</span><input id="figHC" type="text" inputmode="decimal" placeholder="2" /></label></div>' +
+      '<label class="chk"><input id="figTapa" type="checkbox" checked /> <span>Incluir tapa circular</span></label></div>' +
+      '<p class="muted small">Cada cara se inscribe en su rectángulo de tela y se crea como pieza del producto compuesto: se cotiza con el motor de paños y fusiones de siempre, y su plano trae la sección marcada para el taller.</p>' +
+      '<div class="calc-actions"><button id="figCrear" class="btn-accent" type="button">Crear piezas</button><button id="figCerrar" class="btn-outline" type="button">Cancelar</button></div>';
+    ov.appendChild(box); document.body.appendChild(ov);
+    const q = (id) => box.querySelector("#" + id);
+    ["figL", "figA", "figH", "figD", "figHC"].forEach((id) => agregarCalc(q(id)));
+    q("figSel").addEventListener("change", () => { const p = q("figSel").value === "piramide"; q("figPir").classList.toggle("hidden", !p); q("figCil").classList.toggle("hidden", p); });
+    const cerrar = () => ov.remove();
+    q("figCerrar").addEventListener("click", cerrar);
+    ov.addEventListener("click", (e) => { if (e.target === ov) cerrar(); });
+    q("figCrear").addEventListener("click", () => {
+      const ev = window.CalcCIBSA.evalExpr;
+      if (q("figSel").value === "piramide") {
+        const L = ev(q("figL").value), A = ev(q("figA").value), h = ev(q("figH").value);
+        if (!(L > 0) || !(A > 0) || !(h > 0)) return alert("Completa largo, ancho y alto de la pirámide.");
+        crearFiguraPiramide(L, A, h);
+      } else {
+        const D = ev(q("figD").value), h = ev(q("figHC").value);
+        if (!(D > 0) || !(h > 0)) return alert("Completa diámetro y alto del cilindro.");
+        crearFiguraCilindro(D, h, q("figTapa").checked);
+      }
+      // La figura vive como producto COMPUESTO formal: cambia los modos si hace falta.
+      if (state.docMode === "preliminar") { const rf = document.querySelector('input[name="docmode"][value="formal"]'); if (rf) rf.checked = true; aplicarModo("formal"); }
+      const rp = document.querySelector('input[name="prodmode"][value="compuesto"]'); if (rp) rp.checked = true;
+      aplicarProd("compuesto");
+      renderPiezas(); recomputeCompuesto(); cerrar();
+      irASeccion($("wPiezas"));
+    });
+  }
+  { const b = $("btnGenFigura"); if (b) b.addEventListener("click", abrirGeneradorFigura); }
   function nuevaPieza(base) {
     piezaSeq += 1;
     const defBordes = () => ({

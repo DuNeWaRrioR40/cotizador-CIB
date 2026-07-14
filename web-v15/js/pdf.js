@@ -1398,23 +1398,23 @@
 
     // Sketch entre el detalle y la lista de materiales (más alto en modo de aprobación).
     const boxTop = detalleBottom, boxBottom = bottomM + matBlockH + 16;
-    // Vista 3D congelada por el usuario: reemplaza la proyección 3D estática; el desplegado va debajo.
-    let topSk = boxTop, conVista = false;
+    dibujarSketchPDF(page, datos.sketch, { x: M, top: boxTop, w: W - 2 * M, h: boxTop - boxBottom }, font, { cotas: !limpio });
+
+    // Página ADICIONAL con la vista 3D elegida en el visor (complementa el plano, no lo sustituye).
     if (datos.vista3D && datos.sketch && datos.sketch.volumetrico) {
       try {
         const img3d = await doc.embedPng(b64ToBytes(datos.vista3D));
-        const availH = boxTop - boxBottom;
-        const maxH = Math.min(availH * 0.42, 235);
-        const esc = Math.min((W - 2 * M) / img3d.width, maxH / img3d.height);
+        const p3 = doc.addPage([W, H]);
+        let y3 = dibujarEncabezado(p3, cibsa, null, W, M, H - 40);
+        tituloCentrado(p3, "VISTA 3D ELEGIDA", W, y3, bold, 15, BLUE()); y3 -= 15;
+        tituloCentrado(p3, "Representación referencial del producto (vista seleccionada en el visor 3D).", W, y3, font, 9, BLUE()); y3 -= 18;
+        if (datos.titulo) { p3.drawText(san('"' + datos.titulo + '"'), { x: M, y: y3, size: 12, font: bold, color: BLUE() }); y3 -= 20; }
+        const availW = W - 2 * M, availH3 = y3 - 60;
+        const esc = Math.min(availW / img3d.width, availH3 / img3d.height);
         const iw = img3d.width * esc, ih = img3d.height * esc;
-        const cap = "REPRESENTACION 3D — vista elegida (referencial)";
-        page.drawText(san(cap), { x: (W - bold.widthOfTextAtSize(cap, 8.5)) / 2, y: boxTop - 8, size: 8.5, font: bold, color: BLACK() });
-        page.drawImage(img3d, { x: (W - iw) / 2, y: boxTop - 14 - ih, width: iw, height: ih });
-        topSk = boxTop - 14 - ih - 6;
-        conVista = true;
-      } catch (e) { /* si la imagen falla, cae al panel 3D dibujado */ }
+        p3.drawImage(img3d, { x: (W - iw) / 2, y: y3 - ih, width: iw, height: ih });
+      } catch (e) { /* si la imagen falla, el plano queda igual que siempre */ }
     }
-    dibujarSketchPDF(page, datos.sketch, { x: M, top: topSk, w: W - 2 * M, h: topSk - boxBottom }, font, { cotas: !limpio, soloDesplegado: conVista });
 
     // Página de vista trasera (espejo + diseño trasero $0), si corresponde.
     if (datos.trasera && datos.sketch) {
