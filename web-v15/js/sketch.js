@@ -1498,12 +1498,32 @@
     s += resumenStrapsSVG(sk, 108, boundsBot + mBot + 2);
     s += resumenCintasSVG(sk, 108, boundsBot + mBot + 2 + (resH ? resH + 6 : 0));
     if (cintaDetN) s += resumenCintaDetalleSVG(sk, 6, boundsBot + mBot + bottomH + 8, totalW - 14);
-    // Aristas del paño base CLICABLES (menú "instalar en esta arista") — solo en el plano en vivo.
+    // Aristas CLICABLES (menú "instalar en esta arista") — solo en el plano en vivo. Siguen el
+    // CONTORNO REAL: si hay cortes "Eliminar" (panoPoly), cada tramo se clasifica como arista del
+    // rectángulo (sup/inf/izq/der) o como línea de un corte (data-corte=índice) para editar ESE corte.
     if (live && sk.ancho > 0 && sk.largo > 0) {
-      const hx0 = px(0), hy0 = py(0), hx1 = px(sk.ancho), hy1 = py(sk.largo);
-      [["sup", hx0, hy0, hx1, hy0], ["inf", hx0, hy1, hx1, hy1], ["izq", hx0, hy0, hx0, hy1], ["der", hx1, hy0, hx1, hy1]].forEach((e) => {
-        s += `<line class="arista-hit" data-arista="${e[0]}" x1="${f1(e[1])}" y1="${f1(e[2])}" x2="${f1(e[3])}" y2="${f1(e[4])}"/>`;
-      });
+      const hitLn = (a, b, attr) => { s += `<line class="arista-hit" ${attr} x1="${f1(px(a.x))}" y1="${f1(py(a.y))}" x2="${f1(px(b.x))}" y2="${f1(py(b.y))}"/>`; };
+      if (sk.panoPoly && sk.panoPoly.length >= 3) {
+        const EPSH = 1e-6;
+        const sobreLinea = (p, q, r) => Math.abs((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)) < 1e-6 * (Math.hypot(q.x - p.x, q.y - p.y) || 1);
+        const killed = (sk.cortes || []).map((c, i) => ({ i: i, c: c })).filter((o) => o.c.fadeKill && o.c.segments && o.c.segments[0]);
+        for (let i = 0; i < sk.panoPoly.length; i++) {
+          const a = sk.panoPoly[i], b = sk.panoPoly[(i + 1) % sk.panoPoly.length];
+          if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-9) continue;
+          let attr = null;
+          if (Math.abs(a.y) < EPSH && Math.abs(b.y) < EPSH) attr = 'data-arista="sup"';
+          else if (Math.abs(a.y - sk.largo) < EPSH && Math.abs(b.y - sk.largo) < EPSH) attr = 'data-arista="inf"';
+          else if (Math.abs(a.x) < EPSH && Math.abs(b.x) < EPSH) attr = 'data-arista="izq"';
+          else if (Math.abs(a.x - sk.ancho) < EPSH && Math.abs(b.x - sk.ancho) < EPSH) attr = 'data-arista="der"';
+          else { const k = killed.find((o) => { const sg = o.c.segments[0]; return sobreLinea(sg.a, sg.b, a) && sobreLinea(sg.a, sg.b, b); }); if (k) attr = 'data-corte="' + k.i + '"'; }
+          if (attr) hitLn(a, b, attr);
+        }
+      } else {
+        hitLn({ x: 0, y: 0 }, { x: sk.ancho, y: 0 }, 'data-arista="sup"');
+        hitLn({ x: 0, y: sk.largo }, { x: sk.ancho, y: sk.largo }, 'data-arista="inf"');
+        hitLn({ x: 0, y: 0 }, { x: 0, y: sk.largo }, 'data-arista="izq"');
+        hitLn({ x: sk.ancho, y: 0 }, { x: sk.ancho, y: sk.largo }, 'data-arista="der"');
+      }
     }
     // Numeración de ojetillos (1er/último por arista, con flecha) — SOLO en el plano en vivo de la app.
     if (live && sk.ojNumeros && sk.ojNumeros.length) {

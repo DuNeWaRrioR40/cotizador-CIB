@@ -4387,7 +4387,6 @@
         grp.add(new T.Line(new T.BufferGeometry().setFromPoints([b, ap]), matFus)); // aristas al vértice = fusiones
         grp.add(new T.Line(new T.BufferGeometry().setFromPoints([b, b2]), matBorde));
       });
-      const lF = label("fusión de caras"); lF.position.set(A / 2 * 0.7 + diag * 0.06, H * 0.6, L / 2 * 0.7); lF.material.color = new T.Color(0xd23b2e); grp.add(lF);
     } else if (fig && fig.tipo === "cilindro") {
       const R = fig.D / 2;
       const manto = new T.Mesh(new T.CylinderGeometry(R, R, H, 48, 1, true), matLona);
@@ -4439,7 +4438,10 @@
     };
     // Rótulos de caras: qué es cada parte (claridad para el cliente).
     if (!fig) { const lTapa = label("TAPA " + f(L) + " × " + f(A) + " m"); lTapa.position.set(0, H + diag * 0.05, 0); grp.add(lTapa); }
-    if (fig && fig.tipo === "piramide") { const lP = label(fig.lado ? ("PIRÁMIDE " + fig.n + " caras · lado " + f(fig.lado) + " × h " + f(fig.h) + " m") : ("PIRÁMIDE " + f(fig.L) + " × " + f(fig.A) + " × h " + f(fig.h) + " m")); lP.position.set(0, H + diag * 0.06, 0); grp.add(lP); }
+    if (fig && fig.tipo === "piramide") {
+      const lP = label(fig.lado ? ("PIRÁMIDE " + fig.n + " caras · lado " + f(fig.lado) + " × h " + f(fig.h) + " m") : ("PIRÁMIDE " + f(fig.L) + " × " + f(fig.A) + " × h " + f(fig.h) + " m")); lP.position.set(0, H + diag * 0.06, 0); grp.add(lP);
+      const lF = label("fusión de caras"); lF.position.set(A / 2 * 0.7 + diag * 0.08, H * 0.55, L / 2 * 0.7); lF.material.color = new T.Color(0xd23b2e); grp.add(lF);
+    }
     if (fig && fig.tipo === "cilindro") { const lC = label("CILINDRO Ø" + f(fig.D) + " × " + f(fig.h) + " m"); lC.position.set(0, H + diag * 0.06, 0); grp.add(lC); }
     if (!fig) { const alas4 = alasUnif();
       const pos = (alas4.inf !== false) ? [0, H * 0.5, L / 2 + diag * 0.04] : (alas4.sup !== false) ? [0, H * 0.5, -L / 2 - diag * 0.04] : (alas4.der !== false) ? [A / 2 + diag * 0.04, H * 0.5, 0] : (alas4.izq !== false) ? [-A / 2 - diag * 0.04, H * 0.5, 0] : null;
@@ -4736,12 +4738,16 @@
     const s1 = Math.hypot(h, L / 2), s2 = Math.hypot(h, A / 2);
     const mkCara = (nombre, base, sl) => {
       const pz = nuevaPieza();
-      pz.etiqueta = nombre; pz.cantidad = "2"; pz.largo = f(sl); pz.ancho = f(base); pz.ojetillos = "0";
+      pz.etiqueta = nombre; pz.cantidad = "1"; pz.largo = f(sl); pz.ancho = f(base); pz.ojetillos = "0";
       pz.cortes = cortesTrianguloInscrito(base, sl);
+      pz._colap = true;
       return pz;
     };
-    state.piezas.push(mkCara("Pirámide — cara frontal/trasera (△ base " + f(A) + " × alt. " + f(s1) + " m)", A, s1));
-    state.piezas.push(mkCara("Pirámide — cara lateral (△ base " + f(L) + " × alt. " + f(s2) + " m)", L, s2));
+    // Una pieza POR CARA (editables por separado: accesorios, ojetillos, etiquetas).
+    state.piezas.push(mkCara("Pirámide — cara frontal (△ base " + f(A) + " × alt. " + f(s1) + " m)", A, s1));
+    state.piezas.push(mkCara("Pirámide — cara trasera (△ base " + f(A) + " × alt. " + f(s1) + " m)", A, s1));
+    state.piezas.push(mkCara("Pirámide — cara lateral izquierda (△ base " + f(L) + " × alt. " + f(s2) + " m)", L, s2));
+    state.piezas.push(mkCara("Pirámide — cara lateral derecha (△ base " + f(L) + " × alt. " + f(s2) + " m)", L, s2));
     state.figura3D = { tipo: "piramide", n: 4, L: L, A: A, h: h };
   }
   // Pirámide de base POLIGONAL REGULAR (n caras, lado s): las n caras son triángulos iguales de
@@ -4750,11 +4756,14 @@
     const f = window.CalcCIBSA.fmtNum;
     const apotema = s / (2 * Math.tan(Math.PI / n));
     const sl = Math.hypot(h, apotema);
-    const pz = nuevaPieza();
-    pz.etiqueta = "Pirámide " + n + " caras — cara (△ base " + f(s) + " × alt. " + f(sl) + " m)";
-    pz.cantidad = String(n); pz.largo = f(sl); pz.ancho = f(s); pz.ojetillos = "0";
-    pz.cortes = cortesTrianguloInscrito(s, sl);
-    state.piezas.push(pz);
+    for (let i = 1; i <= n; i++) {
+      const pz = nuevaPieza();
+      pz.etiqueta = "Pirámide — cara " + i + "/" + n + " (△ base " + f(s) + " × alt. " + f(sl) + " m)";
+      pz.cantidad = "1"; pz.largo = f(sl); pz.ancho = f(s); pz.ojetillos = "0";
+      pz.cortes = cortesTrianguloInscrito(s, sl);
+      pz._colap = true;
+      state.piezas.push(pz);
+    }
     state.figura3D = { tipo: "piramide", n: n, lado: s, h: h };
   }
   function crearFiguraCilindro(D, h, tapaSup, tapaInf) {
@@ -5321,13 +5330,18 @@
       ln.addEventListener("click", (e) => {
         e.stopPropagation();
         cerrarMenuAristas();
-        const k = ln.getAttribute("data-arista");
+        const k = ln.getAttribute("data-arista"), idxCorte = ln.getAttribute("data-corte");
         const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
-        const cap = document.createElement("p"); cap.className = "arista-menu-cap"; cap.textContent = "Arista " + NOM_AR[k] + " — instalar"; menu.appendChild(cap);
-        [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]].forEach(([t, a]) => {
+        const cap = document.createElement("p"); cap.className = "arista-menu-cap";
+        cap.textContent = (idxCorte != null) ? "Arista de corte — instalar" : ("Arista " + NOM_AR[k] + " — instalar");
+        menu.appendChild(cap);
+        const items = (idxCorte != null)
+          ? [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]]
+          : [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]];
+        items.forEach(([t, a]) => {
           if (!acciones[a]) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); acciones[a](k); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); (idxCorte != null) ? acciones[a](parseInt(idxCorte, 10)) : acciones[a](k); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -5339,7 +5353,17 @@
   }
   // Acciones del menú de arista para el paño UNIFORME: crean/activan el elemento YA referenciado
   // a la arista elegida y llevan al editor correspondiente.
+  // Prellena en un corte los campos de su arista (lado que QUEDA tras "Eliminar") y abre su ficha.
+  function prepararCorteArista(c, modo) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const ladoVivo = (c.fade === "A") ? "B" : (c.fade === "B") ? "A" : (c.ojAristaLado || "A");
+    if (modo === "oj") { c.ojAristaLado = ladoVivo; if (!(ev(c.ojAristaD) > 0)) c.ojAristaD = "0.5"; }
+    if (modo === "strap") { c.strapLado = ladoVivo; if (!(ev(c.strapD) > 0)) c.strapD = "0.5"; }
+    c._colap = false; c._advOpen = true;
+  }
   const accionesAristaUnif = {
+    corteOj: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "oj"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
+    corteStrap: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "strap"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
     oj: (k) => {
       state.ojMode = "arista";
       const r = document.querySelector('input[name="ojmode"][value="arista"]'); if (r) r.checked = true;
@@ -5390,6 +5414,53 @@
       irASeccion($("wCortesUnif") || $("cortesUnif"));
     },
   };
+  // Acciones del menú de arista para una PIEZA del compuesto (mismas opciones, sobre pz.*).
+  function accionesAristaPieza(pz) {
+    const f = window.CalcCIBSA.fmtNum, ev = window.CalcCIBSA.evalExpr;
+    const irAPieza = () => {
+      pz._colap = false; renderPiezas(); recomputeCompuesto();
+      setTimeout(() => {
+        const idxP = state.piezas.indexOf(pz);
+        const card = document.querySelectorAll("#piezasList .pieza-card")[idxP];
+        if (card) { try { card.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { card.scrollIntoView(); } }
+      }, 60);
+    };
+    return {
+      corteOj: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "oj"); irAPieza(); },
+      corteStrap: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "strap"); irAPieza(); },
+      oj: (k) => {
+        pz.ojMode = "arista";
+        if (!pz.ojEdges) pz.ojEdges = ojEdgesDefault();
+        const e = pz.ojEdges[k] || (pz.ojEdges[k] = defOjEdge());
+        e.on = true; if (!(ev(e.d) > 0)) e.d = "0.5";
+        irAPieza();
+      },
+      strap: (k) => { (pz.straps || (pz.straps = [])).push({ matId: null, modo: "unica", arista: k, d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "", inset: "0", offBorde: "0.01", legend: "", sets: [] }); irAPieza(); },
+      cinta: (k) => { (pz.cintas || (pz.cintas = [])).push(nuevaCinta({ modo: "arista", arista: k })); irAPieza(); },
+      corte: (k) => {
+        const c = nuevaCorte(); c.tipo = "calado"; c.forma = "rect"; c.largo = "0.5"; c.ancho = "0.5";
+        const bL = ev(pz.largo), bA = ev(pz.ancho);
+        if (bL > 0 && bA > 0) {
+          if (k === "sup") { c.padSup = "0"; c.padInf = f(Math.max(0, bL - 0.5)); c.padIzq = f(Math.max(0, (bA - 0.5) / 2)); c.padDer = c.padIzq; }
+          if (k === "inf") { c.padInf = "0"; c.padSup = f(Math.max(0, bL - 0.5)); c.padIzq = f(Math.max(0, (bA - 0.5) / 2)); c.padDer = c.padIzq; }
+          if (k === "izq") { c.padIzq = "0"; c.padDer = f(Math.max(0, bA - 0.5)); c.padSup = f(Math.max(0, (bL - 0.5) / 2)); c.padInf = c.padSup; }
+          if (k === "der") { c.padDer = "0"; c.padIzq = f(Math.max(0, bA - 0.5)); c.padSup = f(Math.max(0, (bL - 0.5) / 2)); c.padInf = c.padSup; }
+        }
+        c._colap = false; pz.cortes.push(c); irAPieza();
+      },
+      guia: (k) => {
+        const c = nuevaCorte(); c.tipo = "guia";
+        const bL = ev(pz.largo), bA = ev(pz.ancho);
+        if (bL > 0 && bA > 0) {
+          if (k === "sup") { c.largo = f(bA); c.padIzq = "0"; c.padSup = "0"; c.angulo = "0"; }
+          if (k === "inf") { c.largo = f(bA); c.padIzq = "0"; c.padSup = f(bL); c.angulo = "0"; }
+          if (k === "izq") { c.largo = f(bL); c.padIzq = "0"; c.padSup = "0"; c.angulo = "90"; c.pivX = "0"; }
+          if (k === "der") { c.largo = f(bL); c.padIzq = f(bA); c.padSup = "0"; c.angulo = "90"; c.pivX = "0"; }
+        }
+        c._colap = false; pz.cortes.push(c); irAPieza();
+      },
+    };
+  }
   function activarClicOcultarCotas(container, ocultas, onChange) {
     if (!container || !ocultas) return;
     const NS = "http://www.w3.org/2000/svg";
@@ -6071,6 +6142,7 @@
         sketchBox.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas));
         activarArrastreCallouts(sketchBox, pz.rotDrag, recomputeCompuesto);
         activarClicOcultarCotas(sketchBox, pz.cotasOcultas, recomputeCompuesto);
+        activarMenuAristas(sketchBox, accionesAristaPieza(pz));
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
         menuPlano(sketchBox, [
           { label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
