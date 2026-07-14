@@ -6231,7 +6231,7 @@
         body.innerHTML = '<p class="muted small">Completa largo y ancho de esta pieza.</p>';
       } else {
         const sk = document.createElement("div"); sk.className = "sketch"; sk.id = "prevsk_" + pz.id;
-        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); }
+        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); activarMenuAristas(sk, accionesAristaPieza(pz)); }
         body.appendChild(sk);
         const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn-outline"; dl.textContent = "Descargar plano (PDF)";
         dl.addEventListener("click", () => descargarSketchPieza(pz));
