@@ -4761,11 +4761,62 @@
       const m = new T.Mesh(g, matLona); m.position.set(px2, py2, pz2); m.rotation.x = rx || 0; m.rotation.y = ry || 0; grp.add(m);
       const e = new T.LineSegments(new T.EdgesGeometry(g), matBorde); e.position.copy(m.position); e.rotation.copy(m.rotation); grp.add(e);
     };
-    if (!fig) panel(A, L, 0, H, 0, -Math.PI / 2, 0);             // tapa (arriba)
-    if (va3("sup")) panel(A, H, 0, H / 2, -L / 2, 0, 0);          // pared del lado superior del plano
-    if (va3("inf")) panel(A, H, 0, H / 2, L / 2, 0, 0);
-    if (va3("izq")) panel(L, H, -A / 2, H / 2, 0, 0, Math.PI / 2);
-    if (va3("der")) panel(L, H, A / 2, H / 2, 0, 0, Math.PI / 2);
+    // Calados CERRADOS del diseño (rect de 4 lados o circular): la zona se muestra SIN material
+    // (agujero real, vía textura con máscara alfa). Soporta rotados, circulares y los que cruzan
+    // un pliegue (cada cara borra su parte). Solo volumétrico genérico.
+    let caladosCerr = [];
+    if (!fig) {
+      try {
+        (cortesSpec(state.cortesUnif) || []).forEach((cr) => {
+          if (!cr || cr.tipo === "corte" || cr.tipo === "guia") return;
+          if (cr.circ) { caladosCerr.push({ circ: true, cx: cr.x + cr.w / 2, cy: cr.y + cr.h / 2, r: Math.min(cr.w, cr.h) / 2 }); return; }
+          const Ld4 = cr.lados || {};
+          if (!(Ld4.sup !== false && Ld4.inf !== false && Ld4.izq !== false && Ld4.der !== false)) return;
+          let cs = [{ x: cr.x, y: cr.y }, { x: cr.x + cr.w, y: cr.y }, { x: cr.x + cr.w, y: cr.y + cr.h }, { x: cr.x, y: cr.y + cr.h }];
+          const angC = (parseFloat(cr.angulo) || 0) * Math.PI / 180;
+          if (Math.abs(angC) > 1e-9) {
+            const Px = cr.x + (cr.pivX != null ? cr.pivX : 0.5) * cr.w, Py = cr.y + (cr.pivY != null ? cr.pivY : 0.5) * cr.h;
+            const co = Math.cos(angC), si = Math.sin(angC);
+            cs = cs.map((pp) => ({ x: Px + (pp.x - Px) * co - (pp.y - Py) * si, y: Py + (pp.x - Px) * si + (pp.y - Py) * co }));
+          }
+          caladosCerr.push({ poly: cs });
+        });
+      } catch (e) { caladosCerr = []; }
+    }
+    // Cara con calados: geometría propia (UV en coords de la HOJA) + canvas donde los calados se
+    // BORRAN (alfa 0 → se ve a través). W4(mx,my) mapea hoja→mundo; región [x0c..+wS]×[y0c..+hS].
+    const caraCalada = (x0c, y0c, wS, hS, W4) => {
+      const K = Math.max(48, Math.min(160, Math.floor(1024 / Math.max(wS, hS))));
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(2, Math.round(wS * K)); cv.height = Math.max(2, Math.round(hS * K));
+      const g2d = cv.getContext("2d");
+      g2d.fillStyle = "#d9d2c2"; g2d.fillRect(0, 0, cv.width, cv.height);
+      g2d.globalCompositeOperation = "destination-out";
+      caladosCerr.forEach((cc) => {
+        g2d.beginPath();
+        if (cc.circ) g2d.arc((cc.cx - x0c) * K, (cc.cy - y0c) * K, cc.r * K, 0, 2 * Math.PI);
+        else cc.poly.forEach((pp, i) => { const qx = (pp.x - x0c) * K, qy = (pp.y - y0c) * K; if (i) g2d.lineTo(qx, qy); else g2d.moveTo(qx, qy); });
+        g2d.closePath(); g2d.fill();
+      });
+      const tex = new T.CanvasTexture(cv);
+      const mat2 = new T.MeshLambertMaterial({ map: tex, transparent: true, opacity: 0.94, side: T.DoubleSide, alphaTest: 0.35 });
+      const c00 = W4(x0c, y0c), c10 = W4(x0c + wS, y0c), c11 = W4(x0c + wS, y0c + hS), c01 = W4(x0c, y0c + hS);
+      const gG = new T.BufferGeometry();
+      gG.setAttribute("position", new T.BufferAttribute(new Float32Array([
+        c00.x, c00.y, c00.z, c10.x, c10.y, c10.z, c11.x, c11.y, c11.z,
+        c00.x, c00.y, c00.z, c11.x, c11.y, c11.z, c01.x, c01.y, c01.z,
+      ]), 3));
+      gG.setAttribute("uv", new T.BufferAttribute(new Float32Array([0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0]), 2));
+      gG.computeVertexNormals();
+      grp.add(new T.Mesh(gG, mat2));
+      [[c00, c10], [c10, c11], [c11, c01], [c01, c00]].forEach((e2) => grp.add(new T.Line(new T.BufferGeometry().setFromPoints([e2[0], e2[1]]), matBorde)));
+    };
+    const hayCal = !fig && caladosCerr.length > 0;
+    if (!fig) { if (hayCal) caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2)); else panel(A, L, 0, H, 0, -Math.PI / 2, 0); } // tapa (arriba)
+    if (va3("sup")) { if (hayCal) caraCalada(0, -H, A, H, (mx, my) => new T.Vector3(mx - A / 2, H + my, -L / 2)); else panel(A, H, 0, H / 2, -L / 2, 0, 0); }
+    if (va3("inf")) { if (hayCal) caraCalada(0, L, A, H, (mx, my) => new T.Vector3(mx - A / 2, H - (my - L), L / 2)); else panel(A, H, 0, H / 2, L / 2, 0, 0); }
+    if (va3("izq")) { if (hayCal) caraCalada(-H, 0, H, L, (mx, my) => new T.Vector3(-A / 2, H + mx, my - L / 2)); else panel(L, H, -A / 2, H / 2, 0, 0, Math.PI / 2); }
+    if (va3("der")) { if (hayCal) caraCalada(A, 0, H, L, (mx, my) => new T.Vector3(A / 2, H - (mx - A), my - L / 2)); else panel(L, H, A / 2, H / 2, 0, 0, Math.PI / 2); }
     // Costuras de FUSIÓN: solo en las esquinas donde se encuentran DOS alas.
     { const fus = new T.LineBasicMaterial({ color: 0xd23b2e, linewidth: 2 });
       [["sup", "izq", -A/2, -L/2], ["sup", "der", A/2, -L/2], ["inf", "der", A/2, L/2], ["inf", "izq", -A/2, L/2]].forEach(([k1, k2, vx, vz]) => {
@@ -6041,10 +6092,24 @@
   // Acciones del menú de arista para el paño UNIFORME: crean/activan el elemento YA referenciado
   // a la arista elegida y llevan al editor correspondiente.
   // Prellena en un corte los campos de su arista (lado que QUEDA tras "Eliminar") y abre su ficha.
-  function prepararCorteArista(c, modo) {
+  // Distanciamiento de ojetillos "de referencia": el que ya usan las aristas del paño (el más
+  // frecuente entre las activas). Para que un corte convertido en arista arranque PAREJO con el
+  // resto por defecto; el usuario lo ajusta después en su ficha si quiere otro.
+  function dOjetillosRef(ojEdges) {
+    const ev = window.CalcCIBSA.evalExpr, ds = [];
+    ["sup", "inf", "izq", "der"].forEach((k) => {
+      const e = ojEdges && ojEdges[k];
+      if (e && e.on !== false) { const d = ev(e.d); if (d > 0) ds.push(d); }
+    });
+    if (!ds.length) return null;
+    const freq = {}; let mejor = ds[0];
+    ds.forEach((d) => { freq[d] = (freq[d] || 0) + 1; if (freq[d] > freq[mejor]) mejor = d; });
+    return mejor;
+  }
+  function prepararCorteArista(c, modo, dRef) {
     const ev = window.CalcCIBSA.evalExpr;
     const ladoVivo = (c.fade === "A") ? "B" : (c.fade === "B") ? "A" : (c.ojAristaLado || "A");
-    if (modo === "oj") { c.ojAristaLado = ladoVivo; if (!(ev(c.ojAristaD) > 0)) c.ojAristaD = "0.5"; }
+    if (modo === "oj") { c.ojAristaLado = ladoVivo; if (!(ev(c.ojAristaD) > 0)) c.ojAristaD = String(dRef || 0.5); }
     if (modo === "strap") { c.strapLado = ladoVivo; if (!(ev(c.strapD) > 0)) c.strapD = "0.5"; }
     c._colap = false; c._advOpen = true;
   }
@@ -6082,7 +6147,7 @@
     return c;
   }
   const accionesAristaUnif = {
-    corteOj: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "oj"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
+    corteOj: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "oj", dOjetillosRef(state.ojMode === "arista" ? state.ojEdges : null)); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
     corteStrap: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "strap"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
     ancla: (k, pm) => {
       const A = num("f_ancho", null), L = num("f_largo", null); if (!(A > 0 && L > 0)) return;
@@ -6119,7 +6184,7 @@
     ojLibre: (seg, pm) => {
       const c = crearLineaEnSeg(state.cortesUnif, seg, "guia"); if (!c) return;
       c.ojAristaLado = ladoHaciaAdentro(seg, num("f_ancho", 0), num("f_largo", 0), alturaUnif(), alasUnif());
-      c.ojAristaD = "0.5"; c.ojAristaInset = "0.025"; c._advOpen = true;
+      c.ojAristaD = String(dOjetillosRef(state.ojMode === "arista" ? state.ojEdges : null) || 0.5); c.ojAristaInset = "0.025"; c._advOpen = true;
       renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif"));
     },
     strapLibre: (seg, pm) => {
@@ -6191,7 +6256,7 @@
       }, 60);
     };
     return {
-      corteOj: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "oj"); irAPieza(); },
+      corteOj: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "oj", dOjetillosRef(pz.ojMode === "arista" ? pz.ojEdges : null)); irAPieza(); },
       corteStrap: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "strap"); irAPieza(); },
       ancla: (k, pm) => {
         const A = ev(pz.ancho), L = ev(pz.largo); if (!(A > 0 && L > 0)) return;
@@ -6228,7 +6293,7 @@
       ojLibre: (seg, pm) => {
         const c = crearLineaEnSeg(pz.cortes, seg, "guia"); if (!c) return;
         c.ojAristaLado = ladoHaciaAdentro(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0, pz.usaAlto ? (ev(pz.altura) || 0) : 0, null);
-        c.ojAristaD = "0.5"; c.ojAristaInset = "0.025"; c._advOpen = true;
+        c.ojAristaD = String(dOjetillosRef(pz.ojMode === "arista" ? pz.ojEdges : null) || 0.5); c.ojAristaInset = "0.025"; c._advOpen = true;
         irAPieza();
       },
       strapLibre: (seg, pm) => {
