@@ -365,6 +365,16 @@
     }
     return { a: a2, b: b2 };
   }
+  // Polígono del FADE de una línea, acotado a su ZONA (tapa o el ala donde vive la línea).
+  function fadePolyLinea(aL, bL, fade, ancho, largo, bnd) {
+    const my = (aL.y + bL.y) / 2, mx = (aL.x + bL.x) / 2;
+    let R = [{ x: 0, y: 0 }, { x: ancho, y: 0 }, { x: ancho, y: largo }, { x: 0, y: largo }], zona = "tapa";
+    if (my < 0 && bnd.y0 < 0) { R = [{ x: 0, y: bnd.y0 }, { x: ancho, y: bnd.y0 }, { x: ancho, y: 0 }, { x: 0, y: 0 }]; zona = "sup"; }
+    else if (my > largo && bnd.y1 > largo) { R = [{ x: 0, y: largo }, { x: ancho, y: largo }, { x: ancho, y: bnd.y1 }, { x: 0, y: bnd.y1 }]; zona = "inf"; }
+    else if (mx < 0 && bnd.x0 < 0) { R = [{ x: bnd.x0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: largo }, { x: bnd.x0, y: largo }]; zona = "izq"; }
+    else if (mx > ancho && bnd.x1 > ancho) { R = [{ x: ancho, y: 0 }, { x: bnd.x1, y: 0 }, { x: bnd.x1, y: largo }, { x: ancho, y: largo }]; zona = "der"; }
+    return { poly: clipPolyHalfPlane(R, aL.x, aL.y, bL.x, bL.y, fade === "B"), zona: zona };
+  }
   function procesarCorte(c, ancho, largo, todos, bnd) {
       bnd = bnd || { x0: 0, x1: ancho, y0: 0, y1: largo };
       const x = c.x, y = c.y, w = c.w, h = c.h;
@@ -377,16 +387,9 @@
         if (rotated) { const co = Math.cos(ang), si = Math.sin(ang); const rot = (p) => ({ x: Px + (p.x - Px) * co - (p.y - Py) * si, y: Py + (p.x - Px) * si + (p.y - Py) * co }); a = rot(a); b = rot(b); }
         let fadePoly = null, fadeZona = "tapa";
         if (!esGuia && (c.fade === "A" || c.fade === "B")) {
-          // Región que el fade secciona: la ZONA de la hoja donde vive el corte. En un volumétrico
-          // un corte trazado sobre un ala difumina/elimina SOLO dentro de esa ala (p. ej. el
-          // triángulo a un lado del corte), sin tocar la tapa ni las demás alas.
-          const my = (a.y + b.y) / 2, mx = (a.x + b.x) / 2;
-          let R = [{ x: 0, y: 0 }, { x: ancho, y: 0 }, { x: ancho, y: largo }, { x: 0, y: largo }];
-          if (my < 0 && bnd.y0 < 0) { R = [{ x: 0, y: bnd.y0 }, { x: ancho, y: bnd.y0 }, { x: ancho, y: 0 }, { x: 0, y: 0 }]; fadeZona = "sup"; }
-          else if (my > largo && bnd.y1 > largo) { R = [{ x: 0, y: largo }, { x: ancho, y: largo }, { x: ancho, y: bnd.y1 }, { x: 0, y: bnd.y1 }]; fadeZona = "inf"; }
-          else if (mx < 0 && bnd.x0 < 0) { R = [{ x: bnd.x0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: largo }, { x: bnd.x0, y: largo }]; fadeZona = "izq"; }
-          else if (mx > ancho && bnd.x1 > ancho) { R = [{ x: ancho, y: 0 }, { x: bnd.x1, y: 0 }, { x: bnd.x1, y: largo }, { x: ancho, y: largo }]; fadeZona = "der"; }
-          fadePoly = clipPolyHalfPlane(R, a.x, a.y, b.x, b.y, c.fade === "B");
+          // Región que el fade secciona: la ZONA de la hoja donde vive el corte (tapa o su ala).
+          const fz = fadePolyLinea(a, b, c.fade, ancho, largo, bnd);
+          fadePoly = fz.poly; fadeZona = fz.zona;
         }
         // Ojetillos sobre una arista (lado A/B) del corte: repartidos a lo largo, con inset perpendicular.
         // Si el corte difumina/elimina ese MISMO lado (c.fade === c.ojAristaLado), ese lado se separa del
@@ -416,14 +419,21 @@
               if (!cc || cc === c || T1 <= T0) return;
               if (cc.tipo !== "corte" || !(cc.w > 0) || !(cc.fade === "A" || cc.fade === "B")) return;
               const ln = lineaDeCorte(cc);
+              // El fade ajeno recorta SOLO donde su polígono real (acotado a su zona) cubre la
+              // fila: una fila sobre un ala/anexo no la toca un fade de la tapa, y viceversa.
+              const fp = fadePolyLinea(ln.a, ln.b, cc.fade, ancho, largo, bnd).poly;
+              if (!fp || fp.length < 3) return;
               const nx2 = -(ln.b.y - ln.a.y), ny2 = (ln.b.x - ln.a.x);
               const f = (t) => nx2 * (aO.x + ux * t - ln.a.x) + ny2 * (aO.y + uy * t - ln.a.y);
-              const keep = (v) => (cc.fade === "B") ? (v >= -1e-9) : (v <= 1e-9); // complemento del fade (borde incluido)
+              const dentroFade = (t) => puntoEnPoligono({ x: aO.x + ux * t, y: aO.y + uy * t }, fp);
               const f0 = f(T0), f1 = f(T1);
-              if (keep(f0) && keep(f1)) return;
-              if (!keep(f0) && !keep(f1)) { T1 = T0 - 1; return; }
+              const cruza = ((f0 > 1e-9) !== (f1 > 1e-9)) && Math.abs(f0 - f1) > 1e-12;
+              if (!cruza) { if (dentroFade((T0 + T1) / 2)) T1 = T0 - 1; return; }
               const tX = T0 + (T1 - T0) * (f0 / (f0 - f1));
-              if (keep(f0)) T1 = tX; else T0 = tX;
+              const enIzq = dentroFade((T0 + tX) / 2), enDer = dentroFade((tX + T1) / 2);
+              if (enIzq && enDer) { T1 = T0 - 1; return; }
+              if (enIzq) T0 = tX;
+              else if (enDer) T1 = tX;
             });
             const posA = (T1 > T0 + 1e-9) ? posicionesArista(T1 - T0, dd, false).map((t) => T0 + t) : [];
             posA.forEach((t, i) => { if (supr.has(i)) return; aristaOje.push({ x: aO.x + ux * t, y: aO.y + uy * t }); });
@@ -505,13 +515,22 @@
       ? { x0: vaB("izq") ? -HB : 0, x1: ancho + (vaB("der") ? HB : 0), y0: vaB("sup") ? -HB : 0, y1: largo + (vaB("inf") ? HB : 0) }
       : { x0: 0, x1: ancho, y0: 0, y1: largo };
     // Los ANEXOS (aletas/faldones) también son área editable: cortes/guías con ojetillos sobre
-    // sus bordes funcionan aunque cuelguen fuera del paño base.
+    // sus bordes funcionan aunque cuelguen fuera del paño base. zonasTela = tela REAL fuera de
+    // la tapa (alas del volumétrico + rects de anexos): ahí los fades de la TAPA no aplican.
+    const zonasTela = [];
+    if (volB) {
+      if (vaB("sup")) zonasTela.push({ x0: 0, x1: ancho, y0: -HB, y1: 0 });
+      if (vaB("inf")) zonasTela.push({ x0: 0, x1: ancho, y0: largo, y1: largo + HB });
+      if (vaB("izq")) zonasTela.push({ x0: -HB, x1: 0, y0: 0, y1: largo });
+      if (vaB("der")) zonasTela.push({ x0: ancho, x1: ancho + HB, y0: 0, y1: largo });
+    }
     (spec.aletas || []).forEach((a) => {
       if (!(a && parseFloat(a.largo) > 0 && parseFloat(a.ancho) > 0)) return;
       try {
         const g = aletaGeomRect(a, ancho, largo);
         BND.x0 = Math.min(BND.x0, g.x); BND.x1 = Math.max(BND.x1, g.x + g.w);
         BND.y0 = Math.min(BND.y0, g.y); BND.y1 = Math.max(BND.y1, g.y + g.h);
+        zonasTela.push({ x0: g.x, x1: g.x + g.w, y0: g.y, y1: g.y + g.h });
       } catch (e) {}
     });
     let cortes = (spec.cortes || []).filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte" || c.tipo === "guia")).map((c, _i, arr) => procesarCorte(c, ancho, largo, arr, BND));
@@ -550,7 +569,8 @@
     // conteo ("Ojetillos sobre cortes/calados"). Los del lado que QUEDA están fuera del fadePoly → se conservan.
     if (cortes.length) {
       const fades = cortes.map((c) => (c.fadePoly && c.fadePoly.length >= 3) ? c.fadePoly : null);
-      const dentroRect = (p) => p.x >= BND.x0 - EPS && p.x <= BND.x1 + EPS && p.y >= BND.y0 - EPS && p.y <= BND.y1 + EPS;
+      const enZonaTela = (p) => zonasTela.some((r) => p.x >= r.x0 - EPS && p.x <= r.x1 + EPS && p.y >= r.y0 - EPS && p.y <= r.y1 + EPS);
+      const dentroRect = (p) => enZonaTela(p) || (p.x >= -EPS && p.x <= ancho + EPS && p.y >= -EPS && p.y <= largo + EPS);
       // ¿p está sobre la línea del corte cj? (distancia < 1e-6). Los puntos en el BORDE del fade
       // (vértices compartidos entre cortes) pertenecen al lado que queda → no se eliminan.
       const sobreLineaDe = (p, cj) => (cj.segments || []).some((sg) => {
@@ -569,8 +589,11 @@
         if (!c.ojetillos || !c.ojetillos.length) return;
         c.ojetillos = c.ojetillos.filter((p) => {
           if (!dentroRect(p)) return false;
+          const pEnZona = enZonaTela(p);
           for (let j = 0; j < fades.length; j++) {
             if (!fades[j]) continue;
+            // La tela de un anexo/ala no la toca un fade de la TAPA (capas distintas).
+            if (pEnZona && (cortes[j].fadeZona || "tapa") === "tapa") continue;
             if (puntoEnPoligono(p, fades[j]) && !sobreLineaDe(p, cortes[j])) return false;
           }
           const k = kOj(p);

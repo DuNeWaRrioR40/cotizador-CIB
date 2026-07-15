@@ -1382,7 +1382,7 @@
       ["Tipo de Tela", datos.tela || "N/A"],
       ["Color", color],
       ["Dimensiones", fmtN(datos.largo) + "m x " + fmtN(datos.ancho) + "m"],
-    ].concat(limpio ? [] : [["Ojetillos", String(datos.ojetillos || 0)]])
+    ].concat(limpio ? [] : [["Ojetillos", String(datos.ojetillos || 0) + (datos.ojetillosDesglose2 ? " " + datos.ojetillosDesglose2 : "")]])
       .concat([["Cantidad de Unidades", String(datos.unidades || 1)]]);
     campos.forEach(([k, v]) => {
       txt(k + ": ", M, y, { f: bold });

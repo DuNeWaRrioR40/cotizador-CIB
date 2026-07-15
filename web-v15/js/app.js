@@ -2590,6 +2590,7 @@
       const r = calcAleta(a, cantidad, valorOj, factor); if (!r) return null;
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (ALETA_NOM[a.tipo] || "Aleta");
       let t = nom + " en " + telaCli(r.tela) + " " + window.CalcCIBSA.fmtNum(r.al) + "×" + window.CalcCIBSA.fmtNum(r.aa) + " m — " + money(r.subtotal / r.N) + "/u";
+      { const nOjA = aletaOjN(a, r.al, r.aa); if (nOjA > 0) t += " · incluye " + nOjA + " ojetillos"; }
       if (a.descripcion && a.descripcion.trim()) t += " · " + a.descripcion.trim();
       return t;
     }).filter(Boolean);
@@ -6907,8 +6908,13 @@
       return "Ventana inscrita " + dim + " m (padding izq " + f(pi || 0) + " / sup " + f(ps || 0) + " m)";
     }).filter(Boolean);
   }
-  function materialesResumen(ojetillos, complementos, inscritos) {
-    const out = [{ nombre: "Ojetillos", cant: String(ojetillos || 0) }];
+  function materialesResumen(ojetillos, complementos, inscritos, desglose) {
+    // desglose opcional: { cortes: N, anexos: N } — el total del plano SIEMPRE cuadra con la suma.
+    const nB = ojetillos || 0, nC = (desglose && desglose.cortes) || 0, nA = (desglose && desglose.anexos) || 0;
+    const out = [{ nombre: "Ojetillos (total)", cant: String(nB + nC + nA) }];
+    if (nB > 0) out.push({ nombre: "· en aristas del paño", cant: String(nB) });
+    if (nC > 0) out.push({ nombre: "· sobre cortes/calados", cant: String(nC) });
+    if (nA > 0) out.push({ nombre: "· en anexos (aletas/solapas)", cant: String(nA) });
     (complementos || []).forEach((c) => {
       const m = compMat(c); if (!m) return;
       const extra = [m.modelo, m.color].filter(Boolean).join(" ");
@@ -6960,10 +6966,10 @@
     return pasos;
   }
   // Ojetillos instalados sobre las líneas de cortes/calados (los cuenta el sketch procesado).
-  function ojEnCortesN(cortesRaw, ancho, largo) {
+  function ojEnCortesN(cortesRaw, ancho, largo, aletasRaw) {
     if (!window.SketchCIBSA || !(ancho > 0) || !(largo > 0)) return 0;
     try {
-      const sk = window.SketchCIBSA.construirSketch({ ancho: ancho, largo: largo, ojTotal: 0, ventanas: [], cortes: cortesSpec(cortesRaw) });
+      const sk = window.SketchCIBSA.construirSketch({ ancho: ancho, largo: largo, ojTotal: 0, ventanas: [], cortes: cortesSpec(cortesRaw), aletas: aletasSpec(aletasRaw || []) });
       return (sk.cortes || []).reduce((a, c) => a + (c.ojetillos || []).length, 0);
     } catch (e) { return 0; }
   }
@@ -6980,11 +6986,12 @@
       tela: telaPlano,
       color: $("f_color").value.trim(),
       largo: largo, ancho: ancho,
-      ojetillos: nOjetillos() + ojEnCortesN(state.cortesUnif, ancho, largo) + ojEnAletasN(state.aletasUnif), unidades: N,
+      ojetillos: nOjetillos() + ojEnCortesN(state.cortesUnif, ancho, largo, state.aletasUnif) + ojEnAletasN(state.aletasUnif), unidades: N,
+      ojetillosDesglose2: (function () { const b2 = nOjetillos(), c2 = ojEnCortesN(state.cortesUnif, ancho, largo, state.aletasUnif), a2 = ojEnAletasN(state.aletasUnif); const pp = []; if (b2 > 0) pp.push(b2 + " paño"); if (c2 > 0) pp.push(c2 + " cortes"); if (a2 > 0) pp.push(a2 + " anexos"); return pp.length > 1 ? "(" + pp.join(" + ") + ")" : ""; })(),
       ojetillosAristas: state.ojMode === "arista" ? ojDetalleAristas(ancho, largo, state.ojEdges, state.ojParejo, cortesSpec(state.cortesUnif), volExtUnif()) : [],
       strapsAristas: strapsDetalleAristas(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }),
       observaciones: (alturaUnif() > 0 ? pasosConfeccionVol(num("f_ancho", 0), num("f_largo", 0), alturaUnif()) : []).concat(terminacionesTexto(state.orientUnif)).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
-      materiales: materialesResumen(nOjetillos(), state.complementosUnif, []).concat(materialesCortes(state.cortesUnif)),
+      materiales: materialesResumen(nOjetillos(), state.complementosUnif, [], { cortes: ojEnCortesN(state.cortesUnif, ancho, largo, state.aletasUnif), anexos: ojEnAletasN(state.aletasUnif) }).concat(materialesCortes(state.cortesUnif)),
       sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, notas: state.notasUnif }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif(), ojEn: ojEnUnif(), alas: alasUnif() } } : {}),
       vista3D: (_vista3D && _vista3D.firma === firmaVol()) ? _vista3D.png : null,
       trasera: state.trasUnif,
@@ -7049,11 +7056,12 @@
       tela: tela ? telaCli(tela) : "N/A",
       color: pz.color || "",
       largo: largo, ancho: ancho,
-      ojetillos: ojTotalPieza(pz) + ojEnCortesN(pz.cortes, window.CalcCIBSA.evalExpr(pz.ancho), window.CalcCIBSA.evalExpr(pz.largo)) + ojEnAletasN(pz.aletas), unidades: N,
+      ojetillos: ojTotalPieza(pz) + ojEnCortesN(pz.cortes, window.CalcCIBSA.evalExpr(pz.ancho), window.CalcCIBSA.evalExpr(pz.largo), pz.aletas) + ojEnAletasN(pz.aletas), unidades: N,
+      ojetillosDesglose2: (function () { const b2 = ojTotalPieza(pz), c2 = ojEnCortesN(pz.cortes, window.CalcCIBSA.evalExpr(pz.ancho), window.CalcCIBSA.evalExpr(pz.largo), pz.aletas), a2 = ojEnAletasN(pz.aletas); const pp = []; if (b2 > 0) pp.push(b2 + " paño"); if (c2 > 0) pp.push(c2 + " cortes"); if (a2 > 0) pp.push(a2 + " anexos"); return pp.length > 1 ? "(" + pp.join(" + ") + ")" : ""; })(),
       ojetillosAristas: pz.ojMode === "arista" ? ojDetalleAristas(window.CalcCIBSA.evalExpr(pz.ancho), window.CalcCIBSA.evalExpr(pz.largo), pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), volExtPz(pz)) : [],
       strapsAristas: strapsDetalleAristas(pz.straps, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 }),
       observaciones: terminacionesPieza(pz).concat(obsComplementos(pz.complementos)).concat(obsVentanas(pz)).concat(obsCortes(pz.cortes)),
-      materiales: materialesResumen(ojTotalPieza(pz), pz.complementos, pz.inscritos).concat(materialesCortes(pz.cortes)),
+      materiales: materialesResumen(ojTotalPieza(pz), pz.complementos, pz.inscritos, { cortes: ojEnCortesN(pz.cortes, window.CalcCIBSA.evalExpr(pz.ancho), window.CalcCIBSA.evalExpr(pz.largo), pz.aletas), anexos: ojEnAletasN(pz.aletas) }).concat(materialesCortes(pz.cortes)),
       sketch: sketchPieza(pz),
       trasera: pz.trasera,
       backExtra: { cortes: cortesSpec(pz.backCortes), aletas: aletasSpec(pz.backAletas) },
