@@ -6154,12 +6154,18 @@
             const t = Math.max(0, Math.min(ln.w, (pm.x - ln.a.x) * ln.u.x + (pm.y - ln.a.y) * ln.u.y));
             p = { x: ln.a.x + ln.u.x * t, y: ln.a.y + ln.u.y * t };
             // Imantación: cerca de un ancla de ARISTA, el punto se pega a ella (soltar = empatar).
-            let emp = null; const R = 14 / mscale;
-            (ctx.anclas || []).forEach((an2) => {
-              if (emp != null) return;
-              const q = posAnclaArista(an2, A, L); if (!q) return;
-              if (Math.hypot(pm.x - q.x, pm.y - q.y) < R) { emp = an2.id; p = q; }
-            });
+            // Tope de 2 EMPATES por línea (la recta queda definida por 2 puntos): con 2 ya
+            // empatados, los demás anchors se arrastran como marcadores libres, sin imantar.
+            let emp = null;
+            const otrosEmp = (reg.c.anclas || []).filter((a2) => a2 !== reg.an && a2.emp != null).length;
+            if (otrosEmp < 2) {
+              const R = 14 / mscale;
+              (ctx.anclas || []).forEach((an2) => {
+                if (emp != null) return;
+                const q = posAnclaArista(an2, A, L); if (!q) return;
+                if (Math.hypot(pm.x - q.x, pm.y - q.y) < R) { emp = an2.id; p = q; }
+              });
+            }
             drop = { t: rd3(t), emp: emp };
             g.classList.toggle("snap", emp != null);
             if (lbl) lbl.textContent = f(drop.t) + " m";
@@ -6352,7 +6358,7 @@
     corteAncla: (i, pm) => {
       const c = visibles(state.cortesUnif)[i]; if (!c) return;
       if (!Array.isArray(c.anclas)) c.anclas = [];
-      if (c.anclas.length >= 2) return alert("Cada corte/línea admite máximo 2 anchors.");
+      if (c.anclas.length >= 8) return alert("Cada corte/línea admite máximo 8 anchors.");
       const ln = lineaRawCorte(c); if (!ln) return;
       let t = ln.w / 2;
       if (pm) t = Math.max(0, Math.min(ln.w, (pm.x - ln.a.x) * ln.u.x + (pm.y - ln.a.y) * ln.u.y));
@@ -6479,7 +6485,7 @@
       corteAncla: (i, pm) => {
         const c = visibles(pz.cortes)[i]; if (!c) return;
         if (!Array.isArray(c.anclas)) c.anclas = [];
-        if (c.anclas.length >= 2) return alert("Cada corte/línea admite máximo 2 anchors.");
+        if (c.anclas.length >= 8) return alert("Cada corte/línea admite máximo 8 anchors.");
         const ln = lineaRawCorte(c); if (!ln) return;
         let t = ln.w / 2;
         if (pm) t = Math.max(0, Math.min(ln.w, (pm.x - ln.a.x) * ln.u.x + (pm.y - ln.a.y) * ln.u.y));
