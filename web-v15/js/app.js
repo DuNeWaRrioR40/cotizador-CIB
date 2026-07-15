@@ -2476,7 +2476,7 @@
   }
   function aletaOjEdgesDefault() { return { t: defAletaEdge(), b: defAletaEdge(), l: defAletaEdge(), r: defAletaEdge() }; }
   function defAletaEdge() { return { on: true, d: "0.2", supr: "" }; }
-  function aletaOjEdgesCopy(e) { const c = {}; ["t", "b", "l", "r"].forEach((k) => { const s = (e && e[k]) || {}; c[k] = { on: s.on !== false, d: s.d != null ? s.d : "0.2", supr: s.supr || "" }; }); return c; }
+  function aletaOjEdgesCopy(e) { const c = {}; ["t", "b", "l", "r"].forEach((k) => { const s = (e && e[k]) || {}; c[k] = { on: s.on !== false, onF: s.onF === true, d: s.d != null ? s.d : "0.2", supr: s.supr || "" }; }); return c; }
   // Letra de la arista fusionada según el borde base (inf→t, sup→b, izq→r, der→l).
   const ALETA_FUSED = { inf: "t", sup: "b", izq: "r", der: "l" };
   const ALETA_EDGE_NOM = { t: "Arista superior", b: "Arista inferior", l: "Arista izquierda", r: "Arista derecha" };
@@ -2515,7 +2515,7 @@
   { const b = $("btnFactorTop"); if (b) b.addEventListener("click", () => { const p = $("factorTopPanel"); if (p) p.classList.toggle("hidden"); }); }
   // Config por arista del anexo → spec para sketch (distancia + supresión como Set). Solo aristas libres.
   function aletaOjEdgesSpec(e) {
-    const out = {}; ["t", "b", "l", "r"].forEach((k) => { const s = (e && e[k]) || {}; out[k] = { on: s.on !== false, d: (s.d != null && s.d !== "") ? s.d : "0.4", supr: parseSupr(s.supr) }; });
+    const out = {}; ["t", "b", "l", "r"].forEach((k) => { const s = (e && e[k]) || {}; out[k] = { on: s.on !== false, onF: s.onF === true, d: (s.d != null && s.d !== "") ? s.d : "0.4", supr: parseSupr(s.supr) }; });
     return out;
   }
   // Nº de ojetillos del anexo: por arista (si ojMode="arista") o el campo rápido "hem libre".
@@ -3131,7 +3131,9 @@
           const cap = document.createElement("p"); cap.className = "muted small";
           cap.textContent = "Posición a lo largo del borde — distancia a cada vértice del paño base (editar una completa la otra):";
           posWrap.appendChild(addHelpTo(cap, "Posiciona el anexo respecto de los DOS vértices del borde elegido (las aristas perpendiculares del paño base), como en los calados. 0 = pegado a esa esquina. Al escribir una distancia, la otra se calcula sola usando el ancho del anexo y la dimensión del paño.", "ALETA-POS"));
-          const libre = () => { const base = aletaBaseDim(), W = ev(a.ancho); return (base != null && !isNaN(base) && W != null && !isNaN(W)) ? Math.max(0, base - W) : null; };
+          // "Libre" puede ser NEGATIVO: un anexo más ancho que el borde (faldón que excede el paño)
+          // se posiciona con offsets negativos, y Centrar los calcula automáticamente.
+          const libre = () => { const base = aletaBaseDim(), W = ev(a.ancho); return (base != null && !isNaN(base) && W != null && !isNaN(W)) ? (base - W) : null; };
           const pg = document.createElement("div"); pg.className = "pieza-grid";
           const mkPos = (lab) => {
             const l = document.createElement("label"); l.className = "field"; l.innerHTML = "<span>" + lab + "</span>";
@@ -3140,23 +3142,23 @@
           };
           const iA = mkPos(labA), iB = mkPos(labB);
           iA.value = a.offset || "0";
-          { const li = libre(), o = ev(a.offset); iB.value = (li != null && o != null && !isNaN(o)) ? f(Math.max(0, li - o)) : ""; }
+          { const li = libre(), o = ev(a.offset); iB.value = (li != null && o != null && !isNaN(o)) ? f(li - o) : ""; }
           iA.addEventListener("input", () => {
             a.offset = iA.value;
             const li = libre(), o = ev(iA.value);
-            if (li != null && o != null && !isNaN(o)) iB.value = f(Math.max(0, li - o));
+            if (li != null && o != null && !isNaN(o)) iB.value = f(li - o);
             refresh(); onChange();
           });
           iB.addEventListener("input", () => {
             const li = libre(), m = ev(iB.value);
             if (li == null || m == null || isNaN(m)) return;
-            a.offset = f(Math.max(0, li - m)); iA.value = a.offset;
+            a.offset = f(li - m); iA.value = a.offset;
             refresh(); onChange();
           });
           posWrap.appendChild(pg);
           const acc = document.createElement("div"); acc.className = "pz-actions"; acc.style.flexWrap = "wrap";
           const mkBtn = (txt, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "pz-btn"; b.textContent = txt; b.addEventListener("click", fn); return b; };
-          const setOff = (v) => { a.offset = f(Math.max(0, v)); pintarPosicion(); refresh(); onChange(); };
+          const setOff = (v) => { a.offset = f(v); pintarPosicion(); refresh(); onChange(); };
           const conLibre = (fn) => { const li = libre(); if (li == null) { alert("Completa el ancho del anexo y las dimensiones del paño base para usar las referencias."); return; } fn(li); };
           acc.appendChild(mkBtn("◫ Centrar", () => conLibre((li) => setOff(li / 2))));
           acc.appendChild(mkBtn(horiz ? "⇤ Pegar al vértice izq." : "⇤ Pegar al vértice sup.", () => setOff(0)));
@@ -3182,16 +3184,18 @@
           if (!arista) return;
           if (!a.ojEdges) a.ojEdges = aletaOjEdgesDefault();
           const panel = document.createElement("div"); panel.className = "aleta-oj-panel";
-          const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = "Ojetillos por las aristas libres del anexo (no en la unión con el paño). Mientras esté activo, se ignora el campo \"hem libre\".";
+          const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = "Ojetillos por las aristas del anexo. La línea de fusión (unión con el paño) también admite, marcándola explícitamente. Mientras esté activo, se ignora el campo \"hem libre\".";
           panel.appendChild(cap);
           const fused = ALETA_FUSED[a.baseEdge || "inf"];
-          ["t", "b", "l", "r"].filter((k) => k !== fused).forEach((k) => {
+          ["t", "b", "l", "r"].filter((k) => k !== fused).concat([fused]).forEach((k) => {
+            const esFus = k === fused;
             const e = a.ojEdges[k] || (a.ojEdges[k] = defAletaEdge());
             const row = document.createElement("div"); row.className = "aleta-oj-row";
             const lab = document.createElement("label"); lab.className = "chk aleta-oj-on";
-            const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = e.on !== false;
-            cb.addEventListener("change", () => { e.on = cb.checked; refresh(); onChange(); });
-            const sp = document.createElement("span"); sp.textContent = ALETA_EDGE_NOM[k];
+            const cb = document.createElement("input"); cb.type = "checkbox";
+            cb.checked = esFus ? e.onF === true : e.on !== false;   // la fusión es OPT-IN (apagada por defecto)
+            cb.addEventListener("change", () => { if (esFus) e.onF = cb.checked; else e.on = cb.checked; refresh(); onChange(); });
+            const sp = document.createElement("span"); sp.textContent = esFus ? "Línea de fusión (unión)" : ALETA_EDGE_NOM[k];
             lab.appendChild(cb); lab.appendChild(sp); row.appendChild(lab);
             const dl = document.createElement("label"); dl.className = "field aleta-oj-f"; dl.innerHTML = "<span>cada (m)</span>";
             const di = document.createElement("input"); di.type = "text"; di.inputMode = "decimal"; di.value = e.d != null ? e.d : "0.2";
@@ -6234,13 +6238,18 @@
         }
         const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
         const cap = document.createElement("p"); cap.className = "arista-menu-cap";
-        cap.textContent = (idxCorte != null) ? "Arista de corte — instalar" : (ln.getAttribute("data-libre") != null) ? "Borde del ala (altura) — instalar" : (ln.getAttribute("data-rim") != null) ? ("Rim del ala " + (NOM_AR[k] || "") + " — instalar") : ("Arista " + NOM_AR[k] + " — instalar");
+        cap.textContent = (ln.getAttribute("data-anexo") != null) ? "Borde del anexo — instalar" : (idxCorte != null) ? "Arista de corte — instalar" : (ln.getAttribute("data-libre") != null) ? "Borde del ala (altura) — instalar" : (ln.getAttribute("data-rim") != null) ? ("Rim del ala " + (NOM_AR[k] || "") + " — instalar") : ("Arista " + NOM_AR[k] + " — instalar");
         menu.appendChild(cap);
         const esRim = ln.getAttribute("data-rim") != null, esLibre = ln.getAttribute("data-libre") != null;
+        const idxAnexo = ln.getAttribute("data-anexo"), bordeAnexo = ln.getAttribute("data-borde"), esFusAnexo = ln.getAttribute("data-fus") != null;
         const seg = (ln.dataset && ln.dataset.ax != null)
           ? { a: { x: parseFloat(ln.dataset.ax), y: parseFloat(ln.dataset.ay) }, b: { x: parseFloat(ln.dataset.bx), y: parseFloat(ln.dataset.by) } } : null;
         let items;
-        if (idxCorte != null) {
+        if (idxAnexo != null && seg) {
+          items = [[esFusAnexo ? "Ojetillos (línea de fusión del anexo)" : "Ojetillos (arista del anexo)", "anexoOj"],
+                   ["Corte / calado (en este borde)", "corteLibre"], ["Línea de construcción (en este borde)", "guiaLibre"]];
+          if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
+        } else if (idxCorte != null) {
           items = [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]];
           if (pm) items.push(["Anchor sobre la línea", "corteAncla"], ["Nota (texto libre)…", "nota"]);
         } else if (esLibre && seg) {
@@ -6259,7 +6268,7 @@
         items.forEach(([t, a]) => {
           if (!acciones[a]) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (idxCorte != null) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -6367,6 +6376,16 @@
       const nid = 1 + (state.notasUnif || []).reduce((m, n2) => Math.max(m, n2.id || 0), 0);
       state.notasUnif.push({ id: nid, x: rd3(pm.x), y: rd3(pm.y), texto: t.trim() });
       recompute();
+    },
+    anexoOj: (rid, k, esFus) => {
+      const al2 = visibles(state.aletasUnif).find((x2) => x2._rid === rid); if (!al2) return;
+      al2.ojMode = "arista";
+      if (!al2.ojEdges) al2.ojEdges = aletaOjEdgesDefault();
+      const e = al2.ojEdges[k] || (al2.ojEdges[k] = defAletaEdge());
+      if (esFus) e.onF = true; else e.on = true;
+      if (!(window.CalcCIBSA.evalExpr(e.d) > 0)) e.d = String(dOjetillosRef(state.ojMode === "arista" ? state.ojEdges : null) || 0.5);
+      al2._colap = false;
+      renderAletasUnif(); recompute(); irASeccion($("aletasUnif"));
     },
     guiaLibre: (seg, pm) => { crearLineaEnSeg(state.cortesUnif, seg, "guia"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
     ojLibre: (seg, pm) => {
@@ -6484,6 +6503,16 @@
         const lst = (pz.notas || (pz.notas = []));
         lst.push({ id: 1 + lst.reduce((m, n2) => Math.max(m, n2.id || 0), 0), x: rd3(pm.x), y: rd3(pm.y), texto: t.trim() });
         recomputeCompuesto();
+      },
+      anexoOj: (rid, k, esFus) => {
+        const al2 = visibles(pz.aletas || []).find((x2) => x2._rid === rid); if (!al2) return;
+        al2.ojMode = "arista";
+        if (!al2.ojEdges) al2.ojEdges = aletaOjEdgesDefault();
+        const e = al2.ojEdges[k] || (al2.ojEdges[k] = defAletaEdge());
+        if (esFus) e.onF = true; else e.on = true;
+        if (!(window.CalcCIBSA.evalExpr(e.d) > 0)) e.d = String(dOjetillosRef(pz.ojMode === "arista" ? pz.ojEdges : null) || 0.5);
+        al2._colap = false;
+        irAPieza();
       },
       guiaLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "guia")) irAPieza(); },
       ojLibre: (seg, pm) => {

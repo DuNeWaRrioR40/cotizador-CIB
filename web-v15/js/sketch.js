@@ -203,16 +203,19 @@
       fused === "l" ? Math.abs(p.x - x) < 1e-6 : Math.abs(p.x - (x + w)) < 1e-6;
     const raw = [];
     ["t", "b", "l", "r"].forEach((k) => {
-      if (k === fused) return;
+      const esFus = k === fused;
       const cfg = ojEdges && ojEdges[k];
-      if (!cfg || cfg.on === false) return;
+      if (!cfg) return;
+      // La LÍNEA DE FUSIÓN admite ojetillos solo si se marcó explícitamente (onF): caso atípico
+      // pero real (p. ej. faldón que además se amarra por su unión). Las libres van con "on".
+      if (esFus ? cfg.onF !== true : cfg.on === false) return;
       const d = parseFloat(cfg.d); if (!(d > 0)) return;
       const seg = E[k], ux = (seg.b.x - seg.a.x) / seg.L, uy = (seg.b.y - seg.a.y) / seg.L;
       const supr = (cfg.supr instanceof Set) ? cfg.supr : new Set();
       posicionesArista(seg.L, d, parejo).forEach((t, i) => {
         if (supr.has(i)) return;
         const p = { x: seg.a.x + ux * t, y: seg.a.y + uy * t };
-        if (enFusion(p)) return; // "hasta antes del punto de unión"
+        if (!esFus && enFusion(p)) return; // libres: "hasta antes del punto de unión"
         raw.push(p);
       });
     });
@@ -497,6 +500,16 @@
     const BND = volB
       ? { x0: vaB("izq") ? -HB : 0, x1: ancho + (vaB("der") ? HB : 0), y0: vaB("sup") ? -HB : 0, y1: largo + (vaB("inf") ? HB : 0) }
       : { x0: 0, x1: ancho, y0: 0, y1: largo };
+    // Los ANEXOS (aletas/faldones) también son área editable: cortes/guías con ojetillos sobre
+    // sus bordes funcionan aunque cuelguen fuera del paño base.
+    (spec.aletas || []).forEach((a) => {
+      if (!(a && parseFloat(a.largo) > 0 && parseFloat(a.ancho) > 0)) return;
+      try {
+        const g = aletaGeomRect(a, ancho, largo);
+        BND.x0 = Math.min(BND.x0, g.x); BND.x1 = Math.max(BND.x1, g.x + g.w);
+        BND.y0 = Math.min(BND.y0, g.y); BND.y1 = Math.max(BND.y1, g.y + g.h);
+      } catch (e) {}
+    });
     let cortes = (spec.cortes || []).filter((c) => c && c.w > 0 && (c.h > 0 || c.tipo === "corte" || c.tipo === "guia")).map((c, _i, arr) => procesarCorte(c, ancho, largo, arr, BND));
     let ojetillos = Array.isArray(spec.ojetillosPos) ? spec.ojetillosPos : ojetillosPerimetro(spec.ojTotal, ancho, largo);
     let ventanas = (spec.ventanas || []).filter((v) => v && v.w > 0 && v.h > 0).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, circ: !!v.circ, legend: v.legend || "", fusion: v.fusion || {}, rotulo: !!v.rotulo, id: (v.id != null ? v.id : null) }));
@@ -1595,6 +1608,19 @@
       if (va("inf")) { hitD([0, L + H], [A, L + H], 'data-arista="inf" data-rim="1"'); hitD([0, L], [0, L + H], 'data-libre="1"'); hitD([A, L], [A, L + H], 'data-libre="1"'); }
       if (va("izq")) { hitD([-H, 0], [-H, L], 'data-arista="izq" data-rim="1"'); hitD([0, 0], [-H, 0], 'data-libre="1"'); hitD([0, L], [-H, L], 'data-libre="1"'); }
       if (va("der")) { hitD([A + H, 0], [A + H, L], 'data-arista="der" data-rim="1"'); hitD([A, 0], [A + H, 0], 'data-libre="1"'); hitD([A, L], [A + H, L], 'data-libre="1"'); }
+      (skVol.aletas || []).forEach((al2) => {
+        if (al2.id == null || !(al2.w > 0) || !(al2.h > 0)) return;
+        const ed = {
+          t: [{ x: al2.x, y: al2.y }, { x: al2.x + al2.w, y: al2.y }],
+          b: [{ x: al2.x, y: al2.y + al2.h }, { x: al2.x + al2.w, y: al2.y + al2.h }],
+          l: [{ x: al2.x, y: al2.y }, { x: al2.x, y: al2.y + al2.h }],
+          r: [{ x: al2.x + al2.w, y: al2.y }, { x: al2.x + al2.w, y: al2.y + al2.h }],
+        };
+        Object.keys(ed).forEach((k2) => {
+          const pA = ed[k2][0], pB = ed[k2][1];
+          s += `<line class="arista-hit" data-anexo="${al2.id}" data-borde="${k2}"${al2.fused === k2 ? ' data-fus="1"' : ""} data-ax="${pA.x}" data-ay="${pA.y}" data-bx="${pB.x}" data-by="${pB.y}" x1="${f1(pxT(pA.x))}" y1="${f1(pyT(pA.y))}" x2="${f1(pxT(pB.x))}" y2="${f1(pyT(pB.y))}"/>`;
+        });
+      });
       s += notasSVGBloque(skVol.notas, pxT, pyT, scB, sk0.rotDrag, true);
       (skVol.anclas || []).forEach((an) => {
         const ax = pxT(an.x), ay = pyT(an.y);
@@ -1817,6 +1843,21 @@
         hitLn({ x: 0, y: 0 }, { x: 0, y: sk.largo }, 'data-arista="izq"');
         hitLn({ x: sk.ancho, y: 0 }, { x: sk.ancho, y: sk.largo }, 'data-arista="der"');
       }
+      // Bordes de los ANEXOS (aletas/faldones): heredan el comportamiento de las aristas del
+      // paño — clicables con su propio menú (ojetillos del anexo, corte/guía, anchor, nota).
+      (sk.aletas || []).forEach((al2) => {
+        if (al2.id == null || !(al2.w > 0) || !(al2.h > 0)) return;
+        const ed = {
+          t: [{ x: al2.x, y: al2.y }, { x: al2.x + al2.w, y: al2.y }],
+          b: [{ x: al2.x, y: al2.y + al2.h }, { x: al2.x + al2.w, y: al2.y + al2.h }],
+          l: [{ x: al2.x, y: al2.y }, { x: al2.x, y: al2.y + al2.h }],
+          r: [{ x: al2.x + al2.w, y: al2.y }, { x: al2.x + al2.w, y: al2.y + al2.h }],
+        };
+        Object.keys(ed).forEach((k2) => {
+          const pA = ed[k2][0], pB = ed[k2][1];
+          s += `<line class="arista-hit" data-anexo="${al2.id}" data-borde="${k2}"${al2.fused === k2 ? ' data-fus="1"' : ""} data-ax="${pA.x}" data-ay="${pA.y}" data-bx="${pB.x}" data-by="${pB.y}" x1="${f1(px(pA.x))}" y1="${f1(py(pA.y))}" x2="${f1(px(pB.x))}" y2="${f1(py(pB.y))}"/>`;
+        });
+      });
       // Toda línea de CORTE/GUÍA es clicable a lo largo de TODA su extensión, aunque (aún) no
       // seccione el paño: el propósito de los anchors es posicionar el corte respecto de las
       // aristas ANTES de convertirlo en arista. (Va después de las aristas → gana el clic donde se solapan.)
