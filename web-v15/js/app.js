@@ -3146,6 +3146,14 @@
         function aletaBaseDim() { const be = a.baseEdge || "inf"; return (be === "inf" || be === "sup") ? (ctx.getAncho && ctx.getAncho()) : (ctx.getLargo && ctx.getLargo()); }
         function pintarPosicion() {
           posWrap.innerHTML = "";
+          if (a.guiaId) {
+            const vinc = document.createElement("p"); vinc.className = "muted small anexo-vinc";
+            vinc.textContent = "⛓ Vinculado a una guía: lado, posición y ancho siguen a esa línea. ";
+            const bDes = document.createElement("button"); bDes.type = "button"; bDes.className = "pz-btn"; bDes.textContent = "Desvincular";
+            bDes.addEventListener("click", () => { delete a.guiaId; delete a.guiaDir; pintarPosicion(); refresh(); onChange(); });
+            vinc.appendChild(bDes);
+            posWrap.appendChild(vinc);
+          }
           const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
           const be = a.baseEdge || "inf", horiz = (be === "inf" || be === "sup");
           const labA = horiz ? "Desde vértice izquierdo (m)" : "Desde vértice superior (m)";
@@ -4605,6 +4613,7 @@
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
     actualizarTraseraUnif();
     aplicarEmpates(state.cortesUnif, state.anclasUnif, ancho || 0, largo || 0);
+    aplicarAnexosDeGuia(state.aletasUnif, state.cortesUnif, ancho || 0, largo || 0, alturaUnif(), alasUnif());
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
       const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar, anclas: anclasSpecDe(state.anclasUnif, state.cortesUnif, ancho || 0, largo || 0), notas: state.notasUnif }, ojSpecUnif());
@@ -5909,6 +5918,7 @@
     if (!pz.rotDrag) pz.rotDrag = {};   // offsets manuales de los rótulos de esta pieza (persisten en el snapshot)
     const a = ev(pz.ancho), l = ev(pz.largo);
     aplicarEmpates(pz.cortes, pz.anclas || [], a > 0 ? a : 0, l > 0 ? l : 0);
+    aplicarAnexosDeGuia(pz.aletas || [], pz.cortes, a > 0 ? a : 0, l > 0 ? l : 0, pz.usaAlto ? (ev(pz.altura) || 0) : 0, null);
     const ventanas = visibles(pz.inscritos).map((ins) => {
       const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
       return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {}, rotulo: !!ins.rotulo, id: rotId(ins) } : null;
@@ -5928,7 +5938,24 @@
   // Clic en una cota del plano → aparece una ✕; al pincharla, esa cota se oculta. Alternativa ágil a la lista
   // de cotas cuando hay muchas. `ocultas` = mapa cotasOcultas; `onChange` = re-render del plano.
   // ----- Menú de arista: clic en una arista del paño (plano en vivo) → instalar elemento ahí -----
-  let _arMenu = null;
+  let _arMenu = null, _arMenuXY = null;
+  // Selector de TIPO de anexo (aleta/solapa/faldón/cenefa) — 2º paso del menú de guías.
+  function menuTipoAnexo(fn) {
+    cerrarMenuAristas();
+    const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
+    const cap = document.createElement("p"); cap.className = "arista-menu-cap"; cap.textContent = "¿Qué tipo de anexo?";
+    menu.appendChild(cap);
+    [["aleta", "Aleta"], ["solapa", "Solapa"], ["faldon", "Faldón"], ["cenefa", "Cenefa"]].forEach((par) => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = par[1];
+      b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(par[0]); });
+      menu.appendChild(b);
+    });
+    document.body.appendChild(menu); _arMenu = menu;
+    const xy = _arMenuXY || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const mw = menu.offsetWidth || 180, mh = menu.offsetHeight || 160;
+    menu.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, xy.x - mw / 2)) + "px";
+    menu.style.top = Math.max(8, Math.min(window.innerHeight - mh - 8, xy.y + 12)) + "px";
+  }
   function cerrarMenuAristas() { if (_arMenu) { _arMenu.remove(); _arMenu = null; } }
   document.addEventListener("click", (e) => { if (_arMenu && !_arMenu.contains(e.target)) cerrarMenuAristas(); });
   // Expande la sección colapsada que contenga el elemento, hace scroll y destella su título.
@@ -6332,6 +6359,7 @@
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
+        _arMenuXY = { x: e.clientX, y: e.clientY };
         const mw = menu.offsetWidth || 200, mh = menu.offsetHeight || 180;
         menu.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, e.clientX - mw / 2)) + "px";
         menu.style.top = Math.max(8, Math.min(window.innerHeight - mh - 8, e.clientY + 12)) + "px";
@@ -6399,10 +6427,27 @@
     }
     if (horiz) {
       const Y = (ln.a.y + ln.b.y) / 2;
-      return { baseEdge: haciaAbajo ? "inf" : "sup", dBorde: haciaAbajo ? (L - Y) : Y, offset: Math.min(ln.a.x, ln.b.x), ancho: ln.w };
+      return { baseEdge: haciaAbajo ? "inf" : "sup", dBorde: haciaAbajo ? (L - Y) : Y, offset: Math.min(ln.a.x, ln.b.x), ancho: ln.w, dir: haciaAbajo ? "abajo" : "arriba" };
     }
     const X = (ln.a.x + ln.b.x) / 2;
-    return { baseEdge: haciaDer ? "der" : "izq", dBorde: haciaDer ? (A - X) : X, offset: Math.min(ln.a.y, ln.b.y), ancho: ln.w };
+    return { baseEdge: haciaDer ? "der" : "izq", dBorde: haciaDer ? (A - X) : X, offset: Math.min(ln.a.y, ln.b.y), ancho: ln.w, dir: haciaDer ? "der" : "izq" };
+  }
+  // VÍNCULO guía→anexo: cada anexo con guiaId re-deriva su posición desde la línea ACTUAL de su
+  // guía en cada recompute (mover la guía —anchors, empates, campos— arrastra al anexo). Se
+  // desvincula desde la ficha del anexo.
+  function aplicarAnexosDeGuia(aletas, cortes, A, L, H, alas) {
+    if (!(A > 0 && L > 0)) return;
+    const f = window.CalcCIBSA.fmtNum;
+    (aletas || []).forEach((al2) => {
+      if (!al2 || !al2.guiaId) return;
+      const c = (cortes || []).find((c2) => c2 && c2.id === al2.guiaId && !c2._oculto);
+      if (!c) return;
+      const ln = lineaRawCorte(c); if (!ln) return;
+      const cfg = anexoDesdeLinea(ln, A, L, H, alas, al2.guiaDir || null);
+      if (!cfg || cfg.dBorde < -1e-9) return;
+      al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
+      al2.offset = f(cfg.offset); al2.ancho = f(cfg.ancho);
+    });
   }
   // Crea un corte/guía A LO LARGO de un segmento propio (rim o lateral de un ala): la línea nace
   // exactamente sobre ese borde y luego se ajusta con sus campos o con anchors.
@@ -6466,12 +6511,15 @@
       const cfg = anexoDesdeLinea(ln, A, L, alturaUnif(), alasUnif(), dir);
       if (!cfg) return alert("Por ahora los anexos solo pueden colgar de líneas horizontales o verticales.");
       if (cfg.dBorde < -1e-9) return alert("Esa línea queda fuera del paño base hacia ese lado; el anexo debe colgar dentro del paño.");
-      const f = window.CalcCIBSA.fmtNum;
-      const al2 = nuevaAleta();
-      al2.tipo = "solapa"; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
-      al2.ancho = f(cfg.ancho); al2.largo = "0.5"; al2.offset = f(cfg.offset); al2._colap = false;
-      state.aletasUnif.push(al2);
-      renderAletasUnif(); recompute(); irASeccion($("aletasUnif"));
+      menuTipoAnexo((tipo) => {
+        const f = window.CalcCIBSA.fmtNum;
+        const al2 = nuevaAleta();
+        al2.tipo = tipo; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
+        al2.ancho = f(cfg.ancho); al2.largo = "0.5"; al2.offset = f(cfg.offset); al2._colap = false;
+        al2.guiaId = c.id; al2.guiaDir = cfg.dir;
+        state.aletasUnif.push(al2);
+        renderAletasUnif(); recompute(); irASeccion($("aletasUnif"));
+      });
     },
     anexoOj: (rid, k, esFus) => {
       const al2 = visibles(state.aletasUnif).find((x2) => x2._rid === rid); if (!al2) return;
@@ -6607,11 +6655,14 @@
         const cfg = anexoDesdeLinea(ln, A, L, pz.usaAlto ? (ev(pz.altura) || 0) : 0, null, dir);
         if (!cfg) return alert("Por ahora los anexos solo pueden colgar de líneas horizontales o verticales.");
         if (cfg.dBorde < -1e-9) return alert("Esa línea queda fuera del paño base hacia ese lado; el anexo debe colgar dentro del paño.");
-        const al2 = nuevaAleta();
-        al2.tipo = "solapa"; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
-        al2.ancho = f(cfg.ancho); al2.largo = "0.5"; al2.offset = f(cfg.offset); al2._colap = false;
-        (pz.aletas || (pz.aletas = [])).push(al2);
-        irAPieza();
+        menuTipoAnexo((tipo) => {
+          const al2 = nuevaAleta();
+          al2.tipo = tipo; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
+          al2.ancho = f(cfg.ancho); al2.largo = "0.5"; al2.offset = f(cfg.offset); al2._colap = false;
+          al2.guiaId = c.id; al2.guiaDir = cfg.dir;
+          (pz.aletas || (pz.aletas = [])).push(al2);
+          irAPieza();
+        });
       },
       anexoOj: (rid, k, esFus) => {
         const al2 = visibles(pz.aletas || []).find((x2) => x2._rid === rid); if (!al2) return;
