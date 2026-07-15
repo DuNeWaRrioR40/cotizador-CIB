@@ -371,10 +371,18 @@
         const ang = (parseFloat(c.angulo) || 0) * Math.PI / 180, rotated = Math.abs(ang) > 1e-6;
         const Px = x + (c.pivX != null ? c.pivX : 0) * w, Py = y;
         if (rotated) { const co = Math.cos(ang), si = Math.sin(ang); const rot = (p) => ({ x: Px + (p.x - Px) * co - (p.y - Py) * si, y: Py + (p.x - Px) * si + (p.y - Py) * co }); a = rot(a); b = rot(b); }
-        let fadePoly = null;
+        let fadePoly = null, fadeZona = "tapa";
         if (!esGuia && (c.fade === "A" || c.fade === "B")) {
-          const rect = [{ x: 0, y: 0 }, { x: ancho, y: 0 }, { x: ancho, y: largo }, { x: 0, y: largo }];
-          fadePoly = clipPolyHalfPlane(rect, a.x, a.y, b.x, b.y, c.fade === "B");
+          // Región que el fade secciona: la ZONA de la hoja donde vive el corte. En un volumétrico
+          // un corte trazado sobre un ala difumina/elimina SOLO dentro de esa ala (p. ej. el
+          // triángulo a un lado del corte), sin tocar la tapa ni las demás alas.
+          const my = (a.y + b.y) / 2, mx = (a.x + b.x) / 2;
+          let R = [{ x: 0, y: 0 }, { x: ancho, y: 0 }, { x: ancho, y: largo }, { x: 0, y: largo }];
+          if (my < 0 && bnd.y0 < 0) { R = [{ x: 0, y: bnd.y0 }, { x: ancho, y: bnd.y0 }, { x: ancho, y: 0 }, { x: 0, y: 0 }]; fadeZona = "sup"; }
+          else if (my > largo && bnd.y1 > largo) { R = [{ x: 0, y: largo }, { x: ancho, y: largo }, { x: ancho, y: bnd.y1 }, { x: 0, y: bnd.y1 }]; fadeZona = "inf"; }
+          else if (mx < 0 && bnd.x0 < 0) { R = [{ x: bnd.x0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: largo }, { x: bnd.x0, y: largo }]; fadeZona = "izq"; }
+          else if (mx > ancho && bnd.x1 > ancho) { R = [{ x: ancho, y: 0 }, { x: bnd.x1, y: 0 }, { x: bnd.x1, y: largo }, { x: ancho, y: largo }]; fadeZona = "der"; }
+          fadePoly = clipPolyHalfPlane(R, a.x, a.y, b.x, b.y, c.fade === "B");
         }
         // Ojetillos sobre una arista (lado A/B) del corte: repartidos a lo largo, con inset perpendicular.
         // Si el corte difumina/elimina ese MISMO lado (c.fade === c.ojAristaLado), ese lado se separa del
@@ -421,7 +429,7 @@
             if (posA.length >= 1) { aristaNum.push(mkN(posA[0], 0)); if (posA.length > 1) aristaNum.push(mkN(posA[posA.length - 1], posA.length - 1)); }
           }
         }
-        return { x: x, y: y, w: w, h: 0, corte: true, guia: esGuia, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, ojNum: aristaNum, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, tapa: tapaDeCorte(c, a, b), fadePoly: fadePoly, fadeKill: !esGuia && !!c.fadeKill, fade: esGuia ? "" : (c.fade || ""), strapAncho: parseFloat(c.strapAncho) || 0, strapPrecioM: parseFloat(c.strapPrecioM) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
+        return { x: x, y: y, w: w, h: 0, corte: true, guia: esGuia, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, ojNum: aristaNum, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, tapa: tapaDeCorte(c, a, b), fadePoly: fadePoly, fadeZona: fadeZona, fadeKill: !esGuia && !!c.fadeKill, fade: esGuia ? "" : (c.fade || ""), strapAncho: parseFloat(c.strapAncho) || 0, strapPrecioM: parseFloat(c.strapPrecioM) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
       }
       // --- Corte circular: se recorta al paño base; lo que sale, desaparece. ---
       if (c.circ) {
@@ -613,7 +621,7 @@
     // recortado por el lado que se ELIMINA de cada uno → la parte seccionada desaparece del plano (contorno
     // incluido) y queda la forma real. El precio sigue usando la envolvente rectangular (solo es visual).
     let panoPoly = null;
-    const killed = cortes.filter((c) => c.fadeKill && (c.fade === "A" || c.fade === "B") && c.segments && c.segments[0] && c.segments[0].a && c.segments[0].b);
+    const killed = cortes.filter((c) => c.fadeKill && (c.fade === "A" || c.fade === "B") && (c.fadeZona || "tapa") === "tapa" && c.segments && c.segments[0] && c.segments[0].a && c.segments[0].b);
     if (killed.length && ancho > 0 && largo > 0) {
       let poly = [{ x: 0, y: 0 }, { x: ancho, y: 0 }, { x: ancho, y: largo }, { x: 0, y: largo }];
       killed.forEach((c) => {
@@ -1019,6 +1027,11 @@
       if (c.fadePoly && c.fadePoly.length >= 3 && !c.fadeKill) {
         s += `<polygon class="cut-fade" points="${c.fadePoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
       }
+      if (c.fadePoly && c.fadePoly.length >= 3 && c.fadeKill && (c.fadeZona || "tapa") !== "tapa") {
+        // Eliminado sobre un ALA: se marca la zona recortada (achurado rojo suave, como los
+        // calados de esquina); el contorno del ala no se remodela todavía.
+        s += `<polygon class="cut" points="${c.fadePoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}" fill="rgba(216,68,58,0.10)"/>`;
+      }
       (c.hatch || []).forEach((sg) => {
         s += `<line class="cut-hatch" x1="${f1(px(sg.a.x))}" y1="${f1(py(sg.a.y))}" x2="${f1(px(sg.b.x))}" y2="${f1(py(sg.b.y))}"/>`;
       });
@@ -1419,6 +1432,12 @@
               s += `<line class="arista-hit" data-corte="${i}" data-ax="${cl.a.x}" data-ay="${cl.a.y}" data-bx="${cl.b.x}" data-by="${cl.b.y}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
             }
           }
+        });
+        // Zonas "Eliminar" (fadeKill) sobre alas: trozo marcado también en el cubo.
+        (skVol.cortes || []).forEach((c) => {
+          if (!(c.fadeKill && c.fadePoly && c.fadePoly.length >= 3 && (c.fadeZona || "tapa") !== "tapa")) return;
+          const ps = c.fadePoly.map((p2) => vol3(p2.x, p2.y));
+          s += `<polygon class="cut" points="${ps.map((p2) => f1(p2[0]) + "," + f1(p2[1])).join(" ")}" fill="rgba(216,68,58,0.14)"/>`;
         });
         // Straps: banda proyectada POR TRAMOS a lo largo de su eje (dobla en los pliegues).
         (skVol.straps || []).forEach((st) => {

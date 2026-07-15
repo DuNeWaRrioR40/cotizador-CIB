@@ -4837,6 +4837,12 @@
           }
           caladosCerr.push({ poly: cs });
         });
+        // Zonas "Eliminar" de cortes-línea (fadeKill): también se borran de la cara — el
+        // triángulo seccionado de un ala (o de la tapa) desaparece del 3D.
+        const skF = window.SketchCIBSA.construirSketch({ ancho: A, largo: L, ojTotal: 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), volumetrico: { alto: H, ojEn: ojEnUnif(), alas: alasUnif() } });
+        (skF.cortes || []).forEach((c2) => {
+          if (c2.fadeKill && c2.fadePoly && c2.fadePoly.length >= 3) caladosCerr.push({ poly: c2.fadePoly });
+        });
       } catch (e) { caladosCerr = []; }
     }
     // Cara con calados: geometría propia (UV en coords de la HOJA) + canvas donde los calados se
