@@ -2420,7 +2420,7 @@
     container.appendChild(add);
   }
   function renderComplementosUnif() { const cu = $("compUnif"); if (cu) renderComplementos(cu, state.complementosUnif, recompute); }
-  function renderCortesUnif() { const cc = $("cortesUnif"); if (cc) renderCortes(cc, { cortes: state.cortesUnif, baseLargo: () => num("f_largo", null), baseAncho: () => num("f_ancho", null), onChange: recompute }); }
+  function renderCortesUnif() { const cc = $("cortesUnif"); if (cc) renderCortes(cc, { cortes: state.cortesUnif, baseLargo: () => num("f_largo", null), baseAncho: () => num("f_ancho", null), onChange: recompute, anexoDesde: (c, xy) => anexoDesdeCorteUI(c, xy, { A: () => num("f_ancho", null), L: () => num("f_largo", null), H: alturaUnif, alas: alasUnif, aletas: () => state.aletasUnif, despues: () => { renderAletasUnif(); recompute(); irASeccion($("aletasUnif")); } }) }); }
   function cantUnif() { return Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1); }
   function valorOjUnif() { return num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT); }
   function renderAletasUnif() {
@@ -3877,6 +3877,11 @@
         bL.addEventListener("click", () => { ["padSup", "padInf", "padIzq", "padDer"].forEach((k) => { c[k] = "0"; }); setPad(); refresh(); onChange(); });
         const bDup = document.createElement("button"); bDup.type = "button"; bDup.className = "pz-btn"; bDup.textContent = "Duplicar diseño";
         bDup.addEventListener("click", () => { const copy = nuevaCorte(c); centrarCorte(ctx.baseLargo(), ctx.baseAncho(), copy); ctx.cortes.push(copy); pintar(); onChange(); });
+        if (ctx.anexoDesde) {
+          const bAx = document.createElement("button"); bAx.type = "button"; bAx.className = "pz-btn"; bAx.textContent = "＋ Anexo desde esta línea";
+          bAx.addEventListener("click", (ev3) => { ctx.anexoDesde(c, { x: ev3.clientX, y: ev3.clientY }); });
+          acc.appendChild(bAx);
+        }
         acc.appendChild(bC); acc.appendChild(bL); acc.appendChild(bDup); card.appendChild(acc);
         // Replicar en esquinas (mismo diseño, posición espejo desde la esquina).
         function setCorner(obj, corner, baseL, baseA, mV, mH, cV, cH) {
@@ -6085,6 +6090,36 @@
     document.body.appendChild(d);
   }
   function quitarHintConexion() { const d = document.getElementById("anclaConexHint"); if (d) d.remove(); }
+  // Diálogo "fijar distancia exacta" del anchor: acepta aritmética y ofrece BLOQUEAR el anchor
+  // en esa posición (pre-marcado): fijas el punto de referencia y no se mueve por accidente.
+  function dialogoDistanciaAncla(titulo, cur, fn) {
+    const ov = document.createElement("div"); ov.className = "qr-modal anc-dialog";
+    const card = document.createElement("div"); card.className = "qr-card";
+    const h = document.createElement("h3"); h.textContent = titulo; card.appendChild(h);
+    const pl = document.createElement("p"); pl.className = "muted small"; pl.textContent = "Acepta aritmética: 5/2 · 1.2+0.35 · (4-0.6)/3 · coma o punto decimal."; card.appendChild(pl);
+    const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = String(cur); inp.className = "anc-dialog-inp";
+    card.appendChild(inp);
+    const lab = document.createElement("label"); lab.className = "chk anc-dialog-chk";
+    const chk = document.createElement("input"); chk.type = "checkbox"; chk.checked = true;
+    const sp = document.createElement("span"); sp.textContent = "Bloquear el anchor en esta posición";
+    lab.appendChild(chk); lab.appendChild(sp); card.appendChild(lab);
+    const acc = document.createElement("div"); acc.className = "qr-acciones";
+    const bOk = document.createElement("button"); bOk.type = "button"; bOk.className = "btn-outline"; bOk.textContent = "Aplicar";
+    const bCa = document.createElement("button"); bCa.type = "button"; bCa.className = "btn-outline"; bCa.textContent = "Cancelar";
+    acc.appendChild(bOk); acc.appendChild(bCa); card.appendChild(acc);
+    ov.appendChild(card); document.body.appendChild(ov);
+    const cerrar = () => ov.remove();
+    const ok = () => {
+      const v = window.CalcCIBSA.evalExpr(String(inp.value).replace(",", "."));
+      if (v == null || isNaN(v) || v < 0) { alert("Valor no válido: escribe un número o una expresión (ej. 5/2 + 0.1)."); return; }
+      cerrar(); fn(v, chk.checked);
+    };
+    bOk.addEventListener("click", ok);
+    bCa.addEventListener("click", cerrar);
+    ov.addEventListener("click", (e) => { if (e.target === ov) cerrar(); });
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") ok(); if (e.key === "Escape") cerrar(); });
+    setTimeout(() => { try { inp.focus(); inp.select(); } catch (_) {} }, 30);
+  }
   // Interacción sobre el plano en vivo: arrastrar anclas (las de corte se IMANTAN a las de
   // arista para empatar) + clic sin arrastre = menú (fijar distancia exacta / desempatar / eliminar).
   // ctx: { anclas, cortes, ancho, largo, onChange }
@@ -6155,14 +6190,12 @@
       else item("Desbloquear anchor", () => { reg.an.fix = false; if (ctx.onChange) ctx.onChange(); });
       if (!reg.an.fix) item("Fijar distancia exacta…", () => {
         const cur = (reg.tipo === "arista") ? (parseFloat(reg.an.d) || 0) : (parseFloat(reg.an.t) || 0);
-        const txt = prompt((reg.tipo === "arista") ? "Distancia desde la esquina (m) — acepta aritmética, ej. 5/2, 1.2+0.35, (4-0.6)/3:" : "Distancia desde el extremo inicial de la línea (m) — acepta aritmética, ej. 5/2, 1.2+0.35:", String(cur));
-        if (txt == null) return;
-        // Cálculo aritmético básico: mismo motor de expresiones de los campos de la App.
-        const v = window.CalcCIBSA.evalExpr(String(txt).replace(",", "."));
-        if (v == null || isNaN(v) || v < 0) { alert("Valor no válido: escribe un número o una expresión (ej. 5/2 + 0.1)."); return; }
-        if (reg.tipo === "arista") reg.an.d = rd3(v); else reg.an.t = rd3(v);
-        aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
-        if (ctx.onChange) ctx.onChange();
+        dialogoDistanciaAncla((reg.tipo === "arista") ? "Distancia desde la esquina (m)" : "Distancia desde el extremo inicial de la línea (m)", cur, (v, bloquear) => {
+          if (reg.tipo === "arista") reg.an.d = rd3(v); else reg.an.t = rd3(v);
+          if (bloquear) reg.an.fix = true;
+          aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
+          if (ctx.onChange) ctx.onChange();
+        });
       });
       if (reg.tipo === "corte" && reg.an.emp != null) item("Desempatar", () => { reg.an.emp = null; if (ctx.onChange) ctx.onChange(); });
       item("Eliminar anchor", () => {
@@ -6333,12 +6366,7 @@
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else if (idxCorte != null) {
           items = [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]];
-          if (seg) {
-            // Anexos colgando de CUALQUIER línea (corte o guía) horizontal/vertical.
-            const dxL = Math.abs(seg.b.x - seg.a.x), dyL = Math.abs(seg.b.y - seg.a.y);
-            if (dxL >= dyL) items.push(["Anexo colgando hacia ABAJO", "guiaAnexo:abajo"], ["Anexo colgando hacia ARRIBA", "guiaAnexo:arriba"]);
-            else items.push(["Anexo hacia la DERECHA", "guiaAnexo:der"], ["Anexo hacia la IZQUIERDA", "guiaAnexo:izq"]);
-          }
+          items.push(["Anexo (aleta/faldón) desde esta línea…", "guiaAnexoUI"]);
           if (pm) items.push(["Anchor sobre la línea", "corteAncla"], ["Nota (texto libre)…", "nota"]);
         } else if (esLibre && seg) {
           // Borde lateral de un ala (la ALTURA): elementos posicionados en SU propio segmento.
@@ -6356,7 +6384,7 @@
         items.forEach(([t, a]) => {
           if (!acciones[a]) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a.indexOf("guiaAnexo:") === 0) acciones.guiaAnexo(parseInt(idxCorte, 10), pm, a.split(":")[1]); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -6433,6 +6461,45 @@
     const X = (ln.a.x + ln.b.x) / 2;
     return { baseEdge: haciaDer ? "der" : "izq", dBorde: haciaDer ? (A - X) : X, offset: Math.min(ln.a.y, ln.b.y), ancho: ln.w, dir: haciaDer ? "der" : "izq" };
   }
+  // Flujo completo "anexo desde una línea": pregunta dirección y tipo, crea el anexo vinculado.
+  // ctx2: { A(), L(), H(), alas(), aletas(), despues() }. xy opcional posiciona los mini-menús.
+  function menuDirAnexo(horiz, fn) {
+    cerrarMenuAristas();
+    const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
+    const cap = document.createElement("p"); cap.className = "arista-menu-cap"; cap.textContent = "¿Hacia qué lado cuelga?";
+    menu.appendChild(cap);
+    (horiz ? [["abajo", "Hacia ABAJO"], ["arriba", "Hacia ARRIBA"]] : [["der", "Hacia la DERECHA"], ["izq", "Hacia la IZQUIERDA"]]).forEach((par) => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = par[1];
+      b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(par[0]); });
+      menu.appendChild(b);
+    });
+    document.body.appendChild(menu); _arMenu = menu;
+    const xy = _arMenuXY || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const mw = menu.offsetWidth || 180, mh = menu.offsetHeight || 140;
+    menu.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, xy.x - mw / 2)) + "px";
+    menu.style.top = Math.max(8, Math.min(window.innerHeight - mh - 8, xy.y + 12)) + "px";
+  }
+  function anexoDesdeCorteUI(c, xy, ctx2) {
+    const ln = lineaRawCorte(c); if (!ln) return alert("Completa el largo y la posición de la línea primero.");
+    const A = ctx2.A(), L = ctx2.L(); if (!(A > 0 && L > 0)) return alert("Completa las dimensiones del paño base.");
+    const horiz = Math.abs(ln.u.y) < 0.05, vert = Math.abs(ln.u.x) < 0.05;
+    if (!horiz && !vert) return alert("Por ahora los anexos solo pueden colgar de líneas horizontales o verticales.");
+    if (xy) _arMenuXY = xy;
+    menuDirAnexo(horiz, (dir) => {
+      const cfg = anexoDesdeLinea(ln, A, L, ctx2.H ? ctx2.H() : 0, ctx2.alas ? ctx2.alas() : null, dir);
+      if (!cfg) return;
+      if (cfg.dBorde < -1e-9) return alert("Esa línea queda fuera del paño base hacia ese lado; el anexo debe colgar dentro del paño.");
+      menuTipoAnexo((tipo) => {
+        const f = window.CalcCIBSA.fmtNum;
+        const al2 = nuevaAleta();
+        al2.tipo = tipo; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
+        al2.ancho = f(cfg.ancho); al2.largo = "0.5"; al2.offset = f(cfg.offset); al2._colap = false;
+        al2.guiaId = c.id; al2.guiaDir = cfg.dir;
+        ctx2.aletas().push(al2);
+        ctx2.despues();
+      });
+    });
+  }
   // VÍNCULO guía→anexo: cada anexo con guiaId re-deriva su posición desde la línea ACTUAL de su
   // guía en cada recompute (mover la guía —anchors, empates, campos— arrastra al anexo). Se
   // desvincula desde la ficha del anexo.
@@ -6505,22 +6572,9 @@
       state.notasUnif.push({ id: nid, x: rd3(pm.x), y: rd3(pm.y), texto: t.trim() });
       recompute();
     },
-    guiaAnexo: (i, pm, dir) => {
+    guiaAnexoUI: (i) => {
       const c = visibles(state.cortesUnif)[i]; if (!c) return;
-      const ln = lineaRawCorte(c); if (!ln) return;
-      const A = num("f_ancho", null), L = num("f_largo", null); if (!(A > 0 && L > 0)) return;
-      const cfg = anexoDesdeLinea(ln, A, L, alturaUnif(), alasUnif(), dir);
-      if (!cfg) return alert("Por ahora los anexos solo pueden colgar de líneas horizontales o verticales.");
-      if (cfg.dBorde < -1e-9) return alert("Esa línea queda fuera del paño base hacia ese lado; el anexo debe colgar dentro del paño.");
-      menuTipoAnexo((tipo) => {
-        const f = window.CalcCIBSA.fmtNum;
-        const al2 = nuevaAleta();
-        al2.tipo = tipo; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
-        al2.ancho = f(cfg.ancho); al2.largo = "0.5"; al2.offset = f(cfg.offset); al2._colap = false;
-        al2.guiaId = c.id; al2.guiaDir = cfg.dir;
-        state.aletasUnif.push(al2);
-        renderAletasUnif(); recompute(); irASeccion($("aletasUnif"));
-      });
+      anexoDesdeCorteUI(c, null, { A: () => num("f_ancho", null), L: () => num("f_largo", null), H: alturaUnif, alas: alasUnif, aletas: () => state.aletasUnif, despues: () => { renderAletasUnif(); recompute(); irASeccion($("aletasUnif")); } });
     },
     anexoOj: (rid, k, esFus) => {
       const al2 = visibles(state.aletasUnif).find((x2) => x2._rid === rid); if (!al2) return;
@@ -6649,21 +6703,9 @@
         lst.push({ id: 1 + lst.reduce((m, n2) => Math.max(m, n2.id || 0), 0), x: rd3(pm.x), y: rd3(pm.y), texto: t.trim() });
         recomputeCompuesto();
       },
-      guiaAnexo: (i, pm, dir) => {
+      guiaAnexoUI: (i) => {
         const c = visibles(pz.cortes)[i]; if (!c) return;
-        const ln = lineaRawCorte(c); if (!ln) return;
-        const A = ev(pz.ancho), L = ev(pz.largo); if (!(A > 0 && L > 0)) return;
-        const cfg = anexoDesdeLinea(ln, A, L, pz.usaAlto ? (ev(pz.altura) || 0) : 0, null, dir);
-        if (!cfg) return alert("Por ahora los anexos solo pueden colgar de líneas horizontales o verticales.");
-        if (cfg.dBorde < -1e-9) return alert("Esa línea queda fuera del paño base hacia ese lado; el anexo debe colgar dentro del paño.");
-        menuTipoAnexo((tipo) => {
-          const al2 = nuevaAleta();
-          al2.tipo = tipo; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
-          al2.ancho = f(cfg.ancho); al2.largo = "0.5"; al2.offset = f(cfg.offset); al2._colap = false;
-          al2.guiaId = c.id; al2.guiaDir = cfg.dir;
-          (pz.aletas || (pz.aletas = [])).push(al2);
-          irAPieza();
-        });
+        anexoDesdeCorteUI(c, null, { A: () => ev(pz.ancho), L: () => ev(pz.largo), H: () => (pz.usaAlto ? (ev(pz.altura) || 0) : 0), alas: () => null, aletas: () => (pz.aletas || (pz.aletas = [])), despues: irAPieza });
       },
       anexoOj: (rid, k, esFus) => {
         const al2 = visibles(pz.aletas || []).find((x2) => x2._rid === rid); if (!al2) return;
@@ -7231,7 +7273,7 @@
       renderPiezaBordes(q(".pz-borde"), pz);
       renderComplementos(q(".pz-comp"), pz.complementos, recomputeCompuesto);
       renderInscritos(q(".pz-ins"), pz);
-      renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
+      renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto, anexoDesde: (c, xy) => anexoDesdeCorteUI(c, xy, { A: () => window.CalcCIBSA.evalExpr(pz.ancho), L: () => window.CalcCIBSA.evalExpr(pz.largo), H: () => (pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0), alas: () => null, aletas: () => (pz.aletas || (pz.aletas = [])), despues: () => { renderPiezas(); recompute(); } }) });
       renderAletas(q(".pz-aletas"), { getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto, telaBase: () => pz.telaNombre, baseListo: () => (window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0 && !!pz.telaNombre) });
       renderStraps(q(".pz-straps"), { straps: (pz.straps || (pz.straps = [])), cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
       renderCintas(q(".pz-cintas"), { cintas: (pz.cintas || (pz.cintas = [])), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
