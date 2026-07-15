@@ -5154,13 +5154,32 @@
     const head = document.createElement("div"); head.className = "rt-row head";
     head.innerHTML = "<span>Tela · subtotal estimado (neto)</span><span>Orientación</span>";
     box.appendChild(head);
+    const principal = telaActual();
     telas.forEach((t) => {
       let lote; try { lote = loteParaTela(t, largo, ancho); } catch (e) { return; }
       const orientKey = orientDeTela(t);
       const calc = construirDatosUnif(t, lote, "01").calc;
       const row = document.createElement("div"); row.className = "rt-row";
-      row.innerHTML = `<span><span class="rt-nm">${t.nombre}</span><br><span class="rt-sub">${lote.N > 1 ? lote.N + " u · " : ""}rollo ${window.CalcCIBSA.fmtNum(t.anchoRollo)} m</span></span>` +
-        `<span style="text-align:right"><b>${money(calc.subtotal)}</b><br><span class="rt-sub">${orientKey === "ancho" ? "a lo ancho" : "a lo largo"}</span></span>`;
+      const left = document.createElement("span");
+      // Las telas ADICIONALES se pueden quitar desde aquí mismo (des-marca su checkbox);
+      // la principal (selector de Tela) no lleva ✕: se cambia arriba.
+      if (!(principal && principal.nombre === t.nombre)) {
+        const x = document.createElement("button"); x.type = "button"; x.className = "rt-x"; x.title = "Quitar esta tela de la cotización";
+        x.textContent = "✕";
+        x.addEventListener("click", () => {
+          const lst = $("telaOpcList");
+          if (lst) lst.querySelectorAll('input[type="checkbox"]').forEach((cb) => { if (cb.value === t.nombre) cb.checked = false; });
+          if (typeof renderTelaOpcCarrito === "function") renderTelaOpcCarrito();
+          recompute();
+        });
+        left.appendChild(x);
+      }
+      const nmWrap = document.createElement("span");
+      nmWrap.innerHTML = `<span class="rt-nm">${t.nombre}</span><br><span class="rt-sub">${lote.N > 1 ? lote.N + " u · " : ""}rollo ${window.CalcCIBSA.fmtNum(t.anchoRollo)} m</span>`;
+      left.appendChild(nmWrap);
+      const right = document.createElement("span"); right.style.textAlign = "right";
+      right.innerHTML = `<b>${money(calc.subtotal)}</b><br><span class="rt-sub">${orientKey === "ancho" ? "a lo ancho" : "a lo largo"}</span>`;
+      row.appendChild(left); row.appendChild(right);
       box.appendChild(row);
     });
     cont.appendChild(box);
