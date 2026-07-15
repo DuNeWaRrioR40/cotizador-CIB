@@ -858,6 +858,11 @@
       itemRow(String(a.cantidad), [[a.cat || "Anexo", true], [a.detalle, false]],
         `${money(a.precio)} c/u`, money(a.totalNeto));
     });
+    // Resumen GLOBAL de ojetillos (informativo, sin montos): el cliente ve el total del producto
+    // y DÓNDE está cobrado cada grupo (fila propia vs. incluido en el valor de cada anexo).
+    if (datos.ojetillosNota) {
+      itemRow("", [["Ojetillos — resumen", true], [datos.ojetillosNota, false]], "", "");
+    }
     // Productos a granel (sin proveedor) — una fila por línea. Si la línea tiene descuento
     // propio, va como línea aparte EN NEGRITA para que el cliente lo vea con su monto.
     (datos.granel || []).forEach((g) => {

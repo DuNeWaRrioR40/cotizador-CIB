@@ -7831,6 +7831,18 @@
       detalleExtra: terminacionesTexto(state.orientUnif),
       complementos: complementosUnifPDF(N),
       aletas: aletasUnifPDF(aletasEf, N).concat(aletasUnifPDF(backAletasEf, N)).concat(strapsUnifPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cintasUnifPDF(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cortesUnifPDF(skSpec, lote.valorOjetillo, N)),
+      ojetillosNota: (function () {
+        const nB = lote.nOjetillos || 0;
+        const nC = ojEnCortesN(state.cortesUnif, ancho, largo, state.aletasUnif);
+        const nA = ojEnAletasN(aletasEf) + ojEnAletasN(backAletasEf);
+        const tot = nB + nC + nA;
+        if (!(tot > 0) || (nC === 0 && nA === 0)) return "";
+        const partes = [];
+        if (nB > 0) partes.push(nB + " en las aristas del paño (fila «Ojetillos»)");
+        if (nC > 0) partes.push(nC + " sobre cortes/calados (fila propia)");
+        if (nA > 0) partes.push(nA + " ya incluidos en el valor de cada anexo");
+        return "El producto lleva " + tot + " ojetillos en total (por unidad): " + partes.join(" · ") + ". Todos están cobrados en las filas indicadas.";
+      })(),
       granel: granelLineas,
       minProduccion: minProd, minProdUF: CFG.MIN_PRODUCCION_UF, ufValor: state.ufValor,
       sketch: skSpec,
