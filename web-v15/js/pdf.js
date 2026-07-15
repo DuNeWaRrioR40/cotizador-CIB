@@ -676,7 +676,9 @@
     const MUT = PDFLib.rgb(0.42, 0.42, 0.42);
     const cxA = (px(minX) + px(maxX)) / 2, cyA = (py(minY) + py(maxY)) / 2;
     const ctr = (s, x, y, sz, col) => page.drawText(s, { x: x - font.widthOfTextAtSize(s, sz) / 2, y: y, size: sz, font: font, color: col });
-    ctr("VISTA " + (esTras ? "TRASERA" : "FRONTAL"), cxA, py(minY) + ML.top + LBL - 8, 7, ACC);
+    // Alineado a la IZQUIERDA del dibujo (no centrado): así no se acopla con el rótulo
+    // "SUPERIOR" ni con las etiquetas de las cotas superiores, que van centradas.
+    page.drawText("VISTA " + (esTras ? "TRASERA" : "FRONTAL"), { x: px(minX), y: py(minY) + ML.top + LBL - 6, size: 7, font: font, color: ACC });
     // Terminación de cada arista anexada a su rótulo de orientación (swap izq/der en trasera; oculto si suprime cotas).
     const br = sk.bordesRot || {};
     const brIzq = esTras ? (br.der || "") : (br.izq || ""), brDer = esTras ? (br.izq || "") : (br.der || "");
