@@ -2053,8 +2053,10 @@
   // sin volver atrás); el carrito refleja la selección al instante. Los consumidores no cambian:
   // telasParaCotizar() sigue leyendo los checkboxes de #telaOpcList.
   function tipoDeTela(t) {
-    const n = String(t && t.nombre || "");
-    const p = n.split("·")[0].trim();
+    // El TIPO sale del nombre SIN proveedor (los nombres suelen empezar con él): primer término
+    // del nombre cliente, ej. "PE · G200 · M2X100" → "PE".
+    const n = String(telaCli(t) || "");
+    const p = n.indexOf("·") >= 0 ? n.split("·")[0].trim() : (n.trim().split(/\s+/)[0] || "");
     return p || "Otras";
   }
   function renderTelaOpc() {
@@ -2082,7 +2084,7 @@
           if (sel.has(t.nombre)) cb.checked = true;
           cb.addEventListener("change", () => { renderTelaOpcCarrito(); recompute(); });
           const span = document.createElement("span");
-          const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = t.nombre;
+          const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = telaCli(t);
           const mt = document.createElement("span"); mt.className = "mt"; mt.textContent = `Valor m²: ${money(t.valorM2)} · Rollo: ${t.anchoRollo} m`;
           span.appendChild(nm); span.appendChild(document.createElement("br")); span.appendChild(mt);
           lab.appendChild(cb); lab.appendChild(span); dP.appendChild(lab);
@@ -2106,7 +2108,7 @@
     }
     seleccion.forEach((t) => {
       const chip = document.createElement("span"); chip.className = "topc-chip";
-      const tx = document.createElement("span"); tx.textContent = t.nombre + " · " + money(t.valorM2) + "/m²";
+      const tx = document.createElement("span"); tx.textContent = telaCli(t) + " · " + money(t.valorM2) + "/m²";
       const x = document.createElement("button"); x.type = "button"; x.className = "topc-x"; x.title = "Quitar de la selección"; x.textContent = "✕";
       x.addEventListener("click", () => {
         if (cont) cont.querySelectorAll('input[type="checkbox"]').forEach((cb) => { if (cb.value === t.nombre) cb.checked = false; });
