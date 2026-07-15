@@ -1602,7 +1602,7 @@
         if (!c.corte || !c.segments || !c.segments[0]) return;
         const sg = c.segments[0];
         if (Math.hypot(sg.b.x - sg.a.x, sg.b.y - sg.a.y) < 1e-9) return;
-        hitV(pxT(sg.a.x), pyT(sg.a.y), pxT(sg.b.x), pyT(sg.b.y), 'data-corte="' + i + '"' + (c.guia ? ' data-guia="1"' : ""));
+        hitV(pxT(sg.a.x), pyT(sg.a.y), pxT(sg.b.x), pyT(sg.b.y), 'data-corte="' + i + '"' + (c.guia ? ' data-guia="1"' : "") + ' data-ax="' + sg.a.x + '" data-ay="' + sg.a.y + '" data-bx="' + sg.b.x + '" data-by="' + sg.b.y + '"');
       });
       // Bordes PROPIOS de cada ala en el desplegado: rim (externo) y laterales (la altura).
       const hitD = (aM, bM, extra) => {
@@ -1869,7 +1869,7 @@
         if (!c.corte || !c.segments || !c.segments[0]) return;
         const sg = c.segments[0];
         if (Math.hypot(sg.b.x - sg.a.x, sg.b.y - sg.a.y) < 1e-9) return;
-        hitLn(sg.a, sg.b, 'data-corte="' + i + '"' + (c.guia ? ' data-guia="1"' : ""));
+        hitLn(sg.a, sg.b, 'data-corte="' + i + '"' + (c.guia ? ' data-guia="1"' : "") + ' data-ax="' + sg.a.x + '" data-ay="' + sg.a.y + '" data-bx="' + sg.b.x + '" data-by="' + sg.b.y + '"');
       });
     }
     // Anchors (puntos de anclaje móviles) — SOLO en el plano en vivo de la app (no van al PDF).

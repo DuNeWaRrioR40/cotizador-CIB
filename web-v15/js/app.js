@@ -6320,7 +6320,7 @@
         }
         const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
         const cap = document.createElement("p"); cap.className = "arista-menu-cap";
-        cap.textContent = (ln.getAttribute("data-anexo") != null) ? "Borde del anexo — instalar" : (idxCorte != null) ? "Arista de corte — instalar" : (ln.getAttribute("data-libre") != null) ? "Borde del ala (altura) — instalar" : (ln.getAttribute("data-rim") != null) ? ("Rim del ala " + (NOM_AR[k] || "") + " — instalar") : ("Arista " + NOM_AR[k] + " — instalar");
+        cap.textContent = (ln.getAttribute("data-anexo") != null) ? "Borde del anexo — instalar" : (idxCorte != null) ? (ln.getAttribute("data-guia") != null ? "Línea de construcción (guía) — instalar" : "Arista de corte — instalar") : (ln.getAttribute("data-libre") != null) ? "Borde del ala (altura) — instalar" : (ln.getAttribute("data-rim") != null) ? ("Rim del ala " + (NOM_AR[k] || "") + " — instalar") : ("Arista " + NOM_AR[k] + " — instalar");
         menu.appendChild(cap);
         const esRim = ln.getAttribute("data-rim") != null, esLibre = ln.getAttribute("data-libre") != null;
         const idxAnexo = ln.getAttribute("data-anexo"), bordeAnexo = ln.getAttribute("data-borde"), esFusAnexo = ln.getAttribute("data-fus") != null;
@@ -6333,7 +6333,8 @@
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else if (idxCorte != null) {
           items = [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]];
-          if (ln.getAttribute("data-guia") != null && seg) {
+          if (seg) {
+            // Anexos colgando de CUALQUIER línea (corte o guía) horizontal/vertical.
             const dxL = Math.abs(seg.b.x - seg.a.x), dyL = Math.abs(seg.b.y - seg.a.y);
             if (dxL >= dyL) items.push(["Anexo colgando hacia ABAJO", "guiaAnexo:abajo"], ["Anexo colgando hacia ARRIBA", "guiaAnexo:arriba"]);
             else items.push(["Anexo hacia la DERECHA", "guiaAnexo:der"], ["Anexo hacia la IZQUIERDA", "guiaAnexo:izq"]);
