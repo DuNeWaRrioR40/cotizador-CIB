@@ -1,7 +1,7 @@
 /* Service worker: estrategia "red primero" para que las actualizaciones (por ejemplo
    config.js) se reflejen apenas estén en línea, y caché solo como respaldo offline.
    Las llamadas a Google/Sheets/pdf-lib pasan directo a la red. */
-const CACHE = "cibsa-cotizador-v15-81";
+const CACHE = "cibsa-cotizador-v15-83";
 const ASSETS = [
   "./", "./index.html", "./styles.css",
   "./js/config.js", "./js/logos.js", "./js/fonts.js", "./js/calc.js", "./js/sketch.js", "./js/auth.js",

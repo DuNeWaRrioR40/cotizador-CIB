@@ -6306,6 +6306,11 @@
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else if (idxCorte != null) {
           items = [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]];
+          if (ln.getAttribute("data-guia") != null && seg) {
+            const dxL = Math.abs(seg.b.x - seg.a.x), dyL = Math.abs(seg.b.y - seg.a.y);
+            if (dxL >= dyL) items.push(["Anexo colgando hacia ABAJO", "guiaAnexo:abajo"], ["Anexo colgando hacia ARRIBA", "guiaAnexo:arriba"]);
+            else items.push(["Anexo hacia la DERECHA", "guiaAnexo:der"], ["Anexo hacia la IZQUIERDA", "guiaAnexo:izq"]);
+          }
           if (pm) items.push(["Anchor sobre la línea", "corteAncla"], ["Nota (texto libre)…", "nota"]);
         } else if (esLibre && seg) {
           // Borde lateral de un ala (la ALTURA): elementos posicionados en SU propio segmento.
@@ -6323,7 +6328,7 @@
         items.forEach(([t, a]) => {
           if (!acciones[a]) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a.indexOf("guiaAnexo:") === 0) acciones.guiaAnexo(parseInt(idxCorte, 10), pm, a.split(":")[1]); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -6376,6 +6381,28 @@
     const mx = (seg.a.x + seg.b.x) / 2, my = (seg.a.y + seg.b.y) / 2;
     const eps = Math.max(0.02, Math.min(0.2, len * 0.05));
     return dentro({ x: mx - uy * eps, y: my + ux * eps }) ? "A" : "B"; // lado A = normal (-uy, ux)
+  }
+  // Parámetros de un ANEXO colgado de una línea horizontal/vertical: baseEdge + dBorde tales que
+  // su línea de fusión coincide EXACTO con la línea. Cuelga hacia el lado con menos tela (afuera);
+  // luego se ajusta todo en la ficha del anexo. null = línea diagonal (no soportado aún).
+  function anexoDesdeLinea(ln, A, L, H, alas, dir) {
+    const horiz = Math.abs(ln.u.y) < 0.05, vert = Math.abs(ln.u.x) < 0.05;
+    if (!horiz && !vert) return null;
+    let haciaAbajo = null, haciaDer = null;   // dirección elegida por el usuario (o heurística "afuera")
+    if (dir === "abajo") haciaAbajo = true; else if (dir === "arriba") haciaAbajo = false;
+    else if (dir === "der") haciaDer = true; else if (dir === "izq") haciaDer = false;
+    if (haciaAbajo == null && haciaDer == null) {
+      const adentro = ladoHaciaAdentro({ a: ln.a, b: ln.b }, A, L, H, alas);
+      const afuera = adentro === "A" ? "B" : "A";
+      const nx = (afuera === "A") ? -ln.u.y : ln.u.y, ny = (afuera === "A") ? ln.u.x : -ln.u.x;
+      if (horiz) haciaAbajo = ny > 0; else haciaDer = nx > 0;
+    }
+    if (horiz) {
+      const Y = (ln.a.y + ln.b.y) / 2;
+      return { baseEdge: haciaAbajo ? "inf" : "sup", dBorde: haciaAbajo ? (L - Y) : Y, offset: Math.min(ln.a.x, ln.b.x), ancho: ln.w };
+    }
+    const X = (ln.a.x + ln.b.x) / 2;
+    return { baseEdge: haciaDer ? "der" : "izq", dBorde: haciaDer ? (A - X) : X, offset: Math.min(ln.a.y, ln.b.y), ancho: ln.w };
   }
   // Crea un corte/guía A LO LARGO de un segmento propio (rim o lateral de un ala): la línea nace
   // exactamente sobre ese borde y luego se ajusta con sus campos o con anchors.
@@ -6431,6 +6458,20 @@
       const nid = 1 + (state.notasUnif || []).reduce((m, n2) => Math.max(m, n2.id || 0), 0);
       state.notasUnif.push({ id: nid, x: rd3(pm.x), y: rd3(pm.y), texto: t.trim() });
       recompute();
+    },
+    guiaAnexo: (i, pm, dir) => {
+      const c = visibles(state.cortesUnif)[i]; if (!c) return;
+      const ln = lineaRawCorte(c); if (!ln) return;
+      const A = num("f_ancho", null), L = num("f_largo", null); if (!(A > 0 && L > 0)) return;
+      const cfg = anexoDesdeLinea(ln, A, L, alturaUnif(), alasUnif(), dir);
+      if (!cfg) return alert("Por ahora los anexos solo pueden colgar de líneas horizontales o verticales.");
+      if (cfg.dBorde < -1e-9) return alert("Esa línea queda fuera del paño base hacia ese lado; el anexo debe colgar dentro del paño.");
+      const f = window.CalcCIBSA.fmtNum;
+      const al2 = nuevaAleta();
+      al2.tipo = "solapa"; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
+      al2.ancho = f(cfg.ancho); al2.largo = "0.5"; al2.offset = f(cfg.offset); al2._colap = false;
+      state.aletasUnif.push(al2);
+      renderAletasUnif(); recompute(); irASeccion($("aletasUnif"));
     },
     anexoOj: (rid, k, esFus) => {
       const al2 = visibles(state.aletasUnif).find((x2) => x2._rid === rid); if (!al2) return;
@@ -6558,6 +6599,19 @@
         const lst = (pz.notas || (pz.notas = []));
         lst.push({ id: 1 + lst.reduce((m, n2) => Math.max(m, n2.id || 0), 0), x: rd3(pm.x), y: rd3(pm.y), texto: t.trim() });
         recomputeCompuesto();
+      },
+      guiaAnexo: (i, pm, dir) => {
+        const c = visibles(pz.cortes)[i]; if (!c) return;
+        const ln = lineaRawCorte(c); if (!ln) return;
+        const A = ev(pz.ancho), L = ev(pz.largo); if (!(A > 0 && L > 0)) return;
+        const cfg = anexoDesdeLinea(ln, A, L, pz.usaAlto ? (ev(pz.altura) || 0) : 0, null, dir);
+        if (!cfg) return alert("Por ahora los anexos solo pueden colgar de líneas horizontales o verticales.");
+        if (cfg.dBorde < -1e-9) return alert("Esa línea queda fuera del paño base hacia ese lado; el anexo debe colgar dentro del paño.");
+        const al2 = nuevaAleta();
+        al2.tipo = "solapa"; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
+        al2.ancho = f(cfg.ancho); al2.largo = "0.5"; al2.offset = f(cfg.offset); al2._colap = false;
+        (pz.aletas || (pz.aletas = [])).push(al2);
+        irAPieza();
       },
       anexoOj: (rid, k, esFus) => {
         const al2 = visibles(pz.aletas || []).find((x2) => x2._rid === rid); if (!al2) return;
