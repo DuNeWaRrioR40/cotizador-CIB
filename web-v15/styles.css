@@ -296,8 +296,16 @@ button:active { transform: scale(0.97); }
 .sketch-svg .ancla-corte .ancla-dot-in { fill: #e8590c; }
 .sketch-svg .ancla-emp .ancla-dot { fill: #e8590c; stroke: #16171a; }
 .sketch-svg .ancla.snap .ancla-dot { stroke-width: 2.4; }
+.sketch-svg .ancla-sel .ancla-dot { stroke-width: 2.6; fill: #e8590c; }
+.ancla-conex-hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 1600; background: #16171a; color: #ffdf26; font-size: 13px; font-weight: 700; padding: 9px 16px; border-radius: 10px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3); pointer-events: none; }
 .sketch-svg .ancla-lbl { font-size: 8.5px; font-weight: 700; fill: #16171a; paint-order: stroke; stroke: rgba(255, 255, 255, 0.9); stroke-width: 2.5px; }
 .sketch-svg .ancla3 { pointer-events: none; }
+/* Notas del usuario (callout de texto libre) */
+.sketch-svg .nota-lbl { font-weight: 600; fill: #6b4e0a; }
+.sketch-svg .nota-edit { cursor: pointer; }
+.sketch-svg .nota-edit circle { fill: var(--surface, #fff); stroke: #b08a1e; stroke-width: 1; }
+.sketch-svg .nota-edit text { font-size: 8px; fill: #b08a1e; }
+.vista-cliente .nota-edit { display: none !important; }
 /* Compartir vista por QR */
 .qr-modal { position: fixed; inset: 0; z-index: 1600; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .qr-card { background: var(--surface, #fff); border-radius: 14px; padding: 20px 22px; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 12px 50px rgba(0, 0, 0, 0.35); }
@@ -325,6 +333,9 @@ body.vista-cliente { margin: 0; background: var(--bg, #f6f6f2); }
 /* Visor 3D interactivo (volumétricos) */
 .sketch-3d-btn { position: absolute; top: 46px; right: 6px; z-index: 5; width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--accent); font-size: 15px; line-height: 1; cursor: pointer; box-shadow: 0 1px 5px rgba(0,0,0,0.2); }
 .sketch-3d-btn:hover { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+/* Botón: eliminar todos los anchors del plano (bajo el botón 3D) */
+.sketch-anc-btn { position: absolute; top: 86px; right: 6px; z-index: 5; width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: #e8590c; font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer; box-shadow: 0 1px 5px rgba(0,0,0,0.2); }
+.sketch-anc-btn:hover { background: #e8590c; color: #fff; border-color: #e8590c; }
 .vol3d-canvas { display: block; background: #fff; border-radius: 8px; box-shadow: 0 6px 30px rgba(0,0,0,0.5); touch-action: none; cursor: grab; }
 .vol3d-canvas:active { cursor: grabbing; }
 .vol3d-hint { position: fixed; bottom: calc(58px + env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; color: rgba(255,255,255,0.85); font-size: 12px; z-index: 1510; pointer-events: none; }

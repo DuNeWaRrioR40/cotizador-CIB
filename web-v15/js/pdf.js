@@ -128,6 +128,26 @@
   // una caja { x, top, w, h } (top = borde superior en coordenadas PDF).
   // Dibuja los elementos de un paño (ventanas, bolsillos, ojetillos, aletas, cortes) en PDF según
   // T = { px, py, scale, x0, topRect, wpx, hpx, r }. Reusado por dibujarSketchPDF y dibujarVolPDF.
+  // Notas del usuario (callout de texto libre): flecha + etiqueta, con los offsets arrastrados
+  // en la app (rotDrag["nota:id"], en metros y con y hacia abajo → en PDF se invierte).
+  function notasPDF(page, notas, PXf, PYf, scale, rotDrag, font) {
+    const NEGRO = PDFLib.rgb(0.42, 0.3, 0.05), LIN = PDFLib.rgb(0.55, 0.45, 0.2);
+    (notas || []).forEach((nt) => {
+      if (!nt || !nt.texto || !isFinite(nt.x) || !isFinite(nt.y)) return;
+      const off = rotDrag && rotDrag["nota:" + nt.id];
+      const ax = PXf(nt.x), ay = PYf(nt.y);
+      const lx = ax + (off ? off.dx * scale : 30), ly = ay - (off ? off.dy * scale : -26);
+      const palabras = String(nt.texto).split(/\s+/), lineas = []; let cur = "";
+      palabras.forEach((w) => { if ((cur + " " + w).trim().length > 22 && cur) { lineas.push(cur); cur = w; } else cur = (cur ? cur + " " : "") + w; });
+      if (cur) lineas.push(cur);
+      page.drawLine({ start: { x: lx, y: ly - 2 }, end: { x: ax, y: ay }, thickness: 0.7, color: LIN });
+      page.drawCircle({ x: ax, y: ay, size: 1.6, color: LIN });
+      lineas.slice(0, 5).forEach((ln2, i, arr) => {
+        const t = san(ln2), wT = font.widthOfTextAtSize(t, 7.5);
+        page.drawText(t, { x: lx - wT / 2, y: ly + (arr.length - 1 - i) * 9, size: 7.5, font: font, color: NEGRO });
+      });
+    });
+  }
   function elementosPDF(page, sk, T, font) {
     const px = T.px, py = T.py, scale = T.scale, x0 = T.x0, topRect = T.topRect, wpx = T.wpx, hpx = T.hpx, r = T.r;
     const SK = global.SketchCIBSA;
@@ -459,6 +479,7 @@
     const rT = Math.max(1.4, Math.min(2.6, scB * 0.022));
     elementosPDF(page, skT, { px: (ex) => box.x + X(hz + ex), py: (ey) => box.top - Y(hs + ey), scale: scB, x0: box.x + X(hz), topRect: box.top - Y(hs), wpx: A * scB, hpx: L * scB, r: rT }, font);
     dtL("TAPA " + fmt(L) + "x" + fmt(A) + "m", X(hz) + 3, Y(hs) + 9, 6.5, INK);
+    notasPDF(page, skVol.notas, (mx) => PX(X(hz + mx)), (my) => PY(Y(hs + my)), scB, spec.rotDrag, font);
     if (conCotas) {
       hCota(X(0), X(Wd), pby - 12, Wd);
       vCota(Y(0), Y(Ld), pbx - 14, Ld);
@@ -619,6 +640,7 @@
     // Elementos del paño (ventanas, bolsillos, ojetillos, aletas, cortes)
     const r = Math.max(0.8, Math.max(1.4, Math.min(2.6, scale * 0.022)) - 0.9); // ojetillos del plano: ~2 puntos más chicos (la leyenda usa su propio radio fijo)
     elementosPDF(page, sk, { px: px, py: py, scale: scale, x0: x0, topRect: topRect, wpx: wpx, hpx: hpx, r: r, cb: cb }, font);
+    notasPDF(page, sk.notas, px, py, scale, spec.rotDrag, font);
     // Cotas (rojo): mayor = paño base; menor = padding / ventanas
     if (conCotas) {
       const ln = (x1, y1, x2, y2, w) => page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: w, color: RED });

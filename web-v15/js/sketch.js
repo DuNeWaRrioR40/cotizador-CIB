@@ -627,7 +627,7 @@
     // cortes/guías (1er/último de sus ojetillos) a los del perímetro base.
     let ojNumeros = spec.ojNumeros || null;
     if (ojNumeros != null) cortes.forEach((c) => { if (c.ojNum && c.ojNum.length) ojNumeros = ojNumeros.concat(c.ojNum); });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, anclas: spec.espejo ? [] : (spec.anclas || []), bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar, cintas: (spec.cintas || []) };
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, anclas: spec.espejo ? [] : (spec.anclas || []), notas: spec.espejo ? [] : (spec.notas || []), bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar, cintas: (spec.cintas || []) };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
@@ -1552,6 +1552,7 @@
         s += `<text class="oj-num-lbl" x="${f1(tx)}" y="${f1(ty)}" text-anchor="middle">${esc(m.text)}</text>`;
       });
     }
+    if (!opts.live && !spec.espejo) s += notasSVGBloque(skVol.notas, (x2) => X(hz + x2), (y2) => Y(hs + y2), scB, sk0.rotDrag, false);
     // Aristas de la TAPA y líneas de cortes/guías CLICABLES + anchors — igual que en el plano
     // plano, sobre el desplegado (solo plano en vivo; la vista interior/espejo no edita).
     if (opts.live && !spec.espejo) {
@@ -1575,6 +1576,7 @@
       if (va("inf")) { hitD([0, L + H], [A, L + H], 'data-arista="inf" data-rim="1"'); hitD([0, L], [0, L + H], 'data-libre="1"'); hitD([A, L], [A, L + H], 'data-libre="1"'); }
       if (va("izq")) { hitD([-H, 0], [-H, L], 'data-arista="izq" data-rim="1"'); hitD([0, 0], [-H, 0], 'data-libre="1"'); hitD([0, L], [-H, L], 'data-libre="1"'); }
       if (va("der")) { hitD([A + H, 0], [A + H, L], 'data-arista="der" data-rim="1"'); hitD([A, 0], [A + H, 0], 'data-libre="1"'); hitD([A, L], [A + H, L], 'data-libre="1"'); }
+      s += notasSVGBloque(skVol.notas, pxT, pyT, scB, sk0.rotDrag, true);
       (skVol.anclas || []).forEach((an) => {
         const ax = pxT(an.x), ay = pyT(an.y);
         const izqL = an.x <= A / 2, tx = izqL ? 9 : -9, tanc = izqL ? "start" : "end";
@@ -1595,6 +1597,37 @@
     return s;
   }
 
+  // Notas del usuario: callout de texto libre con flecha, anclado a un punto del plano. La
+  // etiqueta es arrastrable (offsets en rotDrag con clave "nota:id") y se envuelve en líneas.
+  function envolverNota(t, maxC) {
+    const palabras = String(t).split(/\s+/), lineas = []; let cur = "";
+    palabras.forEach((w) => { if ((cur + " " + w).trim().length > maxC && cur) { lineas.push(cur); cur = w; } else cur = (cur ? cur + " " : "") + w; });
+    if (cur) lineas.push(cur);
+    return lineas.slice(0, 5);
+  }
+  function notasSVGBloque(notas, px, py, scale, rotDrag, live) {
+    if (!notas || !notas.length) return "";
+    const f1 = (n) => n.toFixed(1);
+    let out = "";
+    notas.forEach((nt) => {
+      if (!nt || !isFinite(nt.x) || !isFinite(nt.y) || !nt.texto) return;
+      const rk = "nota:" + nt.id;
+      const ax = px(nt.x), ay = py(nt.y);
+      const off = (rotDrag && rotDrag[rk]) || null;
+      const lx = ax + (off ? off.dx * scale : 30), ly = ay + (off ? off.dy * scale : -26);
+      const lineas = envolverNota(nt.texto, 22);
+      out += `<g class="callout-drag nota-callout" data-rk="${rk}" data-nota="${esc(String(nt.id))}">`;
+      out += `<line class="callout-line" x1="${f1(lx)}" y1="${f1(ly + 3)}" x2="${f1(ax)}" y2="${f1(ay)}"/>`;
+      out += `<circle class="callout-dot" cx="${f1(ax)}" cy="${f1(ay)}" r="2"/>`;
+      lineas.forEach((ln2, i) => { out += `<text class="callout-lbl nota-lbl" x="${f1(lx)}" y="${f1(ly - (lineas.length - 1 - i) * 10)}" text-anchor="middle">${esc(ln2)}</text>`; });
+      out += `</g>`;
+      if (live) {
+        const wN = Math.max.apply(null, lineas.map((l2) => l2.length)) * 5.2 / 2 + 10;
+        out += `<g class="nota-edit" data-nota="${esc(String(nt.id))}"><circle cx="${f1(lx + wN)}" cy="${f1(ly - 3)}" r="6"/><text x="${f1(lx + wN)}" y="${f1(ly)}" text-anchor="middle">✎</text></g>`;
+      }
+    });
+    return out;
+  }
   function sketchSVG(spec, opts) {
     opts = opts || {};
     if (spec.volumetrico && (parseFloat(spec.volumetrico.alto) || 0) > 0) return volSVG(spec, opts);
@@ -1789,6 +1822,8 @@
         s += `</g>`;
       });
     }
+    // Notas del usuario (texto libre): en vivo y también en render estático.
+    s += notasSVGBloque(sk.notas, px, py, scale, sk.rotDrag, live);
     // Numeración de ojetillos (1er/último por arista, con flecha) — SOLO en el plano en vivo de la app.
     if (live && sk.ojNumeros && sk.ojNumeros.length) {
       sk.ojNumeros.forEach((m) => {

@@ -7,7 +7,7 @@
   const state = {
     telas: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
-    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, figura3D: null, anclasUnif: [], subVC: false, cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
+    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, figura3D: null, anclasUnif: [], notasUnif: [], subVC: false, cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [], cintasUnif: [],
@@ -188,7 +188,7 @@
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
   const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "cotasOcultas", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "cotasOcultas", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -4498,7 +4498,7 @@
     aplicarEmpates(state.cortesUnif, state.anclasUnif, ancho || 0, largo || 0);
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
-      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar, anclas: anclasSpecDe(state.anclasUnif, state.cortesUnif, ancho || 0, largo || 0) }, ojSpecUnif());
+      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar, anclas: anclasSpecDe(state.anclasUnif, state.cortesUnif, ancho || 0, largo || 0), notas: state.notasUnif }, ojSpecUnif());
       if (alturaUnif() > 0) especUnif.volumetrico = { alto: alturaUnif(), ojEn: ojEnUnif(), alas: alasUnif() };
       _vcEspecUnif = especUnif;
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
@@ -4507,6 +4507,7 @@
       activarClicOcultarCotas(sk, state.cotasOcultas, refrescarOcUnif);
       activarMenuAristas(sk, accionesAristaUnif);
       activarAnclas(sk, { anclas: state.anclasUnif, cortes: state.cortesUnif, ancho: ancho || 0, largo: largo || 0, onChange: () => { renderCortesUnif(); recompute(); } });
+      activarNotas(sk, state.notasUnif, recompute);
       menuPlano(sk, [
         { label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
         { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
@@ -5779,7 +5780,7 @@
       const x = ev(ins.padIzq), y = ev(ins.padSup), w = ev(ins.ancho), h = ev(ins.largo);
       return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {}, rotulo: !!ins.rotulo, id: rotId(ins) } : null;
     }).filter(Boolean);
-    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((telaPorNombre(pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cintas: cintasSpec(pz.cintas || [], { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, rotDrag: pz.rotDrag, anclas: anclasSpecDe(pz.anclas || [], pz.cortes, a > 0 ? a : 0, l > 0 ? l : 0) };
+    const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((telaPorNombre(pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cintas: cintasSpec(pz.cintas || [], { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, rotDrag: pz.rotDrag, anclas: anclasSpecDe(pz.anclas || [], pz.cortes, a > 0 ? a : 0, l > 0 ? l : 0), notas: pz.notas || [] };
     if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh, ojEn: pz.ojVolExt === false ? "tapa" : "externo" }; }
     if (pz.ojMode === "arista") {
       const r = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), !!pz.ojNumerar, volExtPz(pz));
@@ -5911,11 +5912,21 @@
     });
     return out;
   }
+  // Modo "conectar anchors": tras elegirlo en el menú de un anchor, el siguiente clic en OTRO
+  // anchor de arista traza un corte/guía entre ambos, ya EMPATADO a los dos (edición exprés).
+  let _anchorPend = null;
+  function hintConexion(txt) {
+    quitarHintConexion();
+    const d = document.createElement("div"); d.className = "ancla-conex-hint"; d.id = "anclaConexHint"; d.textContent = txt;
+    document.body.appendChild(d);
+  }
+  function quitarHintConexion() { const d = document.getElementById("anclaConexHint"); if (d) d.remove(); }
   // Interacción sobre el plano en vivo: arrastrar anclas (las de corte se IMANTAN a las de
   // arista para empatar) + clic sin arrastre = menú (fijar distancia exacta / desempatar / eliminar).
   // ctx: { anclas, cortes, ancho, largo, onChange }
   function activarAnclas(container, ctx) {
     if (!container || !ctx) return;
+    if (_anchorPend && _anchorPend.limpiar) _anchorPend.limpiar(); // un re-render cancela la conexión pendiente
     const svg = container.querySelector("svg.sketch-svg"); if (!svg || !svg.getScreenCTM || svg.dataset.ox == null) return;
     const mscale = parseFloat(svg.dataset.mscale) || 1, ox = parseFloat(svg.dataset.ox) || 0, oy = parseFloat(svg.dataset.oy) || 0;
     const f = window.CalcCIBSA.fmtNum, A = ctx.ancho, L = ctx.largo;
@@ -5933,6 +5944,26 @@
       }
       return null;
     };
+    function iniciarConexion(reg, tipo) {
+      const g = svg.querySelector('g.ancla[data-ancla="' + reg.an.id + '"]');
+      if (g) g.classList.add("ancla-sel");
+      const esc2 = (e) => { if (e.key === "Escape") limpiarCx(); };
+      const limpiarCx = () => { _anchorPend = null; quitarHintConexion(); if (g) g.classList.remove("ancla-sel"); document.removeEventListener("keydown", esc2); };
+      document.addEventListener("keydown", esc2);
+      _anchorPend = { an: reg.an, tipo: tipo, ctx: ctx, limpiar: limpiarCx };
+      hintConexion(tipo === "corte" ? "Pincha el 2º anchor para trazar el CORTE entre ambos (Esc cancela)" : "Pincha el 2º anchor para trazar la GUÍA entre ambos (Esc cancela)");
+    }
+    function crearEntreAnchors(pend, reg2) {
+      const an1 = pend.an, an2 = reg2.an;
+      const p1 = posAnclaArista(an1, A, L), p2 = posAnclaArista(an2, A, L);
+      if (!p1 || !p2) return;
+      const len = Math.hypot(p2.x - p1.x, p2.y - p1.y); if (!(len > 1e-6)) return;
+      const c = crearLineaEnSeg(ctx.cortes, { a: p1, b: p2 }, pend.tipo); if (!c) return;
+      const id1 = nuevoIdAncla(ctx.anclas, ctx.cortes);
+      c.anclas = [{ id: id1, t: 0, emp: an1.id }, { id: id1 + 1, t: rd3(len), emp: an2.id }];
+      aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
+      if (ctx.onChange) ctx.onChange();
+    }
     function menuAncla(reg) {
       cerrarMenuAristas();
       const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
@@ -5940,6 +5971,10 @@
       cap.textContent = (reg.tipo === "arista") ? "Anchor de arista" : "Anchor del corte/línea";
       menu.appendChild(cap);
       const item = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); };
+      if (reg.tipo === "arista" && (ctx.anclas || []).length >= 2) {
+        item("Corte hasta otro anchor…", () => iniciarConexion(reg, "corte"));
+        item("Guía hasta otro anchor…", () => iniciarConexion(reg, "guia"));
+      }
       item("Fijar distancia exacta…", () => {
         const cur = (reg.tipo === "arista") ? (parseFloat(reg.an.d) || 0) : (parseFloat(reg.an.t) || 0);
         const v = parseFloat(String(prompt((reg.tipo === "arista") ? "Distancia desde la esquina (m):" : "Distancia desde el extremo inicial de la línea (m):", String(cur)) || "").replace(",", "."));
@@ -5965,6 +6000,24 @@
       const mw = menu.offsetWidth || 200, mh = menu.offsetHeight || 140;
       menu.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, cx2 - mw / 2)) + "px";
       menu.style.top = Math.max(8, Math.min(window.innerHeight - mh - 8, cy2 + 8)) + "px";
+    }
+    // Botón "eliminar todos los anchors" de ESTE plano (bajo el botón del visor 3D). Solo
+    // aparece si hay anchors; los cortes conservan la posición en que quedaron (los empates
+    // ya están aplicados sobre sus campos).
+    { const prev = container.querySelector(".sketch-anc-btn"); if (prev) prev.remove(); }
+    const hayAnc = (ctx.anclas || []).length > 0 || (ctx.cortes || []).some((c) => (c.anclas || []).length > 0);
+    if (hayAnc) {
+      const bA = document.createElement("button");
+      bA.type = "button"; bA.className = "sketch-anc-btn"; bA.title = "Eliminar TODOS los anchors del plano";
+      bA.textContent = "⚓✕";
+      bA.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!confirm("¿Eliminar TODOS los anchors de este plano?\n(Los cortes/guías conservan su posición actual; solo se quitan los puntos y sus empates.)")) return;
+        ctx.anclas.splice(0, ctx.anclas.length);
+        (ctx.cortes || []).forEach((c) => { if (Array.isArray(c.anclas)) c.anclas.length = 0; });
+        if (ctx.onChange) ctx.onChange();
+      });
+      container.appendChild(bA);
     }
     svg.querySelectorAll("g.ancla").forEach((g) => {
       const id = parseInt(g.dataset.ancla, 10), reg = buscar(id); if (!reg) return;
@@ -6011,13 +6064,37 @@
           g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); g.removeEventListener("pointercancel", up);
           document.removeEventListener("touchmove", noScroll, { passive: false });
           g.classList.remove("dragging");
-          if (!movido || !drop) { setTimeout(() => menuAncla(reg), 0); return; }
+          if (!movido || !drop) {
+            if (_anchorPend && _anchorPend.ctx === ctx) {
+              const pend = _anchorPend;
+              if (pend.limpiar) pend.limpiar();
+              if (reg.tipo === "arista" && reg.an.id !== pend.an.id) setTimeout(() => crearEntreAnchors(pend, reg), 0);
+              return;
+            }
+            setTimeout(() => menuAncla(reg), 0); return;
+          }
           if (reg.tipo === "arista") reg.an.d = drop.d;
           else { reg.an.t = drop.t; reg.an.emp = drop.emp; }
           aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
           if (ctx.onChange) ctx.onChange();
         };
         g.addEventListener("pointermove", move); g.addEventListener("pointerup", up); g.addEventListener("pointercancel", up);
+      });
+    });
+  }
+  // Lápiz de las notas: clic → editar el texto (vacío = eliminar la nota).
+  function activarNotas(container, notas, onChange) {
+    if (!container || !notas) return;
+    container.querySelectorAll("svg.sketch-svg g.nota-edit").forEach((g) => {
+      g.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = parseInt(g.dataset.nota, 10);
+        const nt = notas.find((n2) => n2.id === id); if (!nt) return;
+        const t = prompt("Editar nota (deja vacío para eliminarla):", nt.texto || "");
+        if (t == null) return;
+        if (!t.trim()) { const i = notas.indexOf(nt); if (i >= 0) notas.splice(i, 1); }
+        else nt.texto = t.trim();
+        if (onChange) onChange();
       });
     });
   }
@@ -6062,24 +6139,24 @@
         let items;
         if (idxCorte != null) {
           items = [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]];
-          if (pm) items.push(["Anchor sobre la línea", "corteAncla"]);
+          if (pm) items.push(["Anchor sobre la línea", "corteAncla"], ["Nota (texto libre)…", "nota"]);
         } else if (esLibre && seg) {
           // Borde lateral de un ala (la ALTURA): elementos posicionados en SU propio segmento.
           items = [["Ojetillos (en este borde)", "ojLibre"], ["Strap (en este borde)", "strapLibre"], ["Corte / calado (en este borde)", "corteLibre"], ["Línea de construcción (en este borde)", "guiaLibre"]];
-          if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"]);
+          if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else if (esRim && seg) {
           // Rim (borde externo del ala): ojetillos externos por arista + elementos en el rim mismo.
           items = [["Ojetillos (borde externo)", "oj"], ["Ojetillos (fila en el rim)", "ojLibre"], ["Strap (en el rim)", "strapLibre"], ["Corte / calado (en el rim)", "corteLibre"], ["Línea de construcción (en el rim)", "guiaLibre"]];
-          if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"]);
+          if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else {
           items = [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]];
           if (seg) items.push(["Ojetillos sobre el pliegue (fila)", "ojLibre"], ["Strap sobre el pliegue", "strapLibre"]);
-          if (pm) items.push(["Anchor (punto de anclaje)", "ancla"]);
+          if (pm) items.push(["Anchor (punto de anclaje)", "ancla"], ["Nota (texto libre)…", "nota"]);
         }
         items.forEach(([t, a]) => {
           if (!acciones[a]) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (idxCorte != null) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (idxCorte != null) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -6178,6 +6255,14 @@
       if (pm) tA = Math.max(0, Math.min(len, (pm.x - seg.a.x) * u.x + (pm.y - seg.a.y) * u.y));
       const esq = (tA <= len / 2) ? "ini" : "fin";
       state.anclasUnif.push({ id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), seg: { a: { x: seg.a.x, y: seg.a.y }, b: { x: seg.b.x, y: seg.b.y } }, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) });
+      recompute();
+    },
+    nota: (pm) => {
+      if (!pm) return;
+      const t = prompt("Texto de la nota (flecha en el plano):", "");
+      if (t == null || !t.trim()) return;
+      const nid = 1 + (state.notasUnif || []).reduce((m, n2) => Math.max(m, n2.id || 0), 0);
+      state.notasUnif.push({ id: nid, x: rd3(pm.x), y: rd3(pm.y), texto: t.trim() });
       recompute();
     },
     guiaLibre: (seg, pm) => { crearLineaEnSeg(state.cortesUnif, seg, "guia"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
@@ -6287,6 +6372,14 @@
         if (pm) tA = Math.max(0, Math.min(len, (pm.x - seg.a.x) * u.x + (pm.y - seg.a.y) * u.y));
         const esq = (tA <= len / 2) ? "ini" : "fin";
         (pz.anclas || (pz.anclas = [])).push({ id: nuevoIdAncla(pz.anclas, pz.cortes), seg: { a: { x: seg.a.x, y: seg.a.y }, b: { x: seg.b.x, y: seg.b.y } }, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) });
+        recomputeCompuesto();
+      },
+      nota: (pm) => {
+        if (!pm) return;
+        const t = prompt("Texto de la nota (flecha en el plano):", "");
+        if (t == null || !t.trim()) return;
+        const lst = (pz.notas || (pz.notas = []));
+        lst.push({ id: 1 + lst.reduce((m, n2) => Math.max(m, n2.id || 0), 0), x: rd3(pm.x), y: rd3(pm.y), texto: t.trim() });
         recomputeCompuesto();
       },
       guiaLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "guia")) irAPieza(); },
@@ -6557,7 +6650,7 @@
       strapsAristas: strapsDetalleAristas(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }),
       observaciones: (alturaUnif() > 0 ? pasosConfeccionVol(num("f_ancho", 0), num("f_largo", 0), alturaUnif()) : []).concat(terminacionesTexto(state.orientUnif)).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, []).concat(materialesCortes(state.cortesUnif)),
-      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif(), ojEn: ojEnUnif(), alas: alasUnif() } } : {}),
+      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, rotDrag: state.rotDrag, notas: state.notasUnif }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: { alto: alturaUnif(), ojEn: ojEnUnif(), alas: alasUnif() } } : {}),
       vista3D: (_vista3D && _vista3D.firma === firmaVol()) ? _vista3D.png : null,
       trasera: state.trasUnif,
       backExtra: { cortes: cortesSpec(state.backCortesUnif), aletas: aletasSpec(state.backAletasUnif) },
@@ -7027,6 +7120,7 @@
         activarClicOcultarCotas(sketchBox, pz.cotasOcultas, recomputeCompuesto);
         activarMenuAristas(sketchBox, accionesAristaPieza(pz));
         activarAnclas(sketchBox, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, onChange: () => { renderPiezas(); recompute(); } });
+        activarNotas(sketchBox, (pz.notas || (pz.notas = [])), recomputeCompuesto);
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
         menuPlano(sketchBox, [
           { label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
@@ -7115,7 +7209,7 @@
         body.innerHTML = '<p class="muted small">Completa largo y ancho de esta pieza.</p>';
       } else {
         const sk = document.createElement("div"); sk.className = "sketch"; sk.id = "prevsk_" + pz.id;
-        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); activarMenuAristas(sk, accionesAristaPieza(pz)); activarAnclas(sk, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, onChange: () => { renderPiezas(); recompute(); } }); }
+        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); activarMenuAristas(sk, accionesAristaPieza(pz)); activarAnclas(sk, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, onChange: () => { renderPiezas(); recompute(); } }); activarNotas(sk, (pz.notas || (pz.notas = [])), recomputeCompuesto); }
         body.appendChild(sk);
         const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn-outline"; dl.textContent = "Descargar plano (PDF)";
         dl.addEventListener("click", () => descargarSketchPieza(pz));
@@ -7157,7 +7251,7 @@
     { const c = $("f_ojVolExt"); if (c) c.checked = true; } { const w = $("wOjVol"); if (w) w.classList.add("hidden"); }
     state.volAlas = { sup: true, inf: true, izq: true, der: true }; sincAlasUI(); { const w = $("wAlas"); if (w) w.classList.add("hidden"); }
     state.figura3D = null;
-    state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.anclasUnif = []; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
+    state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.anclasUnif = []; state.notasUnif = []; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
     state.cortesUnif = []; state.backCortesUnif = []; state.backComplementosUnif = []; state.aletasUnif = []; state.backAletasUnif = []; state.strapsUnif = []; state.cintasUnif = []; state.factorUnif = "1";
     { const t = $("f_trasUnif"); if (t) t.checked = false; }
     document.querySelector('input[name="ojmode"][value="total"]').checked = true;
