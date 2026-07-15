@@ -429,8 +429,8 @@
         const N = 96; const raw = [];
         for (let i = 0; i <= N; i++) { const t = 2 * Math.PI * i / N; raw.push({ x: cx + rr * Math.cos(t), y: cy + rr * Math.sin(t) }); }
         const segs = [];
-        for (let i = 0; i < N; i++) { const cl = clipSeg(raw[i], raw[i + 1], 0, ancho, 0, largo); if (cl) segs.push(cl); }
-        const dentro = (p) => p.x >= -1e-9 && p.x <= ancho + 1e-9 && p.y >= -1e-9 && p.y <= largo + 1e-9;
+        for (let i = 0; i < N; i++) { const cl = clipSeg(raw[i], raw[i + 1], bnd.x0, bnd.x1, bnd.y0, bnd.y1); if (cl) segs.push(cl); }
+        const dentro = (p) => p.x >= bnd.x0 - 1e-9 && p.x <= bnd.x1 + 1e-9 && p.y >= bnd.y0 - 1e-9 && p.y <= bnd.y1 + 1e-9;
         const nOj = Math.max(0, Math.round(c.ojCirc || 0)); const pts = [];
         for (let k = 0; k < nOj; k++) { const t = 2 * Math.PI * k / nOj; const p = { x: cx + rr * Math.cos(t), y: cy + rr * Math.sin(t) }; if (dentro(p)) pts.push(p); }
         const tij = [];
@@ -446,8 +446,8 @@
       // se dibujan tal cual las aristas activas.
       const chkB = !rotated && allOn;
       const sides = {
-        t: !!lados.sup && (!chkB || y > EPS), b: !!lados.inf && (!chkB || (y + h) < largo - EPS),
-        l: !!lados.izq && (!chkB || x > EPS), r: !!lados.der && (!chkB || (x + w) < ancho - EPS),
+        t: !!lados.sup && (!chkB || y > bnd.y0 + EPS), b: !!lados.inf && (!chkB || (y + h) < bnd.y1 - EPS),
+        l: !!lados.izq && (!chkB || x > bnd.x0 + EPS), r: !!lados.der && (!chkB || (x + w) < bnd.x1 - EPS),
       };
       const oj = c.oj || {};
       let segs = [], pts = [];
@@ -1383,11 +1383,30 @@
         // la cara que corresponda (tapa o pared), con sus ojetillos. Clicable: solo cortes-línea
         // (igual criterio que el desplegado).
         const bx0 = va("izq") ? -H : 0, bx1 = A + (va("der") ? H : 0), by0 = va("sup") ? -H : 0, by1 = L + (va("inf") ? H : 0);
+        // Divide a→b en los PLIEGUES (x=0, x=A, y=0, y=L): cada tramo queda en UNA cara, así un
+        // corte que cruza de la tapa a un ala se QUIEBRA en el eje del pliegue (continuo doblado).
+        const splitPl = (pa, pb) => {
+          const ts = [0, 1];
+          [["x", 0], ["x", A], ["y", 0], ["y", L]].forEach((ev2) => {
+            const a1 = pa[ev2[0]], b1 = pb[ev2[0]];
+            if (Math.abs(b1 - a1) < 1e-12) return;
+            const t = (ev2[1] - a1) / (b1 - a1);
+            if (t > 1e-9 && t < 1 - 1e-9) ts.push(t);
+          });
+          ts.sort((q, w) => q - w);
+          return ts.map((t) => ({ x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t }));
+        };
+        const linea3 = (pa, pb, cls) => {
+          const pts = splitPl(pa, pb);
+          for (let j = 0; j < pts.length - 1; j++) {
+            const pq = vol3(pts[j].x, pts[j].y), qq = vol3(pts[j + 1].x, pts[j + 1].y);
+            s += `<line class="${cls}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+          }
+        };
         (skVol.cortes || []).forEach((c, i) => {
           (c.segments || []).forEach((sg) => {
             const cl = clipSeg(sg.a, sg.b, bx0, bx1, by0, by1); if (!cl) return;
-            const pq = vol3(cl.a.x, cl.a.y), qq = vol3(cl.b.x, cl.b.y);
-            s += `<line class="${c.guia ? "vol-fold" : "cut"}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+            linea3(cl.a, cl.b, c.guia ? "vol-fold" : "cut");
           });
           (c.ojetillos || []).forEach((p2) => {
             const pt = vol3(p2.x, p2.y);
@@ -1401,22 +1420,29 @@
             }
           }
         });
-        // Straps de cortes/guías: banda proyectada sobre la cara correspondiente.
+        // Straps: banda proyectada POR TRAMOS a lo largo de su eje (dobla en los pliegues).
         (skVol.straps || []).forEach((st) => {
-          if (!st.corners || st.corners.length !== 4) return;
-          const ps = st.corners.map((p2) => vol3(p2.x, p2.y));
-          s += `<polygon class="strap" points="${ps.map((p2) => f1(p2[0]) + "," + f1(p2[1])).join(" ")}"/>`;
+          if (st.a && st.b && st.perp && st.hw > 0) {
+            const pts = splitPl(st.a, st.b);
+            for (let j = 0; j < pts.length - 1; j++) {
+              const p1 = pts[j], p2 = pts[j + 1];
+              const cs = [
+                vol3(p1.x + st.perp.x * st.hw, p1.y + st.perp.y * st.hw),
+                vol3(p2.x + st.perp.x * st.hw, p2.y + st.perp.y * st.hw),
+                vol3(p2.x - st.perp.x * st.hw, p2.y - st.perp.y * st.hw),
+                vol3(p1.x - st.perp.x * st.hw, p1.y - st.perp.y * st.hw),
+              ];
+              s += `<polygon class="strap" points="${cs.map((pp) => f1(pp[0]) + "," + f1(pp[1])).join(" ")}"/>`;
+            }
+          } else if (st.corners && st.corners.length === 4) {
+            const ps = st.corners.map((p2) => vol3(p2.x, p2.y));
+            s += `<polygon class="strap" points="${ps.map((p2) => f1(p2[0]) + "," + f1(p2[1])).join(" ")}"/>`;
+          }
         });
         // Cintas / cierres: recorrido proyectado sobre la cara correspondiente.
         (skVol.cintas || []).forEach((cn) => {
           if (!(cn && isFinite(cn.ax) && isFinite(cn.ay) && cn.L > 0)) return;
-          const NPC = Math.max(2, Math.ceil(cn.L / 0.5));
-          let prev = null;
-          for (let j = 0; j <= NPC; j++) {
-            const t = cn.L * j / NPC, pt = vol3(cn.ax + cn.ux * t, cn.ay + cn.uy * t);
-            if (prev) s += `<line class="cinta-edge" x1="${f1(prev[0])}" y1="${f1(prev[1])}" x2="${f1(pt[0])}" y2="${f1(pt[1])}"/>`;
-            prev = pt;
-          }
+          linea3({ x: cn.ax, y: cn.ay }, { x: cn.ax + cn.ux * cn.L, y: cn.ay + cn.uy * cn.L }, "cinta-edge");
         });
         // Ventanas de la tapa: contorno sobre la cara superior.
         (skVol.ventanas || []).forEach((v) => {
@@ -1431,8 +1457,7 @@
           } else {
             const cs = [[v.x, v.y], [v.x + v.w, v.y], [v.x + v.w, v.y + v.h], [v.x, v.y + v.h]];
             for (let j = 0; j < 4; j++) {
-              const pq = vol3(cs[j][0], cs[j][1]), qq = vol3(cs[(j + 1) % 4][0], cs[(j + 1) % 4][1]);
-              s += `<line class="cut" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+              linea3({ x: cs[j][0], y: cs[j][1] }, { x: cs[(j + 1) % 4][0], y: cs[(j + 1) % 4][1] }, "cut");
             }
           }
         });

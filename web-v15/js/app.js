@@ -4803,22 +4803,53 @@
         if (mx > A && va0("der")) return new T.Vector3(A / 2 + 0.012, H - Math.min(H, mx - A), cz - L / 2);
         return new T.Vector3(cx - A / 2, H + 0.012, cz - L / 2);
       };
-      // Calados / cortes / guías: contorno morado sobre la cara que corresponda + sus ojetillos.
+      // Partición en PLIEGUES (x=0, x=A, y=0, y=L): un corte que cruza de la tapa a un ala se
+      // QUIEBRA exactamente en el eje del pliegue y sigue continuo por la pared (doblado real).
+      const splitPl3 = (pa, pb) => {
+        const ts = [0, 1];
+        [["x", 0], ["x", A], ["y", 0], ["y", L]].forEach((ev2) => {
+          const a1 = pa[ev2[0]], b1 = pb[ev2[0]];
+          if (Math.abs(b1 - a1) < 1e-12) return;
+          const t = (ev2[1] - a1) / (b1 - a1);
+          if (t > 1e-9 && t < 1 - 1e-9) ts.push(t);
+        });
+        ts.sort((q, w) => q - w);
+        return ts.map((t) => ({ x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t }));
+      };
+      // Calados / cortes / guías: contorno morado que DOBLA con la caja + sus ojetillos.
       const matCut = new T.LineBasicMaterial({ color: 0x8e44ad });
       (skOj.cortes || []).forEach((c) => {
         (c.segments || []).forEach((sg) => {
-          grp.add(new T.Line(new T.BufferGeometry().setFromPoints([p3(sg.a.x, sg.a.y), p3(sg.b.x, sg.b.y)]), matCut));
+          const pts = splitPl3(sg.a, sg.b);
+          for (let j = 0; j < pts.length - 1; j++) {
+            grp.add(new T.Line(new T.BufferGeometry().setFromPoints([p3(pts[j].x, pts[j].y), p3(pts[j + 1].x, pts[j + 1].y)]), matCut));
+          }
         });
         (c.ojetillos || []).forEach((p) => { const m = new T.Mesh(geo, mat); m.position.copy(p3(p.x, p.y)); grp.add(m); });
       });
-      // Straps (por arista, manuales y de cortes/guías): banda roja proyectada.
+      // Straps: banda roja por TRAMOS a lo largo de su eje (dobla en los pliegues).
       const matStr = new T.MeshBasicMaterial({ color: 0xd23b2e, transparent: true, opacity: 0.85, side: T.DoubleSide });
       (skOj.straps || []).forEach((st) => {
-        if (!st.corners || st.corners.length !== 4) return;
-        const vs = st.corners.map((p) => p3(p.x, p.y));
-        const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]);
-        g2.computeVertexNormals();
-        grp.add(new T.Mesh(g2, matStr));
+        if (st.a && st.b && st.perp && st.hw > 0) {
+          const pts = splitPl3(st.a, st.b);
+          for (let j = 0; j < pts.length - 1; j++) {
+            const p1 = pts[j], p2 = pts[j + 1];
+            const vs = [
+              p3(p1.x + st.perp.x * st.hw, p1.y + st.perp.y * st.hw),
+              p3(p2.x + st.perp.x * st.hw, p2.y + st.perp.y * st.hw),
+              p3(p2.x - st.perp.x * st.hw, p2.y - st.perp.y * st.hw),
+              p3(p1.x - st.perp.x * st.hw, p1.y - st.perp.y * st.hw),
+            ];
+            const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]);
+            g2.computeVertexNormals();
+            grp.add(new T.Mesh(g2, matStr));
+          }
+        } else if (st.corners && st.corners.length === 4) {
+          const vs = st.corners.map((p) => p3(p.x, p.y));
+          const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]);
+          g2.computeVertexNormals();
+          grp.add(new T.Mesh(g2, matStr));
+        }
       });
     } catch (e) {}
     // Rótulos de cotas (sprites siempre de cara a la cámara).
