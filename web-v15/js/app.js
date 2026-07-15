@@ -3209,6 +3209,25 @@
           const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = "Ojetillos por las aristas del anexo. La línea de fusión (unión con el paño) también admite, marcándola explícitamente. Mientras esté activo, se ignora el campo \"hem libre\".";
           panel.appendChild(cap);
           const fused = ALETA_FUSED[a.baseEdge || "inf"];
+          // Ojetillos que INSTALA una arista con su config actual (distanciamiento + supresión):
+          // se calcula con el mismo motor del plano, aislando esa arista.
+          const cntArista = (k2, esFus2) => {
+            try {
+              const ev2 = window.CalcCIBSA.evalExpr;
+              const al = ev2(a.largo), aa = ev2(a.ancho);
+              const bA = ctx.getAncho ? ctx.getAncho() : null, bL = ctx.getLargo ? ctx.getLargo() : null;
+              if (!(al > 0) || !(aa > 0) || !(bA > 0) || !(bL > 0) || !window.SketchCIBSA || !window.SketchCIBSA.aletaOjPuntos) return null;
+              const e2 = a.ojEdges[k2] || {};
+              const edges = {};
+              ["t", "b", "l", "r"].forEach((kk) => { edges[kk] = { on: false, onF: false, d: "0" }; });
+              edges[k2] = {
+                on: esFus2 ? false : (e2.on !== false), onF: esFus2 ? (e2.onF === true) : false,
+                d: (e2.d != null && e2.d !== "") ? e2.d : "0.4", supr: parseSupr(e2.supr),
+              };
+              const spec = { baseEdge: a.baseEdge || "inf", dBorde: ev2(a.dBorde) || 0, largo: al, ancho: aa, offset: ev2(a.offset) || 0, ojMode: "arista", ojParejo: !!a.ojParejo, ojEdges: edges };
+              return window.SketchCIBSA.aletaOjPuntos(spec, bA, bL).length;
+            } catch (e3) { return null; }
+          };
           ["t", "b", "l", "r"].filter((k) => k !== fused).concat([fused]).forEach((k) => {
             const esFus = k === fused;
             const e = a.ojEdges[k] || (a.ojEdges[k] = defAletaEdge());
@@ -3228,6 +3247,15 @@
             si.addEventListener("input", () => { e.supr = si.value; refresh(); onChange(); });
             sl.appendChild(si); row.appendChild(addHelpTo(sl, "Quita ojetillos por su número de orden en la arista (0 desde la esquina). Acepta sueltos y rangos con guión inclusivos, ej. \"0, 2-4\".", "ALETA-OJ-SUPR"));
             panel.appendChild(row);
+            const cnt = document.createElement("p"); cnt.className = "muted small aleta-oj-cnt";
+            const updCnt = () => {
+              const n2 = cntArista(k, esFus);
+              cnt.textContent = (n2 == null) ? "Completa dimensiones del anexo y del paño para ver el conteo."
+                : ("→ " + n2 + " ojetillo(s) instalados en esta arista (con distanciamiento y supresión aplicados).");
+            };
+            updCnt();
+            cb.addEventListener("change", updCnt); di.addEventListener("input", updCnt); si.addEventListener("input", updCnt);
+            panel.appendChild(cnt);
           });
           const pl = document.createElement("label"); pl.className = "chk aleta-oj-parejo";
           const pcb = document.createElement("input"); pcb.type = "checkbox"; pcb.checked = !!a.ojParejo;

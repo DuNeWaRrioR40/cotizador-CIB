@@ -211,7 +211,8 @@
       if (esFus ? cfg.onF !== true : cfg.on === false) return;
       const d = parseFloat(cfg.d); if (!(d > 0)) return;
       const seg = E[k], ux = (seg.b.x - seg.a.x) / seg.L, uy = (seg.b.y - seg.a.y) / seg.L;
-      const supr = (cfg.supr instanceof Set) ? cfg.supr : new Set();
+      // Acepta Set o ARRAY (el spec de la app entrega array de parseSupr; antes se ignoraba).
+      const supr = (cfg.supr instanceof Set) ? cfg.supr : new Set(Array.isArray(cfg.supr) ? cfg.supr : []);
       posicionesArista(seg.L, d, parejo).forEach((t, i) => {
         if (supr.has(i)) return;
         const p = { x: seg.a.x + ux * t, y: seg.a.y + uy * t };
@@ -428,7 +429,10 @@
             posA.forEach((t, i) => { if (supr.has(i)) return; aristaOje.push({ x: aO.x + ux * t, y: aO.y + uy * t }); });
             // Marcadores de numeración (1er/último) — índices 0..n-1 sobre la distribución COMPLETA de la
             // arista del corte (los que usa "Suprimir posiciones" del corte). Se muestran con NumOj.
-            const mkN = (t, idx) => ({ x: aO.x + ux * t, y: aO.y + uy * t, text: String(idx), dx: ux, dy: uy, nx: inx * sgn, ny: iny * sgn });
+            // Normal del marcador hacia AFUERA de la tela (lado contrario al inset), como en las
+            // aristas del paño: el callout no cae sobre el dibujo ni choca con el de la otra
+            // diagonal en un vértice compartido (cada uno abre hacia su lado).
+            const mkN = (t, idx) => ({ x: aO.x + ux * t, y: aO.y + uy * t, text: String(idx), dx: ux, dy: uy, nx: -inx * sgn, ny: -iny * sgn });
             if (posA.length >= 1) { aristaNum.push(mkN(posA[0], 0)); if (posA.length > 1) aristaNum.push(mkN(posA[posA.length - 1], posA.length - 1)); }
           }
         }
