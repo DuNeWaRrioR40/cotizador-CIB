@@ -5971,8 +5971,12 @@
         const u = { x: (P2.x - P1.x) / D, y: (P2.y - P1.y) / D };
         const t1 = Math.max(0, parseFloat(a1.t) || 0);
         const rd5 = (v) => Math.round(v * 100000) / 100000;   // 0.01 mm: la línea llega EXACTA al 2º punto
+        // El largo SIGUE al 2º anchor en ambos sentidos (crecer y acortarse), conservando la
+        // "cola" que el usuario haya dejado intencionalmente más allá de ese anchor.
+        const t2Old = Math.max(0, parseFloat(a2.t) || 0);
+        const cola = Math.max(0, (ev(c.largo) || 0) - t2Old);
         a1.t = rd3(t1); a2.t = rd5(t1 + D);
-        if ((ev(c.largo) || 0) < t1 + D) c.largo = String(rd5(t1 + D));
+        c.largo = String(rd5(t1 + D + cola));
         fijar({ x: P1.x - u.x * t1, y: P1.y - u.y * t1 }, u.x, u.y);
       }
     });
@@ -5982,12 +5986,12 @@
     const f = window.CalcCIBSA.fmtNum, out = [];
     (anclas || []).forEach((an) => {
       const pq = posAnclaArista(an, A, L);
-      if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: f(rd3(parseFloat(an.d) || 0)) + " m", tipo: "arista" });
+      if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: f(rd3(parseFloat(an.d) || 0)) + " m", tipo: "arista", fix: !!an.fix });
     });
     visibles(cortesRaw || []).forEach((c) => {
       (c.anclas || []).forEach((an) => {
         const pq = posAnclaCorte(c, an);
-        if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: f(rd3(pq.t)) + " m", tipo: "corte", emp: an.emp != null });
+        if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: f(rd3(pq.t)) + " m", tipo: "corte", emp: an.emp != null, fix: !!an.fix });
       });
     });
     return out;
@@ -6024,6 +6028,17 @@
       }
       return null;
     };
+    // Un anchor de CORTE empatado "representa" al anchor de arista que tiene debajo (quedan
+    // dibujados uno sobre otro): para conexiones se usa el de arista. Permite TRIANGULAR:
+    // varios cortes distintos llegando al mismo anchor.
+    function comoArista(reg) {
+      if (reg.tipo === "arista") return reg;
+      if (reg.tipo === "corte" && reg.an.emp != null) {
+        const anA = (ctx.anclas || []).find((a2) => a2.id === reg.an.emp);
+        if (anA) return { tipo: "arista", an: anA };
+      }
+      return null;
+    }
     function iniciarConexion(reg, tipo) {
       const g = svg.querySelector('g.ancla[data-ancla="' + reg.an.id + '"]');
       if (g) g.classList.add("ancla-sel");
@@ -6051,14 +6066,20 @@
       cap.textContent = (reg.tipo === "arista") ? "Anchor de arista" : "Anchor del corte/línea";
       menu.appendChild(cap);
       const item = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); };
-      if (reg.tipo === "arista" && (ctx.anclas || []).length >= 2) {
-        item("Corte hasta otro anchor…", () => iniciarConexion(reg, "corte"));
-        item("Guía hasta otro anchor…", () => iniciarConexion(reg, "guia"));
-      }
-      item("Fijar distancia exacta…", () => {
+      { const regA = comoArista(reg);
+        if (regA && (ctx.anclas || []).length >= 2) {
+          item("Corte hasta otro anchor…", () => iniciarConexion(regA, "corte"));
+          item("Guía hasta otro anchor…", () => iniciarConexion(regA, "guia"));
+        } }
+      if (!reg.an.fix) item("Bloquear anchor (fijar su posición)", () => { reg.an.fix = true; if (ctx.onChange) ctx.onChange(); });
+      else item("Desbloquear anchor", () => { reg.an.fix = false; if (ctx.onChange) ctx.onChange(); });
+      if (!reg.an.fix) item("Fijar distancia exacta…", () => {
         const cur = (reg.tipo === "arista") ? (parseFloat(reg.an.d) || 0) : (parseFloat(reg.an.t) || 0);
-        const v = parseFloat(String(prompt((reg.tipo === "arista") ? "Distancia desde la esquina (m):" : "Distancia desde el extremo inicial de la línea (m):", String(cur)) || "").replace(",", "."));
-        if (v == null || isNaN(v) || v < 0) return;
+        const txt = prompt((reg.tipo === "arista") ? "Distancia desde la esquina (m) — acepta aritmética, ej. 5/2, 1.2+0.35, (4-0.6)/3:" : "Distancia desde el extremo inicial de la línea (m) — acepta aritmética, ej. 5/2, 1.2+0.35:", String(cur));
+        if (txt == null) return;
+        // Cálculo aritmético básico: mismo motor de expresiones de los campos de la App.
+        const v = window.CalcCIBSA.evalExpr(String(txt).replace(",", "."));
+        if (v == null || isNaN(v) || v < 0) { alert("Valor no válido: escribe un número o una expresión (ej. 5/2 + 0.1)."); return; }
         if (reg.tipo === "arista") reg.an.d = rd3(v); else reg.an.t = rd3(v);
         aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
         if (ctx.onChange) ctx.onChange();
@@ -6112,6 +6133,7 @@
         const noScroll = (ev2) => ev2.preventDefault();
         document.addEventListener("touchmove", noScroll, { passive: false });
         const move = (ev2) => {
+          if (reg.an.fix) return;   // anchor bloqueado: no se arrastra (clic = menú, para desbloquear)
           const pm = toModel(ev2.clientX, ev2.clientY); if (!pm) return;
           movido = true;
           let p;
@@ -6148,7 +6170,8 @@
             if (_anchorPend && _anchorPend.ctx === ctx) {
               const pend = _anchorPend;
               if (pend.limpiar) pend.limpiar();
-              if (reg.tipo === "arista" && reg.an.id !== pend.an.id) setTimeout(() => crearEntreAnchors(pend, reg), 0);
+              const regA = comoArista(reg);
+              if (regA && regA.an.id !== pend.an.id) setTimeout(() => crearEntreAnchors(pend, regA), 0);
               return;
             }
             setTimeout(() => menuAncla(reg), 0); return;

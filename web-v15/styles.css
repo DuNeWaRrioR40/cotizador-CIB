@@ -297,6 +297,9 @@ button:active { transform: scale(0.97); }
 .sketch-svg .ancla-emp .ancla-dot { fill: #e8590c; stroke: #16171a; }
 .sketch-svg .ancla.snap .ancla-dot { stroke-width: 2.4; }
 .sketch-svg .ancla-sel .ancla-dot { stroke-width: 2.6; fill: #e8590c; }
+.sketch-svg .ancla-fija { cursor: default; }
+.sketch-svg .ancla-fija .ancla-dot { fill: #16171a; stroke: #ffdf26; stroke-width: 1.6; }
+.sketch-svg .ancla-fija .ancla-dot-in { fill: #ffdf26; }
 .ancla-conex-hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 1600; background: #16171a; color: #ffdf26; font-size: 13px; font-weight: 700; padding: 9px 16px; border-radius: 10px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3); pointer-events: none; }
 .sketch-svg .ancla-lbl { font-size: 8.5px; font-weight: 700; fill: #16171a; paint-order: stroke; stroke: rgba(255, 255, 255, 0.9); stroke-width: 2.5px; }
 .sketch-svg .ancla3 { pointer-events: none; }

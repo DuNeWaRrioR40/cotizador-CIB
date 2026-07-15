@@ -1599,7 +1599,7 @@
       (skVol.anclas || []).forEach((an) => {
         const ax = pxT(an.x), ay = pyT(an.y);
         const izqL = an.x <= A / 2, tx = izqL ? 9 : -9, tanc = izqL ? "start" : "end";
-        s += `<g class="ancla${an.tipo === "corte" ? " ancla-corte" : ""}${an.emp ? " ancla-emp" : ""}" data-ancla="${esc(String(an.id))}" data-x="${f1(ax)}" data-y="${f1(ay)}">`;
+        s += `<g class="ancla${an.tipo === "corte" ? " ancla-corte" : ""}${an.emp ? " ancla-emp" : ""}${an.fix ? " ancla-fija" : ""}" data-ancla="${esc(String(an.id))}" data-x="${f1(ax)}" data-y="${f1(ay)}">`;
         s += `<circle class="ancla-halo" cx="${f1(ax)}" cy="${f1(ay)}" r="11"/>`;
         s += `<circle class="ancla-dot" cx="${f1(ax)}" cy="${f1(ay)}" r="4"/>`;
         s += `<circle class="ancla-dot-in" cx="${f1(ax)}" cy="${f1(ay)}" r="1.5"/>`;
@@ -1833,7 +1833,7 @@
         const ax = px(an.x), ay = py(an.y);
         const izqLado = an.x <= sk.ancho / 2;
         const tx = izqLado ? 9 : -9, tanc = izqLado ? "start" : "end";
-        s += `<g class="ancla${an.tipo === "corte" ? " ancla-corte" : ""}${an.emp ? " ancla-emp" : ""}" data-ancla="${esc(String(an.id))}" data-x="${f1(ax)}" data-y="${f1(ay)}">`;
+        s += `<g class="ancla${an.tipo === "corte" ? " ancla-corte" : ""}${an.emp ? " ancla-emp" : ""}${an.fix ? " ancla-fija" : ""}" data-ancla="${esc(String(an.id))}" data-x="${f1(ax)}" data-y="${f1(ay)}">`;
         s += `<circle class="ancla-halo" cx="${f1(ax)}" cy="${f1(ay)}" r="11"/>`;
         s += `<circle class="ancla-dot" cx="${f1(ax)}" cy="${f1(ay)}" r="4"/>`;
         s += `<circle class="ancla-dot-in" cx="${f1(ax)}" cy="${f1(ay)}" r="1.5"/>`;
