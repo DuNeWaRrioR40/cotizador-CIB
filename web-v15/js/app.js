@@ -5,7 +5,7 @@
   const money = window.CalcCIBSA.money;
 
   const state = {
-    telas: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
+    telas: [], telasOpcSel: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
     ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, figura3D: null, anclasUnif: [], notasUnif: [], subVC: false, cotasOcultas: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
@@ -193,7 +193,7 @@
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
     // Telas adicionales marcadas (multi-tela uniforme) + categoría FAV activa, para reponer la selección completa.
-    const telaOpc = []; { const cont = $("telaOpcList"); if (cont) cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => telaOpc.push(cb.value)); }
+    const telaOpc = (state.telasOpcSel || []).slice();
     const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, ojVolExt: $("f_ojVolExt") ? $("f_ojVolExt").checked : true, empresaOn: $("f_empresaOn") ? $("f_empresaOn").checked : false, descMonto: $("f_descMonto") ? $("f_descMonto").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", telasFrozen: telasFrozenMap(), estado: st };
     try { return JSON.parse(JSON.stringify(snap)); } catch (e) { return null; }
   }
@@ -222,7 +222,8 @@
     setSelectIfOption("f_tela", snap.telaUnif);
     setSelectIfOption("f_vendedor", snap.vendedor);
     // Repone la selección multi-tela (telas adicionales marcadas) y la categoría FAV activa.
-    { const cont = $("telaOpcList"); if (cont) { const sel = new Set(snap.telaOpc || []); cont.querySelectorAll('input[type="checkbox"]').forEach((cb) => { cb.checked = sel.has(cb.value); }); } if (typeof renderTelaOpcCarrito === "function") renderTelaOpcCarrito(); }
+    state.telasOpcSel = (snap.telaOpc || []).slice();
+    if (typeof renderTelaOpc === "function") renderTelaOpc();
     favCatActiva = snap.favCat || null; renderCategoriasFav();
     if ($("f_ojVolExt")) $("f_ojVolExt").checked = snap.ojVolExt !== false;
     if ($("wOjVol")) $("wOjVol").classList.toggle("hidden", !snap.usaAlto);
@@ -2030,7 +2031,7 @@
     const names = new Set();
     const add = (v) => { if (v) names.add(v); };
     add($("f_tela") && $("f_tela").value);
-    { const c = $("telaOpcList"); if (c) c.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => add(cb.value)); }
+    (state.telasOpcSel || []).forEach(add);
     { const c = $("telaGlobalList"); if (c && $("f_telaGlobalOn") && $("f_telaGlobalOn").checked) c.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => add(cb.value)); }
     const scan = (o) => { if (!o || typeof o !== "object") return; if (Array.isArray(o)) { o.forEach(scan); return; } Object.keys(o).forEach((k) => { if (k === "telaNombre") add(o[k]); else if (o[k] && typeof o[k] === "object") scan(o[k]); }); };
     SNAP_STATE.forEach((k) => scan(state[k]));
@@ -2051,7 +2052,7 @@
   // Telas adicionales para cotizar (uniforme), agrupadas TIPO → Proveedor → modelos, con
   // CARRITO arriba (chips con ✕). La lista se mantiene ABIERTA al marcar (selección múltiple
   // sin volver atrás); el carrito refleja la selección al instante. Los consumidores no cambian:
-  // telasParaCotizar() sigue leyendo los checkboxes de #telaOpcList.
+  // La selección vive en state.telasOpcSel (los niveles no visibles no existen en el DOM).
   function tipoDeTela(t) {
     // El TIPO sale del nombre SIN proveedor (los nombres suelen empezar con él): primer término
     // del nombre cliente, ej. "PE · G200 · M2X100" → "PE".
@@ -2059,48 +2060,74 @@
     const p = n.indexOf("·") >= 0 ? n.split("·")[0].trim() : (n.trim().split(/\s+/)[0] || "");
     return p || "Otras";
   }
+  let _toNav = { tipo: null, prov: null };
   function renderTelaOpc() {
     const cont = $("telaOpcList"); if (!cont) return;
-    const sel = new Set(); cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => sel.add(cb.value));
     cont.innerHTML = "";
-    const grupos = {};
-    state.telas.forEach((t) => {
-      const tipo = tipoDeTela(t), prov = (String(t.proveedor || "").trim()) || "Sin proveedor";
-      (grupos[tipo] = grupos[tipo] || {});
-      (grupos[tipo][prov] = grupos[tipo][prov] || []).push(t);
-    });
-    Object.keys(grupos).sort((a, b) => a.localeCompare(b)).forEach((tipo) => {
-      const dT = document.createElement("details"); dT.className = "topc-tipo";
-      const sT = document.createElement("summary");
-      sT.textContent = tipo + " (" + Object.values(grupos[tipo]).reduce((a2, l2) => a2 + l2.length, 0) + ")";
-      dT.appendChild(sT);
-      Object.keys(grupos[tipo]).sort((a, b) => a.localeCompare(b)).forEach((prov) => {
-        const dP = document.createElement("details"); dP.className = "topc-prov";
-        const sP = document.createElement("summary"); sP.textContent = prov + " (" + grupos[tipo][prov].length + ")";
-        dP.appendChild(sP);
-        grupos[tipo][prov].forEach((t) => {
-          const lab = document.createElement("label"); lab.className = "tela-chk topc-item";
-          const cb = document.createElement("input"); cb.type = "checkbox"; cb.value = t.nombre; cb.dataset.telaopc = "1";
-          if (sel.has(t.nombre)) cb.checked = true;
-          cb.addEventListener("change", () => { renderTelaOpcCarrito(); recompute(); });
-          const span = document.createElement("span");
-          const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = telaCli(t);
-          const mt = document.createElement("span"); mt.className = "mt"; mt.textContent = `Valor m²: ${money(t.valorM2)} · Rollo: ${t.anchoRollo} m`;
-          span.appendChild(nm); span.appendChild(document.createElement("br")); span.appendChild(mt);
-          lab.appendChild(cb); lab.appendChild(span); dP.appendChild(lab);
-        });
-        dT.appendChild(dP);
+    const telas = state.telas || [];
+    if (!telas.length) { renderTelaOpcCarrito(); return; }
+    const provDe = (t) => (String(t.proveedor || "").trim()) || "Sin proveedor";
+    // Migas de pan (mismo patrón que granel)
+    const crumb = document.createElement("div"); crumb.className = "granel-crumb-row";
+    const home = document.createElement("button"); home.type = "button"; home.className = "granel-bc"; home.textContent = "Tipos";
+    home.addEventListener("click", () => { _toNav = { tipo: null, prov: null }; renderTelaOpc(); });
+    crumb.appendChild(home);
+    const addCrumb = (txt, fn) => {
+      const sep = document.createElement("span"); sep.className = "granel-bc-sep"; sep.textContent = "›"; crumb.appendChild(sep);
+      const b = document.createElement("button"); b.type = "button"; b.className = "granel-bc"; b.textContent = txt;
+      b.addEventListener("click", fn); crumb.appendChild(b);
+    };
+    if (_toNav.tipo) addCrumb(_toNav.tipo, () => { _toNav.prov = null; renderTelaOpc(); });
+    if (_toNav.prov) addCrumb(_toNav.prov, () => {});
+    cont.appendChild(crumb);
+    const grid = (items, fn) => {
+      const g = document.createElement("div"); g.className = "granel-grid";
+      items.forEach(([nom, n]) => {
+        const btn = document.createElement("button"); btn.type = "button"; btn.className = "granel-cat";
+        btn.innerHTML = '<span class="granel-cat-nom">' + escHtmlTo(nom) + '</span><span class="granel-cat-n">' + n + "</span>";
+        btn.addEventListener("click", () => fn(nom));
+        g.appendChild(btn);
       });
-      cont.appendChild(dT);
-    });
+      cont.appendChild(g);
+    };
+    if (!_toNav.tipo) {
+      const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = "Elige tipo:"; cont.appendChild(cap);
+      const tipos = {};
+      telas.forEach((t) => { const k = tipoDeTela(t); tipos[k] = (tipos[k] || 0) + 1; });
+      grid(Object.keys(tipos).sort((a, b) => a.localeCompare(b)).map((k) => [k, tipos[k]]), (nom) => { _toNav.tipo = nom; renderTelaOpc(); });
+    } else if (!_toNav.prov) {
+      const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = "Elige proveedor:"; cont.appendChild(cap);
+      const provs = {};
+      telas.filter((t) => tipoDeTela(t) === _toNav.tipo).forEach((t) => { const k = provDe(t); provs[k] = (provs[k] || 0) + 1; });
+      grid(Object.keys(provs).sort((a, b) => a.localeCompare(b)).map((k) => [k, provs[k]]), (nom) => { _toNav.prov = nom; renderTelaOpc(); });
+    } else {
+      // Modelos: selección múltiple con la lista ABIERTA (marcar no re-navega).
+      const lista = telas.filter((t) => tipoDeTela(t) === _toNav.tipo && provDe(t) === _toNav.prov);
+      const cap = document.createElement("p"); cap.className = "muted small"; cap.textContent = lista.length + " modelo(s) — marca las que quieras:"; cont.appendChild(cap);
+      lista.forEach((t) => {
+        const lab = document.createElement("label"); lab.className = "tela-chk topc-item";
+        const cb = document.createElement("input"); cb.type = "checkbox"; cb.value = t.nombre; cb.dataset.telaopc = "1";
+        cb.checked = (state.telasOpcSel || []).includes(t.nombre);
+        cb.addEventListener("change", () => {
+          const lst = state.telasOpcSel || (state.telasOpcSel = []);
+          if (cb.checked) { if (!lst.includes(t.nombre)) lst.push(t.nombre); }
+          else state.telasOpcSel = lst.filter((n2) => n2 !== t.nombre);
+          renderTelaOpcCarrito(); recompute();
+        });
+        const span = document.createElement("span");
+        const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = telaCli(t);
+        const mt = document.createElement("span"); mt.className = "mt"; mt.textContent = `Valor m²: ${money(t.valorM2)} · Rollo: ${t.anchoRollo} m`;
+        span.appendChild(nm); span.appendChild(document.createElement("br")); span.appendChild(mt);
+        lab.appendChild(cb); lab.appendChild(span); cont.appendChild(lab);
+      });
+    }
     renderTelaOpcCarrito();
   }
+  function escHtmlTo(t) { return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
   function renderTelaOpcCarrito() {
     const cart = $("telaOpcCart"); if (!cart) return;
-    const cont = $("telaOpcList");
-    const seleccion = [];
-    if (cont) cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => { const t = telaPorNombre(cb.value); if (t) seleccion.push(t); });
     cart.innerHTML = "";
+    const seleccion = (state.telasOpcSel || []).map(telaPorNombre).filter(Boolean);
     if (!seleccion.length) {
       const pEl = document.createElement("p"); pEl.className = "muted small topc-vacio";
       pEl.textContent = "Sin telas adicionales: se cotiza solo con la tela principal.";
@@ -2111,8 +2138,8 @@
       const tx = document.createElement("span"); tx.textContent = telaCli(t) + " · " + money(t.valorM2) + "/m²";
       const x = document.createElement("button"); x.type = "button"; x.className = "topc-x"; x.title = "Quitar de la selección"; x.textContent = "✕";
       x.addEventListener("click", () => {
-        if (cont) cont.querySelectorAll('input[type="checkbox"]').forEach((cb) => { if (cb.value === t.nombre) cb.checked = false; });
-        renderTelaOpcCarrito(); recompute();
+        state.telasOpcSel = (state.telasOpcSel || []).filter((n2) => n2 !== t.nombre);
+        renderTelaOpc(); recompute();
       });
       chip.appendChild(tx); chip.appendChild(x); cart.appendChild(chip);
     });
@@ -2159,12 +2186,8 @@
     return out;
   }
   function setChecksTelaOpc(filtro) {
-    const cont = $("telaOpcList"); if (!cont) return;
-    cont.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-      const t = telaPorNombre(cb.value);
-      cb.checked = !!(t && filtro(t));
-    });
-    renderTelaOpcCarrito();
+    state.telasOpcSel = (state.telas || []).filter((t) => !!filtro(t)).map((t) => t.nombre);
+    renderTelaOpc();
   }
   function aplicarCategoriaFav(cat) {
     if (favCatActiva && favCatActiva.toLowerCase() === cat.toLowerCase()) { // toggle off
@@ -2196,10 +2219,9 @@
   function telasParaCotizar() {
     const principal = telaActual();
     const out = principal ? [principal] : [];
-    const cont = $("telaOpcList");
-    if (cont) cont.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
-      if (out.some((t) => t.nombre === cb.value)) return;
-      const t = telaPorNombre(cb.value); if (t) out.push(t);
+    (state.telasOpcSel || []).forEach((nom) => {
+      if (out.some((t) => t.nombre === nom)) return;
+      const t = telaPorNombre(nom); if (t) out.push(t);
     });
     return out;
   }
@@ -5177,9 +5199,8 @@
         const x = document.createElement("button"); x.type = "button"; x.className = "rt-x"; x.title = "Quitar esta tela de la cotización";
         x.textContent = "✕";
         x.addEventListener("click", () => {
-          const lst = $("telaOpcList");
-          if (lst) lst.querySelectorAll('input[type="checkbox"]').forEach((cb) => { if (cb.value === t.nombre) cb.checked = false; });
-          if (typeof renderTelaOpcCarrito === "function") renderTelaOpcCarrito();
+          state.telasOpcSel = (state.telasOpcSel || []).filter((n2) => n2 !== t.nombre);
+          if (typeof renderTelaOpc === "function") renderTelaOpc();
           recompute();
         });
         left.appendChild(x);
@@ -7395,7 +7416,7 @@
     document.querySelector('input[name="ojmode"][value="total"]').checked = true;
     state.orientacionSel = "mayor"; state.orientUnif = "largo"; $("resultHolder").innerHTML = ""; $("formStatus").textContent = "";
     const multi = $("telaMulti"); if (multi) multi.querySelectorAll("input:checked").forEach((c) => (c.checked = false));
-    { const to = $("telaOpcList"); if (to) to.querySelectorAll("input:checked").forEach((c) => (c.checked = false)); if (typeof renderTelaOpcCarrito === "function") renderTelaOpcCarrito(); }
+    state.telasOpcSel = []; if (typeof renderTelaOpc === "function") renderTelaOpc();
     { const tg = $("f_telaGlobalOn"); if (tg) tg.checked = false; const tgl = $("telaGlobalList"); if (tgl) tgl.querySelectorAll("input:checked").forEach((c) => (c.checked = false)); const tgb = $("telaGlobalBody"); if (tgb) tgb.classList.add("hidden"); }
     favCatActiva = null; renderCategoriasFav();
     { const sc = $("f_suprimirCotas"); if (sc) sc.checked = false; const sc2 = $("f_suprimirCotas2"); if (sc2) sc2.checked = false; const nh = $("f_noHist"); if (nh) nh.checked = false; }

@@ -330,11 +330,8 @@ button.qr-on { background: #16171a; color: #ffdf26; border-color: #16171a; }
 .rt-x:hover { background: #e8590c; color: #fff; }
 .resumen-telas .rt-row > span:first-child { display: flex; align-items: center; }
 .topc-vacio { margin: 2px 0; }
-.topc-list details { border: 1px solid var(--border, #ddd); border-radius: 9px; margin: 6px 0; padding: 0 10px; background: var(--surface, #fff); }
-.topc-list summary { cursor: pointer; font-weight: 700; padding: 8px 0; user-select: none; }
-.topc-list .topc-prov { margin: 4px 0 8px; border-style: dashed; }
-.topc-list .topc-prov summary { font-weight: 600; font-size: 13px; }
-.topc-list .topc-item { margin: 2px 0 6px; }
+.topc-list .topc-item { margin: 4px 0 8px; }
+.topc-list .granel-crumb-row { margin-bottom: 6px; }
 /* Vista cliente (monitor espejo): solo el plano, en grande, sin controles ni ayudas de edición */
 body.vista-cliente { margin: 0; background: var(--bg, #f6f6f2); }
 .vc-head { display: flex; align-items: center; gap: 14px; padding: 12px 18px; }
