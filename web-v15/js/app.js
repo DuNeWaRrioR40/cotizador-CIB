@@ -4106,9 +4106,14 @@
     return visibles(list).map((a) => {
       const r = calcAleta(a, N, valorOjUnif(), facUnif()); if (!r) return null;
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (ALETA_NOM[a.tipo] || "Aleta");
+      // DESACOPLE: el valor de los ojetillos del anexo se resta de esta fila y se cobra en la
+      // fila global «Ojetillos» (con desglose por pieza) — así el cliente puede negociarlos.
+      const nOjA = aletaOjN(a, r.al, r.aa);
+      const ojMon = nOjA * (valorOjUnif() || 0) * r.N;
       let det = nom + " en " + telaCli(r.tela) + " " + f(r.al) + "×" + f(r.aa) + " m";
+      if (nOjA > 0) det += " · " + nOjA + " ojetillos (cobrados en la fila «Ojetillos»)";
       if (a.descripcion && a.descripcion.trim()) det += " · " + a.descripcion.trim();
-      return { cantidad: r.N, detalle: det, precio: Math.round(r.subtotal / r.N), totalNeto: r.subtotal };
+      return { cantidad: r.N, detalle: det, precio: Math.round((r.subtotal - ojMon) / r.N), totalNeto: r.subtotal - ojMon };
     }).filter(Boolean);
   }
 
@@ -4127,12 +4132,18 @@
     }).filter(Boolean);
   }
   // Cortes/calados del uniforme (ojetillos y cintas sobre la línea de corte) como filas-objeto.
-  function cortesUnifPDF(spec, valorOj, N) {
+  function cortesUnifPDF(spec, valorOj, N, anexosOj) {
     if (!window.SketchCIBSA) return [];
     let sk; try { sk = window.SketchCIBSA.construirSketch(spec); } catch (e) { return []; }
     const n = Math.max(1, N || 1), out = [];
     let nOj = 0; (sk.cortes || []).forEach((c) => { nOj += (c.ojetillos || []).length; });
-    if (nOj > 0) out.push({ cantidad: nOj * n, detalle: "Ojetillos sobre cortes/calados", precio: valorOj || 0, totalNeto: nOj * (valorOj || 0) * n, cat: "Ojetillos" });
+    // Fila GLOBAL de ojetillos (cortes/calados + anexos), valorizada y con desglose por pieza:
+    // el valor de estos ojetillos NO va dentro de los anexos (sus filas lo restan).
+    const partes = []; let nAx = 0;
+    if (nOj > 0) partes.push(nOj + " sobre cortes/calados");
+    (anexosOj || []).forEach((x) => { if (x && x.n > 0) { nAx += x.n; partes.push(x.n + " en " + x.nombre); } });
+    const totOj = nOj + nAx;
+    if (totOj > 0) out.push({ cantidad: totOj * n, detalle: "Instalados por unidad: " + partes.join(" · ") + ".", precio: valorOj || 0, totalNeto: totOj * (valorOj || 0) * n, cat: "Ojetillos" });
     const cs = (sk.straps || []).filter((s) => s.origen === "corte");
     if (cs.length) {
       const tot = cs.reduce((a, s) => a + (s.largo || 0) * (s.precioM || 0), 0);
@@ -7830,19 +7841,10 @@
       observaciones: $("f_observaciones").value.trim() || null,
       detalleExtra: terminacionesTexto(state.orientUnif),
       complementos: complementosUnifPDF(N),
-      aletas: aletasUnifPDF(aletasEf, N).concat(aletasUnifPDF(backAletasEf, N)).concat(strapsUnifPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cintasUnifPDF(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cortesUnifPDF(skSpec, lote.valorOjetillo, N)),
-      ojetillosNota: (function () {
-        const nB = lote.nOjetillos || 0;
-        const nC = ojEnCortesN(state.cortesUnif, ancho, largo, state.aletasUnif);
-        const nA = ojEnAletasN(aletasEf) + ojEnAletasN(backAletasEf);
-        const tot = nB + nC + nA;
-        if (!(tot > 0) || (nC === 0 && nA === 0)) return "";
-        const partes = [];
-        if (nB > 0) partes.push(nB + " en las aristas del paño (fila «Ojetillos»)");
-        if (nC > 0) partes.push(nC + " sobre cortes/calados (fila propia)");
-        if (nA > 0) partes.push(nA + " ya incluidos en el valor de cada anexo");
-        return "El producto lleva " + tot + " ojetillos en total (por unidad): " + partes.join(" · ") + ". Todos están cobrados en las filas indicadas.";
-      })(),
+      aletas: aletasUnifPDF(aletasEf, N).concat(aletasUnifPDF(backAletasEf, N)).concat(strapsUnifPDF(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cintasUnifPDF(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }, N)).concat(cortesUnifPDF(skSpec, lote.valorOjetillo, N, visibles(aletasEf.concat(backAletasEf)).map((a) => {
+        const evA = window.CalcCIBSA.evalExpr, al2 = evA(a.largo), aa2 = evA(a.ancho);
+        return { nombre: (a.legend && a.legend.trim()) || ALETA_NOM[a.tipo] || "Anexo", n: (al2 > 0 && aa2 > 0) ? aletaOjN(a, al2, aa2) : 0 };
+      }))),
       granel: granelLineas,
       minProduccion: minProd, minProdUF: CFG.MIN_PRODUCCION_UF, ufValor: state.ufValor,
       sketch: skSpec,
