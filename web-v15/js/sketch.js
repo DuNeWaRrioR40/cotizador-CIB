@@ -25,6 +25,25 @@
     }
     return pts;
   }
+  // Reparto perimetral sobre un POLIGONO arbitrario (contorno real del paño tras cortes "Eliminar"):
+  // n puntos equiespaciados a lo largo del perímetro, partiendo del primer vértice.
+  function ojetillosPoligono(n, poly) {
+    const pts = []; n = Math.max(0, Math.round(n || 0));
+    if (n <= 0 || !poly || poly.length < 3) return pts;
+    const lens = []; let P = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const l = Math.hypot(b.x - a.x, b.y - a.y); lens.push(l); P += l;
+    }
+    if (!(P > 0)) return pts;
+    for (let k = 0; k < n; k++) {
+      let d = (k * P) / n, i = 0;
+      while (i < poly.length - 1 && d > lens[i]) { d -= lens[i]; i++; }
+      const a = poly[i], b = poly[(i + 1) % poly.length], t = lens[i] > 0 ? Math.min(1, d / lens[i]) : 0;
+      pts.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    }
+    return pts;
+  }
   // Distribución TRADICIONAL por distanciamiento d en una arista de largo L:
   // ojetillos en ambas esquinas + marcha al distanciamiento desde un extremo manteniéndose
   // a >= d del extremo opuesto; si el tramo final supera d, se agrega 1 ojetillo en su mitad.
@@ -679,11 +698,15 @@
       });
       if (poly.length >= 3) panoPoly = poly;
     }
+    // Los ojetillos perimetrales (modo total/parejo) se reparten sobre el CONTORNO REAL: si algún corte
+    // "Eliminar" recortó tela, redistribuir los n puntos a lo largo del polígono vivo — nunca sobre el
+    // rectángulo original (quedarían flotando fuera del paño). El conteo n no cambia (mismo cobro).
+    if (panoPoly && !Array.isArray(spec.ojetillosPos) && (spec.ojTotal > 0)) ojetillos = ojetillosPoligono(spec.ojTotal, panoPoly);
     // Numeración NumOj: si está activa (spec.ojNumeros != null), suma los marcadores de las aristas de
     // cortes/guías (1er/último de sus ojetillos) a los del perímetro base.
     let ojNumeros = spec.ojNumeros || null;
     if (ojNumeros != null) cortes.forEach((c) => { if (c.ojNum && c.ojNum.length) ojNumeros = ojNumeros.concat(c.ojNum); });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, anclas: spec.espejo ? [] : (spec.anclas || []), notas: spec.espejo ? [] : (spec.notas || []), bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar, cintas: (spec.cintas || []) };
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, anclas: spec.espejo ? [] : (spec.anclas || []), notas: spec.espejo ? [] : (spec.notas || []), bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, cotasPos: spec.cotasPos || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar, cintas: (spec.cintas || []) };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
@@ -1834,31 +1857,34 @@
       const bTop = py(pMinY), bBot = py(pMaxY), bLeft = px(pMinX), bRight = px(pMaxX);
       cotasVisibles(sk).forEach((c) => {   // ya filtra ocultas y re-empaca los niveles (mismos offsets que el margen)
         const off = offsetCota(c);
+        // Offsets del usuario (arrastre de cotas): d acerca la cota a su arista (m); t desliza la etiqueta a lo largo (m).
+        const cpo = (sk.cotasPos && c.key && sk.cotasPos[c.key]) || null;
+        const dSh = cpo ? (cpo.d || 0) * scale : 0, tSh = cpo ? (cpo.t || 0) * scale : 0;
         let o = "";
         if (c.axis === "h") {
           const xa = px(c.a), xb = px(c.b);
           const base = (c.side === "bottom") ? bBot : bTop, dir = (c.side === "bottom") ? 1 : -1;
-          const dimY = base + dir * off, tEnd = dimY - dir * EXTGAP;
+          const dimY = base + dir * (off - dSh), tEnd = dimY - dir * EXTGAP;
           o += `<line class="cota-ext" x1="${f1(xa)}" y1="${f1(base)}" x2="${f1(xa)}" y2="${f1(tEnd)}"/>`;
           o += `<line class="cota-ext" x1="${f1(xb)}" y1="${f1(base)}" x2="${f1(xb)}" y2="${f1(tEnd)}"/>`;
           o += `<line class="cota" x1="${f1(xa)}" y1="${f1(dimY)}" x2="${f1(xb)}" y2="${f1(dimY)}"/>`;
           o += `<line class="cota-tick" x1="${f1(xa)}" y1="${f1(dimY - TICK)}" x2="${f1(xa)}" y2="${f1(dimY + TICK)}"/>`;
           o += `<line class="cota-tick" x1="${f1(xb)}" y1="${f1(dimY - TICK)}" x2="${f1(xb)}" y2="${f1(dimY + TICK)}"/>`;
           const ty = (c.side === "bottom") ? dimY + 7 : dimY - 2;
-          o += `<text class="cota-lbl" x="${f1((xa + xb) / 2)}" y="${f1(ty)}" text-anchor="middle">${fmt(c.value)}m</text>`;
+          o += `<text class="cota-lbl" x="${f1((xa + xb) / 2 + tSh)}" y="${f1(ty)}" text-anchor="middle">${fmt(c.value)}m</text>`;
         } else {
           const ya = py(c.a), yb = py(c.b);
           const base = (c.side === "right") ? bRight : bLeft, dir = (c.side === "right") ? 1 : -1;
-          const dimX = base + dir * off, tEnd = dimX - dir * EXTGAP;
+          const dimX = base + dir * (off - dSh), tEnd = dimX - dir * EXTGAP;
           o += `<line class="cota-ext" x1="${f1(base)}" y1="${f1(ya)}" x2="${f1(tEnd)}" y2="${f1(ya)}"/>`;
           o += `<line class="cota-ext" x1="${f1(base)}" y1="${f1(yb)}" x2="${f1(tEnd)}" y2="${f1(yb)}"/>`;
           o += `<line class="cota" x1="${f1(dimX)}" y1="${f1(ya)}" x2="${f1(dimX)}" y2="${f1(yb)}"/>`;
           o += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(ya)}" x2="${f1(dimX + TICK)}" y2="${f1(ya)}"/>`;
           o += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(yb)}" x2="${f1(dimX + TICK)}" y2="${f1(yb)}"/>`;
-          const my = (ya + yb) / 2, tx = (c.side === "right") ? dimX + 3 : dimX - 3;
+          const my = (ya + yb) / 2 + tSh, tx = (c.side === "right") ? dimX + 3 : dimX - 3;
           o += `<text class="cota-lbl" x="${f1(tx)}" y="${f1(my)}" text-anchor="middle" transform="rotate(-90 ${f1(tx)} ${f1(my)})">${fmt(c.value)}m</text>`;
         }
-        s += c.key ? `<g class="cota-g" data-ck="${esc(c.key)}">${o}</g>` : o;
+        s += c.key ? `<g class="cota-g" data-ck="${esc(c.key)}" data-cax="${c.axis}" data-cdir="${(c.side === "bottom" || c.side === "right") ? 1 : -1}">${o}</g>` : o;
       });
     }
     // Rótulos de orientación (vista frontal/trasera + lados).

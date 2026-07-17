@@ -655,23 +655,26 @@
       SK.cotasDe(sk).forEach((c) => {
         if (sk.cotasOcultas && c.key && sk.cotasOcultas[c.key]) return; // cota ocultada por el usuario
         const off = SK.offsetCota(c), lbl = SK.fmt(c.value) + "m";
+        // Offsets del usuario (arrastre de cotas en la App): d acerca la cota a su arista; t desliza la etiqueta.
+        const cpo = (sk.cotasPos && c.key && sk.cotasPos[c.key]) || null;
+        const dSh = cpo ? (cpo.d || 0) * scale : 0, tSh = cpo ? (cpo.t || 0) * scale : 0;
         if (c.axis === "h") {
           const xa = px(c.a), xb = px(c.b);
           const base = (c.side === "bottom") ? bBotY : bTopY, dir = (c.side === "bottom") ? -1 : 1;
-          const dimY = base + dir * off, tEnd = dimY - dir * EXTGAP;
+          const dimY = base + dir * (off - dSh), tEnd = dimY - dir * EXTGAP;
           lnExt(xa, base, xa, tEnd); lnExt(xb, base, xb, tEnd);
           ln(xa, dimY, xb, dimY, 0.4);
           ln(xa, dimY - TICK, xa, dimY + TICK, 0.4); ln(xb, dimY - TICK, xb, dimY + TICK, 0.4);
           const ty = (c.side === "bottom") ? dimY - 6 : dimY + 2;
-          page.drawText(lbl, { x: (xa + xb) / 2 - font.widthOfTextAtSize(lbl, 5.5) / 2, y: ty, size: 5.5, font: font, color: RED });
+          page.drawText(lbl, { x: (xa + xb) / 2 + tSh - font.widthOfTextAtSize(lbl, 5.5) / 2, y: ty, size: 5.5, font: font, color: RED });
         } else {
           const ya = py(c.a), yb = py(c.b);
           const base = (c.side === "right") ? bRightX : bLeftX, dir = (c.side === "right") ? 1 : -1;
-          const dimX = base + dir * off, tEnd = dimX - dir * EXTGAP;
+          const dimX = base + dir * (off - dSh), tEnd = dimX - dir * EXTGAP;
           lnExt(base, ya, tEnd, ya); lnExt(base, yb, tEnd, yb);
           ln(dimX, ya, dimX, yb, 0.4);
           ln(dimX - TICK, ya, dimX + TICK, ya, 0.4); ln(dimX - TICK, yb, dimX + TICK, yb, 0.4);
-          const my = (ya + yb) / 2, tx = (c.side === "right") ? dimX + 2 : dimX - 4;
+          const my = (ya + yb) / 2 - tSh, tx = (c.side === "right") ? dimX + 2 : dimX - 4;
           page.drawText(lbl, { x: tx, y: my - font.widthOfTextAtSize(lbl, 5.5) / 2, size: 5.5, font: font, color: RED, rotate: PDFLib.degrees(90) });
         }
       });
