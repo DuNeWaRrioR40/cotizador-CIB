@@ -8802,6 +8802,7 @@
       prod: {
         categoria: "", tipo: "", variedad: "", formato: "", modelo: "", color: "", materialidad: "",
         unidad: "", unidadMinima: "UNITARIO", anchoRollo: "", rendimiento: 1, fav: "",
+        rol: "", specs: "",
         sku: "", codMaterialBase: "",
       },
       estados: [],
@@ -8974,6 +8975,15 @@
     if (attrs && attrs.ej) w.appendChild(fe("span", "factura-ej", "ej.: " + attrs.ej));   // ejemplos bajo el campo
     return w;
   }
+  function facturaTextarea(labelTxt, value, on, attrs) {
+    const w = fe("label", "factura-f factura-f-area"); w.appendChild(fe("span", null, labelTxt));
+    const t = document.createElement("textarea"); t.value = (value != null ? value : ""); t.rows = (attrs && attrs.rows) || 4;
+    if (attrs && attrs.ph) t.placeholder = attrs.ph;
+    t.addEventListener("input", (e) => on(e.target.value));
+    w.appendChild(t);
+    if (attrs && attrs.ej) w.appendChild(fe("span", "factura-ej", attrs.ej));
+    return w;
+  }
   function facturaSelect(labelTxt, opts, value, on) {
     const w = fe("label", "factura-f"); w.appendChild(fe("span", null, labelTxt));
     const s = document.createElement("select");
@@ -8998,8 +9008,23 @@
     const pv = fe("div", "factura-card"); pv.appendChild(fe("h3", "factura-h", "Proveedor"));
     if (ctx.proveedor.match) {
       pv.appendChild(fe("p", "muted small", "Registrado: " + ctx.proveedor.match.razon + " · " + ctx.proveedor.rut + (ctx.proveedor.match.nombreCorto ? " (" + ctx.proveedor.match.nombreCorto + ")" : "")));
+      if (ctx.manual) {
+        const bx = fe("button", "btn-outline small", "✕ Quitar (usar otro proveedor)"); bx.type = "button";
+        bx.addEventListener("click", () => { ctx.proveedor = { match: null, crear: true, rut: "", razon: "", nombreCorto: "" }; renderFactura(); });
+        pv.appendChild(bx);
+      }
     } else {
       pv.appendChild(fe("p", "factura-new", "Proveedor NUEVO — se creará en PROVEEDORES."));
+      // Carga sin factura: permite CLONAR un proveedor ya registrado (rellena RUT/razón/corto y no lo duplica).
+      if (ctx.manual && (FC.prov || []).length) {
+        const opts = [["", "— clonar proveedor existente… —"]].concat(FC.prov.map((pp, i) => [String(i), (pp.nombreCorto ? pp.nombreCorto + " · " : "") + pp.razon + " · " + pp.rut]));
+        pv.appendChild(facturaSelect("Proveedor existente (clonar)", opts, "", (v) => {
+          if (v === "") return;
+          const pp = FC.prov[parseInt(v, 10)]; if (!pp) return;
+          ctx.proveedor = { match: pp, crear: false, rut: pp.rut, razon: pp.razon, nombreCorto: pp.nombreCorto || "" };
+          renderFactura();
+        }));
+      }
       const g = fe("div", "factura-grid");
       g.appendChild(facturaInput("RUT", ctx.proveedor.rut, (v) => ctx.proveedor.rut = v));
       g.appendChild(facturaInput("Razón Social", ctx.proveedor.razon, (v) => ctx.proveedor.razon = v));
@@ -9225,6 +9250,7 @@
       g.appendChild(facturaInput("Categoría", P.categoria, (v) => P.categoria = v, { ph: "TELA / CARPA…", ej: "TELA · CARPA · PEGAMENTO · ACCESORIO · CINTA" }));
       g.appendChild(facturaInput("Tipo", P.tipo, (v) => P.tipo = v, { ph: "PVC / PE…", ej: "PVC · PE · HDPE · NYLON" }));
       g.appendChild(facturaInput("Variedad (estado comprado)", P.variedad, (v) => P.variedad = v, { ph: "ROLLO / DIMENSIONADA…", ej: "ROLLO · M.LINEAL · DIMENSIONADA · TARRO · UNIDAD" }));
+      g.appendChild(facturaSelect("Rol (materiales de confección)", [["", "— sin rol (tela / granel puro) —"], ["INSUMO", "INSUMO"], ["ACCESORIO", "ACCESORIO"], ["ESTRUCTURAL", "ESTRUCTURAL"]], P.rol, (v) => P.rol = v));
       g.appendChild(facturaInput("Formato", P.formato, (v) => P.formato = v, { ph: "M2X50…", ej: "M2X50 (2m×50m) · M1,52X50 · GAL025 (1/4 galón)" }));
       g.appendChild(facturaInput("Modelo", P.modelo, (v) => P.modelo = v, { ej: "G200 · COBKK10000 · NAUTICO600 · MEISTER" }));
       g.appendChild(facturaInput("Equiv (comparador, opcional)", P.equiv, (v) => P.equiv = v, { ph: "PETARP200…", ej: "Clave de producto EQUIVALENTE. Uso interno (comparador de granel); NUNCA va al PDF. Los productos con la misma Equiv se comparan entre proveedores. Ej: PETARP200, PVC650. Varias con /", title: "Productos con la MISMA Equiv se comparan entre sí en el granel (equivalentes de distintos proveedores). Interno, no va al PDF. Opcional." }));
@@ -9233,6 +9259,7 @@
       g.appendChild(facturaSelect("Unidad mínima", [["GRANEL", "GRANEL"], ["UNITARIO", "UNITARIO"]], (/^(conf|confeccion)$/i.test(String(P.unidadMinima || "").trim()) ? "GRANEL" : P.unidadMinima), (v) => P.unidadMinima = v));
       g.appendChild(facturaInput("Ancho rollo (m)", P.anchoRollo, (v) => P.anchoRollo = v, { inputmode: "decimal", ej: "2 · 1,52 · 3 (en metros)" }));
       g.appendChild(facturaInput("Rendimiento (estado comprado)", P.rendimiento, (v) => P.rendimiento = fnum(v), { inputmode: "decimal", ej: "1 (se vende entero) · 50 (m por rollo) · 100" }));
+      g.appendChild(facturaTextarea("Ficha técnica (Specs)", P.specs, (v) => P.specs = v, { ph: "Gramaje: 200 g/m²\nTratamiento UV: sí\n…", ej: "Una línea por atributo. Si se deja VACÍA, la columna Specs queda con la fórmula que la toma de la pestaña FICHAS (Proveedor+Tipo+Modelo)." }));
       card.appendChild(g);
       // Colores adicionales: líneas de la misma factura sumadas a este producto (mismo precio → un solo SKU).
       if (it.absorbidos && it.absorbidos.length) {

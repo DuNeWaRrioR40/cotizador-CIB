@@ -515,10 +515,12 @@
     //  - Vigentes: dedup por SKU/fecha (evita "zombis" al recargar un SKU).
     //  - Specs: ficha técnica desde la pestaña FICHAS por Proveedor+Tipo+Modelo (una ficha por material).
     const orden = CFG.GRANEL_ORDEN || [];
-    const inyecciones = [{ col: "Vigentes", tpl: CFG.VIGENTES_FORMULA_TPL }, { col: "Specs", tpl: CFG.SPECS_FORMULA_TPL }]
-      .map((x) => ({ idx: orden.indexOf(x.col), tpl: x.tpl })).filter((x) => x.tpl && x.idx !== -1);
+    // Specs es "solo si vacío": si la fila trae ficha técnica escrita a mano (carga sin factura),
+    // se respeta el texto literal y NO se pisa con la fórmula de FICHAS.
+    const inyecciones = [{ col: "Vigentes", tpl: CFG.VIGENTES_FORMULA_TPL, siempre: true }, { col: "Specs", tpl: CFG.SPECS_FORMULA_TPL, siempre: false }]
+      .map((x) => ({ idx: orden.indexOf(x.col), tpl: x.tpl, siempre: x.siempre })).filter((x) => x.tpl && x.idx !== -1);
     if (inyecciones.length) {
-      filas = filas.map((row, i) => { const r = row.slice(), fila = String(nextRow + i); inyecciones.forEach((x) => { r[x.idx] = x.tpl.replace(/\{FILA\}/g, fila); }); return r; });
+      filas = filas.map((row, i) => { const r = row.slice(), fila = String(nextRow + i); inyecciones.forEach((x) => { if (x.siempre || !String(r[x.idx] == null ? "" : r[x.idx]).trim()) r[x.idx] = x.tpl.replace(/\{FILA\}/g, fila); }); return r; });
     }
     return actualizarCeldas(token, hoja, [{ rango: "A" + nextRow, valores: filas }]);
   }
