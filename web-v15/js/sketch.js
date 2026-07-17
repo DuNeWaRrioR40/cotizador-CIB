@@ -511,18 +511,19 @@
     const HB = volB ? (parseFloat(volB.alto) || 0) : 0;
     const alasB = volB ? (volB.alas || null) : null;
     const vaB = (k) => !alasB || alasB[k] !== false;
+    const hBde = (k) => { if (!volB || !vaB(k)) return 0; const a2 = volB.altos; const v = a2 ? parseFloat(a2[k]) : NaN; return isNaN(v) ? HB : Math.max(0, v); };
     const BND = volB
-      ? { x0: vaB("izq") ? -HB : 0, x1: ancho + (vaB("der") ? HB : 0), y0: vaB("sup") ? -HB : 0, y1: largo + (vaB("inf") ? HB : 0) }
+      ? { x0: -hBde("izq"), x1: ancho + hBde("der"), y0: -hBde("sup"), y1: largo + hBde("inf") }
       : { x0: 0, x1: ancho, y0: 0, y1: largo };
     // Los ANEXOS (aletas/faldones) también son área editable: cortes/guías con ojetillos sobre
     // sus bordes funcionan aunque cuelguen fuera del paño base. zonasTela = tela REAL fuera de
     // la tapa (alas del volumétrico + rects de anexos): ahí los fades de la TAPA no aplican.
     const zonasTela = [];
     if (volB) {
-      if (vaB("sup")) zonasTela.push({ x0: 0, x1: ancho, y0: -HB, y1: 0 });
-      if (vaB("inf")) zonasTela.push({ x0: 0, x1: ancho, y0: largo, y1: largo + HB });
-      if (vaB("izq")) zonasTela.push({ x0: -HB, x1: 0, y0: 0, y1: largo });
-      if (vaB("der")) zonasTela.push({ x0: ancho, x1: ancho + HB, y0: 0, y1: largo });
+      if (hBde("sup") > 0) zonasTela.push({ x0: 0, x1: ancho, y0: -hBde("sup"), y1: 0 });
+      if (hBde("inf") > 0) zonasTela.push({ x0: 0, x1: ancho, y0: largo, y1: largo + hBde("inf") });
+      if (hBde("izq") > 0) zonasTela.push({ x0: -hBde("izq"), x1: 0, y0: 0, y1: largo });
+      if (hBde("der") > 0) zonasTela.push({ x0: ancho, x1: ancho + hBde("der"), y0: 0, y1: largo });
     }
     (spec.aletas || []).forEach((a) => {
       if (!(a && parseFloat(a.largo) > 0 && parseFloat(a.ancho) > 0)) return;
@@ -1016,11 +1017,14 @@
     const bandW = Math.max(8, Math.min(18, Math.min(w, h) * 0.12)), stitch = 3;
     (sk.bolsillos || []).forEach((bo) => {
       const horiz = (bo.arista === "sup" || bo.arista === "inf");
+      // rimOut (volumétrico): el bolsillo/borde vive por DEFECTO en el EXTREMO del ala (rim),
+      // desplazado hacia afuera el alto de su ala; sin rimOut, en el largo×ancho clásico.
+      const ro = (t.rimOut && t.rimOut[bo.arista]) || 0;
       let bx, by, bw, bh;
-      if (bo.arista === "sup") { bx = ox; by = oy; bw = w; bh = bandW; }
-      else if (bo.arista === "inf") { bx = ox; by = oy + h - bandW; bw = w; bh = bandW; }
-      else if (bo.arista === "izq") { bx = ox; by = oy; bw = bandW; bh = h; }
-      else { bx = ox + w - bandW; by = oy; bw = bandW; bh = h; }
+      if (bo.arista === "sup") { bx = ox; by = oy - ro; bw = w; bh = bandW; }
+      else if (bo.arista === "inf") { bx = ox; by = oy + h + ro - bandW; bw = w; bh = bandW; }
+      else if (bo.arista === "izq") { bx = ox - ro; by = oy; bw = bandW; bh = h; }
+      else { bx = ox + w + ro - bandW; by = oy; bw = bandW; bh = h; }
       s += `<rect class="pocket" x="${f1(bx)}" y="${f1(by)}" width="${f1(bw)}" height="${f1(bh)}" rx="2"/>`;
       let lx1, ly1, lx2, ly2;
       if (bo.arista === "sup") { lx1 = bx; ly1 = by + bh; lx2 = bx + bw; ly2 = by + bh; }
@@ -1300,14 +1304,15 @@
   // desplegada (la arista extrema de las alas de altura). Es el comportamiento por defecto en
   // volumétricos: los ojetillos van en el contorno exterior, no en el perímetro interno L×A.
   // Puntos que no están sobre el perímetro (p. ej. ojetillos de calados) se dejan en la tapa.
-  function ojetillosVolExterno(pts, A, L, H, alas) {
+  function ojetillosVolExterno(pts, A, L, H, alas, altos) {
     const E = 1e-6, va = (k) => !alas || alas[k] !== false; // sin ala, el ojetillo queda en el borde de la tapa
+    const hDe = (k) => { const v = altos ? parseFloat(altos[k]) : NaN; return isNaN(v) ? H : Math.max(0, v); };
     return (pts || []).map((p) => {
       const ar = p.ar; // arista de ORIGEN (resuelve las esquinas, que tocan dos aristas a la vez)
-      if (ar === "sup" || (!ar && Math.abs(p.y) < E)) return va("sup") ? { x: p.x, y: -H } : p;
-      if (ar === "inf" || (!ar && Math.abs(p.y - L) < E)) return va("inf") ? { x: p.x, y: L + H } : p;
-      if (ar === "izq" || (!ar && Math.abs(p.x) < E)) return va("izq") ? { x: -H, y: p.y } : p;
-      if (ar === "der" || (!ar && Math.abs(p.x - A) < E)) return va("der") ? { x: A + H, y: p.y } : p;
+      if (ar === "sup" || (!ar && Math.abs(p.y) < E)) return va("sup") ? { x: p.x, y: -hDe("sup") } : p;
+      if (ar === "inf" || (!ar && Math.abs(p.y - L) < E)) return va("inf") ? { x: p.x, y: L + hDe("inf") } : p;
+      if (ar === "izq" || (!ar && Math.abs(p.x) < E)) return va("izq") ? { x: -hDe("izq"), y: p.y } : p;
+      if (ar === "der" || (!ar && Math.abs(p.x - A) < E)) return va("der") ? { x: A + hDe("der"), y: p.y } : p;
       return p;
     });
   }
@@ -1318,7 +1323,12 @@
     if (!(A > 0) || !(L > 0) || !(H > 0)) return '<p class="muted small">Ingresa largo, ancho y alto para ver la vista volumétrica.</p>';
     // Alas presentes (paredes del volumen): sin ala, ese lado del desplegado no existe.
     const alasV = spec.volumetrico.alas || null, va = (k) => !alasV || alasV[k] !== false;
-    const hs = va("sup") ? H : 0, hi = va("inf") ? H : 0, hz = va("izq") ? H : 0, hd = va("der") ? H : 0;
+    // Alturas POR LADO (alas disímiles): cada ala usa su alto propio; sin "altos", el general.
+    const altosV = spec.volumetrico.altos || null;
+    const hDe = (k) => { if (!va(k)) return 0; const v = altosV ? parseFloat(altosV[k]) : NaN; return isNaN(v) ? H : Math.max(0, v); };
+    const hs = hDe("sup"), hi = hDe("inf"), hz = hDe("izq"), hd = hDe("der");
+    const Hmax = Math.max(hs, hi, hz, hd, H);
+    const altosIguales = [hs, hi, hz, hd].filter((v) => v > 0).every((v, _i, arr2) => Math.abs(v - arr2[0]) < 1e-9);
     const conCotas = opts.cotas !== false;
     const f1 = (n) => n.toFixed(1);
     const VW = 380;
@@ -1326,12 +1336,12 @@
     // que su geometría se desplaza H hacia afuera respecto del paño base. Los straps no aplican.
     const sk0 = construirSketch(spec);
     const aletasV = (sk0.aletas || []).map((a) => {
-      const dx = a.fused === "r" ? -H : a.fused === "l" ? H : 0;
-      const dy = a.fused === "t" ? H : a.fused === "b" ? -H : 0;
+      const dx = a.fused === "r" ? -hDe("izq") : a.fused === "l" ? hDe("der") : 0;
+      const dy = a.fused === "t" ? hDe("inf") : a.fused === "b" ? -hDe("sup") : 0;
       return Object.assign({}, a, { x: a.x + dx, y: a.y + dy, ojetillos: (a.ojetillos || []).map((p) => ({ x: p.x + dx, y: p.y + dy })) });
     });
     const skVol = Object.assign({}, sk0, { aletas: aletasV, straps: sk0.straps || [] });
-    if ((spec.volumetrico.ojEn || "externo") === "externo") skVol.ojetillos = ojetillosVolExterno(skVol.ojetillos, A, L, H, alasV);
+    if ((spec.volumetrico.ojEn || "externo") === "externo") skVol.ojetillos = ojetillosVolExterno(skVol.ojetillos, A, L, H, alasV, altosV);
     const simbVol = simbologia(skVol);
     const legH = simbVol.length ? (11 + simbVol.length * 11 + 8) : 0;
     const hCota = (xa, xb, y, val) => {
@@ -1403,10 +1413,10 @@
         const clA = (x) => Math.max(0, Math.min(A, x)), clL = (y) => Math.max(0, Math.min(L, y));
         const mez = (pq, qq, v) => [pq[0] + (qq[0] - pq[0]) * v, pq[1] + (qq[1] - pq[1]) * v];
         const vol3 = (x, y) => {
-          if (y > L && va("inf")) return mez(top3(clA(x), L), rim3(clA(x), L), Math.min(1, (y - L) / H));
-          if (y < 0 && va("sup")) return mez(top3(clA(x), 0), rim3(clA(x), 0), Math.min(1, -y / H));
-          if (x < 0 && va("izq")) return mez(top3(0, clL(y)), rim3(0, clL(y)), Math.min(1, -x / H));
-          if (x > A && va("der")) return mez(top3(A, clL(y)), rim3(A, clL(y)), Math.min(1, (x - A) / H));
+          if (y > L && hi) return mez(top3(clA(x), L), rim3(clA(x), L), Math.min(1, (y - L) / hi));
+          if (y < 0 && hs) return mez(top3(clA(x), 0), rim3(clA(x), 0), Math.min(1, -y / hs));
+          if (x < 0 && hz) return mez(top3(0, clL(y)), rim3(0, clL(y)), Math.min(1, -x / hz));
+          if (x > A && hd) return mez(top3(A, clL(y)), rim3(A, clL(y)), Math.min(1, (x - A) / hd));
           return top3(clA(x), clL(y));
         };
         // Pliegues (aristas de la tapa): menú completo por arista.
@@ -1435,7 +1445,7 @@
         // Cortes y CALADOS (rect/circ/línea) sobre el cubo: se dibujan TODOS sus lados mapeados a
         // la cara que corresponda (tapa o pared), con sus ojetillos. Clicable: solo cortes-línea
         // (igual criterio que el desplegado).
-        const bx0 = va("izq") ? -H : 0, bx1 = A + (va("der") ? H : 0), by0 = va("sup") ? -H : 0, by1 = L + (va("inf") ? H : 0);
+        const bx0 = -hz, bx1 = A + hd, by0 = -hs, by1 = L + hi;
         // Divide a→b en los PLIEGUES (x=0, x=A, y=0, y=L): cada tramo queda en UNA cara, así un
         // corte que cruza de la tapa a un ala se QUIEBRA en el eje del pliegue (continuo doblado).
         const splitPl = (pa, pb) => {
@@ -1570,25 +1580,27 @@
     });
     // Calados de esquina: solo donde se ENCUENTRAN dos alas
     const notch = [];
-    if (hs && hz) notch.push([0, 0]); if (hs && hd) notch.push([hz + A, 0]);
-    if (hi && hz) notch.push([0, hs + L]); if (hi && hd) notch.push([hz + A, hs + L]);
+    if (hs && hz) notch.push([0, 0, hz, hs]); if (hs && hd) notch.push([hz + A, 0, hd, hs]);
+    if (hi && hz) notch.push([0, hs + L, hz, hi]); if (hi && hd) notch.push([hz + A, hs + L, hd, hi]);
     notch.forEach((n) => {
-      s += `<rect class="cut" x="${f1(X(n[0]))}" y="${f1(Y(n[1]))}" width="${f1(H * scB)}" height="${f1(H * scB)}" fill="rgba(216,68,58,0.06)"/>`;
-      s += scSVG(X(n[0] + H / 2), Y(n[1] + H / 2));
+      s += `<rect class="cut" x="${f1(X(n[0]))}" y="${f1(Y(n[1]))}" width="${f1(n[2] * scB)}" height="${f1(n[3] * scB)}" fill="rgba(216,68,58,0.06)"/>`;
+      s += scSVG(X(n[0] + n[2] / 2), Y(n[1] + n[3] / 2));
     });
     // Elementos del paño (ventanas, calados, bolsillos, ojetillos) sobre la tapa central, offset por el alto.
     const skT = skVol;
     const rT = Math.max(1.4, Math.min(2.6, scB * 0.022));
     const ojeT = (cx, cy, cls) => `<circle class="${cls}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rT)}"/><circle class="${cls}-in" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(rT * 0.42)}"/>`;
-    s += elementosSketch(skT, { px: (x) => X(hz + x), py: (y) => Y(hs + y), scale: scB, r: rT, ojeSVG: ojeT, ox: X(hz), oy: Y(hs), w: A * scB, h: L * scB });
+    const rimOutV = spec.volumetrico.bordesEnPliegue ? null : { sup: hs * scB, inf: hi * scB, izq: hz * scB, der: hd * scB };
+    s += elementosSketch(skT, { px: (x) => X(hz + x), py: (y) => Y(hs + y), scale: scB, r: rT, ojeSVG: ojeT, ox: X(hz), oy: Y(hs), w: A * scB, h: L * scB, rimOut: rimOutV });
     // Etiqueta de la tapa (esquina sup-izq, para no chocar con los elementos).
     s += `<text class="ins-lbl" x="${f1(X(hz) + 3)}" y="${f1(Y(hs) + 8)}">TAPA ${fmt(L)}×${fmt(A)}m</text>`;
     if (conCotas) {
       s += hCota(X(0), X(Wd), pby - 10, Wd); // ancho total de la hoja
       s += vCota(Y(0), Y(Ld), pbx - 12, Ld); // largo total de la hoja
-      if (hs) s += vCota(Y(0), Y(hs), X(hz + A) + 12, H); // alto (ala) marcado en una esquina
-      else if (hi) s += vCota(Y(hs + L), Y(Ld), X(hz + A) + 12, H);
-      if (notch.length && hz) s += `<text class="cota-lbl" x="${f1(X(hz / 2))}" y="${f1(Y(hs + L / 2))}" text-anchor="middle" transform="rotate(-90 ${f1(X(hz / 2))} ${f1(Y(hs + L / 2))})">calado ${fmt(H)}m</text>`;
+      if (hs) s += vCota(Y(0), Y(hs), X(hz + A) + 12, hs); // alto (ala) marcado en una esquina
+      else if (hi) s += vCota(Y(hs + L), Y(Ld), X(hz + A) + 12, hi);
+      if (hi && hs && Math.abs(hi - hs) > 1e-9) s += vCota(Y(hs + L), Y(Ld), X(hz) - 10, hi); // inf distinto: cota propia
+      if (notch.length && hz && altosIguales) s += `<text class="cota-lbl" x="${f1(X(hz / 2))}" y="${f1(Y(hs + L / 2))}" text-anchor="middle" transform="rotate(-90 ${f1(X(hz / 2))} ${f1(Y(hs + L / 2))})">calado ${fmt(hz)}m</text>`;
     }
     // Numeración NumOj (1er/último ojetillo por arista, con flecha) — solo en el plano en vivo.
     // En modo "externo" el marcador se proyecta al borde extremo del ala, junto a su ojetillo.
@@ -1597,8 +1609,8 @@
       skVol.ojNumeros.forEach((m) => {
         let mx = m.x, my = m.y;
         if (ojExtN) {
-          if (m.ny === -1 && hs) my = -H; else if (m.ny === 1 && hi) my = L + H;
-          else if (m.nx === -1 && hz) mx = -H; else if (m.nx === 1 && hd) mx = A + H;
+          if (m.ny === -1 && hs) my = -hs; else if (m.ny === 1 && hi) my = L + hi;
+          else if (m.nx === -1 && hz) mx = -hz; else if (m.nx === 1 && hd) mx = A + hd;
         }
         const sx = X(hz + mx), sy = Y(hs + my), G = 8, AL = 12, HB = 3.5;
         const bx = sx + m.nx * G, by = sy + m.ny * G;
@@ -1631,10 +1643,10 @@
       const hitD = (aM, bM, extra) => {
         s += `<line class="arista-hit" ${extra} data-ax="${aM[0]}" data-ay="${aM[1]}" data-bx="${bM[0]}" data-by="${bM[1]}" x1="${f1(pxT(aM[0]))}" y1="${f1(pyT(aM[1]))}" x2="${f1(pxT(bM[0]))}" y2="${f1(pyT(bM[1]))}"/>`;
       };
-      if (va("sup")) { hitD([0, -H], [A, -H], 'data-arista="sup" data-rim="1"'); hitD([0, 0], [0, -H], 'data-libre="1"'); hitD([A, 0], [A, -H], 'data-libre="1"'); }
-      if (va("inf")) { hitD([0, L + H], [A, L + H], 'data-arista="inf" data-rim="1"'); hitD([0, L], [0, L + H], 'data-libre="1"'); hitD([A, L], [A, L + H], 'data-libre="1"'); }
-      if (va("izq")) { hitD([-H, 0], [-H, L], 'data-arista="izq" data-rim="1"'); hitD([0, 0], [-H, 0], 'data-libre="1"'); hitD([0, L], [-H, L], 'data-libre="1"'); }
-      if (va("der")) { hitD([A + H, 0], [A + H, L], 'data-arista="der" data-rim="1"'); hitD([A, 0], [A + H, 0], 'data-libre="1"'); hitD([A, L], [A + H, L], 'data-libre="1"'); }
+      if (hs) { hitD([0, -hs], [A, -hs], 'data-arista="sup" data-rim="1"'); hitD([0, 0], [0, -hs], 'data-libre="1"'); hitD([A, 0], [A, -hs], 'data-libre="1"'); }
+      if (hi) { hitD([0, L + hi], [A, L + hi], 'data-arista="inf" data-rim="1"'); hitD([0, L], [0, L + hi], 'data-libre="1"'); hitD([A, L], [A, L + hi], 'data-libre="1"'); }
+      if (hz) { hitD([-hz, 0], [-hz, L], 'data-arista="izq" data-rim="1"'); hitD([0, 0], [-hz, 0], 'data-libre="1"'); hitD([0, L], [-hz, L], 'data-libre="1"'); }
+      if (hd) { hitD([A + hd, 0], [A + hd, L], 'data-arista="der" data-rim="1"'); hitD([A, 0], [A + hd, 0], 'data-libre="1"'); hitD([A, L], [A + hd, L], 'data-libre="1"'); }
       (skVol.aletas || []).forEach((al2) => {
         if (al2.id == null || !(al2.w > 0) || !(al2.h > 0)) return;
         const ed = {

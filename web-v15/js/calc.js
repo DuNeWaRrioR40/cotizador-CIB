@@ -191,8 +191,12 @@
     // Volumétrico: el alto se suma 2× a cada dimensión del paño (paredes que bajan por ambos lados).
     const alturaRaw = opts.altura != null ? parseFloat(opts.altura) : 0;
     const altura = isNaN(alturaRaw) ? 0 : Math.max(0, alturaRaw);
-    const largoBase = largo + 2 * altura;
-    const anchoBase = ancho + 2 * altura;
+    // Altos POR LADO (volumétrico con alas disímiles o alas apagadas): la hoja real es
+    // largo + hSup + hInf  ×  ancho + hIzq + hDer. Sin "altos", cae al clásico 2× alto.
+    const altosO = opts.altos || null;
+    const hN = (v) => { const r = parseFloat(v); return isNaN(r) ? 0 : Math.max(0, r); };
+    const largoBase = largo + (altosO ? (hN(altosO.sup) + hN(altosO.inf)) : 2 * altura);
+    const anchoBase = ancho + (altosO ? (hN(altosO.izq) + hN(altosO.der)) : 2 * altura);
     // Cabeceras (sup/inf) suman al largo; lados (izq/der) suman al ancho.
     const largoFuente = largoBase + a(bordes.sup) + a(bordes.inf);
     const anchoNeto = anchoBase + a(bordes.izq) + a(bordes.der);

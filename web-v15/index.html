@@ -202,7 +202,15 @@
       <p class="muted small">Puedes escribir operaciones, por ejemplo <b>240/100</b> o <b>2,4*2</b>; al salir del campo se calcula el resultado.</p>
       <label class="chk"><input type="checkbox" id="f_usaAlto" /> <span>Producto volumétrico (agregar alto)</span></label>
       <label class="field hidden" id="wAltura"><span>Alto (m)</span><input id="f_altura" type="text" inputmode="text" autocomplete="off" placeholder="se suma 2× alto al largo y al ancho" /></label>
+      <label class="chk hidden" id="wAltosDist"><input id="f_altosDist" type="checkbox" /> <span>Altos distintos por aleta</span></label>
+      <div class="pieza-grid hidden" id="wAltosCampos">
+        <label class="field"><span>Alto sup. (m)</span><input id="f_altoSup" type="text" inputmode="text" placeholder="= alto general" /></label>
+        <label class="field"><span>Alto inf. (m)</span><input id="f_altoInf" type="text" inputmode="text" placeholder="= alto general" /></label>
+        <label class="field"><span>Alto izq. (m)</span><input id="f_altoIzq" type="text" inputmode="text" placeholder="= alto general" /></label>
+        <label class="field"><span>Alto der. (m)</span><input id="f_altoDer" type="text" inputmode="text" placeholder="= alto general" /></label>
+      </div>
       <label class="chk hidden" id="wOjVol"><input id="f_ojVolExt" type="checkbox" checked /> <span>Ojetillos en el borde externo del desplegado (recomendado)</span></label>
+      <label class="chk hidden" id="wBordesPliegue"><input id="f_bordesPliegue" type="checkbox" /> <span>Bordes/uniones en el largo × ancho (pliegues) en vez de los extremos de las aletas</span></label>
       <div class="radios hidden" id="wAlas"><span class="small muted" style="align-self:center">Alas del volumen (paredes):</span>
         <label><input class="ala-chk" data-k="sup" type="checkbox" checked /> Superior</label>
         <label><input class="ala-chk" data-k="inf" type="checkbox" checked /> Inferior</label>

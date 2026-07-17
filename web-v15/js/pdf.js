@@ -290,11 +290,12 @@
     const bandW = Math.max(8, Math.min(18, Math.min(wpx, hpx) * 0.12)), stitch = 3;
     (sk.bolsillos || []).forEach((bo) => {
       const horiz = (bo.arista === "sup" || bo.arista === "inf");
+      const ro = (T.rimOut && T.rimOut[bo.arista]) || 0;   // volumétrico: bolsillo en el rim del ala
       let rx, ry, rw, rh;
-      if (bo.arista === "sup") { rx = x0; ry = topRect - bandW; rw = wpx; rh = bandW; }
-      else if (bo.arista === "inf") { rx = x0; ry = topRect - hpx; rw = wpx; rh = bandW; }
-      else if (bo.arista === "izq") { rx = x0; ry = topRect - hpx; rw = bandW; rh = hpx; }
-      else { rx = x0 + wpx - bandW; ry = topRect - hpx; rw = bandW; rh = hpx; }
+      if (bo.arista === "sup") { rx = x0; ry = topRect + ro - bandW; rw = wpx; rh = bandW; }
+      else if (bo.arista === "inf") { rx = x0; ry = topRect - hpx - ro; rw = wpx; rh = bandW; }
+      else if (bo.arista === "izq") { rx = x0 - ro; ry = topRect - hpx; rw = bandW; rh = hpx; }
+      else { rx = x0 + wpx + ro - bandW; ry = topRect - hpx; rw = bandW; rh = hpx; }
       page.drawRectangle({ x: rx, y: ry, width: rw, height: rh, borderColor: TEAL, borderWidth: 0.8, color: TEAL, opacity: 0.12, borderOpacity: 1 });
       let a, b, d, e;
       if (bo.arista === "sup") { a = rx; b = ry; d = rx + rw; e = ry; }
@@ -405,17 +406,19 @@
     const A = parseFloat(spec.ancho) || 0, L = parseFloat(spec.largo) || 0, H = parseFloat(spec.volumetrico.alto) || 0;
     if (!(A > 0) || !(L > 0) || !(H > 0)) return;
     const alasV = spec.volumetrico.alas || null, va = (k) => !alasV || alasV[k] !== false;
-    const hs = va("sup") ? H : 0, hi = va("inf") ? H : 0, hz = va("izq") ? H : 0, hd = va("der") ? H : 0;
+    const altosV = spec.volumetrico.altos || null;
+    const hDe = (k) => { if (!va(k)) return 0; const v = altosV ? parseFloat(altosV[k]) : NaN; return isNaN(v) ? H : Math.max(0, v); };
+    const hs = hDe("sup"), hi = hDe("inf"), hz = hDe("izq"), hd = hDe("der");
     const conCotas = opts.cotas !== false, fmt = SK.fmt;
     // Simbología presente (hoja desplegada, sin aletas): reserva alto para la leyenda.
     const sk0 = SK.construirSketch(spec);
     const aletasV = (sk0.aletas || []).map((a) => {
-      const adx = a.fused === "r" ? -H : a.fused === "l" ? H : 0;
-      const ady = a.fused === "t" ? H : a.fused === "b" ? -H : 0;
+      const adx = a.fused === "r" ? -hDe("izq") : a.fused === "l" ? hDe("der") : 0;
+      const ady = a.fused === "t" ? hDe("inf") : a.fused === "b" ? -hDe("sup") : 0;
       return Object.assign({}, a, { x: a.x + adx, y: a.y + ady, ojetillos: (a.ojetillos || []).map((p) => ({ x: p.x + adx, y: p.y + ady })) });
     });
     const skVol = Object.assign({}, sk0, { aletas: aletasV, straps: [] });
-    if ((spec.volumetrico.ojEn || "externo") === "externo" && SK.ojetillosVolExterno) skVol.ojetillos = SK.ojetillosVolExterno(skVol.ojetillos, A, L, H, alasV);
+    if ((spec.volumetrico.ojEn || "externo") === "externo" && SK.ojetillosVolExterno) skVol.ojetillos = SK.ojetillosVolExterno(skVol.ojetillos, A, L, H, alasV, altosV);
     const simb = SK.simbologia(skVol);
     const legH = simb.length ? (9 + simb.length * 9 + 6) : 0;
     const EDGE = PDFLib.rgb(0.12, 0.12, 0.12), FOLD = PDFLib.rgb(0.54, 0.63, 0.72), CUT = PDFLib.rgb(0.557, 0.267, 0.678);
@@ -468,23 +471,25 @@
     if (hd) foldsV.push([[hz + A, hs], [hz + A, hs + L]]);
     foldsV.forEach((e) => dl(X(e[0][0]), Y(e[0][1]), X(e[1][0]), Y(e[1][1]), FOLD, 0.7, [4, 3]));
     const notch = [];
-    if (hs && hz) notch.push([0, 0]); if (hs && hd) notch.push([hz + A, 0]);
-    if (hi && hz) notch.push([0, hs + L]); if (hi && hd) notch.push([hz + A, hs + L]);
+    if (hs && hz) notch.push([0, 0, hz, hs]); if (hs && hd) notch.push([hz + A, 0, hd, hs]);
+    if (hi && hz) notch.push([0, hs + L, hz, hi]); if (hi && hd) notch.push([hz + A, hs + L, hd, hi]);
     notch.forEach((n) => {
-      page.drawRectangle({ x: PX(X(n[0])), y: PY(Y(n[1] + H)), width: H * scB, height: H * scB, borderColor: CUT, borderWidth: 1.1, borderDashArray: [4, 2] });
-      dtC(fmt(H) + "x" + fmt(H), X(n[0] + H / 2), Y(n[1] + H / 2) + 2, 5.5, CUT);
+      page.drawRectangle({ x: PX(X(n[0])), y: PY(Y(n[1] + n[3])), width: n[2] * scB, height: n[3] * scB, borderColor: CUT, borderWidth: 1.1, borderDashArray: [4, 2] });
+      dtC(fmt(n[2]) + "x" + fmt(n[3]), X(n[0] + n[2] / 2), Y(n[1] + n[3] / 2) + 2, 5.5, CUT);
     });
     // Elementos del paño (ventanas, calados, bolsillos, ojetillos) sobre la tapa central, offset por el alto.
     const skT = skVol;
     const rT = Math.max(1.4, Math.min(2.6, scB * 0.022));
-    elementosPDF(page, skT, { px: (ex) => box.x + X(hz + ex), py: (ey) => box.top - Y(hs + ey), scale: scB, x0: box.x + X(hz), topRect: box.top - Y(hs), wpx: A * scB, hpx: L * scB, r: rT }, font);
+    const rimOutP = spec.volumetrico.bordesEnPliegue ? null : { sup: hs * scB, inf: hi * scB, izq: hz * scB, der: hd * scB };
+    elementosPDF(page, skT, { px: (ex) => box.x + X(hz + ex), py: (ey) => box.top - Y(hs + ey), scale: scB, x0: box.x + X(hz), topRect: box.top - Y(hs), wpx: A * scB, hpx: L * scB, r: rT, rimOut: rimOutP }, font);
     dtL("TAPA " + fmt(L) + "x" + fmt(A) + "m", X(hz) + 3, Y(hs) + 9, 6.5, INK);
     notasPDF(page, skVol.notas, (mx) => PX(X(hz + mx)), (my) => PY(Y(hs + my)), scB, spec.rotDrag, font);
     if (conCotas) {
       hCota(X(0), X(Wd), pby - 12, Wd);
       vCota(Y(0), Y(Ld), pbx - 14, Ld);
-      if (hs) vCota(Y(0), Y(hs), X(hz + A) + 14, H);
-      else if (hi) vCota(Y(hs + L), Y(Ld), X(hz + A) + 14, H);
+      if (hs) vCota(Y(0), Y(hs), X(hz + A) + 14, hs);
+      else if (hi) vCota(Y(hs + L), Y(Ld), X(hz + A) + 14, hi);
+      if (hi && hs && Math.abs(hi - hs) > 1e-9) vCota(Y(hs + L), Y(Ld), X(hz) - 16, hi);
     }
     // Leyenda de simbología en el borde inferior izquierdo.
     if (legH) leyendaPDF(page, simb, box.x + 3, box.top - box.h + legH, font);
