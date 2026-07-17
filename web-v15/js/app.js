@@ -6342,6 +6342,57 @@
       aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
       if (ctx.onChange) ctx.onChange();
     }
+    // MACRO "modificar medida entre anchors": la arista se reduce SIMÉTRICAMENTE al centro del
+    // tramo entre los 2 anchors; los vértices opuestos del diseño quedan fijos (se crean anchors
+    // bloqueados ahí) y actúan como ejes: dos cortes "Eliminar" empatados forman el trapecio.
+    // Todo queda vinculado: arrastrar cualquiera de los 4 anchors re-deriva la geometría.
+    function modificarMedidaEntre(anA, anB) {
+      const f = window.CalcCIBSA.fmtNum;
+      const segE = aristaSegAncla(anA.ar, A, L); if (!segE) return;
+      const len = Math.hypot(segE.b.x - segE.a.x, segE.b.y - segE.a.y);
+      const u = { x: (segE.b.x - segE.a.x) / len, y: (segE.b.y - segE.a.y) / len };
+      const dDe = (an2) => Math.max(0, Math.min(len, an2.esq === "fin" ? (len - (parseFloat(an2.d) || 0)) : (parseFloat(an2.d) || 0)));
+      let tA = dDe(anA), tB = dDe(anB);
+      const anLo = tA <= tB ? anA : anB, anHi = tA <= tB ? anB : anA;
+      const tLo = Math.min(tA, tB), tHi = Math.max(tA, tB);
+      const span = tHi - tLo;
+      if (!(span > 0.01)) return alert("Los 2 anchors están en el mismo punto; sepáralos primero.");
+      const txt = prompt("Nueva medida entre los 2 anchors (m) — actual: " + f(span) + " m.\nSe reduce simétricamente hacia el centro; los vértices opuestos quedan fijos como ejes. Acepta aritmética (ej. " + f(span) + "/2):", f(span));
+      if (txt == null) return;
+      const M = window.CalcCIBSA.evalExpr(String(txt).replace(",", "."));
+      if (M == null || isNaN(M) || !(M > 0)) return alert("Medida no válida.");
+      if (M > span + 1e-9) return alert("La medida nueva (" + f(M) + " m) no puede superar la actual (" + f(span) + " m): la tela no se puede agregar, solo recortar.");
+      const c0 = (tLo + tHi) / 2, q1 = c0 - M / 2, q2 = c0 + M / 2;
+      // mover los anchors simétricamente
+      const setD = (an2, t) => { an2.d = rd3(an2.esq === "fin" ? (len - t) : t); };
+      setD(anLo, q1); setD(anHi, q2);
+      // vértices opuestos (fijos): anchors bloqueados en la arista opuesta
+      const opuesta = { sup: "inf", inf: "sup", izq: "der", der: "izq" }[anA.ar];
+      const fx1 = { id: nuevoIdAncla(ctx.anclas, ctx.cortes), ar: opuesta, esq: "ini", d: 0, fix: true };
+      ctx.anclas.push(fx1);
+      const fx2 = { id: nuevoIdAncla(ctx.anclas, ctx.cortes), ar: opuesta, esq: "fin", d: 0, fix: true };
+      ctx.anclas.push(fx2);
+      const nIn = { sup: { x: 0, y: 1 }, inf: { x: 0, y: -1 }, izq: { x: 1, y: 0 }, der: { x: -1, y: 0 } }[anA.ar];
+      const depth = (anA.ar === "sup" || anA.ar === "inf") ? L : A;
+      const V1 = { x: segE.a.x + nIn.x * depth, y: segE.a.y + nIn.y * depth };
+      const V2 = { x: segE.b.x + nIn.x * depth, y: segE.b.y + nIn.y * depth };
+      const Q1 = { x: segE.a.x + u.x * q1, y: segE.a.y + u.y * q1 };
+      const Q2 = { x: segE.a.x + u.x * q2, y: segE.a.y + u.y * q2 };
+      const mkCorte = (V, Q, fxAn, movAn, esquina) => {
+        const cN = crearLineaEnSeg(ctx.cortes, { a: V, b: Q }, "corte"); if (!cN) return;
+        cN.fadeKill = true;
+        // lado a ELIMINAR: el que contiene la esquina original de ese extremo
+        const sSide = (-(Q.y - V.y)) * (esquina.x - V.x) + (Q.x - V.x) * (esquina.y - V.y);
+        cN.fade = sSide > 0 ? "A" : "B";
+        const lenC = Math.hypot(Q.x - V.x, Q.y - V.y);
+        const idA = nuevoIdAncla(ctx.anclas, ctx.cortes);
+        cN.anclas = [{ id: idA, t: 0, emp: fxAn.id }, { id: idA + 1, t: rd3(lenC), emp: movAn.id }];
+      };
+      mkCorte(V1, Q1, fx1, anLo, { x: segE.a.x, y: segE.a.y });
+      mkCorte(V2, Q2, fx2, anHi, { x: segE.b.x, y: segE.b.y });
+      aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
+      if (ctx.onChange) ctx.onChange();
+    }
     function menuAncla(reg) {
       cerrarMenuAristas();
       const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
@@ -6353,6 +6404,10 @@
         if (regA && (ctx.anclas || []).length >= 2) {
           item("Corte hasta otro anchor…", () => iniciarConexion(regA, "corte"));
           item("Guía hasta otro anchor…", () => iniciarConexion(regA, "guia"));
+          if (!regA.an.seg) {
+            const otros = (ctx.anclas || []).filter((a2) => a2 !== regA.an && !a2.seg && a2.ar === regA.an.ar);
+            if (otros.length === 1) item("Modificar medida entre anchors…", () => modificarMedidaEntre(regA.an, otros[0]));
+          }
         } }
       if (!reg.an.fix) item("Bloquear anchor (fijar su posición)", () => { reg.an.fix = true; if (ctx.onChange) ctx.onChange(); });
       else item("Desbloquear anchor", () => { reg.an.fix = false; if (ctx.onChange) ctx.onChange(); });

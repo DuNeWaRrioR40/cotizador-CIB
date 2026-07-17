@@ -555,6 +555,13 @@
         tapa: c.tapa ? { poly: c.tapa.poly.map(mp), nombre: c.tapa.nombre, edges: (c.tapa.edges || []).map((e) => ({ k: e.k, a: mp(e.a), b: mp(e.b), fus: e.fus, sobre: e.sobre, oj: (e.oj || []).map(mp) })) } : c.tapa,
         pivote: c.pivote ? mp(c.pivote) : c.pivote,
         sides: c.sides ? { t: c.sides.t, b: c.sides.b, l: c.sides.r, r: c.sides.l } : c.sides,
+        // El espejo INVIERTE la orientación: el lado A pasa a ser B (y viceversa) — sin esto, los
+        // cortes "Eliminar/difuminar" recortan hacia el lado equivocado y el contorno colapsa.
+        fade: c.fade === "A" ? "B" : c.fade === "B" ? "A" : c.fade,
+        ojAristaLado: c.ojAristaLado === "A" ? "B" : c.ojAristaLado === "B" ? "A" : c.ojAristaLado,
+        strapLado: c.strapLado === "A" ? "B" : c.strapLado === "B" ? "A" : c.strapLado,
+        fadePoly: (c.fadePoly && c.fadePoly.length) ? c.fadePoly.map(mp) : c.fadePoly,
+        fadeZona: c.fadeZona === "izq" ? "der" : c.fadeZona === "der" ? "izq" : c.fadeZona,
       }));
     }
     // Elementos propios de la vista trasera (NO se espejan: ya van en coordenadas de la trasera).
