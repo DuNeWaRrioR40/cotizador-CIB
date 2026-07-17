@@ -696,6 +696,8 @@
         const a = c.segments[0].a, b = c.segments[0].b;
         poly = clipPolyHalfPlane(poly, a.x, a.y, b.x, b.y, c.fade === "A"); // conserva el lado que NO se elimina
       });
+      // dedupe: el clip deja vértices repetidos cuando un corte pasa justo por una esquina
+      poly = poly.filter((p, i, arr) => { const q = arr[(i + arr.length - 1) % arr.length]; return Math.hypot(p.x - q.x, p.y - q.y) > 1e-6; });
       if (poly.length >= 3) panoPoly = poly;
     }
     // Los ojetillos perimetrales (modo total/parejo) se reparten sobre el CONTORNO REAL: si algún corte

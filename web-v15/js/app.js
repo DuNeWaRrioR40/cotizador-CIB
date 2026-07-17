@@ -6279,9 +6279,14 @@
   // definida por ambos puntos (se ajustan ángulo y, si hace falta, el largo). Idempotente;
   // corre en cada recompute, así el corte SIGUE al ancla aunque cambien las dimensiones.
   function aplicarEmpates(cortesRaw, anclas, A, L) {
-    if (!(A > 0 && L > 0) || !anclas || !anclas.length) return;
+    if (!(A > 0 && L > 0)) return;
     const ev = window.CalcCIBSA.evalExpr;
-    const pos = {}; anclas.forEach((an) => { const pq = posAnclaArista(an, A, L); if (pq) pos[an.id] = pq; });
+    const pos = {}; (anclas || []).forEach((an) => { const pq = posAnclaArista(an, A, L); if (pq) pos[an.id] = pq; });
+    // Los anchors de CORTES también sirven de destino de empate (cortes que cuelgan de otros cortes,
+    // p.ej. al ITERAR "modificar medida" sobre una arista ya recortada). Su posición sale de la
+    // geometría vigente y se refresca tras reposicionar cada corte (los dependientes van después).
+    const posDeCorte = (c) => { ((c && c.anclas) || []).forEach((a) => { const pq = posAnclaCorte(c, a); if (pq) pos[a.id] = { x: pq.x, y: pq.y }; }); };
+    (cortesRaw || []).forEach(posDeCorte);
     (cortesRaw || []).forEach((c) => {
       if (!c || !Array.isArray(c.anclas) || !c.anclas.length) return;
       const ln = lineaRawCorte(c); if (!ln) return;
@@ -6311,7 +6316,85 @@
         c.largo = String(rd5(t1 + D + cola));
         fijar({ x: P1.x - u.x * t1, y: P1.y - u.y * t1 }, u.x, u.y);
       }
+      posDeCorte(c);   // sus anchors quedan al día para cortes que dependan de éste
     });
+  }
+  // ITERACIÓN de "modificar medida": opera sobre una LÍNEA DE CORTE que ya es borde real del
+  // paño (corte "Eliminar"). El tramo vivo de esa línea se ubica en el contorno real (panoPoly) y
+  // los vértices VECINOS del contorno actúan de pivotes (ejes), igual que los vértices opuestos
+  // en la versión de arista base. Crea 2 cortes "Eliminar" empatados: al pivote (anchor bloqueado
+  // sobre su carril — arista base u otro corte) y al anchor móvil. Recursivo por construcción.
+  function iterarMedidaEnCorte(ctxI, cH, anA, anB, M) {
+    const A = ctxI.ancho, L = ctxI.largo;
+    const ln = lineaRawCorte(cH); if (!ln) return "Línea no válida.";
+    const clampT = (an2) => Math.max(0, Math.min(ln.w, parseFloat(an2.t) || 0));
+    const tA = clampT(anA), tB = clampT(anB);
+    const anLo = tA <= tB ? anA : anB, anHi = tA <= tB ? anB : anA;
+    const tLo = Math.min(tA, tB), tHi = Math.max(tA, tB), span = tHi - tLo;
+    if (!(span > 0.01)) return "Los 2 anchors están en el mismo punto; sepáralos primero.";
+    if (!(M > 0) || M > span + 1e-9) return "Medida no válida.";
+    let poly = null;
+    try { poly = window.SketchCIBSA.construirSketch({ ancho: A, largo: L, ojTotal: 0, ventanas: [], cortes: cortesSpec(ctxI.cortes) }).panoPoly; } catch (_) {}
+    if (!poly || poly.length < 3) return "No pude determinar el contorno vivo del paño.";
+    const eps = 0.005, N = poly.length;
+    const tPar = (p) => (p.x - ln.a.x) * ln.u.x + (p.y - ln.a.y) * ln.u.y;
+    const dLin = (p) => Math.abs((p.x - ln.a.x) * (-ln.u.y) + (p.y - ln.a.y) * ln.u.x);
+    let mejor = null;
+    for (let i = 0; i < N; i++) {
+      const Va = poly[i], Vb = poly[(i + 1) % N];
+      if (dLin(Va) > eps || dLin(Vb) > eps) continue;
+      const pa = tPar(Va), pb = tPar(Vb);
+      const ov = Math.min(Math.max(pa, pb), tHi) - Math.max(Math.min(pa, pb), tLo);
+      if (!mejor || ov > mejor.ov) mejor = { i: i, ov: ov, aEsLo: pa <= pb };
+    }
+    if (!mejor) return "Esta línea no forma parte del contorno vivo del paño.";
+    const idxE1 = mejor.aEsLo ? mejor.i : (mejor.i + 1) % N;      // extremo del lado "lo"
+    const idxE2 = mejor.aEsLo ? (mejor.i + 1) % N : mejor.i;      // extremo del lado "hi"
+    const vecinoDe = (idx) => (idx === mejor.i ? poly[(mejor.i + N - 1) % N] : poly[(mejor.i + 2) % N]);
+    const E1 = poly[idxE1], E2 = poly[idxE2], P1 = vecinoDe(idxE1), P2 = vecinoDe(idxE2);
+    const c0 = (tLo + tHi) / 2, q1 = c0 - M / 2, q2 = c0 + M / 2;
+    anLo.t = rd3(q1); anHi.t = rd3(q2);
+    const Qde = (q) => ({ x: ln.a.x + ln.u.x * q, y: ln.a.y + ln.u.y * q });
+    // Pivote → anchor BLOQUEADO sobre su carril: arista base si cae en el borde, u otro corte.
+    const mkPivotAnchor = (P) => {
+      for (const k of ["sup", "inf", "izq", "der"]) {
+        const sg = aristaSegAncla(k, A, L), lenB = Math.hypot(sg.b.x - sg.a.x, sg.b.y - sg.a.y);
+        const ub = { x: (sg.b.x - sg.a.x) / lenB, y: (sg.b.y - sg.a.y) / lenB };
+        const tb = (P.x - sg.a.x) * ub.x + (P.y - sg.a.y) * ub.y;
+        const db = Math.abs((P.x - sg.a.x) * (-ub.y) + (P.y - sg.a.y) * ub.x);
+        if (db <= eps && tb >= -eps && tb <= lenB + eps) {
+          const anN = { id: nuevoIdAncla(ctxI.anclas, ctxI.cortes), ar: k, esq: "ini", d: rd3(Math.max(0, Math.min(lenB, tb))), fix: true };
+          ctxI.anclas.push(anN); return anN;
+        }
+      }
+      for (const c2 of (ctxI.cortes || [])) {
+        if (c2 === cH || (c2.tipo !== "corte" && c2.tipo !== "guia")) continue;
+        const l2 = lineaRawCorte(c2); if (!l2) continue;
+        const t2 = (P.x - l2.a.x) * l2.u.x + (P.y - l2.a.y) * l2.u.y;
+        const d2 = Math.abs((P.x - l2.a.x) * (-l2.u.y) + (P.y - l2.a.y) * l2.u.x);
+        if (d2 <= eps && t2 >= -eps && t2 <= l2.w + eps) {
+          const anN = { id: nuevoIdAncla(ctxI.anclas, ctxI.cortes), t: rd3(Math.max(0, Math.min(l2.w, t2))), fix: true };
+          (c2.anclas || (c2.anclas = [])).push(anN); return anN;
+        }
+      }
+      return null;   // sin carril: el corte queda con geometría fija en ese extremo
+    };
+    const mkCorte = (P, Q, esquina, movAn) => {
+      const cN = crearLineaEnSeg(ctxI.cortes, { a: P, b: Q }, "corte"); if (!cN) return;
+      cN.fadeKill = true;
+      // lado a ELIMINAR: el que contiene el vértice viejo de ese extremo (misma convención que la arista base)
+      const sSide = (-(Q.y - P.y)) * (esquina.x - P.x) + (Q.x - P.x) * (esquina.y - P.y);
+      cN.fade = sSide > 0 ? "A" : "B";
+      const pivAn = mkPivotAnchor(P);
+      const idA = nuevoIdAncla(ctxI.anclas, ctxI.cortes);
+      cN.anclas = [];
+      if (pivAn) cN.anclas.push({ id: idA, t: 0, emp: pivAn.id });
+      cN.anclas.push({ id: idA + (pivAn ? 1 : 0), t: rd3(Math.hypot(Q.x - P.x, Q.y - P.y)), emp: movAn.id });
+    };
+    mkCorte(P1, Qde(q1), E1, anLo);
+    mkCorte(P2, Qde(q2), E2, anHi);
+    aplicarEmpates(ctxI.cortes, ctxI.anclas, A, L);
+    return null;   // ok
   }
   // Anclas para el DIBUJO (posiciones + rótulo de distancia). Solo plano en vivo, nunca PDF.
   function anclasSpecDe(anclas, cortesRaw, A, L) {
@@ -6472,6 +6555,21 @@
       aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
       if (ctx.onChange) ctx.onChange();
     }
+    function modificarMedidaEntreCorte(cH, anA, anB) {
+      const f = window.CalcCIBSA.fmtNum;
+      const ln = lineaRawCorte(cH); if (!ln) return;
+      const clampT = (an2) => Math.max(0, Math.min(ln.w, parseFloat(an2.t) || 0));
+      const span = Math.abs(clampT(anA) - clampT(anB));
+      if (!(span > 0.01)) return alert("Los 2 anchors están en el mismo punto; sepáralos primero.");
+      const txt = prompt("Nueva medida entre los 2 anchors (m) — actual: " + f(span) + " m.\nSe reduce simétricamente hacia el centro; los vértices vecinos del contorno quedan fijos como ejes. Acepta aritmética (ej. " + f(span) + "/2):", f(span));
+      if (txt == null) return;
+      const M = window.CalcCIBSA.evalExpr(String(txt).replace(",", "."));
+      if (M == null || isNaN(M) || !(M > 0)) return alert("Medida no válida.");
+      if (M > span + 1e-9) return alert("La medida nueva (" + f(M) + " m) no puede superar la actual (" + f(span) + " m): la tela no se puede agregar, solo recortar.");
+      const err = iterarMedidaEnCorte(ctx, cH, anA, anB, M);
+      if (err) return alert(err);
+      if (ctx.onChange) ctx.onChange();
+    }
     function menuAncla(reg) {
       cerrarMenuAristas();
       const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
@@ -6488,6 +6586,12 @@
             if (otros.length === 1) item("Modificar medida entre anchors…", () => modificarMedidaEntre(regA.an, otros[0]));
           }
         } }
+      // ITERACIÓN: anchors sobre un corte "Eliminar" (borde real del paño) — el recorte se repite
+      // sobre la arista ya modificada, con los vértices vecinos del contorno como ejes.
+      if (reg.tipo === "corte" && reg.c && reg.c.tipo === "corte" && reg.c.fadeKill && (reg.c.fade === "A" || reg.c.fade === "B") && reg.an.emp == null) {
+        const otrosC = (reg.c.anclas || []).filter((a2) => a2 !== reg.an && a2.emp == null);
+        if (otrosC.length === 1) item("Modificar medida entre anchors…", () => modificarMedidaEntreCorte(reg.c, reg.an, otrosC[0]));
+      }
       if (!reg.an.fix) item("Bloquear anchor (fijar su posición)", () => { reg.an.fix = true; if (ctx.onChange) ctx.onChange(); });
       else item("Desbloquear anchor", () => { reg.an.fix = false; if (ctx.onChange) ctx.onChange(); });
       if (!reg.an.fix) item("Fijar distancia exacta…", () => {
