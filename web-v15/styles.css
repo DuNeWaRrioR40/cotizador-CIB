@@ -358,6 +358,12 @@ body.vista-cliente { margin: 0; background: var(--bg, #f6f6f2); }
 .vol3d-canvas:active { cursor: grabbing; }
 .vol3d-hint { position: fixed; bottom: calc(58px + env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; color: rgba(255,255,255,0.85); font-size: 12px; z-index: 1510; pointer-events: none; }
 .vol3d-acciones { position: fixed; bottom: calc(12px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 1510; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 96vw; }
+/* Sliders de pliegue de anexos (visor 3D) */
+.vol3d-pliegues { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: 14px; z-index: 1510; background: rgba(22, 23, 26, 0.85); border-radius: 12px; padding: 10px 14px; max-width: 260px; max-height: 60vh; overflow: auto; }
+.vol3d-plg-cab { color: #ffdf26; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+.vol3d-plg-row { display: block; margin: 6px 0; }
+.vol3d-plg-row span { display: block; color: #fff; font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+.vol3d-plg-row input[type="range"] { width: 100%; accent-color: #ffdf26; }
 .vol3d-btn { background: rgba(255,255,255,0.95); color: #111; border: 0; border-radius: 999px; font-size: 13px; font-weight: 700; padding: 9px 16px; white-space: nowrap; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
 .sketch-svg .ins-lbl { fill: var(--text); font-size: 6.5px; font-family: inherit; }
 .sketch-svg .ins-dim { fill: var(--muted); font-size: 5.5px; font-family: inherit; }

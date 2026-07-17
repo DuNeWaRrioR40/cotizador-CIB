@@ -4734,7 +4734,9 @@
     if (fig && fig.tipo === "piramide") { if (fig.lado) { const Dc = fig.lado / Math.sin(Math.PI / Math.max(3, fig.n || 4)); A = Dc; L = Dc; } else { A = fig.A; L = fig.L; } H = fig.h; }
     else if (fig && fig.tipo === "cilindro") { A = fig.D; L = fig.D; H = fig.h; }
     else { fig = null; A = num("f_ancho", null); L = num("f_largo", null); H = alturaUnif(); }
-    if (!(A > 0) || !(L > 0) || !(H > 0)) return alert("Define las dimensiones para ver el 3D.");
+    const hayAnexos3D = !fig && visibles(state.aletasUnif).length > 0;
+    if (!(A > 0) || !(L > 0) || (!(H > 0) && !hayAnexos3D)) return alert("Define las dimensiones para ver el 3D.");
+    if (!(H > 0)) H = 0;   // modo PLANO: solo la lámina + anexos plegables
     try {
       await ensureLib("THREE", [
         "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
@@ -4927,7 +4929,8 @@
     }
     // Cara con calados: geometría propia (UV en coords de la HOJA) + canvas donde los calados se
     // BORRAN (alfa 0 → se ve a través). W4(mx,my) mapea hoja→mundo; región [x0c..+wS]×[y0c..+hS].
-    const caraCalada = (x0c, y0c, wS, hS, W4) => {
+    const caraCalada = (x0c, y0c, wS, hS, W4, grupoDest) => {
+      const gDest = grupoDest || grp;
       const K = Math.max(48, Math.min(160, Math.floor(1024 / Math.max(wS, hS))));
       const cv = document.createElement("canvas");
       cv.width = Math.max(2, Math.round(wS * K)); cv.height = Math.max(2, Math.round(hS * K));
@@ -4950,19 +4953,39 @@
       ]), 3));
       gG.setAttribute("uv", new T.BufferAttribute(new Float32Array([0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0]), 2));
       gG.computeVertexNormals();
-      grp.add(new T.Mesh(gG, mat2));
-      [[c00, c10], [c10, c11], [c11, c01], [c01, c00]].forEach((e2) => grp.add(new T.Line(new T.BufferGeometry().setFromPoints([e2[0], e2[1]]), matBorde)));
+      gDest.add(new T.Mesh(gG, mat2));
+      [[c00, c10], [c10, c11], [c11, c01], [c01, c00]].forEach((e2) => gDest.add(new T.Line(new T.BufferGeometry().setFromPoints([e2[0], e2[1]]), matBorde)));
     };
     const hayCal = !fig && caladosCerr.length > 0;
+    // ---- ALAS CON BISAGRA: los EJES del rectángulo interior (pliegues tapa-ala) son ejes de
+    // giro. Por defecto CERRADAS a 90 grados (la caja se ve como siempre); solo cambian si el
+    // usuario mueve su slider. Solo visualización.
+    const plieguesUI = [];
+    const alaPliegue = (nomAla, P0, ux, uz, len, x0c, y0c, wS, hS, W4loc) => {
+      const uy = new T.Vector3().crossVectors(uz, ux);
+      const outer = new T.Group(); outer.position.copy(P0);
+      outer.setRotationFromMatrix(new T.Matrix4().makeBasis(ux, uy, uz));
+      const inner = new T.Group(); outer.add(inner); grp.add(outer);
+      if (hayCal) caraCalada(x0c, y0c, wS, hS, W4loc, inner);
+      else {
+        const gP = new T.PlaneGeometry(len, H);
+        const mesh = new T.Mesh(gP, matLona); mesh.rotation.x = -Math.PI / 2; mesh.position.set(len / 2, 0, H / 2); inner.add(mesh);
+        const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde); ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); inner.add(ed);
+      }
+      const sgnA = uy.y > 0 ? 1 : -1;   // signo que deja 90 grados = ala hacia ABAJO (cubo cerrado)
+      const set = (v) => { inner.rotation.x = sgnA * v * Math.PI / 180; };
+      set(90);
+      plieguesUI.push({ nombre: nomAla, set: set, v0: 90 });
+    };
     if (!fig) { if (hayCal) caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2)); else panel(A, L, 0, H, 0, -Math.PI / 2, 0); } // tapa (arriba)
-    if (va3("sup")) { if (hayCal) caraCalada(0, -H, A, H, (mx, my) => new T.Vector3(mx - A / 2, H + my, -L / 2)); else panel(A, H, 0, H / 2, -L / 2, 0, 0); }
-    if (va3("inf")) { if (hayCal) caraCalada(0, L, A, H, (mx, my) => new T.Vector3(mx - A / 2, H - (my - L), L / 2)); else panel(A, H, 0, H / 2, L / 2, 0, 0); }
-    if (va3("izq")) { if (hayCal) caraCalada(-H, 0, H, L, (mx, my) => new T.Vector3(-A / 2, H + mx, my - L / 2)); else panel(L, H, -A / 2, H / 2, 0, 0, Math.PI / 2); }
-    if (va3("der")) { if (hayCal) caraCalada(A, 0, H, L, (mx, my) => new T.Vector3(A / 2, H - (mx - A), my - L / 2)); else panel(L, H, A / 2, H / 2, 0, 0, Math.PI / 2); }
+    if (H > 0 && va3("sup")) alaPliegue("Ala superior", new T.Vector3(-A / 2, H, -L / 2), new T.Vector3(1, 0, 0), new T.Vector3(0, 0, -1), A, 0, -H, A, H, (mx, my) => new T.Vector3(mx, 0, -my));
+    if (H > 0 && va3("inf")) alaPliegue("Ala inferior", new T.Vector3(-A / 2, H, L / 2), new T.Vector3(1, 0, 0), new T.Vector3(0, 0, 1), A, 0, L, A, H, (mx, my) => new T.Vector3(mx, 0, my - L));
+    if (H > 0 && va3("izq")) alaPliegue("Ala izquierda", new T.Vector3(-A / 2, H, -L / 2), new T.Vector3(0, 0, 1), new T.Vector3(-1, 0, 0), L, -H, 0, H, L, (mx, my) => new T.Vector3(my, 0, -mx));
+    if (H > 0 && va3("der")) alaPliegue("Ala derecha", new T.Vector3(A / 2, H, -L / 2), new T.Vector3(0, 0, 1), new T.Vector3(1, 0, 0), L, A, 0, H, L, (mx, my) => new T.Vector3(my, 0, mx - A));
     // Costuras de FUSIÓN: solo en las esquinas donde se encuentran DOS alas.
     { const fus = new T.LineBasicMaterial({ color: 0xd23b2e, linewidth: 2 });
       [["sup", "izq", -A/2, -L/2], ["sup", "der", A/2, -L/2], ["inf", "der", A/2, L/2], ["inf", "izq", -A/2, L/2]].forEach(([k1, k2, vx, vz]) => {
-        if (!va3(k1) || !va3(k2)) return;
+        if (!(H > 0) || !va3(k1) || !va3(k2)) return;
         const g2 = new T.BufferGeometry().setFromPoints([new T.Vector3(vx, 0, vz), new T.Vector3(vx, H, vz)]);
         grp.add(new T.Line(g2, fus));
       }); }
@@ -5045,6 +5068,71 @@
         }
       });
     } catch (e) {}
+    // ---- ANEXOS PLEGABLES: cada aleta/solapa/faldón se monta con BISAGRA en su línea de
+    // fusión (que es la guía, si nació vinculado) y se dobla 0–360° con un slider. Solo
+    // visualización: no afecta medidas ni costos. Disponible en volumétricos (anexos de la
+    // tapa) y en productos PLANOS (modo lámina).
+    if (!fig) {
+      try {
+        const SK2 = window.SketchCIBSA;
+        const yBase = H + 0.012;
+        visibles(state.aletasUnif).forEach((a) => {
+          const aSpec = aletasSpec([a])[0]; if (!aSpec) return;
+          const g = SK2.aletaGeomRect(aSpec, A, L);
+          let h0, h1, caida, dirC;
+          if (g.fused === "t") { h0 = { x: g.x, y: g.y }; h1 = { x: g.x + g.w, y: g.y }; caida = g.h; dirC = { x: 0, y: 1 }; }
+          else if (g.fused === "b") { h0 = { x: g.x, y: g.y + g.h }; h1 = { x: g.x + g.w, y: g.y + g.h }; caida = g.h; dirC = { x: 0, y: -1 }; }
+          else if (g.fused === "l") { h0 = { x: g.x, y: g.y }; h1 = { x: g.x, y: g.y + g.h }; caida = g.w; dirC = { x: 1, y: 0 }; }
+          else { h0 = { x: g.x + g.w, y: g.y }; h1 = { x: g.x + g.w, y: g.y + g.h }; caida = g.w; dirC = { x: -1, y: 0 }; }
+          const len = Math.hypot(h1.x - h0.x, h1.y - h0.y); if (!(len > 0) || !(caida > 0)) return;
+          const W3 = (mx, my) => new T.Vector3(mx - A / 2, yBase, my - L / 2);
+          const P0 = W3(h0.x, h0.y), P1 = W3(h1.x, h1.y);
+          const ux = new T.Vector3().subVectors(P1, P0).normalize();
+          const uz = new T.Vector3(dirC.x, 0, dirC.y);
+          const uy = new T.Vector3().crossVectors(uz, ux);
+          const outer = new T.Group(); outer.position.copy(P0);
+          outer.setRotationFromMatrix(new T.Matrix4().makeBasis(ux, uy, uz));
+          const inner = new T.Group(); outer.add(inner); grp.add(outer);
+          const gP = new T.PlaneGeometry(len, caida);
+          const mesh = new T.Mesh(gP, matLona);
+          mesh.rotation.x = -Math.PI / 2; mesh.position.set(len / 2, 0, caida / 2);
+          inner.add(mesh);
+          const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde);
+          ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); inner.add(ed);
+          try {
+            const pts = SK2.aletaOjPuntos(aSpec, A, L);
+            const rOj2 = Math.max(0.02, diag * 0.006);
+            const geo2 = new T.SphereGeometry(rOj2, 10, 10), mat2 = new T.MeshBasicMaterial({ color: 0x111111 });
+            const axx = (h1.x - h0.x) / len, axy = (h1.y - h0.y) / len;
+            pts.forEach((p2) => {
+              const t = (p2.x - h0.x) * axx + (p2.y - h0.y) * axy;
+              const sca = (p2.x - h0.x) * dirC.x + (p2.y - h0.y) * dirC.y;
+              const m2 = new T.Mesh(geo2, mat2); m2.position.set(t, 0.012, sca); inner.add(m2);
+            });
+          } catch (e2) {}
+          const nom = (a.legend && a.legend.trim()) || (ALETA_NOM[a.tipo] || "Anexo");
+          plieguesUI.push({ nombre: nom, set: (v) => { inner.rotation.x = -v * Math.PI / 180; }, v0: 0 });
+        });
+      } catch (e) { /* los pliegues son decorativos: nunca rompen el visor */ }
+    }
+    if (plieguesUI.length) {
+      const pw = document.createElement("div"); pw.className = "vol3d-pliegues";
+      const cab = document.createElement("div"); cab.className = "vol3d-plg-cab"; cab.textContent = "Pliegues (visual)";
+      pw.appendChild(cab);
+      plieguesUI.forEach((pl) => {
+        const row = document.createElement("label"); row.className = "vol3d-plg-row";
+        const v0 = pl.v0 || 0;
+        const sp = document.createElement("span"); sp.textContent = pl.nombre + " · " + v0 + "°";
+        const rg = document.createElement("input"); rg.type = "range"; rg.min = "0"; rg.max = "360"; rg.step = "1"; rg.value = String(v0);
+        rg.addEventListener("input", () => {
+          const d = parseFloat(rg.value) || 0;
+          sp.textContent = pl.nombre + " · " + Math.round(d) + "°";
+          pl.set(d);
+        });
+        row.appendChild(sp); row.appendChild(rg); pw.appendChild(row);
+      });
+      overlay.appendChild(pw);
+    }
     // Rótulos de cotas (sprites siempre de cara a la cámara).
     const f = window.CalcCIBSA.fmtNum;
     const label = (txt) => {
@@ -5059,7 +5147,7 @@
       const sc = diag * 0.34; sp.scale.set(sc * 2, sc / 4, 1); return sp;   // ancho ×2 = misma densidad de px que antes
     };
     // Rótulos de caras: qué es cada parte (claridad para el cliente).
-    if (!fig) { const lTapa = label("TAPA " + f(L) + " × " + f(A) + " m"); lTapa.position.set(0, H + diag * 0.05, 0); grp.add(lTapa); }
+    if (!fig) { const lTapa = label((H > 0 ? "TAPA " : "PAÑO ") + f(L) + " × " + f(A) + " m"); lTapa.position.set(0, H + diag * 0.05, 0); grp.add(lTapa); }
     if (fig && fig.tipo === "piramide") {
       const lP = label(fig.lado ? ("PIRÁMIDE " + fig.n + " caras · lado " + f(fig.lado) + " × h " + f(fig.h) + " m") : ("PIRÁMIDE " + f(fig.L) + " × " + f(fig.A) + " × h " + f(fig.h) + " m")); lP.position.set(0, H + diag * 0.06, 0); grp.add(lP);
       const lF = label("fusión de caras"); lF.position.set(A / 2 * 0.7 + diag * 0.08, H * 0.55, L / 2 * 0.7); lF.material.color = new T.Color(0xd23b2e); grp.add(lF);
@@ -5068,10 +5156,10 @@
     if (!fig) { const alas4 = alasUnif();
       const pos = (alas4.inf !== false) ? [0, H * 0.5, L / 2 + diag * 0.04] : (alas4.sup !== false) ? [0, H * 0.5, -L / 2 - diag * 0.04] : (alas4.der !== false) ? [A / 2 + diag * 0.04, H * 0.5, 0] : (alas4.izq !== false) ? [-A / 2 - diag * 0.04, H * 0.5, 0] : null;
       if (pos) { const lAla = label("ALA · alto " + f(H) + " m"); lAla.position.set(pos[0], pos[1], pos[2]); grp.add(lAla); } }
-    const lFus = label("fusión de esquinas"); lFus.position.set(A / 2 + diag * 0.09, H * 0.6, L / 2 * 0.6); lFus.material.color = new T.Color(0xd23b2e); grp.add(lFus);
+    if (H > 0) { const lFus = label("fusión de esquinas"); lFus.position.set(A / 2 + diag * 0.09, H * 0.6, L / 2 * 0.6); lFus.material.color = new T.Color(0xd23b2e); grp.add(lFus); }
     const lA = label("ancho " + f(A) + " m"); lA.position.set(0, -diag * 0.02, L / 2 + diag * 0.06); grp.add(lA);
     const lL = label("largo " + f(L) + " m"); lL.position.set(A / 2 + diag * 0.10, -diag * 0.02, 0); grp.add(lL);
-    const lH = label("alto " + f(H) + " m"); lH.position.set(-A / 2 - diag * 0.09, H / 2, L / 2 + diag * 0.02); grp.add(lH);
+    if (H > 0) { const lH = label("alto " + f(H) + " m"); lH.position.set(-A / 2 - diag * 0.09, H / 2, L / 2 + diag * 0.02); grp.add(lH); }
     // Órbita propia (sin dependencias): arrastre rota, rueda/pellizco acerca. Autogira hasta el 1er toque.
     let theta = Math.PI / 4, phi = Math.PI / 3.1, radio = diag * 1.9, auto = true;
     const target = new T.Vector3(0, H / 2, 0);
@@ -5132,10 +5220,10 @@
         cont.appendChild(b);
       }
       if (cont.id === "sketchUnif") montarRotCtrls(cont, svg);
-      // Visor 3D interactivo: solo para el paño uniforme volumétrico (con alto definido).
+      // Visor 3D interactivo: paño volumétrico (alto definido) o plano CON anexos (pliegues).
       if (cont.id === "sketchUnif") {
         const prev3d = cont.querySelector(":scope > .sketch-3d-btn");
-        if (alturaUnif() > 0) {
+        if (alturaUnif() > 0 || visibles(state.aletasUnif).length > 0) {
           if (!prev3d) {
             const b3 = document.createElement("button");
             b3.type = "button"; b3.className = "sketch-3d-btn"; b3.title = "Ver en 3D interactivo (rotar y acercar)"; b3.textContent = "🧊";
