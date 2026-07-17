@@ -135,7 +135,7 @@
     const ts = parseInt(r && r[0], 10) || 0; if (!ts) return null; // descarta encabezado / filas inválidas
     let snap = null; try { snap = r[6] ? JSON.parse(r[6]) : null; } catch (e) {}
     const est = (snap && snap.estado) || {};
-    return { ts: ts, nombre: (r[1] || "").toString().trim(), apellido: (r[2] || "").toString().trim(), tipo: (r[3] || "").toString().trim(), version: parseInt(r[4], 10) || 1, fecha: (r[5] || "").toString().trim(), editado: (snap && snap.editado) || "", snap: snap, modo: est.docMode || "formal", prod: est.prodMode || "uniforme" };
+    return { ts: ts, nombre: (r[1] || "").toString().trim(), apellido: (r[2] || "").toString().trim(), tipo: (r[3] || "").toString().trim(), version: parseInt(r[4], 10) || 1, fecha: (r[5] || "").toString().trim(), editado: (snap && snap.editado) || "", venta: (snap && snap.venta) || null, snap: snap, modo: est.docMode || "formal", prod: est.prodMode || "uniforme" };
   }
   // Une historial local + remoto (Sheet), deduplica por cliente+tipo (mayor versión / ts más reciente),
   // sube al Sheet las entradas locales que aún no estén allí (migración), y deja el resultado en localStorage.
@@ -187,7 +187,7 @@
   function histFechaCorta(d) { return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2); }
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
-  const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email"];
+  const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email", "f_fono1_cliente", "f_fono2_cliente", "f_emp_fono1", "f_emp_fono2"];
   const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "cotasOcultas", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
@@ -274,7 +274,7 @@
   function empresaDatos() {
     if (!empresaActiva()) return null;
     const razon = empVal("f_emp_razon"); if (!razon) return null;
-    return { rut: empVal("f_emp_rut"), razon: razon, giro: empVal("f_emp_giro"), dir: empVal("f_emp_dir"), comuna: empVal("f_emp_comuna"), email: empVal("f_emp_email") };
+    return { rut: empVal("f_emp_rut"), razon: razon, giro: empVal("f_emp_giro"), dir: empVal("f_emp_dir"), comuna: empVal("f_emp_comuna"), email: empVal("f_emp_email"), fonos: [empVal("f_emp_fono1"), empVal("f_emp_fono2")].filter(Boolean) };
   }
   // Abreviatura de la razón social para el nombre de archivo.
   function empresaAbrev(razon) {
@@ -602,6 +602,60 @@
     if (!Array.isArray(ls)) return false;
     return ls.some((l) => { const c = window.CalcCIBSA.evalExpr(l && l.cantidad); return c > 0 && l && l.precio != null; });
   }
+  // VÍNCULO A VENTA: liga la ficha del historial con el documento tributario de la compra
+  // (Factura por defecto, o Boleta) — para estadística y gestión. Vive en snap.venta, así viaja
+  // con la fila del Sheet y con los respaldos .json sin cambiar el esquema de columnas.
+  function ventaDe(ent) { return ent.venta || (ent.snap && ent.snap.venta) || null; }
+  function dialogoVenta(ent) {
+    const v0 = ventaDe(ent);
+    const ov = document.createElement("div"); ov.className = "qr-modal anc-dialog";
+    const card = document.createElement("div"); card.className = "qr-card";
+    const h = document.createElement("h3"); h.textContent = "Vincular a venta"; card.appendChild(h);
+    const pl = document.createElement("p"); pl.className = "muted small";
+    pl.textContent = ((ent.nombre || "") + " " + (ent.apellido || "")).trim() + " · " + (ent.tipo || "") + " v" + ("0" + (parseInt(ent.version, 10) || 1)).slice(-2) + " · " + (ent.fecha || "");
+    card.appendChild(pl);
+    const rWrap = document.createElement("div"); rWrap.className = "radios venta-radios";
+    let tipoSel = (v0 && v0.tipo) || "factura";
+    [["factura", "Factura"], ["boleta", "Boleta"]].forEach((par) => {
+      const lab = document.createElement("label");
+      const rb = document.createElement("input"); rb.type = "radio"; rb.name = "ventaTipo"; rb.value = par[0]; rb.checked = tipoSel === par[0];
+      rb.addEventListener("change", () => { if (rb.checked) tipoSel = par[0]; });
+      lab.appendChild(rb); lab.appendChild(document.createTextNode(" " + par[1]));
+      rWrap.appendChild(lab);
+    });
+    card.appendChild(rWrap);
+    const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "numeric"; inp.className = "anc-dialog-inp";
+    inp.placeholder = "N° de documento"; inp.value = (v0 && v0.numero) || "";
+    card.appendChild(inp);
+    const acc = document.createElement("div"); acc.className = "qr-acciones";
+    const mkB = (t) => { const b = document.createElement("button"); b.type = "button"; b.className = "btn-outline"; b.textContent = t; acc.appendChild(b); return b; };
+    const bOk = mkB("Guardar vínculo");
+    const bQuitar = v0 ? mkB("Quitar vínculo") : null;
+    const bCa = mkB("Cancelar");
+    card.appendChild(acc); ov.appendChild(card); document.body.appendChild(ov);
+    const cerrar = () => ov.remove();
+    const persistir = (venta) => {
+      if (!ent.snap) ent.snap = {};
+      if (venta) { ent.snap.venta = venta; ent.venta = venta; } else { delete ent.snap.venta; delete ent.venta; }
+      const arr = histLoad();
+      const i = arr.findIndex((e) => e.ts === ent.ts);
+      if (i >= 0) arr[i] = ent; else arr.unshift(ent);
+      histStore(arr); renderHistorial();
+      const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+      if (tok) window.SheetsCIBSA.reemplazarHistorial(tok, HIST_HOJA, ent, entryToRow(ent), HIST_ENC).catch((e) => console.warn("CIBSA: no se pudo sincronizar la venta —", e && e.message ? e.message : e));
+    };
+    bOk.addEventListener("click", () => {
+      const nro = inp.value.trim();
+      if (!nro) return alert("Ingresa el número de " + (tipoSel === "boleta" ? "boleta" : "factura") + ".");
+      persistir({ tipo: tipoSel, numero: nro, ts: Date.now() });
+      cerrar();
+    });
+    if (bQuitar) bQuitar.addEventListener("click", () => { if (confirm("¿Quitar el vínculo de venta de esta ficha?")) { persistir(null); cerrar(); } });
+    bCa.addEventListener("click", cerrar);
+    ov.addEventListener("click", (e) => { if (e.target === ov) cerrar(); });
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") bOk.click(); if (e.key === "Escape") cerrar(); });
+    setTimeout(() => { try { inp.focus(); } catch (_) {} }, 30);
+  }
   function histChip(ent, esUltima) {
     const contacto = ((ent.nombre || "") + " " + (ent.apellido || "")).trim();
     const razon = (ent.razonSocial || "").trim();
@@ -615,9 +669,10 @@
     const badge = editado ? ' · <span class="hist-badge editado">editado ' + esc(editado) + '</span>' : (esUltima ? ' · <span class="hist-badge">última versión</span>' : '');
     const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "") + (editado ? " editado" : "");
     const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = "Duplicar para editar (como versión siguiente)";
+    const vBadge = (function () { const v = ventaDe(ent); return v ? ' · <span class="hist-venta">' + (v.tipo === "boleta" ? "B" : "F") + " " + esc(String(v.numero)) + "</span>" : ""; })();
     main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + badge + '</span>' +
       tituloHtml +
-      '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + '</span>';
+      '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + vBadge + '</span>';
     main.addEventListener("click", () => aplicarHistorial(ent));
     const acts = document.createElement("div"); acts.className = "hist-acts";
     const bDl = document.createElement("button"); bDl.type = "button"; bDl.className = "hist-act"; bDl.title = "Descargar respaldo (.json)"; bDl.textContent = "⬇";
@@ -626,7 +681,12 @@
     bEd.addEventListener("click", (e) => { e.stopPropagation(); editarHistorial(ent); });
     const bDel = document.createElement("button"); bDel.type = "button"; bDel.className = "hist-act del"; bDel.title = "Borrar definitivamente"; bDel.textContent = "🗑";
     bDel.addEventListener("click", (e) => { e.stopPropagation(); borrarRegistro(ent); });
-    acts.appendChild(bDl); acts.appendChild(bEd); acts.appendChild(bDel);
+    const vnt = ventaDe(ent);
+    const bFa = document.createElement("button"); bFa.type = "button"; bFa.className = "hist-act venta" + (vnt ? " on" : "");
+    bFa.title = vnt ? ("Vendido — " + (vnt.tipo === "boleta" ? "Boleta" : "Factura") + " N° " + vnt.numero + " (clic para editar)") : "Vincular a venta (factura/boleta)";
+    bFa.textContent = "🧾";
+    bFa.addEventListener("click", (e) => { e.stopPropagation(); dialogoVenta(ent); });
+    acts.appendChild(bDl); acts.appendChild(bEd); acts.appendChild(bFa); acts.appendChild(bDel);
     card.appendChild(main); card.appendChild(acts);
     return card;
   }
@@ -4777,7 +4837,24 @@
       ]);
     } catch (e) { return alert("No se pudo cargar el visor 3D (revisa la conexión; tras la primera carga queda disponible sin internet)."); }
     cerrarVol3D();
-    const T = window.THREE, diag = Math.hypot(A, L, H);
+    const T = window.THREE, diag = Math.hypot(A, L, H || 1);
+    // Ojetillos del visor: mismo lenguaje del plano — 2 círculos concéntricos, color bronce
+    // suave, tamaño discreto. Sprite (siempre de cara a la cámara), textura compartida.
+    const texOje3D = (() => {
+      const cv = document.createElement("canvas"); cv.width = 64; cv.height = 64;
+      const g2 = cv.getContext("2d");
+      g2.strokeStyle = "#8f7a4e"; g2.lineWidth = 7;
+      g2.beginPath(); g2.arc(32, 32, 22, 0, 2 * Math.PI); g2.stroke();
+      g2.fillStyle = "#8f7a4e";
+      g2.beginPath(); g2.arc(32, 32, 9, 0, 2 * Math.PI); g2.fill();
+      return new T.CanvasTexture(cv);
+    })();
+    const mkOje3D = () => {
+      const sp = new T.Sprite(new T.SpriteMaterial({ map: texOje3D, transparent: true }));
+      const e2 = Math.max(0.045, diag * 0.011);
+      sp.scale.set(e2, e2, 1);
+      return sp;
+    };
     const overlay = document.createElement("div"); overlay.className = "plano-zoom";
     const x = document.createElement("button"); x.className = "plano-zoom-x"; x.type = "button"; x.textContent = "✕";
     const body = document.createElement("div"); body.className = "plano-zoom-body";
@@ -4839,9 +4916,9 @@
               a * p1.y + b3 * p2.y + c3 * apex.y + 0.005,
               a * p1.z + b3 * p2.z + c3 * apex.z);
           };
-          (sk2.ojetillos || []).forEach((pt) => { const v = to3D(pt); if (v) { const m = new T.Mesh(geoOj, matOj); m.position.copy(v); grp.add(m); } });
+          (sk2.ojetillos || []).forEach((pt) => { const v = to3D(pt); if (v) { const m = mkOje3D(); m.position.copy(v); grp.add(m); } });
           // Ojetillos instalados SOBRE cortes/calados (p. ej. las diagonales al vértice del triángulo).
-          (sk2.cortes || []).forEach((c2) => (c2.ojetillos || []).forEach((pt) => { const v = to3D(pt); if (v) { const m = new T.Mesh(geoOj, matOj); m.position.copy(v); grp.add(m); } }));
+          (sk2.cortes || []).forEach((c2) => (c2.ojetillos || []).forEach((pt) => { const v = to3D(pt); if (v) { const m = mkOje3D(); m.position.copy(v); grp.add(m); } }));
           (sk2.straps || []).forEach((st) => {
             const vs = (st.corners || []).map(to3D);
             if (vs.length === 4 && vs.every(Boolean)) {
@@ -4917,8 +4994,8 @@
           const rAcc = Math.max(0.02, diag * 0.006);
           const geoOj = new T.SphereGeometry(rAcc, 10, 10), matOj = new T.MeshBasicMaterial({ color: 0x111111 });
           const wrap = (pt) => { const th = pt.x / R; return new T.Vector3((R + 0.005) * Math.cos(th), Math.max(0, Math.min(H, H - pt.y)), (R + 0.005) * Math.sin(th)); };
-          (skM.ojetillos || []).forEach((pt) => { const m = new T.Mesh(geoOj, matOj); m.position.copy(wrap(pt)); grp.add(m); });
-          (skM.cortes || []).forEach((c2) => (c2.ojetillos || []).forEach((pt) => { const m = new T.Mesh(geoOj, matOj); m.position.copy(wrap(pt)); grp.add(m); }));
+          (skM.ojetillos || []).forEach((pt) => { const m = mkOje3D(); m.position.copy(wrap(pt)); grp.add(m); });
+          (skM.cortes || []).forEach((c2) => (c2.ojetillos || []).forEach((pt) => { const m = mkOje3D(); m.position.copy(wrap(pt)); grp.add(m); }));
           (skM.straps || []).forEach((st) => {
             const vs = (st.corners || []).map(wrap);
             if (vs.length === 4) { const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]); g2.computeVertexNormals(); grp.add(new T.Mesh(g2, new T.MeshBasicMaterial({ color: 0xd23b2e, transparent: true, opacity: 0.85, side: T.DoubleSide }))); }
@@ -5074,7 +5151,7 @@
       const rOj = Math.max(0.02, diag * 0.006);
       const geo = new T.SphereGeometry(rOj, 10, 10), mat = new T.MeshBasicMaterial({ color: 0x111111 });
       (skOj.ojetillos || []).forEach((p) => {
-        const m = new T.Mesh(geo, mat);
+        const m = mkOje3D();
         m.position.set(p.x - A / 2, rimY, p.y - L / 2); grp.add(m);
       });
       // Hoja desplegada → 3D: la tapa queda arriba (y=H) y cada pared cuelga de su pliegue.
@@ -5109,7 +5186,7 @@
             grp.add(new T.Line(new T.BufferGeometry().setFromPoints([p3(pts[j].x, pts[j].y), p3(pts[j + 1].x, pts[j + 1].y)]), matCut));
           }
         });
-        (c.ojetillos || []).forEach((p) => { const m = new T.Mesh(geo, mat); m.position.copy(p3(p.x, p.y)); grp.add(m); });
+        (c.ojetillos || []).forEach((p) => { const m = mkOje3D(); m.position.copy(p3(p.x, p.y)); grp.add(m); });
       });
       // Straps: banda roja por TRAMOS a lo largo de su eje (dobla en los pliegues).
       const matStr = new T.MeshBasicMaterial({ color: 0xd23b2e, transparent: true, opacity: 0.85, side: T.DoubleSide });
@@ -5175,7 +5252,7 @@
             pts.forEach((p2) => {
               const t = (p2.x - h0.x) * axx + (p2.y - h0.y) * axy;
               const sca = (p2.x - h0.x) * dirC.x + (p2.y - h0.y) * dirC.y;
-              const m2 = new T.Mesh(geo2, mat2); m2.position.set(t, 0.012, sca); inner.add(m2);
+              const m2 = mkOje3D(); m2.position.set(t, 0.012, sca); inner.add(m2);
             });
           } catch (e2) {}
           const nom = (a.legend && a.legend.trim()) || (ALETA_NOM[a.tipo] || "Anexo");
@@ -7946,7 +8023,7 @@
     const calc = { subtotal, descuentoPct: 0, descuento: 0, netoConDescuento: neto, ivaPct: CFG.IVA_PCT, iva, total };
     const datos = {
       soloGranel: true,
-      cliente: { nombre, apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente") }, empresa: empresaDatos(),
+      cliente: { nombre, apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente"), fonos: [empVal("f_fono1_cliente"), empVal("f_fono2_cliente")].filter(Boolean) }, empresa: empresaDatos(),
       version: $("f_version").value.trim() || "01", fecha: new Date(),
       titulo: $("f_titulo").value.trim() || null,
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
@@ -8044,7 +8121,7 @@
       ivaPct: CFG.IVA_PCT, iva, total, panos: o.panosLote, m2: o.m2Lote,
     };
     const datos = {
-      cliente: { nombre, apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente") }, empresa: empresaDatos(),
+      cliente: { nombre, apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente"), fonos: [empVal("f_fono1_cliente"), empVal("f_fono2_cliente")].filter(Boolean) }, empresa: empresaDatos(),
       version: versionStr, fecha: new Date(), suprimirCotas: suprimeCotas(),
       largo, ancho, tela, calc,
       titulo: tituloConMedidas(),
@@ -8098,7 +8175,7 @@
     if (!calcs.length) return null;
     const dI = descuentoInfo((state.compuesto && state.compuesto.subtotalGen) || 0);
     const datos = {
-      cliente: { nombre: cliente.nombre, apellido: cliente.apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente") }, empresa: empresaDatos(),
+      cliente: { nombre: cliente.nombre, apellido: cliente.apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente"), fonos: [empVal("f_fono1_cliente"), empVal("f_fono2_cliente")].filter(Boolean) }, empresa: empresaDatos(),
       version: versionStr, fecha: new Date(), suprimirCotas: suprimeCotas(),
       titulo: $("f_titulo").value.trim() || null,
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),

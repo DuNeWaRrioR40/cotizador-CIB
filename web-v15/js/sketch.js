@@ -1379,28 +1379,41 @@
     let s = `<svg class="sketch-svg" viewBox="0 0 ${VW} 0H" data-mscale="0MS" data-ox="0OX" data-oy="0OY" xmlns="http://www.w3.org/2000/svg">`;
     if (!soloDesp) {
       const dep = 0.5, k = 0.707;
-      const needW = A + L * dep * k, needH = H + L * dep * k;
+      const needW = A + L * dep * k, needH = Hmax + L * dep * k;
       const sc3 = Math.min((VW - 90) / needW, (paH - 38) / needH);
-      const wA = A * sc3, hH = H * sc3, dd = L * dep * k * sc3;
+      const wA = A * sc3, hH = Hmax * sc3, dd = L * dep * k * sc3;
+      const hiP = hi * sc3, hsP = hs * sc3, hzP = hz * sc3, hdP = hd * sc3;
       const bbW = wA + dd, bbH = hH + dd;
       const x0 = (VW - bbW) / 2, y0 = paTop + (paH + bbH) / 2; // frente-inferior-izq (punto más bajo)
       const FBL = [x0, y0], FBR = [x0 + wA, y0], FTL = [x0, y0 - hH], FTR = [x0 + wA, y0 - hH];
       const BBL = [x0 + dd, y0 - dd], BBR = [x0 + wA + dd, y0 - dd], BTL = [x0 + dd, y0 - hH - dd], BTR = [x0 + wA + dd, y0 - hH - dd];
       const P = (p) => f1(p[0]) + "," + f1(p[1]);
       s += `<text class="vista-tit" x="${f1(VW / 2)}" y="10" text-anchor="middle">REPRESENTACIÓN 3D</text>`;
-      // Caras (relleno suave para dar volumen)
+      // Caras: la tapa arriba y cada PARED colgando con SU alto (alas disímiles se ven disímiles).
+      const dn = (pt, hpx) => [pt[0], pt[1] + hpx];
       s += `<polygon points="${P(FTL)} ${P(FTR)} ${P(BTR)} ${P(BTL)}" fill="rgba(120,140,170,0.18)" stroke="none"/>`; // tapa
-      s += `<polygon points="${P(FTR)} ${P(BTR)} ${P(BBR)} ${P(FBR)}" fill="rgba(120,140,170,0.10)" stroke="none"/>`; // lado der
-      s += `<polygon points="${P(FTL)} ${P(FTR)} ${P(FBR)} ${P(FBL)}" fill="rgba(120,140,170,0.04)" stroke="none"/>`; // frente
-      // Aristas ocultas (punteadas)
-      [[BBL, BBR], [BBL, BTL], [BBL, FBL]].forEach((e) => { s += `<line class="vol-fold" x1="${f1(e[0][0])}" y1="${f1(e[0][1])}" x2="${f1(e[1][0])}" y2="${f1(e[1][1])}"/>`; });
-      // Aristas visibles (sólidas)
-      [[FTL, FTR], [FTR, FBR], [FBR, FBL], [FBL, FTL], [FTL, BTL], [FTR, BTR], [FBR, BBR], [BTL, BTR], [BTR, BBR]].forEach((e) => {
+      if (hdP > 0) s += `<polygon points="${P(FTR)} ${P(BTR)} ${P(dn(BTR, hdP))} ${P(dn(FTR, hdP))}" fill="rgba(120,140,170,0.10)" stroke="none"/>`; // lado der
+      if (hiP > 0) s += `<polygon points="${P(FTL)} ${P(FTR)} ${P(dn(FTR, hiP))} ${P(dn(FTL, hiP))}" fill="rgba(120,140,170,0.04)" stroke="none"/>`; // frente (ala inf)
+      // Aristas de la tapa (siempre)
+      [[FTL, FTR], [FBL, FTL].slice(0, 0), [FTL, BTL], [FTR, BTR], [BTL, BTR]].forEach((e) => {
+        if (!e.length) return;
         s += `<line class="vol-edge" x1="${f1(e[0][0])}" y1="${f1(e[0][1])}" x2="${f1(e[1][0])}" y2="${f1(e[1][1])}"/>`;
       });
+      // Contorno de cada pared: verticales + borde inferior, con su propio alto.
+      const pared = (tA, tB, hpx, oculta) => {
+        if (!(hpx > 0)) return;
+        const cls = oculta ? "vol-fold" : "vol-edge";
+        s += `<line class="${cls}" x1="${f1(tA[0])}" y1="${f1(tA[1])}" x2="${f1(tA[0])}" y2="${f1(tA[1] + hpx)}"/>`;
+        s += `<line class="${cls}" x1="${f1(tB[0])}" y1="${f1(tB[1])}" x2="${f1(tB[0])}" y2="${f1(tB[1] + hpx)}"/>`;
+        s += `<line class="${cls}" x1="${f1(tA[0])}" y1="${f1(tA[1] + hpx)}" x2="${f1(tB[0])}" y2="${f1(tB[1] + hpx)}"/>`;
+      };
+      pared(FTL, FTR, hiP, false);   // frente = ala inf
+      pared(FTR, BTR, hdP, false);   // lado derecho
+      pared(BTL, BTR, hsP, true);    // fondo = ala sup (oculta)
+      pared(FTL, BTL, hzP, true);    // lado izquierdo (oculta)
       if (conCotas) {
         s += `<text class="cota-lbl" x="${f1((FBL[0] + FBR[0]) / 2)}" y="${f1(y0 + 9)}" text-anchor="middle">ancho ${fmt(A)}m</text>`;
-        s += `<text class="cota-lbl" x="${f1(x0 - 4)}" y="${f1((FTL[1] + FBL[1]) / 2)}" text-anchor="middle" transform="rotate(-90 ${f1(x0 - 4)} ${f1((FTL[1] + FBL[1]) / 2)})">alto ${fmt(H)}m</text>`;
+        s += `<text class="cota-lbl" x="${f1(x0 - 4)}" y="${f1((FTL[1] + FBL[1]) / 2)}" text-anchor="middle" transform="rotate(-90 ${f1(x0 - 4)} ${f1((FTL[1] + FBL[1]) / 2)})">${altosIguales ? "alto " + fmt(Hmax) + "m" : "altos según plano"}</text>`;
         const mlx = (FTR[0] + BTR[0]) / 2 + 3, mly = (FTR[1] + BTR[1]) / 2 - 2;
         s += `<text class="cota-lbl" x="${f1(mlx)}" y="${f1(mly)}">largo ${fmt(L)}m</text>`;
       }
@@ -1411,7 +1424,14 @@
       // que el clic se proyecte al punto real aunque la proyección sea oblicua.
       if (opts.live && !spec.espejo) {
         const top3 = (x, y) => [x0 + x * sc3 + (L - y) * dep * k * sc3, (y0 - hH) - (L - y) * dep * k * sc3];
-        const rim3 = (x, y) => [x0 + x * sc3 + (L - y) * dep * k * sc3, y0 - (L - y) * dep * k * sc3];
+        const hPor = { sup: hs, inf: hi, izq: hz, der: hd };
+        const rimK = (kAla, x, y) => { const t = top3(x, y); return [t[0], t[1] + (hPor[kAla] || 0) * sc3]; };
+        const rim3 = (x, y) => { // compat: rim del ala que corresponde al punto (borde más cercano)
+          if (Math.abs(y - L) < 1e-9) return rimK("inf", x, y);
+          if (Math.abs(y) < 1e-9) return rimK("sup", x, y);
+          if (Math.abs(x) < 1e-9) return rimK("izq", x, y);
+          return rimK("der", x, y);
+        };
         const hit3 = (pq, qq, kAr, aM, bM) => {
           s += `<line class="arista-hit" data-arista="${kAr}" data-ax="${aM[0]}" data-ay="${aM[1]}" data-bx="${bM[0]}" data-by="${bM[1]}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
         };
@@ -1420,10 +1440,10 @@
         const clA = (x) => Math.max(0, Math.min(A, x)), clL = (y) => Math.max(0, Math.min(L, y));
         const mez = (pq, qq, v) => [pq[0] + (qq[0] - pq[0]) * v, pq[1] + (qq[1] - pq[1]) * v];
         const vol3 = (x, y) => {
-          if (y > L && hi) return mez(top3(clA(x), L), rim3(clA(x), L), Math.min(1, (y - L) / hi));
-          if (y < 0 && hs) return mez(top3(clA(x), 0), rim3(clA(x), 0), Math.min(1, -y / hs));
-          if (x < 0 && hz) return mez(top3(0, clL(y)), rim3(0, clL(y)), Math.min(1, -x / hz));
-          if (x > A && hd) return mez(top3(A, clL(y)), rim3(A, clL(y)), Math.min(1, (x - A) / hd));
+          if (y > L && hi) return mez(top3(clA(x), L), rimK("inf", clA(x), L), Math.min(1, (y - L) / hi));
+          if (y < 0 && hs) return mez(top3(clA(x), 0), rimK("sup", clA(x), 0), Math.min(1, -y / hs));
+          if (x < 0 && hz) return mez(top3(0, clL(y)), rimK("izq", 0, clL(y)), Math.min(1, -x / hz));
+          if (x > A && hd) return mez(top3(A, clL(y)), rimK("der", A, clL(y)), Math.min(1, (x - A) / hd));
           return top3(clA(x), clL(y));
         };
         // Pliegues (aristas de la tapa): menú completo por arista.
@@ -1438,17 +1458,17 @@
         const hitLibre = (pq, qq, aM, bM) => {
           s += `<line class="arista-hit" data-libre="1" data-ax="${aM[0]}" data-ay="${aM[1]}" data-bx="${bM[0]}" data-by="${bM[1]}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
         };
-        if (va("sup")) hitRim(rim3(0, 0), rim3(A, 0), "sup", [0, -H], [A, -H]);
-        if (va("inf")) hitRim(rim3(0, L), rim3(A, L), "inf", [0, L + H], [A, L + H]);
-        if (va("izq")) hitRim(rim3(0, 0), rim3(0, L), "izq", [-H, 0], [-H, L]);
-        if (va("der")) hitRim(rim3(A, 0), rim3(A, L), "der", [A + H, 0], [A + H, L]);
+        if (hs) hitRim(rimK("sup", 0, 0), rimK("sup", A, 0), "sup", [0, -hs], [A, -hs]);
+        if (hi) hitRim(rimK("inf", 0, L), rimK("inf", A, L), "inf", [0, L + hi], [A, L + hi]);
+        if (hz) hitRim(rimK("izq", 0, 0), rimK("izq", 0, L), "izq", [-hz, 0], [-hz, L]);
+        if (hd) hitRim(rimK("der", A, 0), rimK("der", A, L), "der", [A + hd, 0], [A + hd, L]);
         // Verticales del cubo (la ALTURA): cada una edita el borde lateral de una pared, con su
         // propio segmento de hoja (prioridad inf/sup; si esa ala no existe, la izq/der).
-        const vert3 = (x2d, yTapa, segM) => hitLibre(top3(x2d, yTapa), rim3(x2d, yTapa), segM[0], segM[1]);
-        if (va("inf")) { vert3(0, L, [[0, L], [0, L + H]]); vert3(A, L, [[A, L], [A, L + H]]); }
-        else { if (va("izq")) vert3(0, L, [[0, L], [-H, L]]); if (va("der")) vert3(A, L, [[A, L], [A + H, L]]); }
-        if (va("sup")) { vert3(0, 0, [[0, 0], [0, -H]]); vert3(A, 0, [[A, 0], [A, -H]]); }
-        else { if (va("izq")) vert3(0, 0, [[0, 0], [-H, 0]]); if (va("der")) vert3(A, 0, [[A, 0], [A + H, 0]]); }
+        const vert3 = (kAla, x2d, yTapa, segM) => hitLibre(top3(x2d, yTapa), rimK(kAla, x2d, yTapa), segM[0], segM[1]);
+        if (hi) { vert3("inf", 0, L, [[0, L], [0, L + hi]]); vert3("inf", A, L, [[A, L], [A, L + hi]]); }
+        else { if (hz) vert3("izq", 0, L, [[0, L], [-hz, L]]); if (hd) vert3("der", A, L, [[A, L], [A + hd, L]]); }
+        if (hs) { vert3("sup", 0, 0, [[0, 0], [0, -hs]]); vert3("sup", A, 0, [[A, 0], [A, -hs]]); }
+        else { if (hz) vert3("izq", 0, 0, [[0, 0], [-hz, 0]]); if (hd) vert3("der", A, 0, [[A, 0], [A + hd, 0]]); }
         // Cortes y CALADOS (rect/circ/línea) sobre el cubo: se dibujan TODOS sus lados mapeados a
         // la cara que corresponda (tapa o pared), con sus ojetillos. Clicable: solo cortes-línea
         // (igual criterio que el desplegado).
