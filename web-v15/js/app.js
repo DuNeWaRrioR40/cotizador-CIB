@@ -4767,7 +4767,7 @@
       activarClicOcultarCotas(sk, state.cotasOcultas, refrescarOcUnif);
       activarArrastreCotas(sk, state.cotasPos, refrescarOcUnif);
       activarMenuAristas(sk, accionesAristaUnif);
-      activarAnclas(sk, { anclas: state.anclasUnif, cortes: state.cortesUnif, ancho: ancho || 0, largo: largo || 0, onChange: () => { renderCortesUnif(); recompute(); } });
+      activarAnclas(sk, { anclas: state.anclasUnif, cortes: state.cortesUnif, ancho: ancho || 0, largo: largo || 0, vol: () => (alturaUnif() > 0 ? { altos: altosUnif(), alas: alasUnif() } : null), onChange: () => { renderCortesUnif(); recompute(); } });
       activarNotas(sk, state.notasUnif, recompute);
       menuPlano(sk, [
         { label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
@@ -6687,15 +6687,37 @@
       const porAr = {};
       (ctx.anclas || []).forEach((a2) => { if (a2 && a2.ar && !a2.seg) (porAr[a2.ar] = porAr[a2.ar] || []).push(a2.id); });
       Object.keys(porAr).forEach((k2) => { const ids = porAr[k2]; for (let i2 = 0; i2 < ids.length; i2++) for (let j2 = i2 + 1; j2 < ids.length; j2++) edges.push([ids[i2], ids[j2]]); });
+      // Anchors sobre el MISMO segmento libre (rim/lateral de un ala): tramo implícito entre ellos.
+      const porSeg = {};
+      (ctx.anclas || []).forEach((a2) => {
+        if (!a2 || !a2.seg || !a2.seg.a || !a2.seg.b) return;
+        const k3 = [a2.seg.a.x, a2.seg.a.y, a2.seg.b.x, a2.seg.b.y].map((v) => Math.round(v * 1000)).join("|");
+        (porSeg[k3] = porSeg[k3] || []).push(a2.id);
+      });
+      Object.keys(porSeg).forEach((k3) => { const ids = porSeg[k3]; for (let i2 = 0; i2 < ids.length; i2++) for (let j2 = i2 + 1; j2 < ids.length; j2++) edges.push([ids[i2], ids[j2]]); });
       const ady = {};
       edges.forEach((e2, ei) => { (ady[e2[0]] = ady[e2[0]] || []).push([e2[1], ei]); (ady[e2[1]] = ady[e2[1]] || []).push([e2[0], ei]); });
-      let mejor = null;
+      // Área del ciclo candidato: descarta polígonos DEGENERADOS (anchors colineales sobre una
+      // misma línea encierran área 0 → calado invisible). Se prefiere el ciclo más corto con
+      // área real; a igual largo, el de mayor área.
+      const posDe = (id2) => { const r2 = buscar(id2); if (!r2) return null; return (r2.tipo === "arista") ? posAnclaArista(r2.an, A, L) : posAnclaCorte(r2.c, r2.an); };
+      const areaDe = (ids) => {
+        const ps = ids.map(posDe); if (ps.some((q2) => !q2)) return 0;
+        let a2 = 0;
+        for (let i2 = 0; i2 < ps.length; i2++) { const p2 = ps[i2], q2 = ps[(i2 + 1) % ps.length]; a2 += p2.x * q2.y - q2.x * p2.y; }
+        return Math.abs(a2 / 2);
+      };
+      let mejor = null, pasos = 0;
       const dfs = (nodo, camino, usados) => {
-        if (mejor) return;
+        if (pasos++ > 30000) return;
         for (const par of (ady[nodo] || [])) {
           const nx = par[0], ei = par[1];
           if (usados[ei]) continue;
-          if (nx === id0 && camino.length >= 3) { if (!mejor || camino.length < mejor.length) mejor = camino.slice(); continue; }
+          if (nx === id0 && camino.length >= 3) {
+            const ar2 = areaDe(camino);
+            if (ar2 > 0.01 && (!mejor || camino.length < mejor.len || (camino.length === mejor.len && ar2 > mejor.area))) mejor = { ids: camino.slice(), len: camino.length, area: ar2 };
+            continue;
+          }
           if (camino.indexOf(nx) !== -1) continue;
           usados[ei] = true; camino.push(nx);
           dfs(nx, camino, usados);
@@ -6703,7 +6725,7 @@
         }
       };
       dfs(id0, [id0], {});
-      return mejor;
+      return mejor ? mejor.ids : null;
     }
     function menuAncla(reg) {
       cerrarMenuAristas();
@@ -6800,16 +6822,33 @@
       bP.textContent = "⚓＋";
       bP.addEventListener("click", (e) => {
         e.stopPropagation();
-        const esquinas = [["sup", "ini"], ["sup", "fin"], ["inf", "ini"], ["inf", "fin"]];
         const eps = 1e-6, existentes = (ctx.anclas || []).map((a2) => posAnclaArista(a2, A, L)).filter(Boolean);
+        const yaHay = (pq) => existentes.some((q2) => Math.abs(q2.x - pq.x) < eps && Math.abs(q2.y - pq.y) < eps);
         let creados = 0;
-        esquinas.forEach(([ar2, esq2]) => {
+        [["sup", "ini"], ["sup", "fin"], ["inf", "ini"], ["inf", "fin"]].forEach(([ar2, esq2]) => {
           const seg2 = aristaSegAncla(ar2, A, L);
           const pq = (esq2 === "ini") ? seg2.a : seg2.b;
-          if (existentes.some((q2) => Math.abs(q2.x - pq.x) < eps && Math.abs(q2.y - pq.y) < eps)) return;
+          if (yaHay(pq)) return;
           ctx.anclas.push({ id: nuevoIdAncla(ctx.anclas, ctx.cortes), ar: ar2, esq: esq2, d: 0, fix: true });
-          creados += 1;
+          existentes.push(pq); creados += 1;
         });
+        // Volumétrico: también los vértices EXTERIORES de cada aleta (esquinas del rim, coords de hoja).
+        const v3 = ctx.vol ? ctx.vol() : null;
+        if (v3) {
+          const hK = (k2) => { if (v3.alas && v3.alas[k2] === false) return 0; const vv = v3.altos ? parseFloat(v3.altos[k2]) : 0; return (vv > 0) ? vv : 0; };
+          const rims = [];
+          if (hK("sup") > 0) rims.push([{ x: 0, y: -hK("sup") }, { x: A, y: -hK("sup") }]);
+          if (hK("inf") > 0) rims.push([{ x: 0, y: L + hK("inf") }, { x: A, y: L + hK("inf") }]);
+          if (hK("izq") > 0) rims.push([{ x: -hK("izq"), y: 0 }, { x: -hK("izq"), y: L }]);
+          if (hK("der") > 0) rims.push([{ x: A + hK("der"), y: 0 }, { x: A + hK("der"), y: L }]);
+          rims.forEach(([pa, pb]) => {
+            [["ini", pa], ["fin", pb]].forEach(([esq2, pq]) => {
+              if (yaHay(pq)) return;
+              ctx.anclas.push({ id: nuevoIdAncla(ctx.anclas, ctx.cortes), seg: { a: pa, b: pb }, esq: esq2, d: 0, fix: true });
+              existentes.push(pq); creados += 1;
+            });
+          });
+        }
         if (creados && ctx.onChange) ctx.onChange();
       });
       container.appendChild(bP);
@@ -8120,7 +8159,7 @@
         activarClicOcultarCotas(sketchBox, pz.cotasOcultas, recomputeCompuesto);
         activarArrastreCotas(sketchBox, pz.cotasPos || (pz.cotasPos = {}), recomputeCompuesto);
         activarMenuAristas(sketchBox, accionesAristaPieza(pz));
-        activarAnclas(sketchBox, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, onChange: () => { renderPiezas(); recompute(); } });
+        activarAnclas(sketchBox, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, vol: () => { const hh = pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0; return hh > 0 ? { altos: { sup: hh, inf: hh, izq: hh, der: hh }, alas: null } : null; }, onChange: () => { renderPiezas(); recompute(); } });
         activarNotas(sketchBox, (pz.notas || (pz.notas = [])), recomputeCompuesto);
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
         menuPlano(sketchBox, [
@@ -8210,7 +8249,7 @@
         body.innerHTML = '<p class="muted small">Completa largo y ancho de esta pieza.</p>';
       } else {
         const sk = document.createElement("div"); sk.className = "sketch"; sk.id = "prevsk_" + pz.id;
-        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); activarArrastreCotas(sk, pz.cotasPos || (pz.cotasPos = {}), recomputeCompuesto); activarMenuAristas(sk, accionesAristaPieza(pz)); activarAnclas(sk, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, onChange: () => { renderPiezas(); recompute(); } }); activarNotas(sk, (pz.notas || (pz.notas = [])), recomputeCompuesto); }
+        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); activarArrastreCotas(sk, pz.cotasPos || (pz.cotasPos = {}), recomputeCompuesto); activarMenuAristas(sk, accionesAristaPieza(pz)); activarAnclas(sk, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, vol: () => { const hh = pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0; return hh > 0 ? { altos: { sup: hh, inf: hh, izq: hh, der: hh }, alas: null } : null; }, onChange: () => { renderPiezas(); recompute(); } }); activarNotas(sk, (pz.notas || (pz.notas = [])), recomputeCompuesto); }
         body.appendChild(sk);
         const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn-outline"; dl.textContent = "Descargar plano (PDF)";
         dl.addEventListener("click", () => descargarSketchPieza(pz));
