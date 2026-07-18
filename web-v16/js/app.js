@@ -5015,9 +5015,17 @@
     const canvas = document.createElement("canvas"); canvas.className = "vol3d-canvas";
     const hint = document.createElement("div"); hint.className = "vol3d-hint"; hint.textContent = "Arrastra para rotar · rueda o pellizco para acercar";
     const acciones = document.createElement("div"); acciones.className = "vol3d-acciones";
+    const rot3d = document.createElement("button"); rot3d.type = "button"; rot3d.className = "vol3d-btn"; rot3d.textContent = "Aa Rótulos: sí";
+    rot3d.title = "Mostrar/ocultar los rótulos (callouts) del visor";
+    rot3d._on = true;
+    rot3d.addEventListener("click", () => {
+      rot3d._on = !rot3d._on;
+      rot3d.textContent = rot3d._on ? "Aa Rótulos: sí" : "Aa Rótulos: no";
+      if (_v3d && _v3d.scene) _v3d.scene.traverse((o9) => { if (o9._esRotulo) o9.visible = rot3d._on; });
+    });
     const cap3d = document.createElement("button"); cap3d.type = "button"; cap3d.className = "vol3d-btn"; cap3d.textContent = "📸 Incluir esta vista en el plano";
     const dl3d = document.createElement("button"); dl3d.type = "button"; dl3d.className = "vol3d-btn"; dl3d.textContent = "⬇ Descargar imagen";
-    acciones.appendChild(cap3d); acciones.appendChild(dl3d);
+    acciones.appendChild(rot3d); acciones.appendChild(cap3d); acciones.appendChild(dl3d);
     body.appendChild(canvas); overlay.appendChild(x); overlay.appendChild(body); overlay.appendChild(hint); overlay.appendChild(acciones);
     document.body.appendChild(overlay);
 
@@ -5774,6 +5782,7 @@
       const mat = new T.SpriteMaterial({ map: new T.CanvasTexture(cv), transparent: true, depthTest: false });
       mat.color = new T.Color(0x8a8f98);   // gris moderado por defecto
       const sp = new T.Sprite(mat);
+      sp._esRotulo = true;   // ocultable con el botón "Aa" del visor
       const sc = diag * 0.26; sp.scale.set(sc * 2, sc / 4, 1); return sp;   // ~25% más chico que antes
     };
     // Rótulos de caras: qué es cada parte (claridad para el cliente).
@@ -5845,7 +5854,7 @@
       a.download = "CIBSA_3D_" + firmaVol().replace(/[^0-9a-zA-Z_.x-]/g, "") + ".png";
       document.body.appendChild(a); a.click(); a.remove();
     });
-    _v3d = { renderer: renderer, overlay: overlay, onResize: onResize, onKey: onKey, raf: 0 };
+    _v3d = { renderer: renderer, overlay: overlay, onResize: onResize, onKey: onKey, raf: 0, scene: scene };
     const loop = () => { if (!_v3d) return; if (auto) { theta += 0.004; colocar(); } renderer.render(scene, cam); _v3d.raf = requestAnimationFrame(loop); };
     loop();
   }
