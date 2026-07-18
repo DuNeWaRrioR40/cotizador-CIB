@@ -4981,7 +4981,8 @@
       }
       return null;
     })();
-    if (!(A > 0) || !(L > 0) || (!(H > 0) && !hayAnexos3D && !ejeF && !fanF)) return alert("Define las dimensiones para ver el 3D.");
+    const esVolMarcado = !fig && $("f_usaAlto") && $("f_usaAlto").checked;
+    if (!(A > 0) || !(L > 0) || (!(H > 0) && !hayAnexos3D && !ejeF && !fanF && !esVolMarcado)) return alert("Define las dimensiones para ver el 3D.");
     if (!(H > 0)) H = 0;   // modo PLANO: lámina + anexos plegables (y/o eje de pliegue)
     try {
       await ensureLib("THREE", [
@@ -5871,10 +5872,12 @@
         cont.appendChild(b);
       }
       if (cont.id === "sketchUnif") montarRotCtrls(cont, svg);
-      // Visor 3D interactivo: paño volumétrico (alto definido) o plano CON anexos (pliegues).
+      // Visor 3D interactivo: basta MARCAR "volumétrico" (aunque el alto sea 0), o tener
+      // anexos plegables, o guías-eje (pliegues/pirámide).
       if (cont.id === "sketchUnif") {
         const prev3d = cont.querySelector(":scope > .sketch-3d-btn");
-        if (alturaUnif() > 0 || visibles(state.aletasUnif).length > 0) {
+        const hayEjeVis = visibles(state.cortesUnif).some((c9) => c9 && c9.tipo === "guia" && c9.ejeVis);
+        if (($("f_usaAlto") && $("f_usaAlto").checked) || alturaUnif() > 0 || visibles(state.aletasUnif).length > 0 || hayEjeVis) {
           if (!prev3d) {
             const b3 = document.createElement("button");
             b3.type = "button"; b3.className = "sketch-3d-btn"; b3.title = "Ver en 3D interactivo (rotar y acercar)"; b3.textContent = "🧊";
