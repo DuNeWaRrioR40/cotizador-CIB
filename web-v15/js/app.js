@@ -6699,7 +6699,8 @@
       edges.forEach((e2, ei) => { (ady[e2[0]] = ady[e2[0]] || []).push([e2[1], ei]); (ady[e2[1]] = ady[e2[1]] || []).push([e2[0], ei]); });
       // Área del ciclo candidato: descarta polígonos DEGENERADOS (anchors colineales sobre una
       // misma línea encierran área 0 → calado invisible). Se prefiere el ciclo más corto con
-      // área real; a igual largo, el de mayor área.
+      // área real; a igual largo, el de MENOR área (el polígono ceñido que el usuario trazó,
+      // no uno mayor que lo envuelve — p.ej. 2 triángulos simétricos vs el triángulo central).
       const posDe = (id2) => { const r2 = buscar(id2); if (!r2) return null; return (r2.tipo === "arista") ? posAnclaArista(r2.an, A, L) : posAnclaCorte(r2.c, r2.an); };
       const areaDe = (ids) => {
         const ps = ids.map(posDe); if (ps.some((q2) => !q2)) return 0;
@@ -6715,7 +6716,7 @@
           if (usados[ei]) continue;
           if (nx === id0 && camino.length >= 3) {
             const ar2 = areaDe(camino);
-            if (ar2 > 0.01 && (!mejor || camino.length < mejor.len || (camino.length === mejor.len && ar2 > mejor.area))) mejor = { ids: camino.slice(), len: camino.length, area: ar2 };
+            if (ar2 > 0.01 && (!mejor || camino.length < mejor.len || (camino.length === mejor.len && ar2 < mejor.area))) mejor = { ids: camino.slice(), len: camino.length, area: ar2 };
             continue;
           }
           if (camino.indexOf(nx) !== -1) continue;
