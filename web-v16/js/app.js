@@ -3085,9 +3085,12 @@
       esp: base.esp != null ? base.esp : "0.5", pos1: base.pos1 != null ? base.pos1 : "0.5", posFin: base.posFin || "", extremos: base.extremos != null ? base.extremos : "0",
       edicion: base.edicion || "", zoomDetalle: base.zoomDetalle || "", legend: base.legend || "", rotulo: base.rotulo != null ? !!base.rotulo : true };
   }
-  const CINTA_GLOBO = "Cinta/cierre continua paralela a la arista. En «Edición» defines los tramos separados por coma, medidos a lo largo de la cinta: " +
-    "a-b = sin costura / bolsillo (Ø opcional, ej. 2-4Ø0.05) → se marca con Ω; a!b = costura de seguridad (refuerzo) → recuadro con diagonales; " +
-    "a x b = hueco / sin cinta → achurado con cota ✕. Lo NO listado va cosido continuo. Ejemplo: 2-4Ø0.05, 5.5!7, 7x9.";
+  const CINTA_GLOBO = "Cinta/cierre continua paralela a la arista. En «Edición» defines los tramos separados por coma, medidos a lo largo del recorrido. Lo NO listado va cosido continuo. Ejemplo: 2-4l0.05, 5.5s7, 7x9.\n" +
+    "⚑ PIEDRA ROSETTA — símbolo = letra (para teclado de iPhone):\n" +
+    "a-b → tramo SIN costura / bolsillo (se marca con Ω)\n" +
+    "ø = l → loop con diámetro en tramo suelto: 2-4Ø0.05 ≡ 2-4l0.05 (también sirven O · o · D · d · *)\n" +
+    "! = s → costura de SEGURIDAD (refuerzo, recuadro con diagonales): 5.5!7 ≡ 5.5s7\n" +
+    "✕ = x → HUECO sin cinta (achurado): 7x9";
   // ctx: { cintas, getAncho(), getLargo(), onChange }
   function renderCintas(container, ctx) {
     container.innerHTML = "";
@@ -3171,7 +3174,7 @@
           if (c.pivote) { const ga = document.createElement("div"); ga.className = "pieza-grid"; ga.appendChild(addHelpTo(numField("Ángulo (°)", "angulo", "0"), "Gira la cinta alrededor del punto de anclaje (Desde) respecto de la arista. 0 = paralela.", "CINTA-ANG")); card.appendChild(ga); }
         }
         const led = document.createElement("label"); led.className = "field full"; led.innerHTML = "<span>Edición (tramos)</span>";
-        const ied = document.createElement("input"); ied.type = "text"; ied.value = c.edicion || ""; ied.placeholder = "ej. 2-4Ø0.05, 5.5!7, 7x9";
+        const ied = document.createElement("input"); ied.type = "text"; ied.value = c.edicion || ""; ied.placeholder = "ej. 2-4l0.05, 5.5s7, 7x9";
         ied.addEventListener("input", (e) => { c.edicion = e.target.value; refresh(); onChange(); });
         led.appendChild(ied); addHelpTo(led, CINTA_GLOBO, "CINTA-EDICION"); card.appendChild(led);
         const lz = document.createElement("label"); lz.className = "field full"; lz.innerHTML = "<span>Zoom detalle (secciones a ampliar)</span>";
@@ -6743,7 +6746,7 @@
     menu.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, xy.x - mw / 2)) + "px";
     menu.style.top = Math.max(8, Math.min(window.innerHeight - mh - 8, xy.y + 12)) + "px";
   }
-  function cerrarMenuAristas() { if (_arMenu) { _arMenu.remove(); _arMenu = null; } }
+  function cerrarMenuAristas() { if (_arMenu) { if (_arMenu._onKey) document.removeEventListener("keydown", _arMenu._onKey); _arMenu.remove(); _arMenu = null; } }
   document.addEventListener("click", (e) => { if (_arMenu && !_arMenu.contains(e.target)) cerrarMenuAristas(); });
   // Expande la sección colapsada que contenga el elemento, hace scroll y destella su título.
   function irASeccion(el) {
@@ -7670,7 +7673,7 @@
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else if (esRim && seg) {
           // Rim (borde externo del ala): ojetillos externos por arista + elementos en el rim mismo.
-          items = [["Ojetillos (borde externo)", "oj"], ["Ojetillos (fila en el rim)", "ojLibre"], ["Strap (en el rim)", "strapLibre"], ["Corte / calado (en el rim)", "corteLibre"], ["Línea de construcción (en el rim)", "guiaLibre"]];
+          items = [["Ojetillos (borde externo)", "oj"], ["Ojetillos (fila en el rim)", "ojLibre"], ["Strap (en el rim)", "strapLibre"], ["Cintas / cierres (de la arista)", "cinta"], ["Corte / calado (en el rim)", "corteLibre"], ["Línea de construcción (en el rim)", "guiaLibre"]];
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else {
           items = [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]];
@@ -7679,11 +7682,22 @@
         }
         items.forEach(([t, a]) => {
           if (!acciones[a]) return;
-          const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
+          const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it";
+          const esAncla = (a === "ancla" || a === "anclaLibre" || a === "corteAncla");
+          b.textContent = esAncla ? t + "  ⌨A" : t;
+          if (esAncla) b.dataset.hotA = "1";
           b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
+        // Atajo ⌨A: con el menú de la arista abierto, "A" instala el anchor en el punto pinchado
+        // (y el diálogo de fijar distancia se abre solo).
+        menu._onKey = (ev3) => {
+          if (ev3.key !== "a" && ev3.key !== "A") return;
+          const btnA = menu.querySelector('button[data-hot-a="1"]');
+          if (btnA) { ev3.preventDefault(); btnA.click(); }
+        };
+        document.addEventListener("keydown", menu._onKey);
         _arMenuXY = { x: e.clientX, y: e.clientY };
         const mw = menu.offsetWidth || 200, mh = menu.offsetHeight || 180;
         menu.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, e.clientX - mw / 2)) + "px";
@@ -7947,8 +7961,11 @@
       renderStrapsUnif(); recompute();
       irASeccion($("strapsUnif"));
     },
-    cinta: (k) => {
-      state.cintasUnif.push(nuevaCinta({ modo: "arista", arista: k }));
+    cinta: (k, pm) => {
+      const f = window.CalcCIBSA.fmtNum;
+      // Vinculada al PUNTO de instalación: "Desde" = distancia del clic a lo largo de la arista.
+      const t = pm ? rd3(Math.max(0, (k === "sup" || k === "inf") ? pm.x : pm.y)) : null;
+      state.cintasUnif.push(nuevaCinta({ modo: "arista", arista: k, desde: (t != null && t > 0.005) ? f(t) : "0" }));
       renderCintasUnif(); recompute();
       irASeccion($("cintasUnif"));
     },
@@ -8092,7 +8109,10 @@
         irAPieza();
       },
       strap: (k) => { (pz.straps || (pz.straps = [])).push({ matId: null, modo: "unica", arista: k, d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "0.1", inset: "0.1", offBorde: "0.01", legend: "", sets: [] }); irAPieza(); },
-      cinta: (k) => { (pz.cintas || (pz.cintas = [])).push(nuevaCinta({ modo: "arista", arista: k })); irAPieza(); },
+      cinta: (k, pm) => {
+        const t = pm ? rd3(Math.max(0, (k === "sup" || k === "inf") ? pm.x : pm.y)) : null;
+        (pz.cintas || (pz.cintas = [])).push(nuevaCinta({ modo: "arista", arista: k, desde: (t != null && t > 0.005) ? window.CalcCIBSA.fmtNum(t) : "0" }));
+        irAPieza(); },
       corte: (k) => {
         const c = nuevaCorte(); c.tipo = "calado"; c.forma = "rect"; c.largo = "0.5"; c.ancho = "0.5";
         const bL = ev(pz.largo), bA = ev(pz.ancho);

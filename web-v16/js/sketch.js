@@ -2026,12 +2026,13 @@
     const out = []; if (!str) return out;
     const Lmax = (L > 0) ? L : Infinity;
     String(str).split(",").forEach((tok) => {
-      const m = tok.trim().match(/^([0-9]*\.?[0-9]+)\s*([-xX!])\s*([0-9]*\.?[0-9]+)\s*(?:[ØøOoDd*]\s*([0-9]*\.?[0-9]+))?$/);
+      // Equivalencias en LETRAS (teclado de iPhone): s = ! (costura de seguridad) · l = ø (loop).
+      const m = tok.trim().match(/^([0-9]*\.?[0-9]+)\s*([-xX!sS])\s*([0-9]*\.?[0-9]+)\s*(?:[ØøOoDd*lL]\s*([0-9]*\.?[0-9]+))?$/);
       if (!m) return;
       let a = parseFloat(m[1]), b = parseFloat(m[3]);
       if (!(b > a)) return;
       const sep = m[2].toLowerCase();
-      const tipo = (sep === "x") ? "gap" : (sep === "!") ? "safety" : "open";
+      const tipo = (sep === "x") ? "gap" : (sep === "!" || sep === "s") ? "safety" : "open";
       const dia = (tipo === "open" && m[4] != null) ? parseFloat(m[4]) : 0;
       a = Math.max(0, Math.min(a, Lmax)); b = Math.max(0, Math.min(b, Lmax));
       if (b > a) out.push({ a: a, b: b, tipo: tipo, dia: (dia > 0 ? dia : 0) });

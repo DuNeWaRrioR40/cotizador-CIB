@@ -977,3 +977,5 @@ body.drawer-abierto { overflow: hidden; }
 .arista-menu-mas { border-top: 1px solid var(--border, #eee); background: color-mix(in srgb, var(--surface, #f6f6f4) 60%, transparent); }
 
 .vc-img3d { display: block; margin: 14px auto 0; max-width: min(92vw, 900px); max-height: 46vh; border-radius: 10px; box-shadow: 0 4px 24px rgba(0,0,0,0.18); background: #fff; }
+
+.help-pop > div:first-child { white-space: pre-line; }
