@@ -6842,7 +6842,7 @@
     const ESQP = { tl: { x: 0, y: 0 }, tr: { x: A, y: 0 }, bl: { x: 0, y: L }, br: { x: A, y: L } };
     (cortesRaw || []).forEach((c) => {
       if (!c || c.tipo !== "poli" || !Array.isArray(c.poliAnclas)) return;
-      const pts = c.poliAnclas.map((id) => (id && typeof id === "object" && id.esq) ? ESQP[id.esq] : pos[id]).filter(Boolean);
+      const pts = c.poliAnclas.map((id) => (id && typeof id === "object") ? (id.esq ? ESQP[id.esq] : (id.pt || null)) : pos[id]).filter(Boolean);
       if (pts.length >= 3 && pts.length === c.poliAnclas.length) c._pts = pts.map((q) => ({ x: q.x, y: q.y }));
     });
   }
@@ -7143,16 +7143,37 @@
       // COLAPSO de anchors COINCIDENTES: los empates apilan varios anchors en el mismo punto
       // (uno sobre otro) y las esquinas suelen juntar 2-3. Sin colapso, esos duplicados generan
       // una explosión de caminos paralelos y el buscador se agota sin hallar el polígono.
-      const canon = {}, porPos = {};
-      const todosIds = {};
-      edges.forEach((e2) => { todosIds[e2[0]] = 1; todosIds[e2[1]] = 1; });
-      Object.keys(todosIds).forEach((idS) => {
-        const id2 = +idS, pq = posDe(id2);
-        if (!pq) { canon[id2] = id2; return; }
-        const kk = Math.round(pq.x * 500) + "|" + Math.round(pq.y * 500);   // 2 mm
-        if (porPos[kk] == null) porPos[kk] = id2;
-        canon[id2] = porPos[kk];
-      });
+      const canon = {};
+      { const todosIds = {};
+        edges.forEach((e2) => { todosIds[e2[0]] = 1; todosIds[e2[1]] = 1; });
+        const ids = Object.keys(todosIds).map(Number);
+        // CLUSTERING real (union-find por distancia < 4 mm): una grilla de redondeo parte los
+        // grupos que caen justo en el borde de una celda (bug real detectado con datos de terreno).
+        const posL = {}, parent = {};
+        ids.forEach((id2) => { posL[id2] = posDe(id2); parent[id2] = id2; });
+        const find = (x2) => { while (parent[x2] !== x2) { parent[x2] = parent[parent[x2]]; x2 = parent[x2]; } return x2; };
+        for (let i2 = 0; i2 < ids.length; i2++) for (let j2 = i2 + 1; j2 < ids.length; j2++) {
+          const p1 = posL[ids[i2]], p2 = posL[ids[j2]];
+          if (p1 && p2 && Math.hypot(p1.x - p2.x, p1.y - p2.y) < 0.004) parent[find(ids[i2])] = find(ids[j2]);
+        }
+        ids.forEach((id2) => { canon[id2] = find(id2); });
+      }
+      // Tramos implícitos entre RIMS/segmentos LIBRES por esquina CERCANA (volumétricos): dos
+      // anchors en segmentos distintos cuyos extremos casi se tocan (< 6 cm) se conectan doblando
+      // por ambos extremos, que se insertan como vértices del polígono.
+      { const segAnc = (ctx.anclas || []).filter((a2) => a2 && a2.seg && a2.seg.a && a2.seg.b);
+        const kSg = (sg) => [sg.a.x, sg.a.y, sg.b.x, sg.b.y].map((v) => Math.round(v * 1000)).join("|");
+        for (let i2 = 0; i2 < segAnc.length; i2++) for (let j2 = i2 + 1; j2 < segAnc.length; j2++) {
+          const s1 = segAnc[i2].seg, s2 = segAnc[j2].seg;
+          if (kSg(s1) === kSg(s2)) continue;
+          let mejorP = null;
+          [[s1.a, s2.a], [s1.a, s2.b], [s1.b, s2.a], [s1.b, s2.b]].forEach(([p1, p2]) => {
+            const dd = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+            if (dd < 0.06 && (!mejorP || dd < mejorP.d)) mejorP = { d: dd, p1: p1, p2: p2 };
+          });
+          if (mejorP) { edges.push([segAnc[i2].id, segAnc[j2].id]); metas[edges.length - 1] = { a: segAnc[i2].id, pts: [{ x: mejorP.p1.x, y: mejorP.p1.y }, { x: mejorP.p2.x, y: mejorP.p2.y }] }; }
+        }
+      }
       const ady = {};
       edges.forEach((e2, ei) => {
         const a3 = canon[e2[0]] != null ? canon[e2[0]] : e2[0], b3 = canon[e2[1]] != null ? canon[e2[1]] : e2[1];
@@ -7161,41 +7182,60 @@
       });
       // Área del ciclo candidato (incluyendo esquinas): descarta degenerados; el más corto con
       // área real; a igual largo, el de MENOR área (el polígono ceñido que el usuario trazó).
-      const posSeq = (x2) => (x2 && typeof x2 === "object" && x2.esq) ? ({ tl: { x: 0, y: 0 }, tr: { x: A, y: 0 }, bl: { x: 0, y: L }, br: { x: A, y: L } })[x2.esq] : posDe(x2);
+      const posSeq = (x2) => (x2 && typeof x2 === "object") ? (x2.esq ? ({ tl: { x: 0, y: 0 }, tr: { x: A, y: 0 }, bl: { x: 0, y: L }, br: { x: A, y: L } })[x2.esq] : (x2.pt || null)) : posDe(x2);
       const areaSeq = (seq) => {
         const ps = seq.map(posSeq); if (ps.some((q2) => !q2)) return 0;
         let a2 = 0;
         for (let i2 = 0; i2 < ps.length; i2++) { const p2 = ps[i2], q2 = ps[(i2 + 1) % ps.length]; a2 += p2.x * q2.y - q2.x * p2.y; }
         return Math.abs(a2 / 2);
       };
-      let mejor = null, pasos = 0;
+      // Enumera CANDIDATOS (no adivina): todos los polígonos simples con área real que pasan por
+      // este punto, deduplicados, ordenados por nº de lados y luego por área (el más ceñido primero).
+      // El menú deja ELEGIR cuál cerrar cuando hay más de uno (estilo CAD).
+      const cands = [], vistosC = {};
       const id0c = canon[id0] != null ? canon[id0] : id0;
-      const dfs = (nodo, camino, eds, usados) => {
-        if (pasos++ > 60000) return;
-        if (camino.length > 10) return;   // los polígonos de usuario son chicos: poda la explosión
-        if (mejor && camino.length > mejor.len) return;   // poda: más largo que el mejor ya hallado
-        for (const par of (ady[nodo] || [])) {
-          const nx = par[0], ei = par[1];
-          if (usados[ei]) continue;
-          if (nx === id0c && camino.length >= 3) {
-            const seq = [];
-            for (let i2 = 0; i2 < camino.length; i2++) {
-              seq.push(camino[i2]);
-              const eUsed = (i2 < camino.length - 1) ? eds[i2] : ei;
-              if (metas[eUsed]) seq.push({ esq: metas[eUsed] });
-            }
-            const ar2 = areaSeq(seq);
-            if (ar2 > 0.01 && (!mejor || camino.length < mejor.len || (camino.length === mejor.len && ar2 < mejor.area))) mejor = { seq: seq, len: camino.length, area: ar2 };
-            continue;
+      const registrar = (camino, eds, eiCierre) => {
+        const seq = [];
+        for (let i2 = 0; i2 < camino.length; i2++) {
+          seq.push(camino[i2]);
+          const eUsed = (i2 < camino.length - 1) ? eds[i2] : eiCierre;
+          const mk2 = metas[eUsed];
+          if (typeof mk2 === "string") seq.push({ esq: mk2 });
+          else if (mk2 && mk2.pts) {
+            const desde = camino[i2];
+            const lst = ((canon[mk2.a] != null ? canon[mk2.a] : mk2.a) === desde) ? mk2.pts : mk2.pts.slice().reverse();
+            lst.forEach((pp2) => seq.push({ pt: { x: pp2.x, y: pp2.y } }));
           }
-          if (camino.indexOf(nx) !== -1) continue;
-          usados[ei] = true; camino.push(nx); eds.push(ei);
-          dfs(nx, camino, eds, usados);
-          camino.pop(); eds.pop(); usados[ei] = false;
+        }
+        const ar2 = areaSeq(seq);
+        if (ar2 > 0.01) {
+          const kk2 = seq.map((x2) => (typeof x2 === "object" ? (x2.esq ? "e" + x2.esq : "p" + Math.round(x2.pt.x * 100) + "," + Math.round(x2.pt.y * 100)) : x2)).sort().join("|");
+          if (!vistosC[kk2]) { vistosC[kk2] = 1; cands.push({ seq: seq, len: camino.length, area: Math.round(ar2 * 100) / 100 }); }
         }
       };
-      dfs(id0c, [id0c], [], {});
-      return mejor ? mejor.seq : null;
+      // PROFUNDIZACIÓN ITERATIVA: primero solo ciclos de 3 nodos, luego 4, etc. — los polígonos
+      // chicos (los que el usuario traza) se encuentran al tiro; en grafos densos una búsqueda
+      // sin límite gasta el presupuesto en caminos largos y NO llega al ciclo corto.
+      for (let maxLen = 3; maxLen <= 8; maxLen++) {
+        let pasos = 0;
+        const dfs = (nodo, camino, eds, usados) => {
+          if (pasos++ > 40000) return;
+          for (const par of (ady[nodo] || [])) {
+            const nx = par[0], ei = par[1];
+            if (usados[ei]) continue;
+            if (nx === id0c && camino.length >= 3) { registrar(camino, eds, ei); continue; }
+            if (camino.length >= maxLen) continue;
+            if (camino.indexOf(nx) !== -1) continue;
+            usados[ei] = true; camino.push(nx); eds.push(ei);
+            dfs(nx, camino, eds, usados);
+            camino.pop(); eds.pop(); usados[ei] = false;
+          }
+        };
+        dfs(id0c, [id0c], [], {});
+        if (cands.length >= 3 || (cands.length && maxLen >= 5)) break;
+      }
+      cands.sort((q2, w2) => (q2.len - w2.len) || (q2.area - w2.area));
+      return cands.length ? cands.slice(0, 5) : null;
     }
     // Estilo CAD: si el punto pinchado tiene VARIOS elementos apilados (anchors coincidentes),
     // primero se elige cuál editar de una lista descriptiva.
@@ -7260,13 +7300,19 @@
             const k2 = ctx.cortes.indexOf(yaPoli); if (k2 !== -1) ctx.cortes.splice(k2, 1);
             if (ctx.onChange) ctx.onChange();
           });
-          else { const ciclo = cicloDesde(idNodo);
-            if (ciclo) item("Cerrar polígono → calado (" + ciclo.length + " lados)", () => {
-              const cN = nuevaCorte(); cN.tipo = "poli"; cN.poliAnclas = ciclo; cN.legend = "Calado poligonal";
-              ctx.cortes.push(cN);
-              aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
-              if (ctx.onChange) ctx.onChange();
-            });
+          else { const ciclos = cicloDesde(idNodo);
+            if (ciclos && ciclos.length) {
+              const cerrar = (cd) => {
+                const cN = nuevaCorte(); cN.tipo = "poli"; cN.poliAnclas = cd.seq; cN.legend = "Calado poligonal";
+                ctx.cortes.push(cN);
+                aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
+                if (ctx.onChange) ctx.onChange();
+              };
+              if (ciclos.length === 1) item("Cerrar polígono → calado (" + ciclos[0].seq.length + " lados · " + ciclos[0].area + " m²)", () => cerrar(ciclos[0]));
+              else ciclos.forEach((cd, ci) => {
+                item("Cerrar polígono " + (ci + 1) + " → " + cd.seq.length + " lados · " + cd.area + " m²", () => cerrar(cd));
+              });
+            }
           }
         } }
       // ITERACIÓN: anchors sobre un corte "Eliminar" (borde real del paño) — el recorte se repite
