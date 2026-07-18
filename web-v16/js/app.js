@@ -6949,6 +6949,17 @@
   // Modo "conectar anchors": tras elegirlo en el menú de un anchor, el siguiente clic en OTRO
   // anchor de arista traza un corte/guía entre ambos, ya EMPATADO a los dos (edición exprés).
   let _anchorPend = null;
+  // HERRAMIENTA CIRCUITO DE CALADO ("posta"): cada clic en un anchor traza el corte desde el
+  // anterior; volver al PRIMERO cierra el calado. Soltar la herramienta (Esc / clic en vacío)
+  // sin cerrar = FALLA: se borran TODOS los cortes creados por el circuito.
+  let _circuitoCal = null;
+  function cancelarCircuitoGlobal() {
+    const cc = _circuitoCal; if (!cc) return; _circuitoCal = null;
+    (cc.nuevos || []).forEach((cN) => { const k2 = cc.cortes.indexOf(cN); if (k2 !== -1) cc.cortes.splice(k2, 1); });
+    quitarHintConexion();
+    if (cc.onChange) cc.onChange();
+  }
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && _circuitoCal) cancelarCircuitoGlobal(); });
   function hintConexion(txt) {
     quitarHintConexion();
     const d = document.createElement("div"); d.className = "ancla-conex-hint"; d.id = "anclaConexHint"; d.textContent = txt;
@@ -6991,6 +7002,7 @@
   function activarAnclas(container, ctx) {
     if (!container || !ctx) return;
     if (_anchorPend && _anchorPend.limpiar) _anchorPend.limpiar(); // un re-render cancela la conexión pendiente
+    // (el CIRCUITO de calado sí sobrevive re-renders: cada corte creado re-dibuja el plano)
     const svg = container.querySelector("svg.sketch-svg"); if (!svg || !svg.getScreenCTM || svg.dataset.ox == null) return;
     const mscale = parseFloat(svg.dataset.mscale) || 1, ox = parseFloat(svg.dataset.ox) || 0, oy = parseFloat(svg.dataset.oy) || 0;
     const f = window.CalcCIBSA.fmtNum, A = ctx.ancho, L = ctx.largo;
@@ -7254,6 +7266,51 @@
       aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
       if (ctx.onChange) ctx.onChange();
     }
+    function posAnchorId(id2) { const r2 = buscar(id2); if (!r2) return null; return (r2.tipo === "arista") ? posAnclaArista(r2.an, A, L) : posAnclaCorte(r2.c, r2.an); }
+    function circuitoActivo() { return !!(_circuitoCal && _circuitoCal.cortes === ctx.cortes); }
+    // ¿El lado va por el CONTORNO? (ambos anchors de borde y tramo recto por la orilla): no se corta.
+    function esLadoContorno(pA, pB, rA, rB) {
+      if (!rA || !rB || rA.tipo !== "arista" || rB.tipo !== "arista") return false;
+      return Math.abs(pA.x - pB.x) < 0.02 || Math.abs(pA.y - pB.y) < 0.02;
+    }
+    function iniciarCircuito(reg) {
+      cancelarCircuitoGlobal();
+      _circuitoCal = { cortes: ctx.cortes, anclas: ctx.anclas, ids: [reg.an.id], nuevos: [], onChange: ctx.onChange };
+      hintConexion("CALADO · 1 vértice — pincha los anchors del circuito EN ORDEN; vuelve al PRIMERO para cerrar. Esc o clic en vacío = cancelar (borra lo trazado).");
+      const g2 = svg.querySelector('g.ancla[data-ancla="' + reg.an.id + '"]'); if (g2) g2.classList.add("ancla-sel");
+    }
+    function clickCircuito(reg) {
+      const cc = _circuitoCal; if (!cc) return;
+      const idN = reg.an.id, pN = posAnchorId(idN);
+      const idLast = cc.ids[cc.ids.length - 1], pLast = posAnchorId(idLast);
+      const p0 = posAnchorId(cc.ids[0]);
+      if (!pN || !pLast || !p0) return;
+      if (Math.hypot(pN.x - pLast.x, pN.y - pLast.y) < 0.004) return;   // mismo punto: ignora
+      const esCierre = cc.ids.length >= 3 && Math.hypot(pN.x - p0.x, pN.y - p0.y) < 0.004;
+      const idDest = esCierre ? cc.ids[0] : idN;
+      const rA = buscar(idLast), rB = buscar(idDest);
+      if (!rA || !rB) return;
+      const pDest = esCierre ? p0 : pN;
+      // ¿ya existe un corte entre ambos? se REUTILIZA (cortes previos "aplican para el cierre")
+      const yaHay = (cc.cortes || []).some((c2) => c2 && c2.tipo !== "poli" && Array.isArray(c2.anclas) &&
+        c2.anclas.some((a2) => a2 && (a2.emp === idLast || a2.id === idLast)) &&
+        c2.anclas.some((a2) => a2 && (a2.emp === idDest || a2.id === idDest)));
+      if (!yaHay && !esLadoContorno(pLast, pDest, rA, rB)) {
+        crearEntreAnchors({ an: rA.an, tipo: "corte" }, { an: rB.an });
+        const cN = cc.cortes[cc.cortes.length - 1];
+        if (cN && cN.tipo === "corte") cc.nuevos.push(cN);
+      }
+      if (esCierre) {
+        const cP = nuevaCorte(); cP.tipo = "poli"; cP.poliAnclas = cc.ids.slice(); cP.legend = "Calado";
+        cc.cortes.push(cP);
+        _circuitoCal = null; quitarHintConexion();
+        aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
+        if (cc.onChange) cc.onChange();
+        return;
+      }
+      cc.ids.push(idN);
+      hintConexion("CALADO · " + cc.ids.length + " vértices — sigue pinchando; vuelve al PRIMERO para cerrar. Esc cancela.");
+    }
     // Candidatos de polígono desde un punto, EXCLUYENDO los calados ya creados (mismo conjunto de
     // vértices): así un punto compartido (p.ej. el centro de una pirámide) puede cerrar los 4.
     function ciclosDisponibles(idNodo) {
@@ -7291,12 +7348,7 @@
       const itemP = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); };
       // Acciones del PUNTO (da lo mismo cuál anchor apilado: es el mismo lugar)
       const rep = lista.find((r2) => r2.tipo === "arista") || lista[0];
-      const ciclosP = ciclosDisponibles(rep.an.id);
-      if (ciclosP.length) {
-        const porArea = ciclosP.slice().sort((q2, w2) => q2.area - w2.area);
-        itemP("⬠ Cerrar polígono → calado (" + porArea[0].area + " m²)", () => cerrarPoliDesde(porArea[0]));
-        if (porArea.length > 1) itemP("⬠ Cerrar otro polígono: " + porArea[1].area + " m²", () => cerrarPoliDesde(porArea[1]));
-      }
+      itemP("⬠ Trazar CALADO desde aquí (circuito)", () => iniciarCircuito(rep));
       const repC = comoArista(rep) || rep;
       itemP("Corte hasta otro anchor…", () => iniciarConexion(repC, "corte"));
       itemP("Guía hasta otro anchor…", () => iniciarConexion(repC, "guia"));
@@ -7349,15 +7401,7 @@
               });
             }
           });
-          const ciclos = ciclosDisponibles(idNodo);
-          if (ciclos.length) {
-            // Ordenados por área: el 1º (más ceñido) es casi siempre el que el usuario trazó → 1 clic.
-            const porArea = ciclos.slice().sort((q2, w2) => q2.area - w2.area);
-            item("⬠ Cerrar polígono → calado (" + porArea[0].area + " m²)", () => cerrarPoliDesde(porArea[0]));
-            porArea.slice(1).forEach((cd) => {
-              itemMas("⬠ Cerrar otro polígono: " + cd.area + " m² · " + cd.seq.length + " lados", () => cerrarPoliDesde(cd));
-            });
-          }
+          item("⬠ Trazar CALADO desde aquí (circuito)", () => iniciarCircuito(reg));
         } }
       // ITERACIÓN: anchors sobre un corte "Eliminar" (borde real del paño) — el recorte se repite
       // sobre la arista ya modificada, con los vértices vecinos del contorno como ejes.
@@ -7461,6 +7505,11 @@
       });
       container.appendChild(bP);
     }
+    svg.addEventListener("click", () => { if (circuitoActivo()) cancelarCircuitoGlobal(); });   // soltar la herramienta en vacío = cancelar
+    if (circuitoActivo()) {
+      const g0 = svg.querySelector('g.ancla[data-ancla="' + _circuitoCal.ids[0] + '"]');
+      if (g0) g0.classList.add("ancla-sel");   // el PRIMERO queda destacado: es el que cierra
+    }
     svg.querySelectorAll("g.ancla").forEach((g) => {
       const id = parseInt(g.dataset.ancla, 10), reg = buscar(id); if (!reg) return;
       const gx = parseFloat(g.dataset.x), gy = parseFloat(g.dataset.y);
@@ -7514,6 +7563,7 @@
           document.removeEventListener("touchmove", noScroll, { passive: false });
           g.classList.remove("dragging");
           if (!movido || !drop) {
+            if (circuitoActivo()) { setTimeout(() => clickCircuito(reg), 0); return; }
             if (_anchorPend && _anchorPend.ctx === ctx) {
               const pend = _anchorPend;
               if (pend.limpiar) pend.limpiar();
