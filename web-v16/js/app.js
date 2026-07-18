@@ -7197,6 +7197,45 @@
       dfs(id0c, [id0c], [], {});
       return mejor ? mejor.seq : null;
     }
+    // Estilo CAD: si el punto pinchado tiene VARIOS elementos apilados (anchors coincidentes),
+    // primero se elige cuál editar de una lista descriptiva.
+    function anchorsCoincidentes(reg) {
+      const p0 = posAnclaAny(reg.an); if (!p0) return [reg];
+      const out = [];
+      (ctx.anclas || []).forEach((a2) => { const q = posAnclaArista(a2, A, L); if (q && Math.hypot(q.x - p0.x, q.y - p0.y) < 0.003) out.push({ tipo: "arista", an: a2 }); });
+      (ctx.cortes || []).forEach((c2) => (c2.anclas || []).forEach((a2) => { const q = posAnclaCorte(c2, a2); if (q && Math.hypot(q.x - p0.x, q.y - p0.y) < 0.003) out.push({ tipo: "corte", an: a2, c: c2 }); }));
+      return out.length ? out : [reg];
+    }
+    function descAncla(r2) {
+      const f2 = window.CalcCIBSA.fmtNum;
+      if (r2.tipo === "arista") {
+        const nom = { sup: "arista superior", inf: "arista inferior", izq: "arista izquierda", der: "arista derecha" };
+        return "⚓ " + (r2.an.seg ? "borde libre" : (nom[r2.an.ar] || "arista")) + " · " + f2(parseFloat(r2.an.d) || 0) + " m" + (r2.an.fix ? " · 🔒" : "");
+      }
+      const idx = (ctx.cortes || []).indexOf(r2.c);
+      const tipoL = (r2.c && r2.c.tipo === "guia") ? "Guía" : "Corte";
+      const nomC = (r2.c && r2.c.legend && r2.c.legend.trim()) ? (" «" + r2.c.legend.trim() + "»") : "";
+      return "⚓ sobre " + tipoL + " " + (idx + 1) + nomC + " · " + f2(parseFloat(r2.an.t) || 0) + " m" + (r2.an.emp != null ? " · empatado" : "") + (r2.an.fix ? " · 🔒" : "");
+    }
+    function menuSeleccionAncla(lista, reg0) {
+      cerrarMenuAristas();
+      const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
+      const cap = document.createElement("p"); cap.className = "arista-menu-cap"; cap.textContent = "Elementos en este punto — elige cuál:";
+      menu.appendChild(cap);
+      lista.forEach((r2) => {
+        const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it";
+        b.textContent = descAncla(r2);
+        b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); menuAncla(r2); });
+        menu.appendChild(b);
+      });
+      document.body.appendChild(menu); _arMenu = menu;
+      const gEl = svg.querySelector('g.ancla[data-ancla="' + reg0.an.id + '"]');
+      let cx2 = window.innerWidth / 2, cy2 = window.innerHeight / 2;
+      if (gEl) { const bb = gEl.getBoundingClientRect(); cx2 = bb.left + bb.width / 2; cy2 = bb.bottom; }
+      const mw = menu.offsetWidth || 220, mh = menu.offsetHeight || 140;
+      menu.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, cx2 - mw / 2)) + "px";
+      menu.style.top = Math.max(8, Math.min(window.innerHeight - mh - 8, cy2 + 8)) + "px";
+    }
     function menuAncla(reg) {
       cerrarMenuAristas();
       const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
@@ -7383,7 +7422,10 @@
               if (regA.an !== pend.an && regA.an.id !== pend.an.id) setTimeout(() => crearEntreAnchors(pend, regA), 0);
               return;
             }
-            setTimeout(() => menuAncla(reg), 0); return;
+            setTimeout(() => {
+              const co = anchorsCoincidentes(reg);
+              if (co.length > 1) menuSeleccionAncla(co, reg); else menuAncla(reg);
+            }, 0); return;
           }
           if (reg.tipo === "arista") reg.an.d = drop.d;
           else { reg.an.t = drop.t; reg.an.emp = drop.emp; }
