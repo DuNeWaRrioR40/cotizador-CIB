@@ -975,3 +975,5 @@ body.drawer-abierto { overflow: hidden; }
 
 .arista-menu-toggle { color: var(--muted, #777) !important; font-size: 12px !important; border-top: 1px dashed var(--border, #ddd); margin-top: 4px; }
 .arista-menu-mas { border-top: 1px solid var(--border, #eee); background: color-mix(in srgb, var(--surface, #f6f6f4) 60%, transparent); }
+
+.vc-img3d { display: block; margin: 14px auto 0; max-width: min(92vw, 900px); max-height: 46vh; border-radius: 10px; box-shadow: 0 4px 24px rgba(0,0,0,0.18); background: #fff; }

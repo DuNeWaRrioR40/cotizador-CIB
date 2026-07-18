@@ -4588,11 +4588,24 @@
     const u = $("sketchUnif"); if (u && u.querySelector("svg.sketch-svg")) return u;
     return null;
   }
+  // Foto del visor 3D INYECTADA a la vista cliente (checkbox, mismo patrón que el subtotal).
+  // Runtime-only: no viaja en respaldos (es una imagen).
+  let _vc3d = "";
+  function setV3dVC(v) {
+    if (v) {
+      if (_v3d && _v3d.renderer) {
+        try { _vc3d = _v3d.renderer.domElement.toDataURL("image/jpeg", 0.82); } catch (_) { _vc3d = ""; }
+      }
+      if (!_vc3d) { alert("Abre el visor 3D (🧊) y activa allí «🖥 Inyectar al cliente» para capturar la vista."); }
+    } else _vc3d = "";
+    ["f_v3dVC", "f_v3dVCc"].forEach((id) => { const el = $(id); if (el) el.checked = !!_vc3d; });
+    publicarVistaCliente();
+  }
   function publicarVistaCliente() {
     publicarVistaRemota();
     if (!_vcActivo) return;
     const cont = contenedorPlanoVC(); if (!cont) return;
-    const data = { t: tituloConMedidas() || "", html: cont.innerHTML, sub: vcSubTexto() };
+    const data = { t: tituloConMedidas() || "", html: cont.innerHTML, sub: vcSubTexto(), v3d: _vc3d || "" };
     const str = JSON.stringify(data); if (str === _vcUlt) return; _vcUlt = str;
     const ch = vcCanal(); if (ch) { try { ch.postMessage(data); } catch (_) {} }
     try { localStorage.setItem("cibsaVC", str); } catch (_) {}
@@ -4612,9 +4625,9 @@
       const sb = document.getElementById("vcSubT"); if (sb) sb.textContent = d.sub || "";
       const p = pl(); if (!p) return;
       try {
-        p.innerHTML = (d.planos || []).map((x) =>
+        p.innerHTML = ((d.planos || []).map((x) =>
           (x.tit ? '<div class="vc-sub">' + x.tit + "</div>" : "") + sketchDualSVG(x.spec, x.tras, x.bc, x.ba)
-        ).join("") || '<p class="vc-wait">Esperando el plano…</p>';
+        ).join("") + (d.v3d ? '<img class="vc-img3d" alt="Vista 3D" src="' + d.v3d + '"/>' : "")) || '<p class="vc-wait">Esperando el plano…</p>';
       } catch (_) {}
       clearTimeout(expTimer);
       if (d.exp) expTimer = setTimeout(() => fin("Sesión finalizada. ¡Gracias!"), Math.max(0, d.exp - Date.now()) + 500);
@@ -4675,7 +4688,7 @@
     _vcRemTimer = setTimeout(() => {
       if (!_vcRem) return;
       let data;
-      try { data = JSON.stringify({ ts: Date.now(), exp: _vcRem.exp, t: tituloConMedidas() || "", sub: vcSubTexto(), planos: vcPlanosRemoto() }); } catch (_) { return; }
+      try { data = JSON.stringify({ ts: Date.now(), exp: _vcRem.exp, t: tituloConMedidas() || "", sub: vcSubTexto(), planos: vcPlanosRemoto(), v3d: _vc3d || "" }); } catch (_) { return; }
       if (data === _vcRemUlt) return; _vcRemUlt = data;
       fetch(vcFirebaseUrl() + "/vc/" + _vcRem.sid + ".json", { method: "PUT", body: data }).catch(() => {});
     }, 600);
@@ -4803,7 +4816,7 @@
       if (!d || !d.html) return;
       const t = document.getElementById("vcTit"); if (t) t.textContent = d.t || "";
       const sb = document.getElementById("vcSubT"); if (sb) sb.textContent = d.sub || "";
-      const pl = document.getElementById("vcPlano"); if (pl) pl.innerHTML = d.html;
+      const pl = document.getElementById("vcPlano"); if (pl) pl.innerHTML = d.html + (d.v3d ? '<img class="vc-img3d" alt="Vista 3D" src="' + d.v3d + '"/>' : "");
     };
     try { const s0 = localStorage.getItem("cibsaVC"); if (s0) pinta(JSON.parse(s0)); } catch (_) {}
     try {
@@ -5025,6 +5038,11 @@
     const canvas = document.createElement("canvas"); canvas.className = "vol3d-canvas";
     const hint = document.createElement("div"); hint.className = "vol3d-hint"; hint.textContent = "Arrastra para rotar · rueda o pellizco para acercar";
     const acciones = document.createElement("div"); acciones.className = "vol3d-acciones";
+    const vc3dBtn = document.createElement("button"); vc3dBtn.type = "button"; vc3dBtn.className = "vol3d-btn";
+    const vc3dTxt = () => { vc3dBtn.textContent = _vc3d ? "🖥 Cliente: sí" : "🖥 Inyectar al cliente"; };
+    vc3dBtn.title = "Enviar una foto de ESTA vista a la pantalla del cliente (local y QR). Vuelve a pulsarlo para actualizarla; con «sí», quitar.";
+    vc3dBtn.addEventListener("click", () => { setV3dVC(!_vc3d); vc3dTxt(); });
+    setTimeout(vc3dTxt, 0);
     const rot3d = document.createElement("button"); rot3d.type = "button"; rot3d.className = "vol3d-btn"; rot3d.textContent = "Aa Rótulos: sí";
     rot3d.title = "Mostrar/ocultar los rótulos (callouts) del visor";
     rot3d._on = true;
@@ -5035,7 +5053,7 @@
     });
     const cap3d = document.createElement("button"); cap3d.type = "button"; cap3d.className = "vol3d-btn"; cap3d.textContent = "📸 Incluir esta vista en el plano";
     const dl3d = document.createElement("button"); dl3d.type = "button"; dl3d.className = "vol3d-btn"; dl3d.textContent = "⬇ Descargar imagen";
-    acciones.appendChild(rot3d); acciones.appendChild(cap3d); acciones.appendChild(dl3d);
+    acciones.appendChild(vc3dBtn); acciones.appendChild(rot3d); acciones.appendChild(cap3d); acciones.appendChild(dl3d);
     body.appendChild(canvas); overlay.appendChild(x); overlay.appendChild(body); overlay.appendChild(hint); overlay.appendChild(acciones);
     document.body.appendChild(overlay);
 
@@ -9027,6 +9045,8 @@
   { const b = $("btnVistaQR"); if (b) b.addEventListener("click", toggleVistaQR); }
   { const el = $("f_subVC"); if (el) el.addEventListener("change", () => setSubVC(el.checked)); }
   { const el = $("f_subVCc"); if (el) el.addEventListener("change", () => setSubVC(el.checked)); }
+  { const el = $("f_v3dVC"); if (el) el.addEventListener("change", () => setV3dVC(el.checked)); }
+  { const el = $("f_v3dVCc"); if (el) el.addEventListener("change", () => setV3dVC(el.checked)); }
   { const b = $("btnVistaQRComp"); if (b) b.addEventListener("click", toggleVistaQR); }
   { const b = $("btnDescargarCorte"); if (b) b.addEventListener("click", descargarCorte); }
   { const t = $("f_trasUnif"); if (t) t.addEventListener("change", () => { state.trasUnif = t.checked; recompute(); }); }
