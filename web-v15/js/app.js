@@ -5163,6 +5163,10 @@
       const uyE = new T.Vector3().crossVectors(uzE, uxE);
       outerE.setRotationFromMatrix(new T.Matrix4().makeBasis(uxE, uyE, uzE));
       const innerE = new T.Group(); outerE.add(innerE); grp.add(outerE);
+      // BISECTOR: gira a θ/2 — con espejo activo el pivote lo contra-rota y queda FIJO en el plano
+      // de simetría; sin espejo sigue la bisectriz. De él cuelgan los triángulos de los extremos.
+      const outerB = new T.Group(); outerB.position.copy(outerE.position); outerB.quaternion.copy(outerE.quaternion);
+      const innerB = new T.Group(); outerB.add(innerB); grp.add(outerB);
       const sgnE = uyE.y > 0 ? 1 : -1;
       // Modo ESPEJO: el resto del modelo pivota −θ/2 alrededor de la línea del eje mientras la
       // mitad lejana gira +θ dentro de su bisagra → ambas mitades se pliegan simétricas (±θ/2).
@@ -5170,12 +5174,13 @@
       const setE = (v) => {
         ejeUltimo = v;
         innerE.rotation.x = sgnE * v * Math.PI / 180;
+        innerB.rotation.x = sgnE * (v / 2) * Math.PI / 180;
         if (ejeCtl && ejeCtl.piv) ejeCtl.piv.rotation.x = ejeEspejo ? -sgnE * (v / 2) * Math.PI / 180 : 0;
       };
       setE(0);
       plieguesUI.push({ nombre: ejeF.nombre, set: setE, v0: 0, espejo: (on) => { ejeEspejo = !!on; setE(ejeUltimo); },
         alasFijas: { val: () => !!(ejeF.c && ejeF.c.ejeAlasFijas), set: (on) => { if (ejeF.c) ejeF.c.ejeAlasFijas = !!on; cerrarVol3D(); setTimeout(() => { abrirVol3D(); }, 30); } } });
-      ejeCtl = { inner: innerE, outerE: outerE };
+      ejeCtl = { inner: innerE, outerE: outerE, bis: innerB };
     }
     if (!fig) {
       if (ejeF) {
@@ -5226,21 +5231,36 @@
           alaPliegue(nom, h, base.P0, base.ux, base.uz, base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4);
           return;
         }
-        if (pos > 0.01) {
-          if (horizW) alaPliegue(nom, h, base.P0, base.ux, base.uz, pos, 0, base.y0c, pos, h, base.W4);
-          else alaPliegue(nom, h, base.P0, base.ux, base.uz, pos, base.x0c, 0, base.wS, pos, base.W4);
-        }
-        const lenF = (horizW ? A : L) - pos;
-        if (lenF > 0.01) {
-          const P0f = horizW ? (k === "sup" ? new T.Vector3(0, 0, 0) : new T.Vector3(L, 0, 0))
-                             : (k === "izq" ? new T.Vector3(0, 0, 0) : new T.Vector3(A, 0, 0));
-          const uzf = (k === "sup" || k === "izq") ? new T.Vector3(-1, 0, 0) : new T.Vector3(1, 0, 0);
-          const W4f = horizW ? (k === "sup" ? ((mx, my) => new T.Vector3(mx - pos, 0, -my)) : ((mx, my) => new T.Vector3(mx - pos, 0, my - L)))
-                             : (k === "izq" ? ((mx, my) => new T.Vector3(my - pos, 0, -mx)) : ((mx, my) => new T.Vector3(my - pos, 0, mx - A)));
-          alaPliegue(nom, h, P0f, new T.Vector3(0, 0, 1), uzf, lenF,
-            horizW ? pos : base.x0c, horizW ? base.y0c : pos,
-            horizW ? lenF : base.wS, horizW ? h : lenF, W4f, null, ejeCtl.inner, pos);
-        }
+        // Aleta perpendicular plegada por su CREASE central (la línea del eje bajando por la pared):
+        // ambas mitades cuelgan del plano BISECTOR — siempre simétricas respecto de ambos lados del
+        // eje, sin "arrastres". Su slider maneja el ángulo del V entre las mitades (0 = plana).
+        const parB = ejeCtl.bis;
+        const xE = horizW ? (k === "sup" ? 0 : L) : (k === "izq" ? 0 : A);   // extremo en la coord del eje
+        const dEx = (mx, my) => (k === "sup") ? -my : (k === "inf") ? my - L : (k === "izq") ? -mx : mx - A;
+        const mkMitad = (lado, wM) => {
+          if (!(wM > 0.01)) return;
+          const ux2 = new T.Vector3(0, (ejeF.horiz ? -1 : 1), 0);   // crease hacia abajo (coords del bisector)
+          const uz2 = new T.Vector3(0, 0, lado);
+          const uy2 = new T.Vector3().crossVectors(uz2, ux2);
+          const outer2 = new T.Group(); outer2.position.set(xE, 0, 0);
+          outer2.setRotationFromMatrix(new T.Matrix4().makeBasis(ux2, uy2, uz2));
+          const inner2 = new T.Group(); outer2.add(inner2); parB.add(outer2);
+          const W4c = (mx, my) => new T.Vector3(dEx(mx, my), 0, lado * ((horizW ? mx : my) - pos));
+          if (hayCal) caraCalada(horizW ? (lado < 0 ? 0 : pos) : base.x0c, horizW ? base.y0c : (lado < 0 ? 0 : pos),
+            horizW ? wM : base.wS, horizW ? h : wM, W4c, inner2);
+          else {
+            const gP = new T.PlaneGeometry(h, wM);
+            const mesh = new T.Mesh(gP, matLona); mesh.rotation.x = -Math.PI / 2; mesh.position.set(h / 2, 0, wM / 2); inner2.add(mesh);
+            const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde); ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); inner2.add(ed);
+          }
+          const sgnV = -lado;   // signos opuestos: las mitades se CIERRAN una hacia la otra (espejo)
+          const setV = (v) => { inner2.rotation.x = sgnV * v * Math.PI / 180; };
+          setV(0);
+          plieguesUI.push({ nombre: nom, set: setV, v0: 0 });
+          if (!alasInner3D[nom]) alasInner3D[nom] = { inner: inner2, len: wM, hAla: h };
+          (alasParts3D[nom] = alasParts3D[nom] || []).push({ inner: inner2, hAla: h, t0: lado < 0 ? 0 : pos, t1: lado < 0 ? pos : (horizW ? A : L), crease: { pos: pos, lado: lado, h: h } });
+        };
+        mkMitad(-1, pos); mkMitad(1, (horizW ? A : L) - pos);
       };
       ["sup", "inf", "izq", "der"].forEach(mkAla3);
     }
@@ -5255,9 +5275,8 @@
             const lenP = pt3.t1 - pt3.t0; if (!(lenP > 0.05)) return;
             const tubo = new T.Mesh(new T.CylinderGeometry(rB, rB, Math.max(0.05, lenP * 0.985), 20),
               new T.MeshLambertMaterial({ color: 0xcfc7b4, transparent: true, opacity: 0.95 }));
-            tubo.rotation.z = Math.PI / 2;   // eje a lo largo del rim (X local de la bisagra)
-            tubo.scale.z = 0.55;             // ÓVALO aplastado, no circunferencia perfecta
-            tubo.position.set(lenP / 2, 0, pt3.hAla);
+            if (pt3.crease) { tubo.rotation.x = Math.PI / 2; tubo.scale.z = 0.55; tubo.position.set(pt3.crease.h, 0, lenP / 2); }
+            else { tubo.rotation.z = Math.PI / 2; tubo.scale.z = 0.55; tubo.position.set(lenP / 2, 0, pt3.hAla); }
             pt3.inner.add(tubo);
           });
         });
@@ -5283,7 +5302,11 @@
     // alto real): cerradas coinciden; al abrir un ala, su costura viaja con ella (se "descose").
     { const fus = new T.LineBasicMaterial({ color: 0xd23b2e, linewidth: 2 });
       const NOMF = { sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" };
-      const bordeFus = (k, t) => { const pt3 = parteDe(NOMF[k], t); if (!pt3) return; pt3.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(t - pt3.t0, 0, 0), new T.Vector3(t - pt3.t0, 0, pt3.hAla)]), fus)); };
+      const bordeFus = (k, t) => { const pt3 = parteDe(NOMF[k], t); if (!pt3) return;
+        const pts = pt3.crease
+          ? [new T.Vector3(0, 0, pt3.crease.lado * (t - pt3.crease.pos)), new T.Vector3(pt3.crease.h, 0, pt3.crease.lado * (t - pt3.crease.pos))]
+          : [new T.Vector3(t - pt3.t0, 0, 0), new T.Vector3(t - pt3.t0, 0, pt3.hAla)];
+        pt3.inner.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), fus)); };
       [["sup", "izq"], ["sup", "der"], ["inf", "der"], ["inf", "izq"]].forEach(([k1, k2]) => {
         if (!(H > 0) || !va3(k1) || !va3(k2)) return;
         bordeFus(k1, k2 === "izq" ? 0 : A);
@@ -5342,7 +5365,7 @@
         d = Math.max(0.01, d);
         const t = (k === "sup" || k === "inf") ? Math.max(0, Math.min(A, p.x)) : Math.max(0, Math.min(L, p.y));
         const pt3 = parteDe(NOM_OJ3[k], t);
-        if (pt3) { m.position.set(t - pt3.t0, 0.012, d); pt3.inner.add(m); return; }   // dentro de SU parte de bisagra
+        if (pt3) { m.position.copy(posEnParte(pt3, k, p.x, p.y)); pt3.inner.add(m); return; }   // dentro de SU parte de bisagra
         // sin bisagra registrada: posición cerrada equivalente
         const y = H - d, cx = t - A / 2, cz = t - L / 2;
         if (k === "sup") m.position.set(cx, y, -L / 2 - 0.012);
@@ -5386,17 +5409,21 @@
         return null;
       };
       const tDeW = (k, mx, my) => (k === "sup" || k === "inf") ? Math.max(0, Math.min(A, mx)) : Math.max(0, Math.min(L, my));
-      const localDe = (k, mx, my, off, t0) => {
+      // Posición LOCAL dentro de una parte de pared: partes normales (x = a lo largo del pliegue,
+      // z = profundidad) o partes-CREASE del eje (x = profundidad por la crease, z = distancia al eje).
+      const posEnParte = (pt3, k, mx, my, off) => {
         const t = tDeW(k, mx, my);
         const d = (k === "sup") ? -my : (k === "inf") ? my - L : (k === "izq") ? -mx : mx - A;
-        return new T.Vector3(t - (t0 || 0), off != null ? off : 0.012, Math.max(0, Math.min(hV(k), d)));
+        const dc = Math.max(0, Math.min(pt3.crease ? pt3.crease.h : hV(k), d));
+        if (pt3.crease) return new T.Vector3(dc, off != null ? off : 0.012, pt3.crease.lado * (t - pt3.crease.pos));
+        return new T.Vector3(t - pt3.t0, off != null ? off : 0.012, dc);
       };
       const innerDe = (k, t) => parteDe(NOM_OJ3[k], t);
       const addSeg3 = (pa, pb, mat) => {
         if (enEjeFar((pa.x + pb.x) / 2, (pa.y + pb.y) / 2)) { ejeReg.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([ejeLocal(pa.x, pa.y), ejeLocal(pb.x, pb.y)]), mat)); return; }
         const k = regionDe((pa.x + pb.x) / 2, (pa.y + pb.y) / 2);
         const pt3 = k ? innerDe(k, (tDeW(k, pa.x, pa.y) + tDeW(k, pb.x, pb.y)) / 2) : null;
-        if (pt3) pt3.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([localDe(k, pa.x, pa.y, null, pt3.t0), localDe(k, pb.x, pb.y, null, pt3.t0)]), mat));
+        if (pt3) pt3.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([posEnParte(pt3, k, pa.x, pa.y), posEnParte(pt3, k, pb.x, pb.y)]), mat));
         else grp.add(new T.Line(new T.BufferGeometry().setFromPoints([p3(pa.x, pa.y), p3(pb.x, pb.y)]), mat));
       };
       const addQuad3 = (corn, mat) => {
@@ -5408,7 +5435,7 @@
         }
         const k = regionDe(cx4, cy4);
         const pt3 = k ? innerDe(k, tDeW(k, cx4, cy4)) : null;
-        const vs = pt3 ? corn.map((q) => localDe(k, q.x, q.y, 0.01, pt3.t0)) : corn.map((q) => p3(q.x, q.y));
+        const vs = pt3 ? corn.map((q) => posEnParte(pt3, k, q.x, q.y, 0.01)) : corn.map((q) => p3(q.x, q.y));
         const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]);
         g2.computeVertexNormals();
         ((pt3 && pt3.inner) || grp).add(new T.Mesh(g2, mat));
@@ -5425,7 +5452,7 @@
           if (enEjeFar(p.x, p.y)) { m.position.copy(ejeLocal(p.x, p.y)); ejeReg.inner.add(m); return; }
           const k = regionDe(p.x, p.y);
           const pt3 = k ? innerDe(k, tDeW(k, p.x, p.y)) : null;
-          if (pt3) { m.position.copy(localDe(k, p.x, p.y, null, pt3.t0)); pt3.inner.add(m); }
+          if (pt3) { m.position.copy(posEnParte(pt3, k, p.x, p.y)); pt3.inner.add(m); }
           else { m.position.copy(p3(p.x, p.y)); grp.add(m); }
         });
       });
