@@ -1834,6 +1834,19 @@
       });
       anchor.appendChild(strip);
     } }
+  // Al CREAR un anchor se abre de inmediato "Fijar distancia exacta" (ahorra clics). Cancelar
+  // deja el anchor donde se pinchó, sin fijar nada.
+  function fijarAnchorRecien(an, esCorte, ctxA) {
+    if (typeof dialogoDistanciaAncla !== "function") return;
+    const cur = esCorte ? (parseFloat(an.t) || 0) : (parseFloat(an.d) || 0);
+    dialogoDistanciaAncla(esCorte ? "Distancia desde el extremo inicial de la línea (m)" : "Distancia desde la esquina (m)", Math.round(cur * 1000) / 1000, (v, bloquear) => {
+      const rv = Math.round(v * 1000) / 1000;
+      if (esCorte) an.t = rv; else an.d = rv;
+      if (bloquear) an.fix = true;
+      aplicarEmpates(ctxA.cortes, ctxA.anclas, ctxA.A, ctxA.L);
+      if (ctxA.onChange) ctxA.onChange();
+    });
+  }
   function irANodo(target, tituloEl) {
     expandirSiCerrada(target);
     // si está dentro de una pieza plegada, ábrela también
@@ -7126,11 +7139,28 @@
           (porArAll[k1] || []).forEach((i1) => (porArAll[k2] || []).forEach((j1) => { edges.push([i1, j1]); metas[edges.length - 1] = esqK; }));
         });
       }
+      const posDe = (id2) => { const r2 = buscar(id2); if (!r2) return null; return (r2.tipo === "arista") ? posAnclaArista(r2.an, A, L) : posAnclaCorte(r2.c, r2.an); };
+      // COLAPSO de anchors COINCIDENTES: los empates apilan varios anchors en el mismo punto
+      // (uno sobre otro) y las esquinas suelen juntar 2-3. Sin colapso, esos duplicados generan
+      // una explosión de caminos paralelos y el buscador se agota sin hallar el polígono.
+      const canon = {}, porPos = {};
+      const todosIds = {};
+      edges.forEach((e2) => { todosIds[e2[0]] = 1; todosIds[e2[1]] = 1; });
+      Object.keys(todosIds).forEach((idS) => {
+        const id2 = +idS, pq = posDe(id2);
+        if (!pq) { canon[id2] = id2; return; }
+        const kk = Math.round(pq.x * 500) + "|" + Math.round(pq.y * 500);   // 2 mm
+        if (porPos[kk] == null) porPos[kk] = id2;
+        canon[id2] = porPos[kk];
+      });
       const ady = {};
-      edges.forEach((e2, ei) => { (ady[e2[0]] = ady[e2[0]] || []).push([e2[1], ei]); (ady[e2[1]] = ady[e2[1]] || []).push([e2[0], ei]); });
+      edges.forEach((e2, ei) => {
+        const a3 = canon[e2[0]] != null ? canon[e2[0]] : e2[0], b3 = canon[e2[1]] != null ? canon[e2[1]] : e2[1];
+        if (a3 === b3) return;   // arista interna de un mismo punto colapsado
+        (ady[a3] = ady[a3] || []).push([b3, ei]); (ady[b3] = ady[b3] || []).push([a3, ei]);
+      });
       // Área del ciclo candidato (incluyendo esquinas): descarta degenerados; el más corto con
       // área real; a igual largo, el de MENOR área (el polígono ceñido que el usuario trazó).
-      const posDe = (id2) => { const r2 = buscar(id2); if (!r2) return null; return (r2.tipo === "arista") ? posAnclaArista(r2.an, A, L) : posAnclaCorte(r2.c, r2.an); };
       const posSeq = (x2) => (x2 && typeof x2 === "object" && x2.esq) ? ({ tl: { x: 0, y: 0 }, tr: { x: A, y: 0 }, bl: { x: 0, y: L }, br: { x: A, y: L } })[x2.esq] : posDe(x2);
       const areaSeq = (seq) => {
         const ps = seq.map(posSeq); if (ps.some((q2) => !q2)) return 0;
@@ -7139,12 +7169,15 @@
         return Math.abs(a2 / 2);
       };
       let mejor = null, pasos = 0;
+      const id0c = canon[id0] != null ? canon[id0] : id0;
       const dfs = (nodo, camino, eds, usados) => {
-        if (pasos++ > 30000) return;
+        if (pasos++ > 60000) return;
+        if (camino.length > 10) return;   // los polígonos de usuario son chicos: poda la explosión
+        if (mejor && camino.length > mejor.len) return;   // poda: más largo que el mejor ya hallado
         for (const par of (ady[nodo] || [])) {
           const nx = par[0], ei = par[1];
           if (usados[ei]) continue;
-          if (nx === id0 && camino.length >= 3) {
+          if (nx === id0c && camino.length >= 3) {
             const seq = [];
             for (let i2 = 0; i2 < camino.length; i2++) {
               seq.push(camino[i2]);
@@ -7161,7 +7194,7 @@
           camino.pop(); eds.pop(); usados[ei] = false;
         }
       };
-      dfs(id0, [id0], [], {});
+      dfs(id0c, [id0c], [], {});
       return mejor ? mejor.seq : null;
     }
     function menuAncla(reg) {
@@ -7633,8 +7666,10 @@
       let tA = len / 2;
       if (pm) tA = Math.max(0, Math.min(len, (pm.x - sgm.a.x) * u.x + (pm.y - sgm.a.y) * u.y));
       const esq = (tA <= len / 2) ? "ini" : "fin";
-      state.anclasUnif.push({ id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), ar: k, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) });
+      const anN = { id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), ar: k, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) };
+      state.anclasUnif.push(anN);
       recompute();
+      fijarAnchorRecien(anN, false, { cortes: state.cortesUnif, anclas: state.anclasUnif, A: A, L: L, onChange: recompute });
     },
     corteAncla: (i, pm) => {
       const c = visibles(state.cortesUnif)[i]; if (!c) return;
@@ -7643,8 +7678,10 @@
       const ln = lineaRawCorte(c); if (!ln) return;
       let t = ln.w / 2;
       if (pm) t = Math.max(0, Math.min(ln.w, (pm.x - ln.a.x) * ln.u.x + (pm.y - ln.a.y) * ln.u.y));
-      c.anclas.push({ id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), t: rd3(t), emp: null });
+      const anN = { id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), t: rd3(t), emp: null };
+      c.anclas.push(anN);
       recompute();
+      fijarAnchorRecien(anN, true, { cortes: state.cortesUnif, anclas: state.anclasUnif, A: num("f_ancho", 0), L: num("f_largo", 0), onChange: recompute });
     },
     anclaLibre: (seg, pm) => {
       if (!seg) return;
@@ -7653,8 +7690,10 @@
       let tA = len / 2;
       if (pm) tA = Math.max(0, Math.min(len, (pm.x - seg.a.x) * u.x + (pm.y - seg.a.y) * u.y));
       const esq = (tA <= len / 2) ? "ini" : "fin";
-      state.anclasUnif.push({ id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), seg: { a: { x: seg.a.x, y: seg.a.y }, b: { x: seg.b.x, y: seg.b.y } }, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) });
+      const anN = { id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), seg: { a: { x: seg.a.x, y: seg.a.y }, b: { x: seg.b.x, y: seg.b.y } }, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) };
+      state.anclasUnif.push(anN);
       recompute();
+      fijarAnchorRecien(anN, false, { cortes: state.cortesUnif, anclas: state.anclasUnif, A: num("f_ancho", 0), L: num("f_largo", 0), onChange: recompute });
     },
     nota: (pm) => {
       if (!pm) return;
@@ -7778,8 +7817,10 @@
         let tA = len / 2;
         if (pm) tA = Math.max(0, Math.min(len, (pm.x - sgm.a.x) * u.x + (pm.y - sgm.a.y) * u.y));
         const esq = (tA <= len / 2) ? "ini" : "fin";
-        (pz.anclas || (pz.anclas = [])).push({ id: nuevoIdAncla(pz.anclas, pz.cortes), ar: k, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) });
+        const anN = { id: nuevoIdAncla(pz.anclas || [], pz.cortes), ar: k, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) };
+        (pz.anclas || (pz.anclas = [])).push(anN);
         recomputeCompuesto();
+        fijarAnchorRecien(anN, false, { cortes: pz.cortes, anclas: pz.anclas, A: A, L: L, onChange: recomputeCompuesto });
       },
       corteAncla: (i, pm) => {
         const c = visibles(pz.cortes)[i]; if (!c) return;
@@ -7788,8 +7829,10 @@
         const ln = lineaRawCorte(c); if (!ln) return;
         let t = ln.w / 2;
         if (pm) t = Math.max(0, Math.min(ln.w, (pm.x - ln.a.x) * ln.u.x + (pm.y - ln.a.y) * ln.u.y));
-        c.anclas.push({ id: nuevoIdAncla(pz.anclas || [], pz.cortes), t: rd3(t), emp: null });
+        const anN = { id: nuevoIdAncla(pz.anclas || [], pz.cortes), t: rd3(t), emp: null };
+        c.anclas.push(anN);
         recomputeCompuesto();
+        fijarAnchorRecien(anN, true, { cortes: pz.cortes, anclas: pz.anclas || [], A: ev(pz.ancho) || 0, L: ev(pz.largo) || 0, onChange: recomputeCompuesto });
       },
       anclaLibre: (seg, pm) => {
         if (!seg) return;
@@ -7798,8 +7841,10 @@
         let tA = len / 2;
         if (pm) tA = Math.max(0, Math.min(len, (pm.x - seg.a.x) * u.x + (pm.y - seg.a.y) * u.y));
         const esq = (tA <= len / 2) ? "ini" : "fin";
-        (pz.anclas || (pz.anclas = [])).push({ id: nuevoIdAncla(pz.anclas, pz.cortes), seg: { a: { x: seg.a.x, y: seg.a.y }, b: { x: seg.b.x, y: seg.b.y } }, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) });
+        const anN = { id: nuevoIdAncla(pz.anclas || [], pz.cortes), seg: { a: { x: seg.a.x, y: seg.a.y }, b: { x: seg.b.x, y: seg.b.y } }, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) };
+        (pz.anclas || (pz.anclas = [])).push(anN);
         recomputeCompuesto();
+        fijarAnchorRecien(anN, false, { cortes: pz.cortes, anclas: pz.anclas, A: ev(pz.ancho) || 0, L: ev(pz.largo) || 0, onChange: recomputeCompuesto });
       },
       nota: (pm) => {
         if (!pm) return;
