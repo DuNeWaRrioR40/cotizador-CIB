@@ -4424,12 +4424,26 @@
     const dist = on && $("f_altosDist") && $("f_altosDist").checked;
     if ($("wAltosDist")) $("wAltosDist").classList.toggle("hidden", !on);
     if ($("wAltosCampos")) $("wAltosCampos").classList.toggle("hidden", !dist);
+    const fa = $("f_altura");
+    if (fa) fa.placeholder = dist ? "opcional (= mayor aleta)" : "";
   }
   $("f_usaAlto").addEventListener("change", (e) => { if ($("wAlas")) $("wAlas").classList.toggle("hidden", !e.target.checked); if ($("wOjVol")) $("wOjVol").classList.toggle("hidden", !e.target.checked); if ($("wBordesPliegue")) $("wBordesPliegue").classList.toggle("hidden", !e.target.checked); $("wAltura").classList.toggle("hidden", !e.target.checked); sincAltosDistUI(); recompute(); });
   { const c = $("f_bordesPliegue"); if (c) c.addEventListener("change", recompute); }
   { const c = $("f_altosDist"); if (c) c.addEventListener("change", () => { sincAltosDistUI(); recompute(); }); }
   ["f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer"].forEach((id) => { const el = $(id); if (el) { agregarCalc(el); el.addEventListener("input", recompute); } });
-  function alturaUnif() { return $("f_usaAlto").checked ? num("f_altura", 0) : 0; }
+  function alturaUnif() {
+    if (!$("f_usaAlto").checked) return 0;
+    const h = num("f_altura", 0);
+    if (h > 0) return h;
+    // Con "Altos distintos por aleta" basta llenar los campos por aleta: el alto general
+    // queda implícito (el MAYOR de ellos) y el campo "Alto (m)" puede dejarse vacío.
+    if ($("f_altosDist") && $("f_altosDist").checked) {
+      let m = 0;
+      ["f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer"].forEach((id) => { const v = num(id, 0); if (v > m) m = v; });
+      return m;
+    }
+    return 0;
+  }
   // Dónde van los ojetillos del volumétrico: "externo" (borde extremo de las alas, por defecto) o "tapa".
   function ojEnUnif() { const c = $("f_ojVolExt"); return (c && !c.checked) ? "tapa" : "externo"; }
   function alasUnif() { return state.volAlas || { sup: true, inf: true, izq: true, der: true }; }
@@ -4443,8 +4457,9 @@
     ["sup", "inf", "izq", "der"].forEach((k) => {
       if (alas[k] === false) { out[k] = 0; return; }
       if (!dist) { out[k] = H; return; }
-      const v = num(campo[k], null);
-      out[k] = (v != null && v >= 0) ? v : H;
+      // Con altos distintos: campo en blanco o 0 = aleta SUPRIMIDA (no cae al alto general).
+      const v = num(campo[k], 0);
+      out[k] = v > 0 ? v : 0;
     });
     return out;
   }
