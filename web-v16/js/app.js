@@ -4956,12 +4956,21 @@
       const C = inter(gs[0].a, gs[0].u, gs[1].a, gs[1].u); if (!C) return null;
       const distL = (g) => Math.abs((C.x - g.a.x) * (-g.u.y) + (C.y - g.a.y) * g.u.x);
       if (!gs.every((g) => distL(g) < 0.05)) return null;
-      const dirs = gs.map((g) => {
-        const dA = Math.hypot(g.a.x - C.x, g.a.y - C.y), dB = Math.hypot(g.b.x - C.x, g.b.y - C.y);
-        const P = dA > dB ? g.a : g.b;
-        const dd = Math.hypot(P.x - C.x, P.y - C.y) || 1;
-        return { dx: (P.x - C.x) / dd, dy: (P.y - C.y) / dd, ang: Math.atan2(P.y - C.y, P.x - C.x), nombre: "Eje · " + (g.c.legend || "guía") };
+      // Cada guía aporta un RAYO por extremo alejado del centro: una diagonal COMPLETA que cruza
+      // el punto común son DOS rayos de pliegue (2 diagonales de un cuadrado → 4 caras).
+      const dirs = [];
+      gs.forEach((g) => {
+        [g.a, g.b].forEach((P) => {
+          const dd = Math.hypot(P.x - C.x, P.y - C.y);
+          if (dd < 0.3) return;
+          const ang = Math.atan2(P.y - C.y, P.x - C.x);
+          let dup = false;
+          dirs.forEach((d0) => { let da = Math.abs(d0.ang - ang); da = Math.min(da, 2 * Math.PI - da); if (da < 0.02) dup = true; });
+          if (dup) return;
+          dirs.push({ dx: (P.x - C.x) / dd, dy: (P.y - C.y) / dd, ang: ang, nombre: "Eje · " + (g.c.legend || "guía") });
+        });
       });
+      if (dirs.length < 2) return null;
       dirs.sort((q, w) => q.ang - w.ang);
       return { C: C, dirs: dirs };
     })();
