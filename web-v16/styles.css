@@ -967,3 +967,8 @@ body.drawer-abierto { overflow: hidden; }
   .ficha-drawer { top: 18vh; width: 100vw; border-left: 0; border-top-left-radius: 14px; border-top-right-radius: 14px; }
   #fichaTabs { top: 18vh; width: 100vw; border-top-left-radius: 14px; }
 }
+
+.ficha-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0 4px; }
+.ficha-quick-btn { border: 1px solid var(--border, #ccc); background: var(--surface, #f6f6f4); color: var(--text, #222);
+  border-radius: 999px; padding: 4px 11px; font-size: 12.5px; cursor: pointer; }
+.ficha-quick-btn:hover { border-color: var(--text, #222); }

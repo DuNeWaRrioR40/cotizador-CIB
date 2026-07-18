@@ -1821,6 +1821,19 @@
     sec.scrollTop = 0;
   }
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && _drawerSec) cerrarFichaDrawer(); });
+  // Tira de acceso RÁPIDO bajo el plano: un clic a cada grupo de fichas (velocidad de cotización).
+  { const anchor = $("wSketchUnif");
+    if (anchor) {
+      const strip = document.createElement("div"); strip.className = "ficha-quick";
+      const cap = document.createElement("span"); cap.className = "muted small"; cap.textContent = "Elementos:";
+      strip.appendChild(cap);
+      FICHA_SECS.forEach(([sid, tit]) => {
+        const b = document.createElement("button"); b.type = "button"; b.className = "ficha-quick-btn"; b.textContent = tit;
+        b.addEventListener("click", () => abrirFichaDrawer(sid));
+        strip.appendChild(b);
+      });
+      anchor.appendChild(strip);
+    } }
   function irANodo(target, tituloEl) {
     expandirSiCerrada(target);
     // si está dentro de una pieza plegada, ábrela también
