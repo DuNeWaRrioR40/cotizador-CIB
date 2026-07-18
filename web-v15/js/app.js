@@ -6839,8 +6839,8 @@
                    ["Corte / calado (en este borde)", "corteLibre"], ["Línea de construcción (en este borde)", "guiaLibre"]];
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else if (kTapa != null && idxCorte != null) {
-          items = [["Ojetillos en esta arista (cada X m)…", "tapaOj"], ["Fusionar / liberar esta arista", "tapaFus"],
-                   ["Strap sobre el corte (bajo la tapa)", "corteStrap"], ["Ojetillos sobre el corte", "corteOj"]];
+          items = [["Ojetillos en esta arista (cada X m)…", "tapaOj"], ["Strap en esta arista", "strapLibre"],
+                   ["Ojetillos (fila en esta arista)", "ojLibre"], ["Fusionar / liberar esta arista", "tapaFus"]];
         } else if (idxCorte != null) {
           items = [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]];
           items.push(["Anexo (aleta/faldón) desde esta línea…", "guiaAnexoUI"]);

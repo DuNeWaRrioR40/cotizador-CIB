@@ -676,7 +676,9 @@
           lnExt(eB, ya, tEnd, ya); lnExt(eB, yb, tEnd, yb);
           ln(dimX, ya, dimX, yb, 0.4);
           ln(dimX - TICK, ya, dimX + TICK, ya, 0.4); ln(dimX - TICK, yb, dimX + TICK, yb, 0.4);
-          const my = (ya + yb) / 2 - tSh, tx = (c.side === "right") ? dimX + 2 : dimX - 4;
+          // rotate(90): los glifos se extienden ~6pt hacia -x desde el origen → a la DERECHA el
+          // origen debe correrse ese alto de glifo para que el texto quede fuera de la línea.
+          const my = (ya + yb) / 2 - tSh, tx = (c.side === "right") ? dimX + 8 : dimX - 4;
           page.drawText(lbl, { x: tx, y: my - font.widthOfTextAtSize(lbl, 5.5) / 2, size: 5.5, font: font, color: RED, rotate: PDFLib.degrees(90) });
         }
       });
