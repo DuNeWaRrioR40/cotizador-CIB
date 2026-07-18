@@ -5134,7 +5134,12 @@
         const mesh = new T.Mesh(gP, matLona); mesh.rotation.x = -Math.PI / 2; mesh.position.set(len / 2, 0, hAla / 2); inner.add(mesh);
         const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde); ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); inner.add(ed);
       }
-      const sgnA = uy.y > 0 ? 1 : -1;   // signo que deja 90 grados = ala hacia ABAJO (cubo cerrado)
+      // Signo que deja 90 grados = ala hacia ABAJO (cubo cerrado). Se evalúa en coords de MUNDO:
+      // anidada en la bisagra del eje, la vertical del marco padre puede venir invertida y el
+      // signo local giraría la parte al revés (efecto "molino de viento").
+      const uyW = uy.clone();
+      if (parent && parent.updateWorldMatrix) { try { parent.updateWorldMatrix(true, false); uyW.transformDirection(parent.matrixWorld); } catch (_) {} }
+      const sgnA = uyW.y > 0 ? 1 : -1;
       const set = (v) => { inner.rotation.x = sgnA * v * Math.PI / 180; };
       const v00 = (v0deg == null) ? 90 : v0deg;
       set(v00);
@@ -5159,10 +5164,17 @@
       outerE.setRotationFromMatrix(new T.Matrix4().makeBasis(uxE, uyE, uzE));
       const innerE = new T.Group(); outerE.add(innerE); grp.add(outerE);
       const sgnE = uyE.y > 0 ? 1 : -1;
-      const setE = (v) => { innerE.rotation.x = sgnE * v * Math.PI / 180; };
+      // Modo ESPEJO: el resto del modelo pivota −θ/2 alrededor de la línea del eje mientras la
+      // mitad lejana gira +θ dentro de su bisagra → ambas mitades se pliegan simétricas (±θ/2).
+      let ejeUltimo = 0, ejeEspejo = false;
+      const setE = (v) => {
+        ejeUltimo = v;
+        innerE.rotation.x = sgnE * v * Math.PI / 180;
+        if (ejeCtl && ejeCtl.piv) ejeCtl.piv.rotation.x = ejeEspejo ? -sgnE * (v / 2) * Math.PI / 180 : 0;
+      };
       setE(0);
-      plieguesUI.push({ nombre: ejeF.nombre, set: setE, v0: 0 });
-      ejeCtl = { inner: innerE };
+      plieguesUI.push({ nombre: ejeF.nombre, set: setE, v0: 0, espejo: (on) => { ejeEspejo = !!on; setE(ejeUltimo); } });
+      ejeCtl = { inner: innerE, outerE: outerE };
     }
     if (!fig) {
       if (ejeF) {
@@ -5471,6 +5483,22 @@
               const m2 = mkOje3D(); m2.position.set(t, 0.012, sca); inner.add(m2);
             });
           } catch (e2) {}
+          // ANIDAR el anexo en la jerarquía de pliegues: si su línea de pliegue cae en la media
+          // tapa lejana del EJE o en una pared, se re-emparenta ahí con attach() (conserva la
+          // pose mundial, calculada en caja cerrada) → el anexo viaja con el eje/ala al plegarlos.
+          try {
+            const midx = (h0.x + h1.x) / 2, midy = (h0.y + h1.y) / 2;
+            let padre = null;
+            if (midy < -1e-6 || midy > L + 1e-6 || midx < -1e-6 || midx > A + 1e-6) {
+              const k2 = (midy < -1e-6) ? "sup" : (midy > L + 1e-6) ? "inf" : (midx < -1e-6) ? "izq" : "der";
+              const t2 = (k2 === "sup" || k2 === "inf") ? midx : midy;
+              const pt3 = parteDe({ sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" }[k2], t2);
+              padre = pt3 && pt3.inner;
+            } else if (ejeCtl && ejeF && (ejeF.horiz ? midy > ejeF.pos + 1e-6 : midx > ejeF.pos + 1e-6)) {
+              padre = ejeCtl.inner;
+            }
+            if (padre && padre.attach) padre.attach(outer);
+          } catch (e3) {}
           const nom = (a.legend && a.legend.trim()) || (ALETA_NOM[a.tipo] || "Anexo");
           plieguesUI.push({ nombre: nom, set: (v) => { inner.rotation.x = -v * Math.PI / 180; }, v0: 0 });
         });
@@ -5510,6 +5538,13 @@
         nu.addEventListener("keydown", (e2) => { if (e2.key === "Enter") { e2.preventDefault(); nu.blur(); } });
         resets.push(() => aplicar(v0, ""));
         row.appendChild(sp); row.appendChild(rg); row.appendChild(nu); pw.appendChild(row);
+        if (pl.espejo) {   // solo el EJE: plegar AMBOS lados simétricamente (en espejo)
+          const lbE = document.createElement("label"); lbE.className = "vol3d-plg-esp";
+          const cbE = document.createElement("input"); cbE.type = "checkbox";
+          cbE.addEventListener("change", () => pl.espejo(cbE.checked));
+          lbE.appendChild(cbE); lbE.appendChild(document.createTextNode(" espejo (ambos lados simétricos)"));
+          pw.appendChild(lbE);
+        }
       });
       const rb = document.createElement("button"); rb.type = "button"; rb.className = "vol3d-plg-reset"; rb.textContent = "↺ Grados por defecto";
       rb.addEventListener("click", () => resets.forEach((r) => r()));
@@ -5549,6 +5584,18 @@
     const lA = label("ancho " + f(A) + " m"); lA.position.set(0, -diag * 0.02, L / 2 + diag * 0.06); grp.add(lA);
     const lL = label("largo " + f(L) + " m"); lL.position.set(A / 2 + diag * 0.10, -diag * 0.02, 0); grp.add(lL);
     if (H > 0) { const lH = label("alto " + f(H) + " m"); lH.position.set(-A / 2 - diag * 0.09, H / 2, L / 2 + diag * 0.02); grp.add(lH); }
+    // Pivote del modo ESPEJO del eje: envuelve TODO lo demás para poder girarlo −θ/2 en torno
+    // a la línea del eje (attach conserva las poses ya construidas).
+    if (ejeCtl && ejeCtl.outerE) {
+      try {
+        const pivO = new T.Group();
+        pivO.position.copy(ejeCtl.outerE.position);
+        pivO.quaternion.copy(ejeCtl.outerE.quaternion);
+        const pivI = new T.Group(); pivO.add(pivI); grp.add(pivO);
+        Array.prototype.slice.call(grp.children).forEach((ch) => { if (ch !== pivO) pivI.attach(ch); });
+        ejeCtl.piv = pivI;
+      } catch (e) {}
+    }
     // Órbita propia (sin dependencias): arrastre rota, rueda/pellizco acerca. Autogira hasta el 1er toque.
     let theta = Math.PI / 4, phi = Math.PI / 3.1, radio = diag * 1.9, auto = true;
     const target = new T.Vector3(0, H / 2, 0);
