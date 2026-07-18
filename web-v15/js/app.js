@@ -4861,8 +4861,23 @@
     else if (fig && fig.tipo === "cilindro") { A = fig.D; L = fig.D; H = fig.h; }
     else { fig = null; A = num("f_ancho", null); L = num("f_largo", null); H = alturaUnif(); }
     const hayAnexos3D = !fig && visibles(state.aletasUnif).length > 0;
-    if (!(A > 0) || !(L > 0) || (!(H > 0) && !hayAnexos3D)) return alert("Define las dimensiones para ver el 3D.");
-    if (!(H > 0)) H = 0;   // modo PLANO: solo la lámina + anexos plegables
+    // Guía convertida en EJE de pliegue del paño (productos planos): parte la lámina en 2 mitades
+    // con bisagra en la guía. Elegible: guía horizontal/vertical que cruza el paño completo.
+    const ejeF = (() => {
+      if (fig || (H > 0) || !(A > 0) || !(L > 0)) return null;
+      for (const c of visibles(state.cortesUnif)) {
+        if (!c || c.tipo !== "guia" || !c.ejeVis) continue;
+        const ln = lineaRawCorte(c); if (!ln) continue;
+        const ang = (((parseFloat(c.angulo) || 0) % 180) + 180) % 180;
+        const x0 = Math.min(ln.a.x, ln.a.x + ln.u.x * ln.w), x1 = Math.max(ln.a.x, ln.a.x + ln.u.x * ln.w);
+        const y0 = Math.min(ln.a.y, ln.a.y + ln.u.y * ln.w), y1 = Math.max(ln.a.y, ln.a.y + ln.u.y * ln.w);
+        if ((ang < 1 || ang > 179) && ln.a.y > 0.01 && ln.a.y < L - 0.01 && x0 <= 0.01 && x1 >= A - 0.01) return { horiz: true, pos: ln.a.y, nombre: "Eje · " + (c.legend || "guía") };
+        if (Math.abs(ang - 90) < 1 && ln.a.x > 0.01 && ln.a.x < A - 0.01 && y0 <= 0.01 && y1 >= L - 0.01) return { horiz: false, pos: ln.a.x, nombre: "Eje · " + (c.legend || "guía") };
+      }
+      return null;
+    })();
+    if (!(A > 0) || !(L > 0) || (!(H > 0) && !hayAnexos3D && !ejeF)) return alert("Define las dimensiones para ver el 3D.");
+    if (!(H > 0)) H = 0;   // modo PLANO: lámina + anexos plegables (y/o eje de pliegue)
     try {
       await ensureLib("THREE", [
         "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
@@ -5106,7 +5121,7 @@
     const plieguesUI = [];
     const altosV3 = (!fig && typeof altosUnif === "function") ? altosUnif() : null;
     const hV = (k) => { if (!va3(k)) return 0; const v = altosV3 ? altosV3[k] : null; return (v != null && v >= 0) ? v : H; };
-    const alaPliegue = (nomAla, hAla, P0, ux, uz, len, x0c, y0c, wS, hS, W4loc) => {
+    const alaPliegue = (nomAla, hAla, P0, ux, uz, len, x0c, y0c, wS, hS, W4loc, v0deg) => {
       const uy = new T.Vector3().crossVectors(uz, ux);
       const outer = new T.Group(); outer.position.copy(P0);
       outer.setRotationFromMatrix(new T.Matrix4().makeBasis(ux, uy, uz));
@@ -5119,12 +5134,27 @@
       }
       const sgnA = uy.y > 0 ? 1 : -1;   // signo que deja 90 grados = ala hacia ABAJO (cubo cerrado)
       const set = (v) => { inner.rotation.x = sgnA * v * Math.PI / 180; };
-      set(90);
-      plieguesUI.push({ nombre: nomAla, set: set, v0: 90 });
+      const v00 = (v0deg == null) ? 90 : v0deg;
+      set(v00);
+      plieguesUI.push({ nombre: nomAla, set: set, v0: v00 });
       alasInner3D[nomAla] = { inner: inner, len: len, hAla: hAla };
     };
     const alasInner3D = {};
-    if (!fig) { if (hayCal) caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2)); else panel(A, L, 0, H, 0, -Math.PI / 2, 0); } // tapa (arriba)
+    if (!fig) {
+      if (ejeF) {
+        // EJE: mitad cercana estática; la lejana cuelga de la bisagra en la guía (parte en 0°, plana).
+        const wN = ejeF.horiz ? A : ejeF.pos, hN = ejeF.horiz ? ejeF.pos : L;
+        if (hayCal) caraCalada(0, 0, wN, hN, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2));
+        else {
+          const gP = new T.PlaneGeometry(wN, hN);
+          const mesh = new T.Mesh(gP, matLona); mesh.rotation.x = -Math.PI / 2; mesh.position.set(wN / 2 - A / 2, H, hN / 2 - L / 2); grp.add(mesh);
+          const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde); ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); grp.add(ed);
+        }
+        if (ejeF.horiz) alaPliegue(ejeF.nombre, L - ejeF.pos, new T.Vector3(-A / 2, H, ejeF.pos - L / 2), new T.Vector3(1, 0, 0), new T.Vector3(0, 0, 1), A, 0, ejeF.pos, A, L - ejeF.pos, (mx, my) => new T.Vector3(mx, 0, my - ejeF.pos), 0);
+        else alaPliegue(ejeF.nombre, A - ejeF.pos, new T.Vector3(ejeF.pos - A / 2, H, -L / 2), new T.Vector3(0, 0, 1), new T.Vector3(1, 0, 0), L, ejeF.pos, 0, A - ejeF.pos, L, (mx, my) => new T.Vector3(my, 0, mx - ejeF.pos), 0);
+      }
+      else if (hayCal) caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2)); else panel(A, L, 0, H, 0, -Math.PI / 2, 0);
+    } // tapa (arriba)
     if (H > 0 && hV("sup") > 0) alaPliegue("Ala superior", hV("sup"), new T.Vector3(-A / 2, H, -L / 2), new T.Vector3(1, 0, 0), new T.Vector3(0, 0, -1), A, 0, -hV("sup"), A, hV("sup"), (mx, my) => new T.Vector3(mx, 0, -my));
     if (H > 0 && hV("inf") > 0) alaPliegue("Ala inferior", hV("inf"), new T.Vector3(-A / 2, H, L / 2), new T.Vector3(1, 0, 0), new T.Vector3(0, 0, 1), A, 0, L, A, hV("inf"), (mx, my) => new T.Vector3(mx, 0, my - L));
     if (H > 0 && hV("izq") > 0) alaPliegue("Ala izquierda", hV("izq"), new T.Vector3(-A / 2, H, -L / 2), new T.Vector3(0, 0, 1), new T.Vector3(-1, 0, 0), L, -hV("izq"), 0, hV("izq"), L, (mx, my) => new T.Vector3(my, 0, -mx));
@@ -5162,11 +5192,15 @@
       } catch (e) {}
     }
     // Costuras de FUSIÓN: solo en las esquinas donde se encuentran DOS alas.
+    // Costuras de FUSIÓN: una por CADA pared del par (borde lateral, dentro de su bisagra y con su
+    // alto real): cerradas coinciden; al abrir un ala, su costura viaja con ella (se "descose").
     { const fus = new T.LineBasicMaterial({ color: 0xd23b2e, linewidth: 2 });
-      [["sup", "izq", -A/2, -L/2], ["sup", "der", A/2, -L/2], ["inf", "der", A/2, L/2], ["inf", "izq", -A/2, L/2]].forEach(([k1, k2, vx, vz]) => {
+      const NOMF = { sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" };
+      const bordeFus = (k, t) => { const reg = alasInner3D[NOMF[k]]; if (!reg) return; reg.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(t, 0, 0), new T.Vector3(t, 0, reg.hAla)]), fus)); };
+      [["sup", "izq"], ["sup", "der"], ["inf", "der"], ["inf", "izq"]].forEach(([k1, k2]) => {
         if (!(H > 0) || !va3(k1) || !va3(k2)) return;
-        const g2 = new T.BufferGeometry().setFromPoints([new T.Vector3(vx, 0, vz), new T.Vector3(vx, H, vz)]);
-        grp.add(new T.Line(g2, fus));
+        bordeFus(k1, k2 === "izq" ? 0 : A);
+        bordeFus(k2, k1 === "sup" ? 0 : L);
       }); }
     const grid = new T.GridHelper(Math.max(A, L) * 2.2, 12, 0xd8d8d2, 0xecece6);
     scene.add(grid);
@@ -5185,10 +5219,20 @@
       const geo = new T.SphereGeometry(rOj, 10, 10), mat = new T.MeshBasicMaterial({ color: 0x111111 });
       const enTapa3 = (ojEnUnif() === "tapa");
       const NOM_OJ3 = { sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" };
+      // EJE de pliegue (plano): los elementos de la mitad LEJANA van en coords locales de su bisagra.
+      const ejeReg = ejeF ? alasInner3D[ejeF.nombre] : null;
+      const enEjeFar = (mx, my) => !!ejeReg && (ejeF.horiz ? my > ejeF.pos + 1e-9 : mx > ejeF.pos + 1e-9);
+      const ejeLocal = (mx, my, off) => new T.Vector3(
+        ejeF.horiz ? Math.max(0, Math.min(A, mx)) : Math.max(0, Math.min(L, my)),
+        off != null ? off : 0.012,
+        ejeF.horiz ? my - ejeF.pos : mx - ejeF.pos);
       const EPS3 = 1e-6;
       (skOj.ojetillos || []).forEach((p) => {
         const m = mkOje3D();
-        if (enTapa3 || !(H > 0)) { m.position.set(p.x - A / 2, (H > 0 ? H : 0) + 0.012, p.y - L / 2); grp.add(m); return; }
+        if (enTapa3 || !(H > 0)) {
+          if (enEjeFar(p.x, p.y)) { m.position.copy(ejeLocal(p.x, p.y)); ejeReg.inner.add(m); return; }
+          m.position.set(p.x - A / 2, (H > 0 ? H : 0) + 0.012, p.y - L / 2); grp.add(m); return;
+        }
         // Ala del ojetillo: 1º por coords de HOJA (y<0 = sup, y>L = inf, x<0 = izq, x>A = der — el
         // desplegado ya resolvió los VÉRTICES con su arista de origen, sin compartir con la
         // perpendicular), 2º por p.ar, 3º borde más cercano.
@@ -5234,7 +5278,9 @@
       // QUIEBRA exactamente en el eje del pliegue y sigue continuo por la pared (doblado real).
       const splitPl3 = (pa, pb) => {
         const ts = [0, 1];
-        [["x", 0], ["x", A], ["y", 0], ["y", L]].forEach((ev2) => {
+        const ejesSp = [["x", 0], ["x", A], ["y", 0], ["y", L]];
+        if (ejeF) ejesSp.push(ejeF.horiz ? ["y", ejeF.pos] : ["x", ejeF.pos]);
+        ejesSp.forEach((ev2) => {
           const a1 = pa[ev2[0]], b1 = pb[ev2[0]];
           if (Math.abs(b1 - a1) < 1e-12) return;
           const t = (ev2[1] - a1) / (b1 - a1);
@@ -5243,16 +5289,53 @@
         ts.sort((q, w) => q - w);
         return ts.map((t) => ({ x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t }));
       };
+      // Región de un punto de HOJA: pared (k) o tapa (null). Tras splitPl3 cada sub-tramo cae
+      // entero en una región → los accesorios de pared se cuelgan de SU bisagra (siguen al ala).
+      const regionDe = (mx, my) => {
+        if (my < -1e-9 && va0("sup") && hV("sup") > 0) return "sup";
+        if (my > L + 1e-9 && va0("inf") && hV("inf") > 0) return "inf";
+        if (mx < -1e-9 && va0("izq") && hV("izq") > 0) return "izq";
+        if (mx > A + 1e-9 && va0("der") && hV("der") > 0) return "der";
+        return null;
+      };
+      const localDe = (k, mx, my, off) => {
+        const t = (k === "sup" || k === "inf") ? Math.max(0, Math.min(A, mx)) : Math.max(0, Math.min(L, my));
+        const d = (k === "sup") ? -my : (k === "inf") ? my - L : (k === "izq") ? -mx : mx - A;
+        return new T.Vector3(t, off != null ? off : 0.012, Math.max(0, Math.min(hV(k), d)));
+      };
+      const innerDe = (k) => { const r = alasInner3D[NOM_OJ3[k]]; return r ? r.inner : null; };
+      const addSeg3 = (pa, pb, mat) => {
+        if (enEjeFar((pa.x + pb.x) / 2, (pa.y + pb.y) / 2)) { ejeReg.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([ejeLocal(pa.x, pa.y), ejeLocal(pb.x, pb.y)]), mat)); return; }
+        const k = regionDe((pa.x + pb.x) / 2, (pa.y + pb.y) / 2), inner = k && innerDe(k);
+        if (inner) inner.add(new T.Line(new T.BufferGeometry().setFromPoints([localDe(k, pa.x, pa.y), localDe(k, pb.x, pb.y)]), mat));
+        else grp.add(new T.Line(new T.BufferGeometry().setFromPoints([p3(pa.x, pa.y), p3(pb.x, pb.y)]), mat));
+      };
+      const addQuad3 = (corn, mat) => {
+        const cx4 = corn.reduce((s2, q) => s2 + q.x, 0) / corn.length, cy4 = corn.reduce((s2, q) => s2 + q.y, 0) / corn.length;
+        if (enEjeFar(cx4, cy4)) {
+          const vsE = corn.map((q) => ejeLocal(q.x, q.y, 0.01));
+          const gE = new T.BufferGeometry().setFromPoints([vsE[0], vsE[1], vsE[2], vsE[0], vsE[2], vsE[3]]);
+          gE.computeVertexNormals(); ejeReg.inner.add(new T.Mesh(gE, mat)); return;
+        }
+        const k = regionDe(cx4, cy4), inner = k && innerDe(k);
+        const vs = inner ? corn.map((q) => localDe(k, q.x, q.y, 0.01)) : corn.map((q) => p3(q.x, q.y));
+        const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]);
+        g2.computeVertexNormals();
+        (inner || grp).add(new T.Mesh(g2, mat));
+      };
       // Calados / cortes / guías: contorno morado que DOBLA con la caja + sus ojetillos.
       const matCut = new T.LineBasicMaterial({ color: 0x8e44ad });
       (skOj.cortes || []).forEach((c) => {
         (c.segments || []).forEach((sg) => {
           const pts = splitPl3(sg.a, sg.b);
-          for (let j = 0; j < pts.length - 1; j++) {
-            grp.add(new T.Line(new T.BufferGeometry().setFromPoints([p3(pts[j].x, pts[j].y), p3(pts[j + 1].x, pts[j + 1].y)]), matCut));
-          }
+          for (let j = 0; j < pts.length - 1; j++) addSeg3(pts[j], pts[j + 1], matCut);
         });
-        (c.ojetillos || []).forEach((p) => { const m = mkOje3D(); m.position.copy(p3(p.x, p.y)); grp.add(m); });
+        (c.ojetillos || []).forEach((p) => {
+          const m = mkOje3D();
+          const k = regionDe(p.x, p.y), inner = k && innerDe(k);
+          if (inner) { m.position.copy(localDe(k, p.x, p.y)); inner.add(m); }
+          else { m.position.copy(p3(p.x, p.y)); grp.add(m); }
+        });
       });
       // Straps: banda roja por TRAMOS a lo largo de su eje (dobla en los pliegues).
       const matStr = new T.MeshBasicMaterial({ color: 0xd23b2e, transparent: true, opacity: 0.85, side: T.DoubleSide });
@@ -5261,21 +5344,15 @@
           const pts = splitPl3(st.a, st.b);
           for (let j = 0; j < pts.length - 1; j++) {
             const p1 = pts[j], p2 = pts[j + 1];
-            const vs = [
-              p3(p1.x + st.perp.x * st.hw, p1.y + st.perp.y * st.hw),
-              p3(p2.x + st.perp.x * st.hw, p2.y + st.perp.y * st.hw),
-              p3(p2.x - st.perp.x * st.hw, p2.y - st.perp.y * st.hw),
-              p3(p1.x - st.perp.x * st.hw, p1.y - st.perp.y * st.hw),
-            ];
-            const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]);
-            g2.computeVertexNormals();
-            grp.add(new T.Mesh(g2, matStr));
+            addQuad3([
+              { x: p1.x + st.perp.x * st.hw, y: p1.y + st.perp.y * st.hw },
+              { x: p2.x + st.perp.x * st.hw, y: p2.y + st.perp.y * st.hw },
+              { x: p2.x - st.perp.x * st.hw, y: p2.y - st.perp.y * st.hw },
+              { x: p1.x - st.perp.x * st.hw, y: p1.y - st.perp.y * st.hw },
+            ], matStr);
           }
         } else if (st.corners && st.corners.length === 4) {
-          const vs = st.corners.map((p) => p3(p.x, p.y));
-          const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]);
-          g2.computeVertexNormals();
-          grp.add(new T.Mesh(g2, matStr));
+          addQuad3(st.corners, matStr);
         }
       });
     } catch (e) {}
@@ -6991,6 +7068,7 @@
         } else if (idxCorte != null) {
           items = [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]];
           items.push(["Anexo (aleta/faldón) desde esta línea…", "guiaAnexoUI"]);
+          if (ln.getAttribute("data-guia") != null) items.push(["Eje de pliegue del paño (3D) — activar/desactivar", "guiaEje"]);
           if (pm) items.push(["Anchor sobre la línea", "corteAncla"], ["Nota (texto libre)…", "nota"]);
         } else if (esLibre && seg) {
           // Borde lateral de un ala (la ALTURA): elementos posicionados en SU propio segmento.
@@ -7008,7 +7086,7 @@
         items.forEach(([t, a]) => {
           if (!acciones[a]) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -7157,6 +7235,22 @@
   const accionesAristaUnif = {
     corteOj: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "oj", dOjetillosRef(state.ojMode === "arista" ? state.ojEdges : null)); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
     corteStrap: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "strap"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
+    guiaEje: (i) => {
+      const c = visibles(state.cortesUnif)[i]; if (!c || c.tipo !== "guia") return;
+      if (c.ejeVis) { c.ejeVis = false; renderCortesUnif(); recompute(); return; }
+      if (alturaUnif() > 0) return alert("El eje de pliegue del paño está disponible en productos PLANOS (sin alto). En volumétricos, instala un anexo desde la guía: ese anexo ya se abate sobre ella en el visor 3D.");
+      const A2 = num("f_ancho", 0), L2 = num("f_largo", 0), ln = lineaRawCorte(c);
+      if (!ln || !(A2 > 0) || !(L2 > 0)) return;
+      const ang = (((parseFloat(c.angulo) || 0) % 180) + 180) % 180;
+      const x0 = Math.min(ln.a.x, ln.a.x + ln.u.x * ln.w), x1 = Math.max(ln.a.x, ln.a.x + ln.u.x * ln.w);
+      const y0 = Math.min(ln.a.y, ln.a.y + ln.u.y * ln.w), y1 = Math.max(ln.a.y, ln.a.y + ln.u.y * ln.w);
+      const ok = ((ang < 1 || ang > 179) && ln.a.y > 0.01 && ln.a.y < L2 - 0.01 && x0 <= 0.01 && x1 >= A2 - 0.01) ||
+                 (Math.abs(ang - 90) < 1 && ln.a.x > 0.01 && ln.a.x < A2 - 0.01 && y0 <= 0.01 && y1 >= L2 - 0.01);
+      if (!ok) return alert("Para ser eje, la guía debe ser HORIZONTAL o VERTICAL y cruzar el paño completo (de borde a borde).");
+      c.ejeVis = true;
+      renderCortesUnif(); recompute();
+      alert("Guía convertida en EJE de pliegue: abre el visor 3D (🧊) y mueve su slider (0–360°).");
+    },
     tapaOj: (i, k) => {
       const c = visibles(state.cortesUnif)[i]; if (!c || !c.tapa || !c.tapa.on) return;
       if (!c.tapa.ar) c.tapa.ar = {}; if (!c.tapa.ar[k]) c.tapa.ar[k] = { fus: true, ojD: "" };
