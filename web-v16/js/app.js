@@ -7210,7 +7210,7 @@
         const ar2 = areaSeq(seq);
         if (ar2 > 0.01) {
           const kk2 = seq.map((x2) => (typeof x2 === "object" ? (x2.esq ? "e" + x2.esq : "p" + Math.round(x2.pt.x * 100) + "," + Math.round(x2.pt.y * 100)) : x2)).sort().join("|");
-          if (!vistosC[kk2]) { vistosC[kk2] = 1; cands.push({ seq: seq, len: camino.length, area: Math.round(ar2 * 100) / 100 }); }
+          if (!vistosC[kk2]) { vistosC[kk2] = 1; cands.push({ seq: seq, len: camino.length, area: Math.round(ar2 * 100) / 100, pts: seq.map(posSeq) }); }
         }
       };
       // PROFUNDIZACIÓN ITERATIVA: primero solo ciclos de 3 nodos, luego 4, etc. — los polígonos
@@ -7237,6 +7237,21 @@
       cands.sort((q2, w2) => (q2.len - w2.len) || (q2.area - w2.area));
       return cands.length ? cands.slice(0, 5) : null;
     }
+    function cerrarPoliDesde(cd) {
+      const cN = nuevaCorte(); cN.tipo = "poli"; cN.poliAnclas = cd.seq; cN.legend = "Calado poligonal";
+      ctx.cortes.push(cN);
+      aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
+      if (ctx.onChange) ctx.onChange();
+    }
+    // Candidatos de polígono desde un punto, EXCLUYENDO los calados ya creados (mismo conjunto de
+    // vértices): así un punto compartido (p.ej. el centro de una pirámide) puede cerrar los 4.
+    function ciclosDisponibles(idNodo) {
+      const ciclos = cicloDesde(idNodo) || [];
+      const clave = (pts) => (pts || []).filter(Boolean).map((q2) => Math.round(q2.x * 100) + "," + Math.round(q2.y * 100)).sort().join("|");
+      const existentes = {};
+      (ctx.cortes || []).forEach((c2) => { if (c2 && c2.tipo === "poli" && c2._pts && c2._pts.length) existentes[clave(c2._pts)] = 1; });
+      return ciclos.filter((cd) => !existentes[clave(cd.pts)]);
+    }
     // Estilo CAD: si el punto pinchado tiene VARIOS elementos apilados (anchors coincidentes),
     // primero se elige cuál editar de una lista descriptiva.
     function anchorsCoincidentes(reg) {
@@ -7260,14 +7275,31 @@
     function menuSeleccionAncla(lista, reg0) {
       cerrarMenuAristas();
       const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
-      const cap = document.createElement("p"); cap.className = "arista-menu-cap"; cap.textContent = "Elementos en este punto — elige cuál:";
+      const cap = document.createElement("p"); cap.className = "arista-menu-cap"; cap.textContent = "Punto con " + lista.length + " elementos";
       menu.appendChild(cap);
+      const itemP = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); };
+      // Acciones del PUNTO (da lo mismo cuál anchor apilado: es el mismo lugar)
+      const rep = lista.find((r2) => r2.tipo === "arista") || lista[0];
+      const ciclosP = ciclosDisponibles(rep.an.id);
+      if (ciclosP.length) {
+        const porArea = ciclosP.slice().sort((q2, w2) => q2.area - w2.area);
+        itemP("⬠ Cerrar polígono → calado (" + porArea[0].area + " m²)", () => cerrarPoliDesde(porArea[0]));
+        if (porArea.length > 1) itemP("⬠ Cerrar otro polígono: " + porArea[1].area + " m²", () => cerrarPoliDesde(porArea[1]));
+      }
+      const repC = comoArista(rep) || rep;
+      itemP("Corte hasta otro anchor…", () => iniciarConexion(repC, "corte"));
+      itemP("Guía hasta otro anchor…", () => iniciarConexion(repC, "guia"));
+      // Lista de anchors individuales: plegada (cirugía fina: fijar/desempatar/eliminar uno)
+      const lstBox = document.createElement("div"); lstBox.className = "arista-menu-mas hidden";
       lista.forEach((r2) => {
         const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it";
         b.textContent = descAncla(r2);
         b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); menuAncla(r2); });
-        menu.appendChild(b);
+        lstBox.appendChild(b);
       });
+      { const tg = document.createElement("button"); tg.type = "button"; tg.className = "arista-menu-it arista-menu-toggle"; tg.textContent = "⚙ Editar un elemento específico (" + lista.length + ")";
+        tg.addEventListener("click", (ev2) => { ev2.stopPropagation(); lstBox.classList.toggle("hidden"); });
+        menu.appendChild(tg); menu.appendChild(lstBox); }
       document.body.appendChild(menu); _arMenu = menu;
       const gEl = svg.querySelector('g.ancla[data-ancla="' + reg0.an.id + '"]');
       let cx2 = window.innerWidth / 2, cy2 = window.innerHeight / 2;
@@ -7298,26 +7330,22 @@
         }
         // POLÍGONO CERRADO: si este anchor forma un ciclo con otros, convertirlo en CALADO real.
         { const idNodo = regC.an.id;
-          const yaPoli = (ctx.cortes || []).find((c2) => c2 && c2.tipo === "poli" && (c2.poliAnclas || []).indexOf(idNodo) !== -1);
-          if (yaPoli) itemMas("Quitar calado poligonal (deja las líneas)", () => {
-            const k2 = ctx.cortes.indexOf(yaPoli); if (k2 !== -1) ctx.cortes.splice(k2, 1);
-            if (ctx.onChange) ctx.onChange();
-          });
-          else { const ciclos = cicloDesde(idNodo);
-            if (ciclos && ciclos.length) {
-              const cerrar = (cd) => {
-                const cN = nuevaCorte(); cN.tipo = "poli"; cN.poliAnclas = cd.seq; cN.legend = "Calado poligonal";
-                ctx.cortes.push(cN);
-                aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
+          (ctx.cortes || []).forEach((c2) => {
+            if (c2 && c2.tipo === "poli" && (c2.poliAnclas || []).indexOf(idNodo) !== -1) {
+              itemMas("Quitar calado poligonal (" + ((c2.poliAnclas || []).length) + " vértices)", () => {
+                const k2 = ctx.cortes.indexOf(c2); if (k2 !== -1) ctx.cortes.splice(k2, 1);
                 if (ctx.onChange) ctx.onChange();
-              };
-              // Ordenados por área: el 1º (más ceñido) es casi siempre el que el usuario trazó → 1 clic.
-              const porArea = ciclos.slice().sort((q2, w2) => q2.area - w2.area);
-              item("⬠ Cerrar polígono → calado (" + porArea[0].area + " m²)", () => cerrar(porArea[0]));
-              porArea.slice(1).forEach((cd) => {
-                itemMas("⬠ Cerrar otro polígono: " + cd.area + " m² · " + cd.seq.length + " lados", () => cerrar(cd));
               });
             }
+          });
+          const ciclos = ciclosDisponibles(idNodo);
+          if (ciclos.length) {
+            // Ordenados por área: el 1º (más ceñido) es casi siempre el que el usuario trazó → 1 clic.
+            const porArea = ciclos.slice().sort((q2, w2) => q2.area - w2.area);
+            item("⬠ Cerrar polígono → calado (" + porArea[0].area + " m²)", () => cerrarPoliDesde(porArea[0]));
+            porArea.slice(1).forEach((cd) => {
+              itemMas("⬠ Cerrar otro polígono: " + cd.area + " m² · " + cd.seq.length + " lados", () => cerrarPoliDesde(cd));
+            });
           }
         } }
       // ITERACIÓN: anchors sobre un corte "Eliminar" (borde real del paño) — el recorte se repite
