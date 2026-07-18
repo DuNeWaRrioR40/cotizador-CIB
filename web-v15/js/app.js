@@ -6561,9 +6561,18 @@
       _anchorPend = { an: reg.an, tipo: tipo, ctx: ctx, limpiar: limpiarCx };
       hintConexion(tipo === "corte" ? "Pincha el 2º anchor para trazar el CORTE entre ambos (Esc cancela)" : "Pincha el 2º anchor para trazar la GUÍA entre ambos (Esc cancela)");
     }
+    // Posición de CUALQUIER anchor: de arista/segmento propio, o montado en un corte/guía.
+    function posAnclaAny(an) {
+      if (an.ar || an.seg) return posAnclaArista(an, A, L);
+      for (const c2 of (ctx.cortes || [])) {
+        if ((c2.anclas || []).indexOf(an) !== -1) { const pq = posAnclaCorte(c2, an); return pq ? { x: pq.x, y: pq.y } : null; }
+      }
+      return null;
+    }
     function crearEntreAnchors(pend, reg2) {
       const an1 = pend.an, an2 = reg2.an;
-      const p1 = posAnclaArista(an1, A, L), p2 = posAnclaArista(an2, A, L);
+      if (an1 === an2) return;
+      const p1 = posAnclaAny(an1), p2 = posAnclaAny(an2);
       if (!p1 || !p2) return;
       const len = Math.hypot(p2.x - p1.x, p2.y - p1.y); if (!(len > 1e-6)) return;
       const c = crearLineaEnSeg(ctx.cortes, { a: p1, b: p2 }, pend.tipo); if (!c) return;
@@ -6645,14 +6654,15 @@
       cap.textContent = (reg.tipo === "arista") ? "Anchor de arista" : "Anchor del corte/línea";
       menu.appendChild(cap);
       const item = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); };
-      { const regA = comoArista(reg);
-        if (regA && (ctx.anclas || []).length >= 2) {
-          item("Corte hasta otro anchor…", () => iniciarConexion(regA, "corte"));
-          item("Guía hasta otro anchor…", () => iniciarConexion(regA, "guia"));
-          if (!regA.an.seg) {
-            const otros = (ctx.anclas || []).filter((a2) => a2 !== regA.an && !a2.seg && a2.ar === regA.an.ar);
-            if (otros.length === 1) item("Modificar medida entre anchors…", () => modificarMedidaEntre(regA.an, otros[0]));
-          }
+      { const regC = comoArista(reg) || reg;   // el empatado "representa" al de arista; el resto conecta como es
+        const nTot = (ctx.anclas || []).length + (ctx.cortes || []).reduce((acc, c2) => acc + ((c2.anclas || []).length), 0);
+        if (nTot >= 2) {
+          item("Corte hasta otro anchor…", () => iniciarConexion(regC, "corte"));
+          item("Guía hasta otro anchor…", () => iniciarConexion(regC, "guia"));
+        }
+        if (regC.tipo === "arista" && !regC.an.seg) {
+          const otros = (ctx.anclas || []).filter((a2) => a2 !== regC.an && !a2.seg && a2.ar === regC.an.ar);
+          if (otros.length === 1) item("Modificar medida entre anchors…", () => modificarMedidaEntre(regC.an, otros[0]));
         } }
       // ITERACIÓN: anchors sobre un corte "Eliminar" (borde real del paño) — el recorte se repite
       // sobre la arista ya modificada, con los vértices vecinos del contorno como ejes.
@@ -6763,8 +6773,8 @@
             if (_anchorPend && _anchorPend.ctx === ctx) {
               const pend = _anchorPend;
               if (pend.limpiar) pend.limpiar();
-              const regA = comoArista(reg);
-              if (regA && regA.an.id !== pend.an.id) setTimeout(() => crearEntreAnchors(pend, regA), 0);
+              const regA = comoArista(reg) || reg;   // también sirve de destino un anchor de corte/guía
+              if (regA.an !== pend.an && regA.an.id !== pend.an.id) setTimeout(() => crearEntreAnchors(pend, regA), 0);
               return;
             }
             setTimeout(() => menuAncla(reg), 0); return;
