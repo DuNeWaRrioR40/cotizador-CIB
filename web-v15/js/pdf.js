@@ -939,7 +939,8 @@
 
     // (La representación gráfica / plano se entrega como archivo aparte, no va en la cotización.)
 
-    // --- Página 2 ---
+    // --- Página 2 (condiciones) — en cotizaciones multi-tela solo va UNA vez, al final del PDF ---
+    if (!datos.sinCondiciones) {
     const p2 = doc.addPage([W, H]);
     let y2 = H - 50;
     const t2 = (s, x, yy, o) => txt(p2, s, x, yy, o);
@@ -967,6 +968,7 @@
       .concat([e.casa_matriz]);
     vendLineas.forEach((l) => { t2(l, M, y2, { size: 11, color: BLACK() }); y2 -= 14; });
     pieBanda(p2, bold, W, datos.fecha);
+    }
 
     const bytes = await doc.save();
     return { bytes, filename: nombreArchivo(datos) + ".pdf" };
@@ -990,7 +992,7 @@
     if (!datosList || !datosList.length) throw new Error("Sin telas para cotizar.");
     const master = await PDFDocument.create();
     for (let i = 0; i < datosList.length; i++) {
-      const { bytes } = await generarCotizacion(datosList[i]);
+      const { bytes } = await generarCotizacion(Object.assign({}, datosList[i], { sinCondiciones: i < datosList.length - 1 }));
       const sub = await PDFDocument.load(bytes);
       const pages = await master.copyPages(sub, sub.getPageIndices());
       pages.forEach((p) => master.addPage(p));
@@ -1012,7 +1014,7 @@
     if (!datosList || !datosList.length) throw new Error("Sin telas para cotizar.");
     const master = await PDFDocument.create();
     for (let i = 0; i < datosList.length; i++) {
-      const { bytes } = await generarCotizacionCompuesta(datosList[i]);
+      const { bytes } = await generarCotizacionCompuesta(Object.assign({}, datosList[i], { sinCondiciones: i < datosList.length - 1 }));
       const sub = await PDFDocument.load(bytes);
       const pages = await master.copyPages(sub, sub.getPageIndices());
       pages.forEach((p) => master.addPage(p));
@@ -1346,7 +1348,8 @@
 
     // (La representación gráfica / plano de las piezas se entrega como archivo aparte, no va en la cotización.)
 
-    // --- Página final: condiciones + empresa + vendedor ---
+    // --- Página final: condiciones + empresa + vendedor (multi-tela: solo una vez, al final) ---
+    if (!datos.sinCondiciones) {
     const p2 = doc.addPage([W, H]);
     let y2 = H - 50;
     const t2 = (s, x, yy, o) => p2.drawText(san(s), { x, y: yy, size: (o && o.size) || 11, font: (o && o.f) || font, color: (o && o.color) || BLUE() });
@@ -1371,6 +1374,7 @@
     [vend.nombre].concat(vend.email ? [vend.email] : []).concat((vend.fonos || []).filter(Boolean)).concat([e.casa_matriz])
       .forEach((l) => { t2(l, M, y2, { size: 11, color: BLACK() }); y2 -= 14; });
     pieBanda(p2, bold, W, datos.fecha);
+    }
 
     const bytes = await doc.save();
     return { bytes, filename: nombreArchivo(datos) + ".pdf" };
