@@ -5284,13 +5284,19 @@
     const label = (txt) => {
       // Canvas ancho + fuente auto-ajustada: títulos largos ("PIRÁMIDE 3.8 × 2.2 × h 2 m") caben completos.
       const cv = document.createElement("canvas"); cv.width = 1024; cv.height = 128;
-      const g = cv.getContext("2d"); g.fillStyle = "#111"; g.textAlign = "center";
-      let fpx = 52; g.font = "600 " + fpx + "px -apple-system, sans-serif";
+      // Texto BLANCO en la textura + tinte por material: el gris por defecto (y el rojo de los
+      // rótulos de acento) se aplican limpios, sin ensuciar el trazo.
+      const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.textAlign = "center";
+      try { g.letterSpacing = "3px"; } catch (_) {}   // aire entre letras (si el navegador lo soporta)
+      const FUENTE = (px) => "500 " + px + "px -apple-system, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif";
+      let fpx = 50; g.font = FUENTE(fpx);
       const wTxt = g.measureText(txt).width;
-      if (wTxt > 984) { fpx = Math.max(24, Math.floor(fpx * 984 / wTxt)); g.font = "600 " + fpx + "px -apple-system, sans-serif"; }
+      if (wTxt > 984) { fpx = Math.max(24, Math.floor(fpx * 984 / wTxt)); g.font = FUENTE(fpx); }
       g.fillText(txt, 512, 80);
-      const sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(cv), transparent: true, depthTest: false }));
-      const sc = diag * 0.34; sp.scale.set(sc * 2, sc / 4, 1); return sp;   // ancho ×2 = misma densidad de px que antes
+      const mat = new T.SpriteMaterial({ map: new T.CanvasTexture(cv), transparent: true, depthTest: false });
+      mat.color = new T.Color(0x8a8f98);   // gris moderado por defecto
+      const sp = new T.Sprite(mat);
+      const sc = diag * 0.26; sp.scale.set(sc * 2, sc / 4, 1); return sp;   // ~25% más chico que antes
     };
     // Rótulos de caras: qué es cada parte (claridad para el cliente).
     if (!fig) { const lTapa = label((H > 0 ? "TAPA " : "PAÑO ") + f(L) + " × " + f(A) + " m"); lTapa.position.set(0, H + diag * 0.05, 0); grp.add(lTapa); }
