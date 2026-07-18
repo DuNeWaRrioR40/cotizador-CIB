@@ -370,6 +370,10 @@
       if (c.fadePoly && c.fadePoly.length >= 3 && !c.fadeKill) {
         drawPolyPDF(page, c.fadePoly.map((p) => ({ x: px(p.x), y: py(p.y) })), { color: PDFLib.rgb(0.42, 0.46, 0.52), opacity: 0.5, borderWidth: 0 });
       }
+      if (c.fadePoly && c.fadePoly.length >= 3 && c.fadeKill && (c.fadeZona || "tapa") !== "tapa") {
+        // Zona ELIMINADA (calado poligonal / recorte sobre ala): marca roja suave, como en la app.
+        drawPolyPDF(page, c.fadePoly.map((p) => ({ x: px(p.x), y: py(p.y) })), { color: PDFLib.rgb(0.85, 0.27, 0.23), opacity: 0.10, borderWidth: 0 });
+      }
       (c.hatch || []).forEach((sg) => {
         page.drawLine({ start: { x: px(sg.a.x), y: py(sg.a.y) }, end: { x: px(sg.b.x), y: py(sg.b.y) }, thickness: 0.35, color: PURPLE, opacity: 0.32 });
       });

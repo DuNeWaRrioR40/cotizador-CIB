@@ -395,6 +395,12 @@
     return { poly: clipPolyHalfPlane(R, aL.x, aL.y, bL.x, bL.y, fade === "B"), zona: zona };
   }
   function procesarCorte(c, ancho, largo, todos, bnd) {
+    // CALADO POLIGONAL (cerrado por anchors): zona ELIMINADA real. Sin línea propia — los bordes
+    // los dibujan los cortes/aristas que lo cierran. Achurado rojo suave en 2D (fadeZona "poli")
+    // y agujero con máscara en el visor 3D (fadeKill + fadePoly).
+    if (Array.isArray(c.poli) && c.poli.length >= 3) {
+      return { x: c.x, y: c.y, w: c.w, h: c.h, sides: {}, segments: [], ojetillos: [], ojNum: [], tijeras: null, hatch: [], pivote: null, rotated: false, angulo: 0, tapa: null, fadePoly: c.poli.map((p) => ({ x: p.x, y: p.y })), fadeZona: "poli", fadeKill: true, fade: "" };
+    }
       bnd = bnd || { x0: 0, x1: ancho, y0: 0, y1: largo };
       const x = c.x, y = c.y, w = c.w, h = c.h;
       // --- Corte (línea recta): un solo segmento de largo w (horizontal), rotado por ángulo/pivote. ---

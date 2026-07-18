@@ -3675,6 +3675,12 @@
   }
   function rectCorte(c) {
     const ev = window.CalcCIBSA.evalExpr;
+    if (c.tipo === "poli") {   // calado poligonal: puntos vivos en c._pts (los deriva aplicarEmpates de sus anchors)
+      const pts = c._pts; if (!pts || pts.length < 3) return null;
+      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+      const x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
+      return { tipo: "calado", poli: pts.map((p) => ({ x: p.x, y: p.y })), x: x0, y: y0, w: Math.max.apply(null, xs) - x0, h: Math.max.apply(null, ys) - y0, circ: false, ojCirc: 0, oj: { sup: 0, inf: 0, izq: 0, der: 0 }, lados: { sup: false, inf: false, izq: false, der: false }, angulo: 0, pivX: 0.5, pivY: 0.5, fade: "", fadeKill: true };
+    }
     const num01 = (v, d) => { const r = window.CalcCIBSA.evalExpr(v); return (r == null || isNaN(r)) ? d : Math.max(0, Math.min(1, r)); };
     if (c.tipo === "corte" || c.tipo === "guia") { // línea recta: largo = longitud de la línea (horizontal), x/y = inicio
       const esGuia = c.tipo === "guia";            // guía = línea de construcción: NO secciona el paño
@@ -3757,6 +3763,18 @@
     function pintar() {
       rows.innerHTML = "";
       (ctx.cortes || []).forEach((c, idx) => {
+        if (c.tipo === "poli") {
+          const card = document.createElement("div"); card.className = "corte-card poli-card";
+          const pp = document.createElement("p"); pp.className = "muted small";
+          pp.textContent = "⬠ Calado poligonal (" + ((c.poliAnclas || []).length) + " anchors) — se elimina el paño encerrado; sus vértices siguen a los anchors del plano.";
+          card.appendChild(pp);
+          const del = document.createElement("button"); del.type = "button"; del.className = "btn-outline small";
+          del.textContent = "✕ Quitar calado (deja las líneas)";
+          del.addEventListener("click", () => { const k2 = ctx.cortes.indexOf(c); if (k2 !== -1) ctx.cortes.splice(k2, 1); pintar(); if (onChange) onChange(); });
+          card.appendChild(del);
+          rows.appendChild(card);
+          return;
+        }
         const card = document.createElement("div"); card.className = "ins-card cut-card";
         const padInputs = {};
         const setPad = () => { ["padSup", "padInf", "padIzq", "padDer"].forEach((k) => { if (padInputs[k]) padInputs[k].value = c[k]; }); };
@@ -6386,6 +6404,13 @@
       }
       posDeCorte(c);   // sus anchors quedan al día para cortes que dependan de éste
     });
+    // CALADOS POLIGONALES: su polígono se re-deriva de las posiciones VIGENTES de sus anchors
+    // (de arista o de corte/guía) — mover cualquier anchor del ciclo remodela el calado.
+    (cortesRaw || []).forEach((c) => {
+      if (!c || c.tipo !== "poli" || !Array.isArray(c.poliAnclas)) return;
+      const pts = c.poliAnclas.map((id) => pos[id]).filter(Boolean);
+      if (pts.length >= 3 && pts.length === c.poliAnclas.length) c._pts = pts.map((q) => ({ x: q.x, y: q.y }));
+    });
   }
   // ITERACIÓN de "modificar medida": opera sobre una LÍNEA DE CORTE que ya es borde real del
   // paño (corte "Eliminar"). El tramo vivo de esa línea se ubica en el contorno real (panoPoly) y
@@ -6647,6 +6672,39 @@
       if (err) return alert(err);
       if (ctx.onChange) ctx.onChange();
     }
+    // Grafo de anchors para detectar POLÍGONOS cerrados: cada corte/guía con 2 empates es un lado
+    // explícito; pares de anchors sobre la MISMA arista base o el MISMO corte anfitrión son lados
+    // implícitos (el tramo de esa línea entre ambos). Devuelve el ciclo (ids en orden) o null.
+    function cicloDesde(id0) {
+      const edges = [];
+      (ctx.cortes || []).forEach((c2) => {
+        if (!c2 || c2.tipo === "poli") return;
+        const emp = (c2.anclas || []).filter((a2) => a2 && a2.emp != null).map((a2) => a2.emp);
+        if (emp.length >= 2 && emp[0] !== emp[1]) edges.push([emp[0], emp[1]]);
+        const propios = (c2.anclas || []).map((a2) => a2.id);
+        for (let i2 = 0; i2 < propios.length; i2++) for (let j2 = i2 + 1; j2 < propios.length; j2++) edges.push([propios[i2], propios[j2]]);
+      });
+      const porAr = {};
+      (ctx.anclas || []).forEach((a2) => { if (a2 && a2.ar && !a2.seg) (porAr[a2.ar] = porAr[a2.ar] || []).push(a2.id); });
+      Object.keys(porAr).forEach((k2) => { const ids = porAr[k2]; for (let i2 = 0; i2 < ids.length; i2++) for (let j2 = i2 + 1; j2 < ids.length; j2++) edges.push([ids[i2], ids[j2]]); });
+      const ady = {};
+      edges.forEach((e2, ei) => { (ady[e2[0]] = ady[e2[0]] || []).push([e2[1], ei]); (ady[e2[1]] = ady[e2[1]] || []).push([e2[0], ei]); });
+      let mejor = null;
+      const dfs = (nodo, camino, usados) => {
+        if (mejor) return;
+        for (const par of (ady[nodo] || [])) {
+          const nx = par[0], ei = par[1];
+          if (usados[ei]) continue;
+          if (nx === id0 && camino.length >= 3) { if (!mejor || camino.length < mejor.length) mejor = camino.slice(); continue; }
+          if (camino.indexOf(nx) !== -1) continue;
+          usados[ei] = true; camino.push(nx);
+          dfs(nx, camino, usados);
+          camino.pop(); usados[ei] = false;
+        }
+      };
+      dfs(id0, [id0], {});
+      return mejor;
+    }
     function menuAncla(reg) {
       cerrarMenuAristas();
       const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
@@ -6663,6 +6721,22 @@
         if (regC.tipo === "arista" && !regC.an.seg) {
           const otros = (ctx.anclas || []).filter((a2) => a2 !== regC.an && !a2.seg && a2.ar === regC.an.ar);
           if (otros.length === 1) item("Modificar medida entre anchors…", () => modificarMedidaEntre(regC.an, otros[0]));
+        }
+        // POLÍGONO CERRADO: si este anchor forma un ciclo con otros, convertirlo en CALADO real.
+        { const idNodo = regC.an.id;
+          const yaPoli = (ctx.cortes || []).find((c2) => c2 && c2.tipo === "poli" && (c2.poliAnclas || []).indexOf(idNodo) !== -1);
+          if (yaPoli) item("Quitar calado poligonal (deja las líneas)", () => {
+            const k2 = ctx.cortes.indexOf(yaPoli); if (k2 !== -1) ctx.cortes.splice(k2, 1);
+            if (ctx.onChange) ctx.onChange();
+          });
+          else { const ciclo = cicloDesde(idNodo);
+            if (ciclo) item("Cerrar polígono → calado (" + ciclo.length + " lados)", () => {
+              const cN = nuevaCorte(); cN.tipo = "poli"; cN.poliAnclas = ciclo; cN.legend = "Calado poligonal";
+              ctx.cortes.push(cN);
+              aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
+              if (ctx.onChange) ctx.onChange();
+            });
+          }
         } }
       // ITERACIÓN: anchors sobre un corte "Eliminar" (borde real del paño) — el recorte se repite
       // sobre la arista ya modificada, con los vértices vecinos del contorno como ejes.
@@ -6716,6 +6790,29 @@
         if (ctx.onChange) ctx.onChange();
       });
       container.appendChild(bA);
+    }
+    // Botón "poblar vértices": crea un anchor BLOQUEADO en cada esquina del paño base que aún
+    // no tenga uno (base instantánea para triangular, conectar o cerrar polígonos).
+    { const prev = container.querySelector(".sketch-anc-pob"); if (prev) prev.remove(); }
+    if (A > 0 && L > 0) {
+      const bP = document.createElement("button");
+      bP.type = "button"; bP.className = "sketch-anc-btn sketch-anc-pob"; bP.title = "Poblar los 4 vértices del paño base con anchors (bloqueados)";
+      bP.textContent = "⚓＋";
+      bP.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const esquinas = [["sup", "ini"], ["sup", "fin"], ["inf", "ini"], ["inf", "fin"]];
+        const eps = 1e-6, existentes = (ctx.anclas || []).map((a2) => posAnclaArista(a2, A, L)).filter(Boolean);
+        let creados = 0;
+        esquinas.forEach(([ar2, esq2]) => {
+          const seg2 = aristaSegAncla(ar2, A, L);
+          const pq = (esq2 === "ini") ? seg2.a : seg2.b;
+          if (existentes.some((q2) => Math.abs(q2.x - pq.x) < eps && Math.abs(q2.y - pq.y) < eps)) return;
+          ctx.anclas.push({ id: nuevoIdAncla(ctx.anclas, ctx.cortes), ar: ar2, esq: esq2, d: 0, fix: true });
+          creados += 1;
+        });
+        if (creados && ctx.onChange) ctx.onChange();
+      });
+      container.appendChild(bP);
     }
     svg.querySelectorAll("g.ancla").forEach((g) => {
       const id = parseInt(g.dataset.ancla, 10), reg = buscar(id); if (!reg) return;

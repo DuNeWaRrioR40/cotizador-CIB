@@ -365,6 +365,8 @@ body.vista-cliente { margin: 0; background: var(--bg, #f6f6f2); }
 /* Botón: eliminar todos los anchors del plano (bajo el botón 3D) */
 .sketch-anc-btn { position: absolute; top: 86px; right: 6px; z-index: 5; width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: #e8590c; font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer; box-shadow: 0 1px 5px rgba(0,0,0,0.2); }
 .sketch-anc-btn:hover { background: #e8590c; color: #fff; border-color: #e8590c; }
+.sketch-anc-pob { top: 124px; color: #2f7d32; }
+.sketch-anc-pob:hover { background: #2f7d32; color: #fff; border-color: #2f7d32; }
 .vol3d-canvas { display: block; background: #fff; border-radius: 8px; box-shadow: 0 6px 30px rgba(0,0,0,0.5); touch-action: none; cursor: grab; }
 .vol3d-canvas:active { cursor: grabbing; }
 .vol3d-hint { position: fixed; bottom: calc(58px + env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; color: rgba(255,255,255,0.85); font-size: 12px; z-index: 1510; pointer-events: none; }
