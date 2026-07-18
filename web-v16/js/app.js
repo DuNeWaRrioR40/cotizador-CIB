@@ -7,7 +7,7 @@
   const state = {
     telas: [], telasOpcSel: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
-    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, figura3D: null, anclasUnif: [], notasUnif: [], subVC: false, cotasOcultas: {}, cotasPos: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
+    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, figura3D: null, anclasUnif: [], notasUnif: [], subVC: false, vis3D: null, cotasOcultas: {}, cotasPos: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [], cintasUnif: [],
@@ -188,7 +188,7 @@
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
   const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email", "f_fono1_cliente", "f_fono2_cliente", "f_emp_fono1", "f_emp_fono2"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "vis3D", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -5048,11 +5048,15 @@
     setTimeout(vc3dTxt, 0);
     const rot3d = document.createElement("button"); rot3d.type = "button"; rot3d.className = "vol3d-btn"; rot3d.textContent = "Aa Rótulos: sí";
     rot3d.title = "Mostrar/ocultar los rótulos (callouts) del visor";
-    rot3d._on = true;
-    rot3d.addEventListener("click", () => {
-      rot3d._on = !rot3d._on;
+    rot3d._on = !(state.vis3D && state.vis3D.rotulos === false);
+    const aplRot3d = () => {
       rot3d.textContent = rot3d._on ? "Aa Rótulos: sí" : "Aa Rótulos: no";
       if (_v3d && _v3d.scene) _v3d.scene.traverse((o9) => { if (o9._esRotulo) o9.visible = rot3d._on; });
+    };
+    rot3d.addEventListener("click", () => {
+      rot3d._on = !rot3d._on;
+      (state.vis3D = state.vis3D || {}).rotulos = rot3d._on;
+      aplRot3d();
     });
     const cap3d = document.createElement("button"); cap3d.type = "button"; cap3d.className = "vol3d-btn"; cap3d.textContent = "📸 Incluir esta vista en el plano";
     const dl3d = document.createElement("button"); dl3d.type = "button"; dl3d.className = "vol3d-btn"; dl3d.textContent = "⬇ Descargar imagen";
@@ -5754,9 +5758,11 @@
         if (v0p) { const s0 = v0p.set; v0p.set = (v) => { s0(v); pl.set(v); }; return; }
         vistosPl[pl.nombre] = pl; listaPl.push(pl);
       });
+      const sv3 = (state.vis3D = state.vis3D || {});   // parámetros del visor GUARDADOS con el diseño
+      sv3.pliegues = sv3.pliegues || {};
       listaPl.forEach((pl) => {
         const row = document.createElement("label"); row.className = "vol3d-plg-row";
-        const v0 = pl.v0 || 0;
+        const v0 = (sv3.pliegues[pl.nombre] != null) ? sv3.pliegues[pl.nombre] : (pl.v0 || 0);
         const sp = document.createElement("span"); sp.textContent = pl.nombre;
         const rg = document.createElement("input"); rg.type = "range"; rg.min = "0"; rg.max = "360"; rg.step = "1"; rg.value = String(v0);
         // Campo numérico: ángulo exacto (acepta aritmética, p.ej. 360-45). Sincronizado con el slider.
@@ -5765,8 +5771,10 @@
           d = Math.max(0, Math.min(360, d));
           if (origen !== "rg") rg.value = String(d);
           if (origen !== "nu") nu.value = String(Math.round(d * 10) / 10);
+          sv3.pliegues[pl.nombre] = d;   // se recuerda para la próxima apertura de ESTE diseño
           pl.set(d);
         };
+        if (v0 !== (pl.v0 || 0)) pl.set(v0);   // aplica el valor recordado
         rg.addEventListener("input", () => aplicar(parseFloat(rg.value) || 0, "rg"));
         nu.addEventListener("change", () => {
           const v = window.CalcCIBSA.evalExpr(String(nu.value).replace(",", "."));
@@ -5779,7 +5787,8 @@
         if (pl.espejo) {   // solo el EJE: plegar AMBOS lados simétricamente (en espejo)
           const lbE = document.createElement("label"); lbE.className = "vol3d-plg-esp";
           const cbE = document.createElement("input"); cbE.type = "checkbox";
-          cbE.addEventListener("change", () => pl.espejo(cbE.checked));
+          if (sv3.espejo) { cbE.checked = true; pl.espejo(true); }
+          cbE.addEventListener("change", () => { sv3.espejo = cbE.checked; pl.espejo(cbE.checked); });
           lbE.appendChild(cbE); lbE.appendChild(document.createTextNode(" espejo (ambos lados simétricos)"));
           pw.appendChild(lbE);
         }
@@ -5844,11 +5853,14 @@
     }
     // Órbita propia (sin dependencias): arrastre rota, rueda/pellizco acerca. Autogira hasta el 1er toque.
     let theta = Math.PI / 4, phi = Math.PI / 3.1, radio = diag * 1.9, auto = true;
+    { const cs = !fig && state.vis3D && state.vis3D.cam;
+      if (cs && isFinite(cs.t) && isFinite(cs.p) && isFinite(cs.r)) { theta = cs.t; phi = cs.p; radio = cs.r; auto = false; } }
     const target = new T.Vector3(0, H / 2, 0);
     const colocar = () => {
       phi = Math.max(0.12, Math.min(Math.PI - 0.35, phi)); radio = Math.max(diag * 0.7, Math.min(diag * 6, radio));
       cam.position.set(target.x + radio * Math.sin(phi) * Math.cos(theta), target.y + radio * Math.cos(phi), target.z + radio * Math.sin(phi) * Math.sin(theta));
       cam.lookAt(target);
+      if (!auto && !fig) (state.vis3D = state.vis3D || {}).cam = { t: theta, p: phi, r: radio };
     };
     let drag = null, pinch = null;
     canvas.addEventListener("pointerdown", (e) => { auto = false; canvas.setPointerCapture(e.pointerId); drag = { x: e.clientX, y: e.clientY }; });
@@ -5886,6 +5898,7 @@
       document.body.appendChild(a); a.click(); a.remove();
     });
     _v3d = { renderer: renderer, overlay: overlay, onResize: onResize, onKey: onKey, raf: 0, scene: scene };
+    aplRot3d();   // aplica el estado de rótulos RECORDADO del diseño
     const loop = () => { if (!_v3d) return; if (auto) { theta += 0.004; colocar(); } renderer.render(scene, cam); _v3d.raf = requestAnimationFrame(loop); };
     loop();
   }
