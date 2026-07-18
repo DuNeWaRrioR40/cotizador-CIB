@@ -7283,6 +7283,9 @@
       cap.textContent = (reg.tipo === "arista") ? "Anchor de arista" : "Anchor del corte/línea";
       menu.appendChild(cap);
       const item = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); };
+      // Grupo "Más opciones": acciones secundarias plegadas (menú corto = usable). Se despliegan con un toggle.
+      const masBox = document.createElement("div"); masBox.className = "arista-menu-mas hidden";
+      const itemMas = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); masBox.appendChild(b); };
       { const regC = comoArista(reg) || reg;   // el empatado "representa" al de arista; el resto conecta como es
         const nTot = (ctx.anclas || []).length + (ctx.cortes || []).reduce((acc, c2) => acc + ((c2.anclas || []).length), 0);
         if (nTot >= 2) {
@@ -7291,12 +7294,12 @@
         }
         if (regC.tipo === "arista" && !regC.an.seg) {
           const otros = (ctx.anclas || []).filter((a2) => a2 !== regC.an && !a2.seg && a2.ar === regC.an.ar);
-          if (otros.length === 1) item("Modificar medida entre anchors…", () => modificarMedidaEntre(regC.an, otros[0]));
+          if (otros.length === 1) itemMas("Modificar medida entre anchors…", () => modificarMedidaEntre(regC.an, otros[0]));
         }
         // POLÍGONO CERRADO: si este anchor forma un ciclo con otros, convertirlo en CALADO real.
         { const idNodo = regC.an.id;
           const yaPoli = (ctx.cortes || []).find((c2) => c2 && c2.tipo === "poli" && (c2.poliAnclas || []).indexOf(idNodo) !== -1);
-          if (yaPoli) item("Quitar calado poligonal (deja las líneas)", () => {
+          if (yaPoli) itemMas("Quitar calado poligonal (deja las líneas)", () => {
             const k2 = ctx.cortes.indexOf(yaPoli); if (k2 !== -1) ctx.cortes.splice(k2, 1);
             if (ctx.onChange) ctx.onChange();
           });
@@ -7308,9 +7311,11 @@
                 aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
                 if (ctx.onChange) ctx.onChange();
               };
-              if (ciclos.length === 1) item("Cerrar polígono → calado (" + ciclos[0].seq.length + " lados · " + ciclos[0].area + " m²)", () => cerrar(ciclos[0]));
-              else ciclos.forEach((cd, ci) => {
-                item("Cerrar polígono " + (ci + 1) + " → " + cd.seq.length + " lados · " + cd.area + " m²", () => cerrar(cd));
+              // Ordenados por área: el 1º (más ceñido) es casi siempre el que el usuario trazó → 1 clic.
+              const porArea = ciclos.slice().sort((q2, w2) => q2.area - w2.area);
+              item("⬠ Cerrar polígono → calado (" + porArea[0].area + " m²)", () => cerrar(porArea[0]));
+              porArea.slice(1).forEach((cd) => {
+                itemMas("⬠ Cerrar otro polígono: " + cd.area + " m² · " + cd.seq.length + " lados", () => cerrar(cd));
               });
             }
           }
@@ -7319,10 +7324,10 @@
       // sobre la arista ya modificada, con los vértices vecinos del contorno como ejes.
       if (reg.tipo === "corte" && reg.c && reg.c.tipo === "corte" && reg.c.fadeKill && (reg.c.fade === "A" || reg.c.fade === "B") && reg.an.emp == null) {
         const otrosC = (reg.c.anclas || []).filter((a2) => a2 !== reg.an && a2.emp == null);
-        if (otrosC.length === 1) item("Modificar medida entre anchors…", () => modificarMedidaEntreCorte(reg.c, reg.an, otrosC[0]));
+        if (otrosC.length === 1) itemMas("Modificar medida entre anchors…", () => modificarMedidaEntreCorte(reg.c, reg.an, otrosC[0]));
       }
-      if (!reg.an.fix) item("Bloquear anchor (fijar su posición)", () => { reg.an.fix = true; if (ctx.onChange) ctx.onChange(); });
-      else item("Desbloquear anchor", () => { reg.an.fix = false; if (ctx.onChange) ctx.onChange(); });
+      if (!reg.an.fix) itemMas("Bloquear anchor (fijar su posición)", () => { reg.an.fix = true; if (ctx.onChange) ctx.onChange(); });
+      else itemMas("Desbloquear anchor", () => { reg.an.fix = false; if (ctx.onChange) ctx.onChange(); });
       if (!reg.an.fix) item("Fijar distancia exacta…", () => {
         const cur = (reg.tipo === "arista") ? (parseFloat(reg.an.d) || 0) : (parseFloat(reg.an.t) || 0);
         dialogoDistanciaAncla((reg.tipo === "arista") ? "Distancia desde la esquina (m)" : "Distancia desde el extremo inicial de la línea (m)", cur, (v, bloquear) => {
@@ -7332,7 +7337,7 @@
           if (ctx.onChange) ctx.onChange();
         });
       });
-      if (reg.tipo === "corte" && reg.an.emp != null) item("Desempatar", () => { reg.an.emp = null; if (ctx.onChange) ctx.onChange(); });
+      if (reg.tipo === "corte" && reg.an.emp != null) itemMas("Desempatar", () => { reg.an.emp = null; if (ctx.onChange) ctx.onChange(); });
       item("Eliminar anchor", () => {
         if (reg.tipo === "arista") {
           const i = ctx.anclas.indexOf(reg.an); if (i >= 0) ctx.anclas.splice(i, 1);
@@ -7342,6 +7347,15 @@
         }
         if (ctx.onChange) ctx.onChange();
       });
+      if (masBox.childNodes.length) {
+        const tg = document.createElement("button"); tg.type = "button"; tg.className = "arista-menu-it arista-menu-toggle"; tg.textContent = "⋯ Más opciones (" + masBox.childNodes.length + ")";
+        tg.addEventListener("click", (ev2) => {
+          ev2.stopPropagation();
+          masBox.classList.toggle("hidden");
+          tg.textContent = masBox.classList.contains("hidden") ? "⋯ Más opciones (" + masBox.childNodes.length + ")" : "⌃ Menos opciones";
+        });
+        menu.appendChild(tg); menu.appendChild(masBox);
+      }
       document.body.appendChild(menu); _arMenu = menu;
       const gEl = svg.querySelector('g.ancla[data-ancla="' + reg.an.id + '"]');
       let cx2 = window.innerWidth / 2, cy2 = window.innerHeight / 2;

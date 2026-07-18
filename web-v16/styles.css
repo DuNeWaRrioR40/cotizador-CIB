@@ -972,3 +972,6 @@ body.drawer-abierto { overflow: hidden; }
 .ficha-quick-btn { border: 1px solid var(--border, #ccc); background: var(--surface, #f6f6f4); color: var(--text, #222);
   border-radius: 999px; padding: 4px 11px; font-size: 12.5px; cursor: pointer; }
 .ficha-quick-btn:hover { border-color: var(--text, #222); }
+
+.arista-menu-toggle { color: var(--muted, #777) !important; font-size: 12px !important; border-top: 1px dashed var(--border, #ddd); margin-top: 4px; }
+.arista-menu-mas { border-top: 1px solid var(--border, #eee); background: color-mix(in srgb, var(--surface, #f6f6f4) 60%, transparent); }
