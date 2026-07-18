@@ -4871,8 +4871,8 @@
         const ang = (((parseFloat(c.angulo) || 0) % 180) + 180) % 180;
         const x0 = Math.min(ln.a.x, ln.a.x + ln.u.x * ln.w), x1 = Math.max(ln.a.x, ln.a.x + ln.u.x * ln.w);
         const y0 = Math.min(ln.a.y, ln.a.y + ln.u.y * ln.w), y1 = Math.max(ln.a.y, ln.a.y + ln.u.y * ln.w);
-        if ((ang < 1 || ang > 179) && ln.a.y > 0.01 && ln.a.y < L - 0.01 && x0 <= 0.01 && x1 >= A - 0.01) return { horiz: true, pos: ln.a.y, nombre: "Eje · " + (c.legend || "guía") };
-        if (Math.abs(ang - 90) < 1 && ln.a.x > 0.01 && ln.a.x < A - 0.01 && y0 <= 0.01 && y1 >= L - 0.01) return { horiz: false, pos: ln.a.x, nombre: "Eje · " + (c.legend || "guía") };
+        if ((ang < 1 || ang > 179) && ln.a.y > 0.01 && ln.a.y < L - 0.01 && x0 <= 0.01 && x1 >= A - 0.01) return { horiz: true, pos: ln.a.y, nombre: "Eje · " + (c.legend || "guía"), c: c };
+        if (Math.abs(ang - 90) < 1 && ln.a.x > 0.01 && ln.a.x < A - 0.01 && y0 <= 0.01 && y1 >= L - 0.01) return { horiz: false, pos: ln.a.x, nombre: "Eje · " + (c.legend || "guía"), c: c };
       }
       return null;
     })();
@@ -5173,7 +5173,8 @@
         if (ejeCtl && ejeCtl.piv) ejeCtl.piv.rotation.x = ejeEspejo ? -sgnE * (v / 2) * Math.PI / 180 : 0;
       };
       setE(0);
-      plieguesUI.push({ nombre: ejeF.nombre, set: setE, v0: 0, espejo: (on) => { ejeEspejo = !!on; setE(ejeUltimo); } });
+      plieguesUI.push({ nombre: ejeF.nombre, set: setE, v0: 0, espejo: (on) => { ejeEspejo = !!on; setE(ejeUltimo); },
+        alasFijas: { val: () => !!(ejeF.c && ejeF.c.ejeAlasFijas), set: (on) => { if (ejeF.c) ejeF.c.ejeAlasFijas = !!on; cerrarVol3D(); setTimeout(() => { abrirVol3D(); }, 30); } } });
       ejeCtl = { inner: innerE, outerE: outerE };
     }
     if (!fig) {
@@ -5217,6 +5218,12 @@
           if (!lejos) { alaPliegue(nom, h, base.P0, base.ux, base.uz, base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4); return; }
           const dist = ejeF.horiz ? (L - pos) : (A - pos);
           alaPliegue(nom, h, new T.Vector3(0, 0, dist), new T.Vector3(1, 0, 0), new T.Vector3(0, 0, 1), base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4, null, ejeCtl.inner);
+          return;
+        }
+        if (ejeF.c && ejeF.c.ejeAlasFijas) {
+          // Opción "aletas rígidas": la aleta perpendicular NO se pliega con el eje — queda entera
+          // (con su triángulo íntegro), colgando del lado fijo como si el eje no la cruzara.
+          alaPliegue(nom, h, base.P0, base.ux, base.uz, base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4);
           return;
         }
         if (pos > 0.01) {
@@ -5544,6 +5551,13 @@
           cbE.addEventListener("change", () => pl.espejo(cbE.checked));
           lbE.appendChild(cbE); lbE.appendChild(document.createTextNode(" espejo (ambos lados simétricos)"));
           pw.appendChild(lbE);
+        }
+        if (pl.alasFijas) {   // solo el EJE: aletas perpendiculares rígidas (no se pliegan con el eje)
+          const lbF = document.createElement("label"); lbF.className = "vol3d-plg-esp";
+          const cbF = document.createElement("input"); cbF.type = "checkbox"; cbF.checked = pl.alasFijas.val();
+          cbF.addEventListener("change", () => pl.alasFijas.set(cbF.checked));
+          lbF.appendChild(cbF); lbF.appendChild(document.createTextNode(" aletas rígidas (no plegar con el eje)"));
+          pw.appendChild(lbF);
         }
       });
       const rb = document.createElement("button"); rb.type = "button"; rb.className = "vol3d-plg-reset"; rb.textContent = "↺ Grados por defecto";
