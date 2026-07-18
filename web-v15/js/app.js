@@ -5163,12 +5163,26 @@
         straps: strapsSpec(state.strapsUnif, { ancho: A, largo: L }),
         volumetrico: volUnifSpec() || { alto: H, ojEn: ojEnUnif(), alas: alas0 },
       }, ojSpecUnif()));
-      const rimY = (ojEnUnif() === "tapa") ? H : 0.02 * H;
       const rOj = Math.max(0.02, diag * 0.006);
       const geo = new T.SphereGeometry(rOj, 10, 10), mat = new T.MeshBasicMaterial({ color: 0x111111 });
+      const enTapa3 = (ojEnUnif() === "tapa");
       (skOj.ojetillos || []).forEach((p) => {
         const m = mkOje3D();
-        m.position.set(p.x - A / 2, rimY, p.y - L / 2); grp.add(m);
+        if (enTapa3 || !(H > 0)) { m.position.set(p.x - A / 2, (H > 0 ? H : 0) + 0.012, p.y - L / 2); grp.add(m); return; }
+        // Externo con altos DISÍMILES: cada ojetillo va en el borde inferior de SU pared (no a un
+        // nivel global) y con un inset proporcional al alto de esa pared → 100% dentro del paño.
+        const dists = [["sup", p.y], ["inf", L - p.y], ["izq", p.x], ["der", A - p.x]].filter((d2) => hV(d2[0]) > 0);
+        dists.sort((d2, e2) => (d2[1] - e2[1]) || (hV(d2[0]) - hV(e2[0])));   // esquina: gana la pared más corta (queda dentro de ambas)
+        if (!dists.length) { m.position.set(p.x - A / 2, H + 0.012, p.y - L / 2); grp.add(m); return; }
+        const k = dists[0][0], h = hV(k);
+        const inset = Math.min(h / 2, Math.max(0.03, 0.06 * h));
+        const y = H - h + inset;
+        const cx = Math.max(0, Math.min(A, p.x)) - A / 2, cz = Math.max(0, Math.min(L, p.y)) - L / 2;
+        if (k === "sup") m.position.set(cx, y, -L / 2 - 0.012);
+        else if (k === "inf") m.position.set(cx, y, L / 2 + 0.012);
+        else if (k === "izq") m.position.set(-A / 2 - 0.012, y, cz);
+        else m.position.set(A / 2 + 0.012, y, cz);
+        grp.add(m);
       });
       // Hoja desplegada → 3D: la tapa queda arriba (y=H) y cada pared cuelga de su pliegue.
       // Coords fuera de la tapa (y<0, y>L, x<0, x>A) caen sobre la pared correspondiente.
@@ -5304,7 +5318,7 @@
         resets.push(() => aplicar(v0, ""));
         row.appendChild(sp); row.appendChild(rg); row.appendChild(nu); pw.appendChild(row);
       });
-      const rb = document.createElement("button"); rb.type = "button"; rb.className = "btn-outline small vol3d-plg-reset"; rb.textContent = "↺ Grados por defecto";
+      const rb = document.createElement("button"); rb.type = "button"; rb.className = "vol3d-plg-reset"; rb.textContent = "↺ Grados por defecto";
       rb.addEventListener("click", () => resets.forEach((r) => r()));
       pw.appendChild(rb);
       overlay.appendChild(pw);
