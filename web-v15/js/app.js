@@ -5163,9 +5163,11 @@
       const uyE = new T.Vector3().crossVectors(uzE, uxE);
       outerE.setRotationFromMatrix(new T.Matrix4().makeBasis(uxE, uyE, uzE));
       const innerE = new T.Group(); outerE.add(innerE); grp.add(outerE);
-      // BISECTOR: gira a θ/2 — con espejo activo el pivote lo contra-rota y queda FIJO en el plano
-      // de simetría; sin espejo sigue la bisectriz. De él cuelgan los triángulos de los extremos.
+      // Marco FIJO del eje: de él cuelgan los triángulos de los extremos — quedan QUIETOS
+      // (verticales en el plano del extremo) mientras el eje mueve solo las mitades del paño.
+      // Excluido también del pivote del modo espejo (_ejeFijo).
       const outerB = new T.Group(); outerB.position.copy(outerE.position); outerB.quaternion.copy(outerE.quaternion);
+      outerB._ejeFijo = true;
       const innerB = new T.Group(); outerB.add(innerB); grp.add(outerB);
       const sgnE = uyE.y > 0 ? 1 : -1;
       // Modo ESPEJO: el resto del modelo pivota −θ/2 alrededor de la línea del eje mientras la
@@ -5174,7 +5176,6 @@
       const setE = (v) => {
         ejeUltimo = v;
         innerE.rotation.x = sgnE * v * Math.PI / 180;
-        innerB.rotation.x = sgnE * (v / 2) * Math.PI / 180;
         if (ejeCtl && ejeCtl.piv) ejeCtl.piv.rotation.x = ejeEspejo ? -sgnE * (v / 2) * Math.PI / 180 : 0;
       };
       setE(0);
@@ -5633,7 +5634,7 @@
         pivO.position.copy(ejeCtl.outerE.position);
         pivO.quaternion.copy(ejeCtl.outerE.quaternion);
         const pivI = new T.Group(); pivO.add(pivI); grp.add(pivO);
-        Array.prototype.slice.call(grp.children).forEach((ch) => { if (ch !== pivO) pivI.attach(ch); });
+        Array.prototype.slice.call(grp.children).forEach((ch) => { if (ch !== pivO && !ch._ejeFijo) pivI.attach(ch); });
         ejeCtl.piv = pivI;
       } catch (e) {}
     }
