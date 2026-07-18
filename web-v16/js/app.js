@@ -5297,9 +5297,10 @@
     }
     if (!fig) {
       if (fanF) {
-        // ABANICO: caras-sector en CADENA de bisagras alrededor del punto común (cinemática real
-        // del plegado de pirámide: cara 0 fija; cada cara siguiente cuelga del eje que la separa
-        // de la anterior). Guías-eje con el MISMO rótulo comparten slider (pliegue simultáneo).
+        // ABANICO en modo COLGADOR ("hanger"): el punto común es el gancho. Cada cara-sector rota
+        // sobre su línea de BASE (a r·cosφ del centro) mientras la base se ARRASTRA hacia el eje
+        // — X/Y → 0 a medida que el vértice sube en Z = r·sinφ. Simétrico y con la tela intacta:
+        // el largo de cada cara (r) se conserva. Un solo control eleva toda la pirámide.
         const nF = fanF.dirs.length, R2 = (A + L) * 2;
         const CW = new T.Vector3(fanF.C.x - A / 2, H, fanF.C.y - L / 2);
         const mapT = (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2);
@@ -5311,71 +5312,41 @@
           for (let j2 = 0; j2 <= pasosA; j2++) { const aa = a1 + (a2 - a1) * j2 / pasosA; pts.push({ x: fanF.C.x + Math.cos(aa) * R2, y: fanF.C.y + Math.sin(aa) * R2 }); }
           return pts;
         };
-        // fanRoot: contenedor del abanico — el NIVELADOR lo endereza para que el vértice (centro)
-        // suba en Z y las bases converjan simétricas, en vez de quedar la pirámide "acostada"
-        // sobre la cara fija.
-        const fanRoot = new T.Group(); grp.add(fanRoot);
-        const fanRefs = [];
-        let nivelarFan = () => {};
-        let prevF = null;
+        const setsFan = [];
         for (let i2 = 0; i2 < nF; i2++) {
-          if (i2 > 0) {
-            const d1 = fanF.dirs[i2];
-            const outerH = new T.Group(); outerH.position.copy(CW);
-            const uxH = new T.Vector3(d1.dx, 0, d1.dy), uzH = new T.Vector3(-d1.dy, 0, d1.dx);
-            const uyH = new T.Vector3().crossVectors(uzH, uxH);
-            outerH.setRotationFromMatrix(new T.Matrix4().makeBasis(uxH, uyH, uzH));
-            const innerH = new T.Group(); outerH.add(innerH);
-            fanRoot.add(outerH);
-            if (prevF) prevF.attach(outerH);
-            const sgnH = uyH.y > 0 ? 1 : -1;
-            const setH = (v) => { innerH.rotation.x = sgnH * v * Math.PI / 180; nivelarFan(); };
-            setH(0);
-            plieguesUI.push({ nombre: d1.nombre, set: setH, v0: 0 });
-            prevF = innerH;
-          }
-          const fGrp = new T.Group(); fanRoot.add(fGrp);
+          const d1 = fanF.dirs[i2], d2 = fanF.dirs[(i2 + 1) % nF];
+          let a1 = d1.ang, a2 = d2.ang; if (a2 <= a1) a2 += Math.PI * 2;
+          const am = (a1 + a2) / 2, bx = Math.cos(am), by = Math.sin(am);
+          let rOut = Infinity;
+          if (Math.abs(bx) > 1e-9) { const t1 = -fanF.C.x / bx, t2 = (A - fanF.C.x) / bx; if (t1 > 0) rOut = Math.min(rOut, t1); if (t2 > 0) rOut = Math.min(rOut, t2); }
+          if (Math.abs(by) > 1e-9) { const t3 = -fanF.C.y / by, t4 = (L - fanF.C.y) / by; if (t3 > 0) rOut = Math.min(rOut, t3); if (t4 > 0) rOut = Math.min(rOut, t4); }
+          if (!isFinite(rOut) || !(rOut > 0.01)) continue;
+          const bW = new T.Vector3(bx, 0, by);   // bisectriz del sector (horizontal, mundo)
+          const slide = new T.Group(); grp.add(slide);
+          const outerH = new T.Group();
+          outerH.position.set(CW.x + bW.x * rOut, H, CW.z + bW.z * rOut);
+          const uxH = new T.Vector3(-by, 0, bx);   // a lo largo de la base
+          const uzH = new T.Vector3(-bx, 0, -by);  // hacia el centro
+          const uyH = new T.Vector3().crossVectors(uzH, uxH);
+          outerH.setRotationFromMatrix(new T.Matrix4().makeBasis(uxH, uyH, uzH));
+          slide.add(outerH);
+          const innerH = new T.Group(); outerH.add(innerH);
+          const fGrp = new T.Group(); grp.add(fGrp);
           caraCalada(0, 0, A, L, mapT, fGrp, sector(i2));
-          if (prevF) prevF.attach(fGrp);
-          // punto de referencia de la cara: sobre la bisectriz del sector, cerca del borde exterior
-          { const d1 = fanF.dirs[i2], d2 = fanF.dirs[(i2 + 1) % nF];
-            let a1 = d1.ang, a2 = d2.ang; if (a2 <= a1) a2 += Math.PI * 2;
-            const am = (a1 + a2) / 2, bx = Math.cos(am), by = Math.sin(am);
-            let rOut = Infinity;
-            if (Math.abs(bx) > 1e-9) { const t1 = -fanF.C.x / bx, t2 = (A - fanF.C.x) / bx; if (t1 > 0) rOut = Math.min(rOut, t1); if (t2 > 0) rOut = Math.min(rOut, t2); }
-            if (Math.abs(by) > 1e-9) { const t3 = -fanF.C.y / by, t4 = (L - fanF.C.y) / by; if (t3 > 0) rOut = Math.min(rOut, t3); if (t4 > 0) rOut = Math.min(rOut, t4); }
-            if (isFinite(rOut)) fanRefs.push({ grp: fGrp, flat: mapT(fanF.C.x + bx * rOut * 0.85, fanF.C.y + by * rOut * 0.85) });
-          }
+          innerH.attach(fGrp);
+          const sgnH = uyH.y > 0 ? 1 : -1;
+          setsFan.push((v) => {
+            const phi = Math.max(0, Math.min(89.9, v)) * Math.PI / 180;
+            innerH.rotation.x = -sgnH * phi;                 // la cara SUBE hacia el gancho
+            const dIn = rOut * (1 - Math.cos(phi));          // la base se ARRASTRA hacia el eje (X/Y → 0)
+            slide.position.set(-bW.x * dIn, 0, -bW.z * dIn);
+          });
         }
-        // NIVELADOR: eje real = centro → centroide de las bases; endereza el conjunto (gradual,
-        // pivotando en el centro) para que el vértice quede ARRIBA y las bases a nivel.
-        nivelarFan = () => {
-          try {
-            fanRoot.rotation.set(0, 0, 0); fanRoot.position.set(0, 0, 0);
-            fanRoot.updateMatrixWorld(true);
-            const cen = new T.Vector3();
-            fanRefs.forEach((r2) => { const v = r2.flat.clone(); r2.grp.localToWorld(v); cen.add(v); });
-            if (!fanRefs.length) return;
-            cen.multiplyScalar(1 / fanRefs.length);
-            const axis = new T.Vector3().subVectors(CW, cen);
-            const dy = Math.abs(axis.y);
-            if (axis.length() < 1e-6 || dy < 0.02) return;   // aún plano: no nivelar
-            const w = Math.min(1, dy / 0.5);                 // transición gradual al levantar
-            const q = new T.Quaternion().setFromUnitVectors(axis.clone().normalize(), new T.Vector3(0, 1, 0));
-            const qi = new T.Quaternion();
-            T.Quaternion.slerp ? T.Quaternion.slerp(qi, q, fanRoot.quaternion, w) : fanRoot.quaternion.copy(qi.slerp(q, w));
-            const rc = CW.clone().applyQuaternion(fanRoot.quaternion);
-            fanRoot.position.set(CW.x - rc.x, CW.y - rc.y, CW.z - rc.z);
-            // Compensación vertical: las BASES de las caras quedan a nivel del plano original
-            // (convergen en X/Y hacia el centro) y es el VÉRTICE el que sube en Z — como al armar
-            // la pirámide real sobre la mesa, no colgando del vértice.
-            fanRoot.updateMatrixWorld(true);
-            let cy2 = 0;
-            fanRefs.forEach((r2) => { const v2 = r2.flat.clone(); r2.grp.localToWorld(v2); cy2 += v2.y; });
-            cy2 /= fanRefs.length;
-            fanRoot.position.y += (CW.y - cy2) * w;
-          } catch (e2) {}
-        };
+        if (setsFan.length) {
+          const setTodos = (v) => setsFan.forEach((f9) => f9(v));
+          setTodos(0);
+          plieguesUI.push({ nombre: "⛺ Pirámide · elevar (0–90°)", set: setTodos, v0: 0 });
+        }
       }
       else if (ejeF) {
         // EJE: mitad de tapa CERCANA estática; la LEJANA vive dentro de la bisagra del eje (0° = extendida).
@@ -7327,6 +7298,7 @@
       const out = [];
       (ctx.anclas || []).forEach((a2) => { const q = posAnclaArista(a2, A, L); if (q && Math.hypot(q.x - p0.x, q.y - p0.y) < 0.003) out.push({ tipo: "arista", an: a2 }); });
       (ctx.cortes || []).forEach((c2) => (c2.anclas || []).forEach((a2) => { const q = posAnclaCorte(c2, a2); if (q && Math.hypot(q.x - p0.x, q.y - p0.y) < 0.003) out.push({ tipo: "corte", an: a2, c: c2 }); }));
+      out.sort((q2, w2) => (w2.an.id || 0) - (q2.an.id || 0));   // el MÁS RECIENTE primero (ids crecientes): deshacer en orden inverso
       return out.length ? out : [reg];
     }
     function descAncla(r2) {
@@ -7354,9 +7326,9 @@
       itemP("Guía hasta otro anchor…", () => iniciarConexion(repC, "guia"));
       // Lista de anchors individuales: plegada (cirugía fina: fijar/desempatar/eliminar uno)
       const lstBox = document.createElement("div"); lstBox.className = "arista-menu-mas hidden";
-      lista.forEach((r2) => {
+      lista.forEach((r2, i9) => {
         const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it";
-        b.textContent = descAncla(r2);
+        b.textContent = descAncla(r2) + (i9 === 0 ? "  · último creado" : "");
         b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); menuAncla(r2); });
         lstBox.appendChild(b);
       });
