@@ -253,6 +253,8 @@ button:active { transform: scale(0.97); }
 .sketch-svg .cota-lbl { fill: #1B5E20; font-size: 5.5px; font-family: inherit; }
 .sketch-svg .cota-eje { stroke: #1B5E20; stroke-width: 0.35; stroke-dasharray: 3 2; opacity: 0.45; }
 /* Clic en una cota para ocultarla: cursor + resaltado + botón ✕ */
+.vol3d-plg-row .vol3d-plg-num { width: 52px; text-align: right; font-size: 12px; padding: 2px 5px; border: 1px solid var(--border, #ccc); border-radius: 5px; background: var(--input-bg, #fff); color: inherit; }
+.vol3d-plg-reset { margin-top: 6px; width: 100%; }
 .factura-f-area { grid-column: 1 / -1; }
 .factura-f-area textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; padding: 6px 8px; border: 1px solid var(--border, #ccc); border-radius: 6px; background: var(--input-bg, #fff); color: inherit; }
 .sketch-svg .cota-g.cota-click { cursor: move; }

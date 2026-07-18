@@ -745,14 +745,15 @@
     // "quiebre" de la cota general); solo se apilan los que de verdad se cruzarían.
     const elTop = [], elLeft = [];
     rects.forEach((v, i) => {
-      elTop.push({ axis: "h", a: v.x, b: v.x + v.w, value: v.w, side: "top", key: "el" + i + "-w" });
-      elLeft.push({ axis: "v", a: v.y, b: v.y + v.h, value: v.h, side: "left", key: "el" + i + "-h" });
+      // ref = borde del elemento en el eje transversal: la línea punteada auxiliar baja/entra hasta el elemento.
+      elTop.push({ axis: "h", a: v.x, b: v.x + v.w, value: v.w, side: "top", key: "el" + i + "-w", ref: v.y });
+      elLeft.push({ axis: "v", a: v.y, b: v.y + v.h, value: v.h, side: "left", key: "el" + i + "-h", ref: v.x });
       const izqM = v.x, derM = A - (v.x + v.w);
-      if (izqM <= derM) { if (izqM > EPS) elTop.push({ axis: "h", a: 0, b: v.x, value: izqM, side: "top", margen: true, key: "el" + i + "-mx" }); }
-      else { if (derM > EPS) elTop.push({ axis: "h", a: v.x + v.w, b: A, value: derM, side: "top", margen: true, key: "el" + i + "-mx" }); }
+      if (izqM <= derM) { if (izqM > EPS) elTop.push({ axis: "h", a: 0, b: v.x, value: izqM, side: "top", margen: true, key: "el" + i + "-mx", ref: v.y }); }
+      else { if (derM > EPS) elTop.push({ axis: "h", a: v.x + v.w, b: A, value: derM, side: "top", margen: true, key: "el" + i + "-mx", ref: v.y }); }
       const supM = v.y, infM = L - (v.y + v.h);
-      if (supM <= infM) { if (supM > EPS) elLeft.push({ axis: "v", a: 0, b: v.y, value: supM, side: "left", margen: true, key: "el" + i + "-my" }); }
-      else { if (infM > EPS) elLeft.push({ axis: "v", a: v.y + v.h, b: L, value: infM, side: "left", margen: true, key: "el" + i + "-my" }); }
+      if (supM <= infM) { if (supM > EPS) elLeft.push({ axis: "v", a: 0, b: v.y, value: supM, side: "left", margen: true, key: "el" + i + "-my", ref: v.x }); }
+      else { if (infM > EPS) elLeft.push({ axis: "v", a: v.y + v.h, b: L, value: infM, side: "left", margen: true, key: "el" + i + "-my", ref: v.x }); }
     });
     empacarNiveles(elTop, OFF_MIN0); elTop.forEach((c) => out.push(c));
     empacarNiveles(elLeft, OFF_MIN0); elLeft.forEach((c) => out.push(c));
@@ -1093,7 +1094,7 @@
     });
     // Cortes / calados: líneas de corte (lados existentes) + tijeras + ojetillos del corte
     const tijeraSVG = (tx, ty) => {
-      const tp = tijeraPrims(tx, ty, 8); let out = "";
+      const tp = tijeraPrims(tx, ty, 6); let out = "";   // 25% más chicas
       tp.circles.forEach((cc) => { out += `<circle class="scissor" cx="${f1(cc.x)}" cy="${f1(cc.y)}" r="${f1(cc.r)}"/>`; });
       tp.lines.forEach((ln) => { out += `<line class="scissor" x1="${f1(ln.x1)}" y1="${f1(ln.y1)}" x2="${f1(ln.x2)}" y2="${f1(ln.y2)}"/>`; });
       return out;
@@ -1867,8 +1868,9 @@
           const xa = px(c.a), xb = px(c.b);
           const base = (c.side === "bottom") ? bBot : bTop, dir = (c.side === "bottom") ? 1 : -1;
           const dimY = base + dir * (off - dSh), tEnd = dimY - dir * EXTGAP;
-          o += `<line class="cota-ext" x1="${f1(xa)}" y1="${f1(base)}" x2="${f1(xa)}" y2="${f1(tEnd)}"/>`;
-          o += `<line class="cota-ext" x1="${f1(xb)}" y1="${f1(base)}" x2="${f1(xb)}" y2="${f1(tEnd)}"/>`;
+          const eB = (c.ref != null) ? py(c.ref) : base;   // la auxiliar llega HASTA el elemento inscrito
+          o += `<line class="cota-ext" x1="${f1(xa)}" y1="${f1(eB)}" x2="${f1(xa)}" y2="${f1(tEnd)}"/>`;
+          o += `<line class="cota-ext" x1="${f1(xb)}" y1="${f1(eB)}" x2="${f1(xb)}" y2="${f1(tEnd)}"/>`;
           o += `<line class="cota" x1="${f1(xa)}" y1="${f1(dimY)}" x2="${f1(xb)}" y2="${f1(dimY)}"/>`;
           o += `<line class="cota-tick" x1="${f1(xa)}" y1="${f1(dimY - TICK)}" x2="${f1(xa)}" y2="${f1(dimY + TICK)}"/>`;
           o += `<line class="cota-tick" x1="${f1(xb)}" y1="${f1(dimY - TICK)}" x2="${f1(xb)}" y2="${f1(dimY + TICK)}"/>`;
@@ -1878,8 +1880,9 @@
           const ya = py(c.a), yb = py(c.b);
           const base = (c.side === "right") ? bRight : bLeft, dir = (c.side === "right") ? 1 : -1;
           const dimX = base + dir * (off - dSh), tEnd = dimX - dir * EXTGAP;
-          o += `<line class="cota-ext" x1="${f1(base)}" y1="${f1(ya)}" x2="${f1(tEnd)}" y2="${f1(ya)}"/>`;
-          o += `<line class="cota-ext" x1="${f1(base)}" y1="${f1(yb)}" x2="${f1(tEnd)}" y2="${f1(yb)}"/>`;
+          const eB = (c.ref != null) ? px(c.ref) : base;   // la auxiliar llega HASTA el elemento inscrito
+          o += `<line class="cota-ext" x1="${f1(eB)}" y1="${f1(ya)}" x2="${f1(tEnd)}" y2="${f1(ya)}"/>`;
+          o += `<line class="cota-ext" x1="${f1(eB)}" y1="${f1(yb)}" x2="${f1(tEnd)}" y2="${f1(yb)}"/>`;
           o += `<line class="cota" x1="${f1(dimX)}" y1="${f1(ya)}" x2="${f1(dimX)}" y2="${f1(yb)}"/>`;
           o += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(ya)}" x2="${f1(dimX + TICK)}" y2="${f1(ya)}"/>`;
           o += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(yb)}" x2="${f1(dimX + TICK)}" y2="${f1(yb)}"/>`;
@@ -1960,6 +1963,15 @@
         const sg = c.segments[0];
         if (Math.hypot(sg.b.x - sg.a.x, sg.b.y - sg.a.y) < 1e-9) return;
         hitLn(sg.a, sg.b, 'data-corte="' + i + '"' + (c.guia ? ' data-guia="1"' : "") + ' data-ax="' + sg.a.x + '" data-ay="' + sg.a.y + '" data-bx="' + sg.b.x + '" data-by="' + sg.b.y + '"');
+      });
+      // Aristas de la TAPA/SOLAPA de cada corte: también clicables (ojetillos de esa arista,
+      // fusión, strap del corte) — heredan el comportamiento sin pasar por la ficha.
+      (sk.cortes || []).forEach((c, i) => {
+        if (!c.tapa || !c.tapa.edges) return;
+        c.tapa.edges.forEach((e2) => {
+          if (!e2 || !e2.a || !e2.b || Math.hypot(e2.b.x - e2.a.x, e2.b.y - e2.a.y) < 1e-9) return;
+          hitLn(e2.a, e2.b, 'data-corte="' + i + '" data-tapa="' + e2.k + '" data-ax="' + e2.a.x + '" data-ay="' + e2.a.y + '" data-bx="' + e2.b.x + '" data-by="' + e2.b.y + '"');
+        });
       });
     }
     // Anchors (puntos de anclaje móviles) — SOLO en el plano en vivo de la app (no van al PDF).

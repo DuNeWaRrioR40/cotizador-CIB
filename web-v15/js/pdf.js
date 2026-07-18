@@ -254,7 +254,7 @@
       if (c.rotulo && ((c.legend && c.legend.trim()) || c.perim) && !cintaLblDone[c.id]) { cintaLblDone[c.id] = true; const lbl = ((c.perim ? "perim. " : "") + (c.legend || "").trim()).trim(); if (lbl) ctr(lbl, LXx(c.L / 2, halfW + 0.05), LYy(c.L / 2, halfW + 0.05), 6, BLACK()); }
     });
     const tijeraPDF = (tx, ty) => {
-      const tp = SK.tijeraPrims(tx, ty, 8);
+      const tp = SK.tijeraPrims(tx, ty, 6);   // 25% más chicas
       tp.circles.forEach((cc) => page.drawCircle({ x: cc.x, y: cc.y, size: cc.r, borderColor: PURPLE, borderWidth: 0.5 }));
       tp.lines.forEach((ln) => page.drawLine({ start: { x: ln.x1, y: ln.y1 }, end: { x: ln.x2, y: ln.y2 }, thickness: 0.5, color: PURPLE }));
     };
@@ -662,7 +662,8 @@
           const xa = px(c.a), xb = px(c.b);
           const base = (c.side === "bottom") ? bBotY : bTopY, dir = (c.side === "bottom") ? -1 : 1;
           const dimY = base + dir * (off - dSh), tEnd = dimY - dir * EXTGAP;
-          lnExt(xa, base, xa, tEnd); lnExt(xb, base, xb, tEnd);
+          const eB = (c.ref != null) ? py(c.ref) : base;   // la auxiliar llega HASTA el elemento inscrito
+          lnExt(xa, eB, xa, tEnd); lnExt(xb, eB, xb, tEnd);
           ln(xa, dimY, xb, dimY, 0.4);
           ln(xa, dimY - TICK, xa, dimY + TICK, 0.4); ln(xb, dimY - TICK, xb, dimY + TICK, 0.4);
           const ty = (c.side === "bottom") ? dimY - 6 : dimY + 2;
@@ -671,7 +672,8 @@
           const ya = py(c.a), yb = py(c.b);
           const base = (c.side === "right") ? bRightX : bLeftX, dir = (c.side === "right") ? 1 : -1;
           const dimX = base + dir * (off - dSh), tEnd = dimX - dir * EXTGAP;
-          lnExt(base, ya, tEnd, ya); lnExt(base, yb, tEnd, yb);
+          const eB = (c.ref != null) ? px(c.ref) : base;   // la auxiliar llega HASTA el elemento inscrito
+          lnExt(eB, ya, tEnd, ya); lnExt(eB, yb, tEnd, yb);
           ln(dimX, ya, dimX, yb, 0.4);
           ln(dimX - TICK, ya, dimX + TICK, ya, 0.4); ln(dimX - TICK, yb, dimX + TICK, yb, 0.4);
           const my = (ya + yb) / 2 - tSh, tx = (c.side === "right") ? dimX + 2 : dimX - 4;

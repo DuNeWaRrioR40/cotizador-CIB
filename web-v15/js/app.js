@@ -5265,18 +5265,33 @@
       const pw = document.createElement("div"); pw.className = "vol3d-pliegues";
       const cab = document.createElement("div"); cab.className = "vol3d-plg-cab"; cab.textContent = "Pliegues (visual)";
       pw.appendChild(cab);
+      const resets = [];   // un reset por pliegue: los junta el botón "grados por defecto"
       plieguesUI.forEach((pl) => {
         const row = document.createElement("label"); row.className = "vol3d-plg-row";
         const v0 = pl.v0 || 0;
-        const sp = document.createElement("span"); sp.textContent = pl.nombre + " · " + v0 + "°";
+        const sp = document.createElement("span"); sp.textContent = pl.nombre;
         const rg = document.createElement("input"); rg.type = "range"; rg.min = "0"; rg.max = "360"; rg.step = "1"; rg.value = String(v0);
-        rg.addEventListener("input", () => {
-          const d = parseFloat(rg.value) || 0;
-          sp.textContent = pl.nombre + " · " + Math.round(d) + "°";
+        // Campo numérico: ángulo exacto (acepta aritmética, p.ej. 360-45). Sincronizado con el slider.
+        const nu = document.createElement("input"); nu.type = "text"; nu.inputMode = "decimal"; nu.className = "vol3d-plg-num"; nu.value = String(v0);
+        const aplicar = (d, origen) => {
+          d = Math.max(0, Math.min(360, d));
+          if (origen !== "rg") rg.value = String(d);
+          if (origen !== "nu") nu.value = String(Math.round(d * 10) / 10);
           pl.set(d);
+        };
+        rg.addEventListener("input", () => aplicar(parseFloat(rg.value) || 0, "rg"));
+        nu.addEventListener("change", () => {
+          const v = window.CalcCIBSA.evalExpr(String(nu.value).replace(",", "."));
+          if (v == null || isNaN(v)) { nu.value = rg.value; return; }
+          aplicar(v, "nu");
         });
-        row.appendChild(sp); row.appendChild(rg); pw.appendChild(row);
+        nu.addEventListener("keydown", (e2) => { if (e2.key === "Enter") { e2.preventDefault(); nu.blur(); } });
+        resets.push(() => aplicar(v0, ""));
+        row.appendChild(sp); row.appendChild(rg); row.appendChild(nu); pw.appendChild(row);
       });
+      const rb = document.createElement("button"); rb.type = "button"; rb.className = "btn-outline small vol3d-plg-reset"; rb.textContent = "↺ Grados por defecto";
+      rb.addEventListener("click", () => resets.forEach((r) => r()));
+      pw.appendChild(rb);
       overlay.appendChild(pw);
     }
     // Rótulos de cotas (sprites siempre de cara a la cámara).
@@ -6739,7 +6754,7 @@
       ln.addEventListener("click", (e) => {
         e.stopPropagation();
         cerrarMenuAristas();
-        const k = ln.getAttribute("data-arista"), idxCorte = ln.getAttribute("data-corte");
+        const k = ln.getAttribute("data-arista"), idxCorte = ln.getAttribute("data-corte"), kTapa = ln.getAttribute("data-tapa");
         // Punto del clic en coords del MODELO (metros) — para crear anchors donde se pinchó.
         // Solo disponible en el plano plano (el volumétrico no expone data-ox).
         let pm = null;
@@ -6765,7 +6780,7 @@
         }
         const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
         const cap = document.createElement("p"); cap.className = "arista-menu-cap";
-        cap.textContent = (ln.getAttribute("data-anexo") != null) ? "Borde del anexo — instalar" : (idxCorte != null) ? (ln.getAttribute("data-guia") != null ? "Línea de construcción (guía) — instalar" : "Arista de corte — instalar") : (ln.getAttribute("data-libre") != null) ? "Borde del ala (altura) — instalar" : (ln.getAttribute("data-rim") != null) ? ("Rim del ala " + (NOM_AR[k] || "") + " — instalar") : ("Arista " + NOM_AR[k] + " — instalar");
+        cap.textContent = (ln.getAttribute("data-anexo") != null) ? "Borde del anexo — instalar" : (kTapa != null) ? "Arista de la tapa/solapa — instalar" : (idxCorte != null) ? (ln.getAttribute("data-guia") != null ? "Línea de construcción (guía) — instalar" : "Arista de corte — instalar") : (ln.getAttribute("data-libre") != null) ? "Borde del ala (altura) — instalar" : (ln.getAttribute("data-rim") != null) ? ("Rim del ala " + (NOM_AR[k] || "") + " — instalar") : ("Arista " + NOM_AR[k] + " — instalar");
         menu.appendChild(cap);
         const esRim = ln.getAttribute("data-rim") != null, esLibre = ln.getAttribute("data-libre") != null;
         const idxAnexo = ln.getAttribute("data-anexo"), bordeAnexo = ln.getAttribute("data-borde"), esFusAnexo = ln.getAttribute("data-fus") != null;
@@ -6776,6 +6791,9 @@
           items = [[esFusAnexo ? "Ojetillos (línea de fusión del anexo)" : "Ojetillos (arista del anexo)", "anexoOj"],
                    ["Corte / calado (en este borde)", "corteLibre"], ["Línea de construcción (en este borde)", "guiaLibre"]];
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
+        } else if (kTapa != null && idxCorte != null) {
+          items = [["Ojetillos en esta arista (cada X m)…", "tapaOj"], ["Fusionar / liberar esta arista", "tapaFus"],
+                   ["Strap sobre el corte (bajo la tapa)", "corteStrap"], ["Ojetillos sobre el corte", "corteOj"]];
         } else if (idxCorte != null) {
           items = [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]];
           items.push(["Anexo (aleta/faldón) desde esta línea…", "guiaAnexoUI"]);
@@ -6796,7 +6814,7 @@
         items.forEach(([t, a]) => {
           if (!acciones[a]) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t;
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -6945,6 +6963,20 @@
   const accionesAristaUnif = {
     corteOj: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "oj", dOjetillosRef(state.ojMode === "arista" ? state.ojEdges : null)); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
     corteStrap: (i) => { const c = visibles(state.cortesUnif)[i]; if (!c) return; prepararCorteArista(c, "strap"); renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
+    tapaOj: (i, k) => {
+      const c = visibles(state.cortesUnif)[i]; if (!c || !c.tapa || !c.tapa.on) return;
+      if (!c.tapa.ar) c.tapa.ar = {}; if (!c.tapa.ar[k]) c.tapa.ar[k] = { fus: true, ojD: "" };
+      const txt = prompt("Ojetillos en esta arista de la " + (c.tipo === "corte" ? "solapa" : "tapa") + " — distanciamiento (m). 0 = quitar. Acepta aritmética:", c.tapa.ar[k].ojD || "0.5");
+      if (txt == null) return;
+      const v = window.CalcCIBSA.evalExpr(String(txt).replace(",", "."));
+      if (v == null || isNaN(v) || v < 0) { alert("Valor no válido."); return; }
+      c.tapa.ar[k].ojD = v > 0 ? String(v) : "";
+      renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif")); },
+    tapaFus: (i, k) => {
+      const c = visibles(state.cortesUnif)[i]; if (!c || !c.tapa || !c.tapa.on) return;
+      if (!c.tapa.ar) c.tapa.ar = {}; if (!c.tapa.ar[k]) c.tapa.ar[k] = { fus: true, ojD: "" };
+      c.tapa.ar[k].fus = c.tapa.ar[k].fus === false;
+      renderCortesUnif(); recompute(); },
     ancla: (k, pm) => {
       const A = num("f_ancho", null), L = num("f_largo", null); if (!(A > 0 && L > 0)) return;
       const sgm = aristaSegAncla(k, A, L); if (!sgm) return;
@@ -7076,6 +7108,20 @@
     return {
       corteOj: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "oj", dOjetillosRef(pz.ojMode === "arista" ? pz.ojEdges : null)); irAPieza(); },
       corteStrap: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "strap"); irAPieza(); },
+      tapaOj: (i, k) => {
+        const c = visibles(pz.cortes)[i]; if (!c || !c.tapa || !c.tapa.on) return;
+        if (!c.tapa.ar) c.tapa.ar = {}; if (!c.tapa.ar[k]) c.tapa.ar[k] = { fus: true, ojD: "" };
+        const txt = prompt("Ojetillos en esta arista de la " + (c.tipo === "corte" ? "solapa" : "tapa") + " — distanciamiento (m). 0 = quitar. Acepta aritmética:", c.tapa.ar[k].ojD || "0.5");
+        if (txt == null) return;
+        const v = ev(String(txt).replace(",", "."));
+        if (v == null || isNaN(v) || v < 0) { alert("Valor no válido."); return; }
+        c.tapa.ar[k].ojD = v > 0 ? String(v) : "";
+        irAPieza(); },
+      tapaFus: (i, k) => {
+        const c = visibles(pz.cortes)[i]; if (!c || !c.tapa || !c.tapa.on) return;
+        if (!c.tapa.ar) c.tapa.ar = {}; if (!c.tapa.ar[k]) c.tapa.ar[k] = { fus: true, ojD: "" };
+        c.tapa.ar[k].fus = c.tapa.ar[k].fus === false;
+        renderPiezas(); recomputeCompuesto(); },
       ancla: (k, pm) => {
         const A = ev(pz.ancho), L = ev(pz.largo); if (!(A > 0 && L > 0)) return;
         const sgm = aristaSegAncla(k, A, L); if (!sgm) return;
