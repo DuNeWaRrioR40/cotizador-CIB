@@ -5366,6 +5366,14 @@
             T.Quaternion.slerp ? T.Quaternion.slerp(qi, q, fanRoot.quaternion, w) : fanRoot.quaternion.copy(qi.slerp(q, w));
             const rc = CW.clone().applyQuaternion(fanRoot.quaternion);
             fanRoot.position.set(CW.x - rc.x, CW.y - rc.y, CW.z - rc.z);
+            // Compensación vertical: las BASES de las caras quedan a nivel del plano original
+            // (convergen en X/Y hacia el centro) y es el VÉRTICE el que sube en Z — como al armar
+            // la pirámide real sobre la mesa, no colgando del vértice.
+            fanRoot.updateMatrixWorld(true);
+            let cy2 = 0;
+            fanRefs.forEach((r2) => { const v2 = r2.flat.clone(); r2.grp.localToWorld(v2); cy2 += v2.y; });
+            cy2 /= fanRefs.length;
+            fanRoot.position.y += (CW.y - cy2) * w;
           } catch (e2) {}
         };
       }
@@ -7110,13 +7118,13 @@
     // explícito; pares de anchors sobre la MISMA arista base o el MISMO corte anfitrión son lados
     // implícitos (el tramo de esa línea entre ambos). Devuelve el ciclo (ids en orden) o null.
     function cicloDesde(id0) {
-      const edges = [];
+      const edges = [], esLinea = {};   // esLinea[ei] = tramo respaldado por un corte/guía REAL
       (ctx.cortes || []).forEach((c2) => {
         if (!c2 || c2.tipo === "poli") return;
         const emp = (c2.anclas || []).filter((a2) => a2 && a2.emp != null).map((a2) => a2.emp);
-        if (emp.length >= 2 && emp[0] !== emp[1]) edges.push([emp[0], emp[1]]);
+        if (emp.length >= 2 && emp[0] !== emp[1]) { edges.push([emp[0], emp[1]]); esLinea[edges.length - 1] = 1; }
         const propios = (c2.anclas || []).map((a2) => a2.id);
-        for (let i2 = 0; i2 < propios.length; i2++) for (let j2 = i2 + 1; j2 < propios.length; j2++) edges.push([propios[i2], propios[j2]]);
+        for (let i2 = 0; i2 < propios.length; i2++) for (let j2 = i2 + 1; j2 < propios.length; j2++) { edges.push([propios[i2], propios[j2]]); esLinea[edges.length - 1] = 1; }
       });
       const porAr = {};
       (ctx.anclas || []).forEach((a2) => { if (a2 && a2.ar && !a2.seg) (porAr[a2.ar] = porAr[a2.ar] || []).push(a2.id); });
@@ -7195,6 +7203,9 @@
       const cands = [], vistosC = {};
       const id0c = canon[id0] != null ? canon[id0] : id0;
       const registrar = (camino, eds, eiCierre) => {
+        let tieneLinea = false;
+        for (let i2 = 0; i2 < camino.length; i2++) { const e2 = (i2 < camino.length - 1) ? eds[i2] : eiCierre; if (esLinea[e2]) { tieneLinea = true; break; } }
+        if (!tieneLinea) return;   // ciclo de puro contorno (p.ej. la lámina completa): no es un calado
         const seq = [];
         for (let i2 = 0; i2 < camino.length; i2++) {
           seq.push(camino[i2]);
