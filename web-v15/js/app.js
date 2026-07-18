@@ -4864,7 +4864,7 @@
     // Guía convertida en EJE de pliegue del paño (productos planos): parte la lámina en 2 mitades
     // con bisagra en la guía. Elegible: guía horizontal/vertical que cruza el paño completo.
     const ejeF = (() => {
-      if (fig || (H > 0) || !(A > 0) || !(L > 0)) return null;
+      if (fig || !(A > 0) || !(L > 0)) return null;
       for (const c of visibles(state.cortesUnif)) {
         if (!c || c.tipo !== "guia" || !c.ejeVis) continue;
         const ln = lineaRawCorte(c); if (!ln) continue;
@@ -5121,11 +5121,13 @@
     const plieguesUI = [];
     const altosV3 = (!fig && typeof altosUnif === "function") ? altosUnif() : null;
     const hV = (k) => { if (!va3(k)) return 0; const v = altosV3 ? altosV3[k] : null; return (v != null && v >= 0) ? v : H; };
-    const alaPliegue = (nomAla, hAla, P0, ux, uz, len, x0c, y0c, wS, hS, W4loc, v0deg) => {
+    // parent: grupo padre (grp o la bisagra del EJE — anida paredes lejanas); t0: inicio de esta
+    // PARTE en la coordenada t de la pared completa (paredes partidas por el eje).
+    const alaPliegue = (nomAla, hAla, P0, ux, uz, len, x0c, y0c, wS, hS, W4loc, v0deg, parent, t0) => {
       const uy = new T.Vector3().crossVectors(uz, ux);
       const outer = new T.Group(); outer.position.copy(P0);
       outer.setRotationFromMatrix(new T.Matrix4().makeBasis(ux, uy, uz));
-      const inner = new T.Group(); outer.add(inner); grp.add(outer);
+      const inner = new T.Group(); outer.add(inner); (parent || grp).add(outer);
       if (hayCal) caraCalada(x0c, y0c, wS, hS, W4loc, inner);
       else {
         const gP = new T.PlaneGeometry(len, hAla);
@@ -5137,12 +5139,34 @@
       const v00 = (v0deg == null) ? 90 : v0deg;
       set(v00);
       plieguesUI.push({ nombre: nomAla, set: set, v0: v00 });
-      alasInner3D[nomAla] = { inner: inner, len: len, hAla: hAla };
+      if (!alasInner3D[nomAla]) alasInner3D[nomAla] = { inner: inner, len: len, hAla: hAla };
+      (alasParts3D[nomAla] = alasParts3D[nomAla] || []).push({ inner: inner, hAla: hAla, t0: t0 || 0, t1: (t0 || 0) + len });
     };
-    const alasInner3D = {};
+    const alasInner3D = {}, alasParts3D = {};
+    // Destino por PARTE de pared: elige la parte que contiene la coordenada t (pared partida por el eje).
+    const parteDe = (nomAla, t) => {
+      const ps = alasParts3D[nomAla]; if (!ps || !ps.length) return null;
+      return ps.find((q) => t >= q.t0 - 1e-9 && t <= q.t1 + 1e-9) || ps[0];
+    };
+    // Bisagra del EJE (guía-eje): parte la TAPA y se lleva las paredes del lado lejano.
+    let ejeCtl = null;
+    if (ejeF) {
+      const outerE = new T.Group();
+      outerE.position.set(ejeF.horiz ? -A / 2 : ejeF.pos - A / 2, H, ejeF.horiz ? ejeF.pos - L / 2 : -L / 2);
+      const uxE = ejeF.horiz ? new T.Vector3(1, 0, 0) : new T.Vector3(0, 0, 1);
+      const uzE = ejeF.horiz ? new T.Vector3(0, 0, 1) : new T.Vector3(1, 0, 0);
+      const uyE = new T.Vector3().crossVectors(uzE, uxE);
+      outerE.setRotationFromMatrix(new T.Matrix4().makeBasis(uxE, uyE, uzE));
+      const innerE = new T.Group(); outerE.add(innerE); grp.add(outerE);
+      const sgnE = uyE.y > 0 ? 1 : -1;
+      const setE = (v) => { innerE.rotation.x = sgnE * v * Math.PI / 180; };
+      setE(0);
+      plieguesUI.push({ nombre: ejeF.nombre, set: setE, v0: 0 });
+      ejeCtl = { inner: innerE };
+    }
     if (!fig) {
       if (ejeF) {
-        // EJE: mitad cercana estática; la lejana cuelga de la bisagra en la guía (parte en 0°, plana).
+        // EJE: mitad de tapa CERCANA estática; la LEJANA vive dentro de la bisagra del eje (0° = extendida).
         const wN = ejeF.horiz ? A : ejeF.pos, hN = ejeF.horiz ? ejeF.pos : L;
         if (hayCal) caraCalada(0, 0, wN, hN, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2));
         else {
@@ -5150,29 +5174,73 @@
           const mesh = new T.Mesh(gP, matLona); mesh.rotation.x = -Math.PI / 2; mesh.position.set(wN / 2 - A / 2, H, hN / 2 - L / 2); grp.add(mesh);
           const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde); ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); grp.add(ed);
         }
-        if (ejeF.horiz) alaPliegue(ejeF.nombre, L - ejeF.pos, new T.Vector3(-A / 2, H, ejeF.pos - L / 2), new T.Vector3(1, 0, 0), new T.Vector3(0, 0, 1), A, 0, ejeF.pos, A, L - ejeF.pos, (mx, my) => new T.Vector3(mx, 0, my - ejeF.pos), 0);
-        else alaPliegue(ejeF.nombre, A - ejeF.pos, new T.Vector3(ejeF.pos - A / 2, H, -L / 2), new T.Vector3(0, 0, 1), new T.Vector3(1, 0, 0), L, ejeF.pos, 0, A - ejeF.pos, L, (mx, my) => new T.Vector3(my, 0, mx - ejeF.pos), 0);
+        const wF = ejeF.horiz ? A : L, hF = ejeF.horiz ? (L - ejeF.pos) : (A - ejeF.pos);
+        const W4F = ejeF.horiz ? ((mx, my) => new T.Vector3(mx, 0, my - ejeF.pos)) : ((mx, my) => new T.Vector3(my, 0, mx - ejeF.pos));
+        if (hayCal) caraCalada(ejeF.horiz ? 0 : ejeF.pos, ejeF.horiz ? ejeF.pos : 0, ejeF.horiz ? A : A - ejeF.pos, ejeF.horiz ? L - ejeF.pos : L, W4F, ejeCtl.inner);
+        else {
+          const gF = new T.PlaneGeometry(wF, hF);
+          const meshF = new T.Mesh(gF, matLona); meshF.rotation.x = -Math.PI / 2; meshF.position.set(wF / 2, 0, hF / 2); ejeCtl.inner.add(meshF);
+          const edF = new T.LineSegments(new T.EdgesGeometry(gF), matBorde); edF.rotation.copy(meshF.rotation); edF.position.copy(meshF.position); ejeCtl.inner.add(edF);
+        }
       }
       else if (hayCal) caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2)); else panel(A, L, 0, H, 0, -Math.PI / 2, 0);
     } // tapa (arriba)
-    if (H > 0 && hV("sup") > 0) alaPliegue("Ala superior", hV("sup"), new T.Vector3(-A / 2, H, -L / 2), new T.Vector3(1, 0, 0), new T.Vector3(0, 0, -1), A, 0, -hV("sup"), A, hV("sup"), (mx, my) => new T.Vector3(mx, 0, -my));
-    if (H > 0 && hV("inf") > 0) alaPliegue("Ala inferior", hV("inf"), new T.Vector3(-A / 2, H, L / 2), new T.Vector3(1, 0, 0), new T.Vector3(0, 0, 1), A, 0, L, A, hV("inf"), (mx, my) => new T.Vector3(mx, 0, my - L));
-    if (H > 0 && hV("izq") > 0) alaPliegue("Ala izquierda", hV("izq"), new T.Vector3(-A / 2, H, -L / 2), new T.Vector3(0, 0, 1), new T.Vector3(-1, 0, 0), L, -hV("izq"), 0, hV("izq"), L, (mx, my) => new T.Vector3(my, 0, -mx));
-    if (H > 0 && hV("der") > 0) alaPliegue("Ala derecha", hV("der"), new T.Vector3(A / 2, H, -L / 2), new T.Vector3(0, 0, 1), new T.Vector3(1, 0, 0), L, A, 0, hV("der"), L, (mx, my) => new T.Vector3(my, 0, mx - A));
+    // Paredes: sin eje, como siempre. Con eje: la pared PARALELA del lado lejano se ANIDA completa
+    // en la bisagra del eje (viaja con la media tapa); las PERPENDICULARES se PARTEN en el eje —
+    // parte cercana normal, parte lejana anidada. Cada parte conserva su propia bisagra de pliegue.
+    { const mkAla3 = (k) => {
+        const h = hV(k); if (!(H > 0) || !(h > 0)) return;
+        const nom = { sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" }[k];
+        const horizW = (k === "sup" || k === "inf");
+        const base = {
+          sup: { P0: new T.Vector3(-A / 2, H, -L / 2), ux: new T.Vector3(1, 0, 0), uz: new T.Vector3(0, 0, -1), len: A, x0c: 0, y0c: -h, wS: A, hS: h, W4: (mx, my) => new T.Vector3(mx, 0, -my) },
+          inf: { P0: new T.Vector3(-A / 2, H, L / 2), ux: new T.Vector3(1, 0, 0), uz: new T.Vector3(0, 0, 1), len: A, x0c: 0, y0c: L, wS: A, hS: h, W4: (mx, my) => new T.Vector3(mx, 0, my - L) },
+          izq: { P0: new T.Vector3(-A / 2, H, -L / 2), ux: new T.Vector3(0, 0, 1), uz: new T.Vector3(-1, 0, 0), len: L, x0c: -h, y0c: 0, wS: h, hS: L, W4: (mx, my) => new T.Vector3(my, 0, -mx) },
+          der: { P0: new T.Vector3(A / 2, H, -L / 2), ux: new T.Vector3(0, 0, 1), uz: new T.Vector3(1, 0, 0), len: L, x0c: A, y0c: 0, wS: h, hS: L, W4: (mx, my) => new T.Vector3(my, 0, mx - A) },
+        }[k];
+        if (!ejeF) { alaPliegue(nom, h, base.P0, base.ux, base.uz, base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4); return; }
+        const pos = ejeF.pos, paralela = (ejeF.horiz === horizW);
+        if (paralela) {
+          const lejos = ejeF.horiz ? (k === "inf") : (k === "der");
+          if (!lejos) { alaPliegue(nom, h, base.P0, base.ux, base.uz, base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4); return; }
+          const dist = ejeF.horiz ? (L - pos) : (A - pos);
+          alaPliegue(nom, h, new T.Vector3(0, 0, dist), new T.Vector3(1, 0, 0), new T.Vector3(0, 0, 1), base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4, null, ejeCtl.inner);
+          return;
+        }
+        if (pos > 0.01) {
+          if (horizW) alaPliegue(nom, h, base.P0, base.ux, base.uz, pos, 0, base.y0c, pos, h, base.W4);
+          else alaPliegue(nom, h, base.P0, base.ux, base.uz, pos, base.x0c, 0, base.wS, pos, base.W4);
+        }
+        const lenF = (horizW ? A : L) - pos;
+        if (lenF > 0.01) {
+          const P0f = horizW ? (k === "sup" ? new T.Vector3(0, 0, 0) : new T.Vector3(L, 0, 0))
+                             : (k === "izq" ? new T.Vector3(0, 0, 0) : new T.Vector3(A, 0, 0));
+          const uzf = (k === "sup" || k === "izq") ? new T.Vector3(-1, 0, 0) : new T.Vector3(1, 0, 0);
+          const W4f = horizW ? (k === "sup" ? ((mx, my) => new T.Vector3(mx - pos, 0, -my)) : ((mx, my) => new T.Vector3(mx - pos, 0, my - L)))
+                             : (k === "izq" ? ((mx, my) => new T.Vector3(my - pos, 0, -mx)) : ((mx, my) => new T.Vector3(my - pos, 0, mx - A)));
+          alaPliegue(nom, h, P0f, new T.Vector3(0, 0, 1), uzf, lenF,
+            horizW ? pos : base.x0c, horizW ? base.y0c : pos,
+            horizW ? lenF : base.wS, horizW ? h : lenF, W4f, null, ejeCtl.inner, pos);
+        }
+      };
+      ["sup", "inf", "izq", "der"].forEach(mkAla3);
+    }
     // BOLSILLOS en 3D: manga OVALADA (cilindro aplastado) a lo largo del RIM de su ala; viaja
     // dentro de la bisagra, así pliega con el ala. Con "bordes en pliegues" activo se omite.
     if (!fig && H > 0 && !($("f_bordesPliegue") && $("f_bordesPliegue").checked)) {
       try {
         const NOM_ALA3 = { sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" };
         (bolsillosDe(state.bordeModo, state.bordes) || []).forEach((bo) => {
-          const reg = alasInner3D[NOM_ALA3[bo.arista]]; if (!reg) return;
           const rB = Math.max(0.03, ((parseFloat(bo.diam) || 0.1) / 2));
-          const tubo = new T.Mesh(new T.CylinderGeometry(rB, rB, Math.max(0.05, reg.len * 0.985), 20),
-            new T.MeshLambertMaterial({ color: 0xcfc7b4, transparent: true, opacity: 0.95 }));
-          tubo.rotation.z = Math.PI / 2;   // eje a lo largo del rim (X local de la bisagra)
-          tubo.scale.z = 0.55;             // ÓVALO aplastado, no circunferencia perfecta
-          tubo.position.set(reg.len / 2, 0, reg.hAla);
-          reg.inner.add(tubo);
+          (alasParts3D[NOM_ALA3[bo.arista]] || []).forEach((pt3) => {
+            const lenP = pt3.t1 - pt3.t0; if (!(lenP > 0.05)) return;
+            const tubo = new T.Mesh(new T.CylinderGeometry(rB, rB, Math.max(0.05, lenP * 0.985), 20),
+              new T.MeshLambertMaterial({ color: 0xcfc7b4, transparent: true, opacity: 0.95 }));
+            tubo.rotation.z = Math.PI / 2;   // eje a lo largo del rim (X local de la bisagra)
+            tubo.scale.z = 0.55;             // ÓVALO aplastado, no circunferencia perfecta
+            tubo.position.set(lenP / 2, 0, pt3.hAla);
+            pt3.inner.add(tubo);
+          });
         });
       } catch (e) {}
     }
@@ -5196,7 +5264,7 @@
     // alto real): cerradas coinciden; al abrir un ala, su costura viaja con ella (se "descose").
     { const fus = new T.LineBasicMaterial({ color: 0xd23b2e, linewidth: 2 });
       const NOMF = { sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" };
-      const bordeFus = (k, t) => { const reg = alasInner3D[NOMF[k]]; if (!reg) return; reg.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(t, 0, 0), new T.Vector3(t, 0, reg.hAla)]), fus)); };
+      const bordeFus = (k, t) => { const pt3 = parteDe(NOMF[k], t); if (!pt3) return; pt3.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(t - pt3.t0, 0, 0), new T.Vector3(t - pt3.t0, 0, pt3.hAla)]), fus)); };
       [["sup", "izq"], ["sup", "der"], ["inf", "der"], ["inf", "izq"]].forEach(([k1, k2]) => {
         if (!(H > 0) || !va3(k1) || !va3(k2)) return;
         bordeFus(k1, k2 === "izq" ? 0 : A);
@@ -5219,9 +5287,9 @@
       const geo = new T.SphereGeometry(rOj, 10, 10), mat = new T.MeshBasicMaterial({ color: 0x111111 });
       const enTapa3 = (ojEnUnif() === "tapa");
       const NOM_OJ3 = { sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" };
-      // EJE de pliegue (plano): los elementos de la mitad LEJANA van en coords locales de su bisagra.
-      const ejeReg = ejeF ? alasInner3D[ejeF.nombre] : null;
-      const enEjeFar = (mx, my) => !!ejeReg && (ejeF.horiz ? my > ejeF.pos + 1e-9 : mx > ejeF.pos + 1e-9);
+      // EJE de pliegue: los elementos de la media TAPA lejana van en coords locales de su bisagra.
+      const ejeReg = ejeCtl;
+      const enEjeFar = (mx, my) => !!ejeReg && mx >= -1e-9 && mx <= A + 1e-9 && my >= -1e-9 && my <= L + 1e-9 && (ejeF.horiz ? my > ejeF.pos + 1e-9 : mx > ejeF.pos + 1e-9);
       const ejeLocal = (mx, my, off) => new T.Vector3(
         ejeF.horiz ? Math.max(0, Math.min(A, mx)) : Math.max(0, Math.min(L, my)),
         off != null ? off : 0.012,
@@ -5254,8 +5322,8 @@
         if (d == null || d > h - inset) d = h - inset;
         d = Math.max(0.01, d);
         const t = (k === "sup" || k === "inf") ? Math.max(0, Math.min(A, p.x)) : Math.max(0, Math.min(L, p.y));
-        const reg = alasInner3D[NOM_OJ3[k]];
-        if (reg) { m.position.set(t, 0.012, d); reg.inner.add(m); return; }   // dentro de la BISAGRA: sigue al ala al moverla
+        const pt3 = parteDe(NOM_OJ3[k], t);
+        if (pt3) { m.position.set(t - pt3.t0, 0.012, d); pt3.inner.add(m); return; }   // dentro de SU parte de bisagra
         // sin bisagra registrada: posición cerrada equivalente
         const y = H - d, cx = t - A / 2, cz = t - L / 2;
         if (k === "sup") m.position.set(cx, y, -L / 2 - 0.012);
@@ -5298,16 +5366,18 @@
         if (mx > A + 1e-9 && va0("der") && hV("der") > 0) return "der";
         return null;
       };
-      const localDe = (k, mx, my, off) => {
-        const t = (k === "sup" || k === "inf") ? Math.max(0, Math.min(A, mx)) : Math.max(0, Math.min(L, my));
+      const tDeW = (k, mx, my) => (k === "sup" || k === "inf") ? Math.max(0, Math.min(A, mx)) : Math.max(0, Math.min(L, my));
+      const localDe = (k, mx, my, off, t0) => {
+        const t = tDeW(k, mx, my);
         const d = (k === "sup") ? -my : (k === "inf") ? my - L : (k === "izq") ? -mx : mx - A;
-        return new T.Vector3(t, off != null ? off : 0.012, Math.max(0, Math.min(hV(k), d)));
+        return new T.Vector3(t - (t0 || 0), off != null ? off : 0.012, Math.max(0, Math.min(hV(k), d)));
       };
-      const innerDe = (k) => { const r = alasInner3D[NOM_OJ3[k]]; return r ? r.inner : null; };
+      const innerDe = (k, t) => parteDe(NOM_OJ3[k], t);
       const addSeg3 = (pa, pb, mat) => {
         if (enEjeFar((pa.x + pb.x) / 2, (pa.y + pb.y) / 2)) { ejeReg.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([ejeLocal(pa.x, pa.y), ejeLocal(pb.x, pb.y)]), mat)); return; }
-        const k = regionDe((pa.x + pb.x) / 2, (pa.y + pb.y) / 2), inner = k && innerDe(k);
-        if (inner) inner.add(new T.Line(new T.BufferGeometry().setFromPoints([localDe(k, pa.x, pa.y), localDe(k, pb.x, pb.y)]), mat));
+        const k = regionDe((pa.x + pb.x) / 2, (pa.y + pb.y) / 2);
+        const pt3 = k ? innerDe(k, (tDeW(k, pa.x, pa.y) + tDeW(k, pb.x, pb.y)) / 2) : null;
+        if (pt3) pt3.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([localDe(k, pa.x, pa.y, null, pt3.t0), localDe(k, pb.x, pb.y, null, pt3.t0)]), mat));
         else grp.add(new T.Line(new T.BufferGeometry().setFromPoints([p3(pa.x, pa.y), p3(pb.x, pb.y)]), mat));
       };
       const addQuad3 = (corn, mat) => {
@@ -5317,11 +5387,12 @@
           const gE = new T.BufferGeometry().setFromPoints([vsE[0], vsE[1], vsE[2], vsE[0], vsE[2], vsE[3]]);
           gE.computeVertexNormals(); ejeReg.inner.add(new T.Mesh(gE, mat)); return;
         }
-        const k = regionDe(cx4, cy4), inner = k && innerDe(k);
-        const vs = inner ? corn.map((q) => localDe(k, q.x, q.y, 0.01)) : corn.map((q) => p3(q.x, q.y));
+        const k = regionDe(cx4, cy4);
+        const pt3 = k ? innerDe(k, tDeW(k, cx4, cy4)) : null;
+        const vs = pt3 ? corn.map((q) => localDe(k, q.x, q.y, 0.01, pt3.t0)) : corn.map((q) => p3(q.x, q.y));
         const g2 = new T.BufferGeometry().setFromPoints([vs[0], vs[1], vs[2], vs[0], vs[2], vs[3]]);
         g2.computeVertexNormals();
-        (inner || grp).add(new T.Mesh(g2, mat));
+        ((pt3 && pt3.inner) || grp).add(new T.Mesh(g2, mat));
       };
       // Calados / cortes / guías: contorno morado que DOBLA con la caja + sus ojetillos.
       const matCut = new T.LineBasicMaterial({ color: 0x8e44ad });
@@ -5332,8 +5403,10 @@
         });
         (c.ojetillos || []).forEach((p) => {
           const m = mkOje3D();
-          const k = regionDe(p.x, p.y), inner = k && innerDe(k);
-          if (inner) { m.position.copy(localDe(k, p.x, p.y)); inner.add(m); }
+          if (enEjeFar(p.x, p.y)) { m.position.copy(ejeLocal(p.x, p.y)); ejeReg.inner.add(m); return; }
+          const k = regionDe(p.x, p.y);
+          const pt3 = k ? innerDe(k, tDeW(k, p.x, p.y)) : null;
+          if (pt3) { m.position.copy(localDe(k, p.x, p.y, null, pt3.t0)); pt3.inner.add(m); }
           else { m.position.copy(p3(p.x, p.y)); grp.add(m); }
         });
       });
@@ -5408,7 +5481,14 @@
       const cab = document.createElement("div"); cab.className = "vol3d-plg-cab"; cab.textContent = "Pliegues (visual)";
       pw.appendChild(cab);
       const resets = [];   // un reset por pliegue: los junta el botón "grados por defecto"
+      // Una pared partida por el eje genera 2 bisagras con el MISMO nombre → un solo slider que mueve ambas.
+      const vistosPl = {}, listaPl = [];
       plieguesUI.forEach((pl) => {
+        const v0p = vistosPl[pl.nombre];
+        if (v0p) { const s0 = v0p.set; v0p.set = (v) => { s0(v); pl.set(v); }; return; }
+        vistosPl[pl.nombre] = pl; listaPl.push(pl);
+      });
+      listaPl.forEach((pl) => {
         const row = document.createElement("label"); row.className = "vol3d-plg-row";
         const v0 = pl.v0 || 0;
         const sp = document.createElement("span"); sp.textContent = pl.nombre;
@@ -7238,7 +7318,6 @@
     guiaEje: (i) => {
       const c = visibles(state.cortesUnif)[i]; if (!c || c.tipo !== "guia") return;
       if (c.ejeVis) { c.ejeVis = false; renderCortesUnif(); recompute(); return; }
-      if (alturaUnif() > 0) return alert("El eje de pliegue del paño está disponible en productos PLANOS (sin alto). En volumétricos, instala un anexo desde la guía: ese anexo ya se abate sobre ella en el visor 3D.");
       const A2 = num("f_ancho", 0), L2 = num("f_largo", 0), ln = lineaRawCorte(c);
       if (!ln || !(A2 > 0) || !(L2 > 0)) return;
       const ang = (((parseFloat(c.angulo) || 0) % 180) + 180) % 180;
