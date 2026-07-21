@@ -1075,7 +1075,9 @@
       const item = document.createElement("div"); item.className = "granel-cart-item";
       // Fila 1: nombre + total neto + quitar
       const r1 = document.createElement("div"); r1.className = "granel-cart-r1";
-      const nom = document.createElement("span"); nom.className = "granel-cart-nom"; nom.textContent = granelNombreL(l) + (l.color ? " · " + l.color : "");
+      const nom = document.createElement("span"); nom.className = "granel-cart-nom";
+      nom.textContent = granelNombreL(l) + (l.formato ? " · " + l.formato : "") + (l.color ? " · " + l.color : "");
+      nom.title = [granelNombreL(l), l.formato && ("Formato " + l.formato), l.color, l.materialidad, l.sku && ("SKU " + l.sku)].filter(Boolean).join(" · ");
       const tt = document.createElement("span"); tt.className = "granel-cart-tot"; tt.textContent = money(k.neto);
       const del = document.createElement("button"); del.type = "button"; del.className = "granel-cart-del"; del.title = "Quitar"; del.textContent = "✕";
       del.addEventListener("click", () => { state.granelLineas.splice(i, 1); renderGranelLineas(); recompute(); });
@@ -1090,8 +1092,12 @@
       ci.addEventListener("input", (e) => { l.cantidad = e.target.value; refrescarLinea(); });
       // Al salir del campo: ajusta al mínimo de venta (≥1; entero si es unitario).
       ci.addEventListener("blur", (e) => { let c = window.CalcCIBSA.evalExpr(e.target.value); if (c == null || isNaN(c) || c <= 0) return; const v = granelClampCant(l.divisible, c); if (String(v) !== String(window.CalcCIBSA.evalExpr(l.cantidad))) { l.cantidad = window.CalcCIBSA.fmtNum(v); renderGranelLineas(); recompute(); } });
+      if (l.sku) {
+        const sk = document.createElement("div"); sk.className = "granel-cart-sku";
+        sk.textContent = "SKU " + l.sku; sk.title = l.sku;   // hover: SKU completo
+        item.appendChild(sk);
+      }
       const cw = document.createElement("div"); cw.className = "granel-cart-cantwrap";
-      if (l.sku) { const sk = document.createElement("span"); sk.className = "granel-cart-sku"; sk.textContent = l.sku; cw.appendChild(sk); }
       cw.appendChild(ci);
       const u = document.createElement("span"); u.className = "granel-cart-u"; u.textContent = (granelUnidadVenta(l.variedad) || "u") + " × " + money(l.precio || 0);
       const dl = document.createElement("label"); dl.className = "granel-cart-dlbl"; dl.textContent = "dcto";
