@@ -4761,21 +4761,44 @@
           else if (nA0.pose && nB0.pose) { pend.splice(k, 1); continue; }   // ciclo: ya posadas
           else continue;
           const cH = conectoresDePieza(host.pz, e.id), cS = conectoresDePieza(sat.pz, e.id);
-          const h1 = cH.find((c) => c.slot === 1), h2 = cH.find((c) => c.slot === 2);
-          const s1 = cS.find((c) => c.slot === 1), s2 = cS.find((c) => c.slot === 2);
+          const h1 = cH.find((c) => c.slot === 1), h2 = cH.find((c) => c.slot === 2), h3 = cH.find((c) => c.slot === 3);
+          const s1 = cS.find((c) => c.slot === 1), s2 = cS.find((c) => c.slot === 2), s3 = cS.find((c) => c.slot === 3);
           const pH1 = host.arm.mapa(h1.x, h1.y), pH2 = host.arm.mapa(h2.x, h2.y);
           const pS1 = sat.arm.mapa(s1.x, s1.y), pS2 = sat.arm.mapa(s2.x, s2.y);
           const wH1 = wPt(host, pH1.v), wH2 = wPt(host, pH2.v);
           const uH = wH2.clone().sub(wH1), uS = pS2.v.clone().sub(pS1.v);
           if (uH.length() < 1e-6 || uS.length() < 1e-6) { pend.splice(k, 1); continue; }
-          const FA = mkFrame(uH, wNr(host, pH1.n)), FB = mkFrame(uS, pS1.n);
+          // ORIENTACIÓN: con C3 en ambas piezas → plano EXACTO por 3 puntos (sin heurística).
+          // Solo C1+C2 → normal de MONTAJE: la cara común de ambos conectores, o la BASE si viven
+          // en caras distintas (paralelismo por defecto — conectores en rims de paredes opuestas
+          // ya no inclinan la pieza).
+          let FA, FB, voltEnNormal = false;
+          const tri = (h3 && s3) ? (() => {
+            const pH3 = host.arm.mapa(h3.x, h3.y), pS3 = sat.arm.mapa(s3.x, s3.y);
+            const wH3 = wPt(host, pH3.v);
+            const nH = new T.Vector3().crossVectors(wH2.clone().sub(wH1), wH3.clone().sub(wH1));
+            const nS = new T.Vector3().crossVectors(pS2.v.clone().sub(pS1.v), pS3.v.clone().sub(pS1.v));
+            return (nH.length() > 1e-9 && nS.length() > 1e-9) ? { pS3: pS3, wH3: wH3, nH: nH, nS: nS, h3: h3, s3: s3 } : null;
+          })() : null;
+          if (tri) {
+            FA = mkFrame(uH, tri.nH);
+            FB = mkFrame(uS, _ensVolt[e.id] ? tri.nS.clone().negate() : tri.nS);
+            voltEnNormal = true;
+          } else {
+            const mH = (pH1.n.dot(pH2.n) > 0.99) ? pH1.n : new T.Vector3(0, 1, 0);
+            const mS = (pS1.n.dot(pS2.n) > 0.99) ? pS1.n : new T.Vector3(0, 1, 0);
+            FA = mkFrame(uH, wNr(host, mH)); FB = mkFrame(uS, mS);
+          }
           let R = FA.clone().multiply(FB.clone().transpose());
-          if (_ensVolt[e.id]) R = new T.Matrix4().makeRotationAxis(uH.clone().normalize(), Math.PI).multiply(R);
+          if (!voltEnNormal && _ensVolt[e.id]) R = new T.Matrix4().makeRotationAxis(uH.clone().normalize(), Math.PI).multiply(R);
           const qS = new T.Quaternion().setFromRotationMatrix(R);
           const pS = wH1.clone().sub(pS1.v.clone().applyQuaternion(qS));
           sat.pose = { q: qS, p: pS };
-          const dH2 = Math.hypot(h2.x - h1.x, h2.y - h1.y), dS2 = Math.hypot(s2.x - s1.x, s2.y - s1.y);
-          resVinc.push({ e: e, host: host, sat: sat, dHost2: dH2, dSat2: dS2, desc: Math.abs(dH2 - dS2), wH2: wH2, wS2: wPt(sat, pS2.v), c1Sat: s1, c2Sat: s2 });
+          const d2 = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+          const chk = [{ lbl: "C2", dH: d2(h1, h2), dS: d2(s1, s2), sat2: s2, wH: wH2, wS: wPt(sat, pS2.v) }];
+          if (tri) chk.push({ lbl: "C3", dH: d2(h1, tri.h3), dS: d2(s1, tri.s3), sat2: tri.s3, wH: tri.wH3, wS: wPt(sat, tri.pS3.v) });
+          chk.forEach((c9) => { c9.desc = Math.abs(c9.dH - c9.dS); });
+          resVinc.push({ e: e, host: host, sat: sat, chk: chk, c1Sat: s1, conC3: !!tri });
           pend.splice(k, 1); avance = true;
         }
       }
@@ -4800,14 +4823,18 @@
       const fila = document.createElement("div");
       fila.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;";
       const nomV = "E" + ensIdx(rv.e) + " (" + nombrePieza(rv.host.pz).split(" — ")[0] + " + " + nombrePieza(rv.sat.pz).split(" — ")[0] + ")";
-      if (rv.desc <= 0.01) {
-        fila.innerHTML = '<span style="color:#15803d;font-weight:600">✅ ' + nomV + '</span><span class="muted small">calzado (descalce ' + Math.round(rv.desc * 1000) + ' mm)</span>';
+      const malos = rv.chk.filter((c9) => c9.desc > 0.01);
+      if (!malos.length) {
+        const peor = Math.max.apply(null, rv.chk.map((c9) => c9.desc));
+        fila.innerHTML = '<span style="color:#15803d;font-weight:600">✅ ' + nomV + '</span><span class="muted small">calzado (descalce ' + Math.round(peor * 1000) + ' mm)' + (rv.conC3 ? ' · plano fijado por C3' : '') + '</span>';
       } else {
-        fila.innerHTML = '<span style="color:#b91c1c;font-weight:600">⚠ ' + nomV + '</span><span class="muted small">descalce ' + f9(rd3(rv.desc)) + ' m (' + f9(rd3(rv.dHost2)) + ' vs ' + f9(rd3(rv.dSat2)) + ' m)</span>';
-        const bF = document.createElement("button"); bF.type = "button"; bF.className = "btn-outline"; bF.style.fontSize = "0.85em";
-        bF.textContent = "🔧 Corregir C2 de " + nombrePieza(rv.sat.pz).split(" — ")[0] + " → " + f9(rd3(rv.dHost2)) + " m";
-        bF.addEventListener("click", () => corregirConectorEns(rv.sat.pz, rv.c1Sat, rv.c2Sat, rv.dHost2));
-        fila.appendChild(bF);
+        fila.innerHTML = '<span style="color:#b91c1c;font-weight:600">⚠ ' + nomV + '</span><span class="muted small">' + malos.map((c9) => c9.lbl + ": " + f9(rd3(c9.dS)) + " vs " + f9(rd3(c9.dH)) + " m").join(" · ") + '</span>';
+        malos.forEach((c9) => {
+          const bF = document.createElement("button"); bF.type = "button"; bF.className = "btn-outline"; bF.style.fontSize = "0.85em";
+          bF.textContent = "🔧 " + c9.lbl + " de " + nombrePieza(rv.sat.pz).split(" — ")[0] + " → " + f9(rd3(c9.dH)) + " m";
+          bF.addEventListener("click", () => corregirConectorEns(rv.sat.pz, rv.c1Sat, c9.sat2, c9.dH));
+          fila.appendChild(bF);
+        });
       }
       const bV = document.createElement("button"); bV.type = "button"; bV.className = "btn-outline"; bV.style.fontSize = "0.85em";
       bV.textContent = "↔ Voltear";
@@ -4821,7 +4848,7 @@
       fi.textContent = "· Sin posar (faltan conectores): " + incompletos.map((e) => "E" + ensIdx(e)).join(", ");
       barra.appendChild(fi);
     }
-    barra.insertAdjacentHTML("beforeend", '<div class="muted small" style="margin-top:2px">● <span style="color:#e67e22">C1</span> · <span style="color:#0284c7">C2</span> — arrastra para rotar, rueda/pellizco para acercar · tolerancia de confección 1 cm</div>');
+    barra.insertAdjacentHTML("beforeend", '<div class="muted small" style="margin-top:2px">● <span style="color:#e67e22">C1</span> · <span style="color:#0284c7">C2</span> · <span style="color:#9333ea">C3 opcional (fija el plano)</span> — arrastra para rotar, rueda/pellizco para acercar · tolerancia 1 cm</div>');
     panel.appendChild(head); panel.appendChild(cv); panel.appendChild(barra);
     ov.appendChild(panel); document.body.appendChild(ov);
     ov.addEventListener("click", (e) => { if (e.target === ov) cerrarEnsamble3D(); });
@@ -4839,11 +4866,14 @@
     });
     const rB = Math.max(0.025, dimMax * 0.011);
     const bola = (pos, hex) => { const m9 = new T.Mesh(new T.SphereGeometry(rB, 12, 12), new T.MeshBasicMaterial({ color: hex })); m9.position.copy(pos); scene.add(m9); };
+    const colSlot = (s) => (s === 1 ? 0xe67e22 : (s === 2 ? 0x0284c7 : 0x9333ea));
     resVinc.forEach((rv) => {
       const cH = conectoresDePieza(rv.host.pz, rv.e.id), cS = conectoresDePieza(rv.sat.pz, rv.e.id);
-      cH.forEach((c) => bola(wPt(rv.host, rv.host.arm.mapa(c.x, c.y).v), c.slot === 1 ? 0xe67e22 : 0x0284c7));
-      cS.forEach((c) => bola(wPt(rv.sat, rv.sat.arm.mapa(c.x, c.y).v), c.slot === 1 ? 0xe67e22 : 0x0284c7));
-      if (rv.desc > 0.01) { const ln9 = new T.Line(new T.BufferGeometry().setFromPoints([rv.wH2.clone(), rv.wS2.clone()]), new T.LineDashedMaterial({ color: 0xdc2626, dashSize: 0.06, gapSize: 0.04 })); ln9.computeLineDistances(); scene.add(ln9); }
+      cH.forEach((c) => bola(wPt(rv.host, rv.host.arm.mapa(c.x, c.y).v), colSlot(c.slot)));
+      cS.forEach((c) => bola(wPt(rv.sat, rv.sat.arm.mapa(c.x, c.y).v), colSlot(c.slot)));
+      rv.chk.forEach((c9) => {
+        if (c9.desc > 0.01) { const ln9 = new T.Line(new T.BufferGeometry().setFromPoints([c9.wH.clone(), c9.wS.clone()]), new T.LineDashedMaterial({ color: 0xdc2626, dashSize: 0.06, gapSize: 0.04 })); ln9.computeLineDistances(); scene.add(ln9); }
+      });
     });
     const grid = new T.GridHelper(Math.max(dimMax, 2) * 2.6, 12, 0xd8d8d2, 0xecece6); grid.position.y = -0.002; scene.add(grid);
     const raizN = nodos[Object.keys(nodos)[0]];
@@ -7414,7 +7444,7 @@
       const nC = conectoresDePieza(pz, e.id).length;
       const chip = document.createElement("span"); chip.className = "ficha-quick-btn";
       chip.style.cssText = "display:inline-flex;align-items:center;gap:6px;cursor:default;";
-      chip.appendChild(document.createTextNode("E" + ensIdx(e) + " · " + (otra ? nombrePieza(otra) : "¿pieza eliminada?") + " (" + nC + "/2 con.)"));
+      chip.appendChild(document.createTextNode("E" + ensIdx(e) + " · " + (otra ? nombrePieza(otra) : "¿pieza eliminada?") + " (" + nC + " con.)"));
       const x = document.createElement("button"); x.type = "button"; x.textContent = "✕"; x.title = "Quitar vínculo (borra sus conectores en ambas piezas)";
       x.style.cssText = "border:0;background:none;cursor:pointer;color:#b91c1c;padding:0 2px;";
       x.addEventListener("click", () => { if (confirm("¿Quitar el ensamble E" + ensIdx(e) + " con " + (otra ? nombrePieza(otra) : "?") + "? Se borran sus conectores en ambas piezas.")) { desvincularEns(e); renderPiezas(); recompute(); } });
@@ -7918,9 +7948,9 @@
             const vs = ensamblesDe(pzC);
             vs.forEach((e2) => {
               const usados = conectoresDePieza(pzC, e2.id).map((r9) => r9.slot);
-              const libre = usados.indexOf(1) === -1 ? 1 : (usados.indexOf(2) === -1 ? 2 : 0);
+              const libre = usados.indexOf(1) === -1 ? 1 : (usados.indexOf(2) === -1 ? 2 : (usados.indexOf(3) === -1 ? 3 : 0));
               const otra = ensOtra(e2, pzC);
-              if (libre) item("🔗 Conector C" + libre + " del ensamble E" + ensIdx(e2) + " (con " + (otra ? nombrePieza(otra) : "¿?") + ")", () => {
+              if (libre) item("🔗 Conector C" + libre + " del ensamble E" + ensIdx(e2) + (libre === 3 ? " (opcional: fija el plano exacto)" : " (con " + (otra ? nombrePieza(otra) : "¿?") + ")"), () => {
                 reg.an.con = { e: e2.id, s: libre }; if (ctx.onChange) ctx.onChange();
                 if (libre === 2 && !vinculoCompleto(e2)) alert("C1+C2 de E" + ensIdx(e2) + " listos en esta pieza. Instala los de " + (otra ? nombrePieza(otra) : "la otra pieza") + " y abre 🧩 Ensamble 3D.");
               });

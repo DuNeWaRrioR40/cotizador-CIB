@@ -1723,7 +1723,7 @@
       (skVol.anclas || []).forEach((an) => {
         const ax = pxT(an.x), ay = pyT(an.y);
         const izqL = an.x <= A / 2, tx = izqL ? 9 : -9, tanc = izqL ? "start" : "end";
-        const conC = an.con ? (an.con === 1 ? "#e67e22" : "#0284c7") : null;   // F5: conector de ensamble (C1 naranja / C2 celeste)
+        const conC = an.con ? (an.con === 1 ? "#e67e22" : (an.con === 2 ? "#0284c7" : "#9333ea")) : null;   // F5: conector de ensamble (C1 naranja / C2 celeste)
         s += `<g class="ancla${an.tipo === "corte" ? " ancla-corte" : ""}${an.emp ? " ancla-emp" : ""}${an.fix ? " ancla-fija" : ""}${an.con ? " ancla-con" : ""}" data-ancla="${esc(String(an.id))}" data-x="${f1(ax)}" data-y="${f1(ay)}">`;
         s += `<circle class="ancla-halo" cx="${f1(ax)}" cy="${f1(ay)}" r="11"/>`;
         s += `<circle class="ancla-dot" cx="${f1(ax)}" cy="${f1(ay)}" r="${conC ? 5 : 4}"${conC ? ` style="fill:${conC};stroke:${conC}"` : ""}/>`;
@@ -1987,7 +1987,7 @@
         const ax = px(an.x), ay = py(an.y);
         const izqLado = an.x <= sk.ancho / 2;
         const tx = izqLado ? 9 : -9, tanc = izqLado ? "start" : "end";
-        const conC = an.con ? (an.con === 1 ? "#e67e22" : "#0284c7") : null;   // F5: conector de ensamble (C1 naranja / C2 celeste)
+        const conC = an.con ? (an.con === 1 ? "#e67e22" : (an.con === 2 ? "#0284c7" : "#9333ea")) : null;   // F5: conector de ensamble (C1 naranja / C2 celeste)
         s += `<g class="ancla${an.tipo === "corte" ? " ancla-corte" : ""}${an.emp ? " ancla-emp" : ""}${an.fix ? " ancla-fija" : ""}${an.con ? " ancla-con" : ""}" data-ancla="${esc(String(an.id))}" data-x="${f1(ax)}" data-y="${f1(ay)}">`;
         s += `<circle class="ancla-halo" cx="${f1(ax)}" cy="${f1(ay)}" r="11"/>`;
         s += `<circle class="ancla-dot" cx="${f1(ax)}" cy="${f1(ay)}" r="${conC ? 5 : 4}"${conC ? ` style="fill:${conC};stroke:${conC}"` : ""}/>`;
