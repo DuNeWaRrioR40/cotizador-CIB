@@ -7,7 +7,7 @@
   const state = {
     telas: [], telasOpcSel: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
-    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, figura3D: null, anclasUnif: [], notasUnif: [], subVC: false, vis3D: null, cotasOcultas: {}, cotasPos: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
+    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, ensambles: [], figura3D: null, anclasUnif: [], notasUnif: [], subVC: false, vis3D: null, cotasOcultas: {}, cotasPos: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [], cintasUnif: [],
@@ -195,7 +195,7 @@
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
   const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_visita", "f_despacho", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email", "f_fono1_cliente", "f_fono2_cliente", "f_emp_fono1", "f_emp_fono2"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "vis3D", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "vis3D", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "ensambles", "factorUnif", "granelLineas"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -4651,13 +4651,11 @@
     return { alto: H, ojEn: ojEnUnif(), alas: alasUnif(), altos: altosUnif(), bordesEnPliegue: !!($("f_bordesPliegue") && $("f_bordesPliegue").checked) };
   }
 
-  // ---------- F5: VISOR DE ENSAMBLE 3D (piezas emparejadas por conectores) ----------
-  // Representación simplificada del ARMADO de cada pieza (base + paredes según altos + calados
-  // de la base como contornos). La pieza B se posa sobre la A calzando C1↔C1 y orientando C2:
-  // los marcos tangentes de las caras se alinean (las caras quedan coplanares/enfrentadas).
-  // DESCALCE: se mide en 2D (distancia de confección sobre la tela); si |dA−dB| > 1 cm se dibuja
-  // la cota elástica roja entre los C2 y la barra ofrece corregir el C2 de B sobre su carril.
-  let _ens3d = null, _ensVolteado = false;
+  // ---------- F5: VISOR DE ENSAMBLE 3D (grafo de vínculos, BFS de poses) ----------
+  // Cada VÍNCULO completo posa su pieza satélite sobre la ya posada (C1↔C1, marcos tangentes
+  // alineados = caras coplanares). Raíz = pieza con más vínculos; cadenas y estrellas via BFS.
+  // Descalce por vínculo en 2D (confección, tolerancia 1 cm) con cota roja y corrección al carril.
+  let _ens3d = null, _ensVolt = {};
   function cerrarEnsamble3D() {
     if (!_ens3d) return;
     try { cancelAnimationFrame(_ens3d.raf); } catch (_) {}
@@ -4667,9 +4665,8 @@
   }
   async function abrirEnsamble3D() {
     const ev9 = window.CalcCIBSA.evalExpr, f9 = window.CalcCIBSA.fmtNum;
-    const listas = (state.piezas || []).map((pz) => ({ pz: pz, cons: conectoresDePieza(pz), idx: state.piezas.indexOf(pz) })).filter((r) => r.cons.some((c) => c.slot === 1) && r.cons.some((c) => c.slot === 2));
-    if (listas.length < 2) return alert("Para ensamblar: instala conectores C1 y C2 en DOS piezas (menú del anchor → 🔗 Conector de ensamble).");
-    const RA = listas[0], RB = listas[1];
+    const completos = (state.ensambles || []).filter(vinculoCompleto);
+    if (!completos.length) return alert("No hay ensambles completos. Vincula piezas (🧩 Ensambles en la ficha de la pieza, o menú del anchor → 🔗) e instala C1 y C2 del vínculo en AMBAS piezas.");
     try {
       await ensureLib("THREE", [
         "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
@@ -4679,28 +4676,25 @@
     } catch (e) { return alert("No se pudo cargar el visor 3D (revisa la conexión)."); }
     cerrarEnsamble3D();
     const T = window.THREE;
-    const nomDe = (r) => "Pieza " + (r.idx + 1) + ((r.pz.etiqueta || "").trim() ? " — " + r.pz.etiqueta.trim() : "");
-    // --- armado simplificado de una pieza: grupo 3D + mapa desplegado(x,y) → {v, n} ---
-    function armar(r, colHex) {
-      const pz = r.pz;
+    // --- armado simplificado (base + paredes + contornos de calados) + mapa desplegado→3D ---
+    function armar(pz, colHex) {
       const A = ev9(pz.ancho) || 0, L = ev9(pz.largo) || 0;
       const altos = altosPz(pz) || { sup: 0, inf: 0, izq: 0, der: 0 };
       const grp = new T.Group();
       const mat = new T.MeshBasicMaterial({ color: colHex, transparent: true, opacity: 0.32, side: T.DoubleSide, depthWrite: false });
       const lin = new T.LineBasicMaterial({ color: 0x475569 });
-      const V3 = (p) => new T.Vector3(p[0], p[1], p[2]);
-      const quad = (p1, p2, p3, p4) => {
-        const g = new T.BufferGeometry().setFromPoints([V3(p1), V3(p2), V3(p3), V3(p1), V3(p3), V3(p4)]);
+      const V3 = (q) => new T.Vector3(q[0], q[1], q[2]);
+      const quad = (q1, q2, q3, q4) => {
+        const g = new T.BufferGeometry().setFromPoints([V3(q1), V3(q2), V3(q3), V3(q1), V3(q3), V3(q4)]);
         g.computeVertexNormals();
         grp.add(new T.Mesh(g, mat));
-        grp.add(new T.Line(new T.BufferGeometry().setFromPoints([V3(p1), V3(p2), V3(p3), V3(p4), V3(p1)]), lin));
+        grp.add(new T.Line(new T.BufferGeometry().setFromPoints([V3(q1), V3(q2), V3(q3), V3(q4), V3(q1)]), lin));
       };
-      quad([0, 0, 0], [A, 0, 0], [A, 0, L], [0, 0, L]);                                            // base (plan y→z)
-      if (altos.sup > 0) quad([0, 0, 0], [A, 0, 0], [A, altos.sup, 0], [0, altos.sup, 0]);          // pared sup (z=0)
-      if (altos.inf > 0) quad([0, 0, L], [A, 0, L], [A, altos.inf, L], [0, altos.inf, L]);          // pared inf (z=L)
-      if (altos.izq > 0) quad([0, 0, 0], [0, 0, L], [0, altos.izq, L], [0, altos.izq, 0]);          // pared izq (x=0)
-      if (altos.der > 0) quad([A, 0, 0], [A, 0, L], [A, altos.der, L], [A, altos.der, 0]);          // pared der (x=A)
-      // calados de la base: contorno rojo (rect/circ; otras formas se omiten en esta vista)
+      quad([0, 0, 0], [A, 0, 0], [A, 0, L], [0, 0, L]);
+      if (altos.sup > 0) quad([0, 0, 0], [A, 0, 0], [A, altos.sup, 0], [0, altos.sup, 0]);
+      if (altos.inf > 0) quad([0, 0, L], [A, 0, L], [A, altos.inf, L], [0, altos.inf, L]);
+      if (altos.izq > 0) quad([0, 0, 0], [0, 0, L], [0, altos.izq, L], [0, altos.izq, 0]);
+      if (altos.der > 0) quad([A, 0, 0], [A, 0, L], [A, altos.der, L], [A, altos.der, 0]);
       try {
         const rojo = new T.LineBasicMaterial({ color: 0xb91c1c });
         (cortesSpec(pz.cortes) || []).forEach((c) => {
@@ -4723,18 +4717,8 @@
         if (y > L + 1e-6) return { v: new T.Vector3(clamp(x, 0, A), clamp(y - L, 0, altos.inf || 0.001), L), n: new T.Vector3(0, 0, 1) };
         return { v: new T.Vector3(clamp(x, 0, A), 0, clamp(y, 0, L)), n: new T.Vector3(0, 1, 0) };
       };
-      return { grp: grp, mapa: mapa, A: A, L: L, altos: altos };
+      return { grp: grp, mapa: mapa, A: A, L: L };
     }
-    const armA = armar(RA, 0x2563eb), armB = armar(RB, 0x16a34a);
-    const cA = [RA.cons.find((c) => c.slot === 1), RA.cons.find((c) => c.slot === 2)];
-    const cB = [RB.cons.find((c) => c.slot === 1), RB.cons.find((c) => c.slot === 2)];
-    const pA1 = armA.mapa(cA[0].x, cA[0].y), pA2 = armA.mapa(cA[1].x, cA[1].y);
-    const pB1 = armB.mapa(cB[0].x, cB[0].y), pB2 = armB.mapa(cB[1].x, cB[1].y);
-    // distancias de CONFECCIÓN (2D, sobre la tela)
-    const dA2 = Math.hypot(cA[1].x - cA[0].x, cA[1].y - cA[0].y);
-    const dB2 = Math.hypot(cB[1].x - cB[0].x, cB[1].y - cB[0].y);
-    const uA = pA2.v.clone().sub(pA1.v), uB = pB2.v.clone().sub(pB1.v);
-    if (uA.length() < 1e-6 || uB.length() < 1e-6) return alert("Los conectores C1 y C2 de una pieza están en el mismo punto — sepáralos para definir la orientación.");
     const mkFrame = (u, m) => {
       const t = u.clone().normalize();
       let b = m.clone().sub(t.clone().multiplyScalar(m.dot(t)));
@@ -4743,79 +4727,148 @@
       const w = new T.Vector3().crossVectors(t, b);
       return new T.Matrix4().makeBasis(t, b, w);
     };
-    const FA = mkFrame(uA, pA1.n), FB = mkFrame(uB, pB1.n);
-    let R = FA.clone().multiply(FB.clone().transpose());
-    if (_ensVolteado) R = new T.Matrix4().makeRotationAxis(uA.clone().normalize(), Math.PI).multiply(R);
-    armB.grp.quaternion.setFromRotationMatrix(R);
-    armB.grp.position.copy(pA1.v.clone().sub(pB1.v.clone().applyMatrix4(R)));
-    const pB2W = pB2.v.clone().applyMatrix4(R).add(armB.grp.position);
-    // --- escena / overlay ---
+    // --- nodos del grafo (piezas de vínculos completos) ---
+    const PAL = [0x2563eb, 0x16a34a, 0x9333ea, 0xd97706, 0x0891b2, 0xdb2777, 0x65a30d, 0x7c3aed, 0xb91c1c, 0x0f766e];
+    const nodos = {};   // pzId → {pz, arm, pose:{q,p}|null, grado}
+    completos.forEach((e) => [e.a, e.b].forEach((id) => {
+      if (nodos[id]) { nodos[id].grado++; return; }
+      const pz = (state.piezas || []).find((p) => p.id === id);
+      nodos[id] = { pz: pz, arm: null, pose: null, grado: 1 };
+    }));
+    let colK = 0;
+    Object.keys(nodos).forEach((id) => { nodos[id].arm = armar(nodos[id].pz, PAL[colK++ % PAL.length]); nodos[id].col = PAL[(colK - 1) % PAL.length]; });
+    const wPt = (nd, v) => v.clone().applyQuaternion(nd.pose.q).add(nd.pose.p);
+    const wNr = (nd, v) => v.clone().applyQuaternion(nd.pose.q);
+    // BFS por componentes; cada raíz nueva se corre en X para no superponer ensambles independientes
+    let offX = 0;
+    const resVinc = [];   // {e, host, sat, dHost2, dSat2, desc, wH2, wS2, cSat}
+    const pend = completos.slice();
+    while (true) {
+      const sueltos = Object.keys(nodos).filter((id) => !nodos[id].pose);
+      if (!sueltos.length) break;
+      let raiz = sueltos[0];
+      sueltos.forEach((id) => { if (nodos[id].grado > nodos[raiz].grado) raiz = id; });
+      nodos[raiz].pose = { q: new T.Quaternion(), p: new T.Vector3(offX, 0, 0) };
+      let avance = true;
+      while (avance) {
+        avance = false;
+        for (let k = pend.length - 1; k >= 0; k--) {
+          const e = pend[k];
+          const nA0 = nodos[e.a], nB0 = nodos[e.b];
+          let host = null, sat = null;
+          if (nA0.pose && !nB0.pose) { host = nA0; sat = nB0; }
+          else if (nB0.pose && !nA0.pose) { host = nB0; sat = nA0; }
+          else if (nA0.pose && nB0.pose) { pend.splice(k, 1); continue; }   // ciclo: ya posadas
+          else continue;
+          const cH = conectoresDePieza(host.pz, e.id), cS = conectoresDePieza(sat.pz, e.id);
+          const h1 = cH.find((c) => c.slot === 1), h2 = cH.find((c) => c.slot === 2);
+          const s1 = cS.find((c) => c.slot === 1), s2 = cS.find((c) => c.slot === 2);
+          const pH1 = host.arm.mapa(h1.x, h1.y), pH2 = host.arm.mapa(h2.x, h2.y);
+          const pS1 = sat.arm.mapa(s1.x, s1.y), pS2 = sat.arm.mapa(s2.x, s2.y);
+          const wH1 = wPt(host, pH1.v), wH2 = wPt(host, pH2.v);
+          const uH = wH2.clone().sub(wH1), uS = pS2.v.clone().sub(pS1.v);
+          if (uH.length() < 1e-6 || uS.length() < 1e-6) { pend.splice(k, 1); continue; }
+          const FA = mkFrame(uH, wNr(host, pH1.n)), FB = mkFrame(uS, pS1.n);
+          let R = FA.clone().multiply(FB.clone().transpose());
+          if (_ensVolt[e.id]) R = new T.Matrix4().makeRotationAxis(uH.clone().normalize(), Math.PI).multiply(R);
+          const qS = new T.Quaternion().setFromRotationMatrix(R);
+          const pS = wH1.clone().sub(pS1.v.clone().applyQuaternion(qS));
+          sat.pose = { q: qS, p: pS };
+          const dH2 = Math.hypot(h2.x - h1.x, h2.y - h1.y), dS2 = Math.hypot(s2.x - s1.x, s2.y - s1.y);
+          resVinc.push({ e: e, host: host, sat: sat, dHost2: dH2, dSat2: dS2, desc: Math.abs(dH2 - dS2), wH2: wH2, wS2: wPt(sat, pS2.v), c1Sat: s1, c2Sat: s2 });
+          pend.splice(k, 1); avance = true;
+        }
+      }
+      offX += Math.max(nodos[raiz].arm.A, nodos[raiz].arm.L, 1) * 1.6;
+    }
+    // --- overlay ---
     const ov = document.createElement("div");
     ov.style.cssText = "position:fixed;inset:0;z-index:1250;background:rgba(15,16,18,0.72);display:flex;align-items:center;justify-content:center;";
     const panel = document.createElement("div");
-    panel.style.cssText = "background:var(--surface,#fff);border-radius:14px;width:min(860px,96vw);max-height:94vh;display:flex;flex-direction:column;overflow:hidden;";
+    panel.style.cssText = "background:var(--surface,#fff);border-radius:14px;width:min(880px,96vw);max-height:94vh;display:flex;flex-direction:column;overflow:hidden;";
     const head = document.createElement("div");
     head.style.cssText = "display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border,#ddd);flex-wrap:wrap;";
-    head.innerHTML = '<strong style="flex:1">🧩 Ensamble 3D — <span style="color:#2563eb">' + nomDe(RA) + '</span> + <span style="color:#16a34a">' + nomDe(RB) + '</span></strong>';
-    const bVolt = document.createElement("button"); bVolt.type = "button"; bVolt.className = "btn-outline"; bVolt.textContent = "↔ Voltear " + nomDe(RB).split(" — ")[0];
-    bVolt.addEventListener("click", () => { _ensVolteado = !_ensVolteado; cerrarEnsamble3D(); setTimeout(abrirEnsamble3D, 20); });
-    const bX = document.createElement("button"); bX.type = "button"; bX.className = "btn-outline"; bX.textContent = "✕";
-    bX.addEventListener("click", cerrarEnsamble3D);
-    head.appendChild(bVolt); head.appendChild(bX);
+    const leyenda = Object.keys(nodos).map((id) => '<span style="color:#' + nodos[id].col.toString(16).padStart(6, "0") + ';font-weight:600">' + nombrePieza(nodos[id].pz) + '</span>').join(" · ");
+    head.innerHTML = '<strong style="flex:1">🧩 Ensamble 3D — ' + leyenda + '</strong>';
+    const bX = document.createElement("button"); bX.type = "button"; bX.className = "btn-outline"; bX.textContent = "✕"; bX.addEventListener("click", cerrarEnsamble3D);
+    head.appendChild(bX);
     const cv = document.createElement("canvas");
-    cv.style.cssText = "width:100%;height:min(58vh,520px);display:block;touch-action:none;cursor:grab;";
+    cv.style.cssText = "width:100%;height:min(52vh,480px);display:block;touch-action:none;cursor:grab;";
     const barra = document.createElement("div");
-    barra.style.cssText = "padding:10px 14px;border-top:1px solid var(--border,#ddd);display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:0.92em;";
-    const desc = Math.abs(dA2 - dB2);
-    if (desc <= 0.01) {
-      barra.innerHTML = '<span style="color:#15803d;font-weight:600">✅ Ensamble calzado</span><span class="muted">C1↔C1 y C2↔C2 coinciden (descalce ' + Math.round(desc * 1000) + ' mm, dentro de la tolerancia de confección de 1 cm).</span>';
-    } else {
-      const sp = document.createElement("span");
-      sp.style.cssText = "color:#b91c1c;font-weight:600";
-      sp.textContent = "⚠ Descalce " + f9(rd3(desc)) + " m entre los C2 (" + nomDe(RA).split(" — ")[0] + ": " + f9(rd3(dA2)) + " m · " + nomDe(RB).split(" — ")[0] + ": " + f9(rd3(dB2)) + " m)";
-      barra.appendChild(sp);
-      const bFix = document.createElement("button"); bFix.type = "button"; bFix.className = "btn-outline";
-      bFix.textContent = "🔧 Corregir C2 de " + nomDe(RB).split(" — ")[0] + " → " + f9(rd3(dA2)) + " m";
-      bFix.addEventListener("click", () => corregirConectorB(RB, cB, dA2));
-      barra.appendChild(bFix);
+    barra.style.cssText = "padding:8px 14px;border-top:1px solid var(--border,#ddd);display:flex;flex-direction:column;gap:6px;font-size:0.9em;max-height:22vh;overflow:auto;";
+    resVinc.forEach((rv) => {
+      const fila = document.createElement("div");
+      fila.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;";
+      const nomV = "E" + ensIdx(rv.e) + " (" + nombrePieza(rv.host.pz).split(" — ")[0] + " + " + nombrePieza(rv.sat.pz).split(" — ")[0] + ")";
+      if (rv.desc <= 0.01) {
+        fila.innerHTML = '<span style="color:#15803d;font-weight:600">✅ ' + nomV + '</span><span class="muted small">calzado (descalce ' + Math.round(rv.desc * 1000) + ' mm)</span>';
+      } else {
+        fila.innerHTML = '<span style="color:#b91c1c;font-weight:600">⚠ ' + nomV + '</span><span class="muted small">descalce ' + f9(rd3(rv.desc)) + ' m (' + f9(rd3(rv.dHost2)) + ' vs ' + f9(rd3(rv.dSat2)) + ' m)</span>';
+        const bF = document.createElement("button"); bF.type = "button"; bF.className = "btn-outline"; bF.style.fontSize = "0.85em";
+        bF.textContent = "🔧 Corregir C2 de " + nombrePieza(rv.sat.pz).split(" — ")[0] + " → " + f9(rd3(rv.dHost2)) + " m";
+        bF.addEventListener("click", () => corregirConectorEns(rv.sat.pz, rv.c1Sat, rv.c2Sat, rv.dHost2));
+        fila.appendChild(bF);
+      }
+      const bV = document.createElement("button"); bV.type = "button"; bV.className = "btn-outline"; bV.style.fontSize = "0.85em";
+      bV.textContent = "↔ Voltear";
+      bV.addEventListener("click", () => { _ensVolt[rv.e.id] = !_ensVolt[rv.e.id]; cerrarEnsamble3D(); setTimeout(abrirEnsamble3D, 20); });
+      fila.appendChild(bV);
+      barra.appendChild(fila);
+    });
+    const incompletos = (state.ensambles || []).filter((e) => !vinculoCompleto(e));
+    if (incompletos.length) {
+      const fi = document.createElement("div"); fi.className = "muted small";
+      fi.textContent = "· Sin posar (faltan conectores): " + incompletos.map((e) => "E" + ensIdx(e)).join(", ");
+      barra.appendChild(fi);
     }
-    barra.insertAdjacentHTML("beforeend", '<span class="muted small" style="margin-left:auto">● <span style="color:#e67e22">C1</span> · <span style="color:#0284c7">C2</span> — arrastra para rotar, rueda/pellizco para acercar</span>');
+    barra.insertAdjacentHTML("beforeend", '<div class="muted small" style="margin-top:2px">● <span style="color:#e67e22">C1</span> · <span style="color:#0284c7">C2</span> — arrastra para rotar, rueda/pellizco para acercar · tolerancia de confección 1 cm</div>');
     panel.appendChild(head); panel.appendChild(cv); panel.appendChild(barra);
     ov.appendChild(panel); document.body.appendChild(ov);
     ov.addEventListener("click", (e) => { if (e.target === ov) cerrarEnsamble3D(); });
-    // escena
+    // --- escena ---
     const ren = new T.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
-    const W9 = cv.clientWidth || 800, H9 = cv.clientHeight || 500;
+    const W9 = cv.clientWidth || 820, H9 = cv.clientHeight || 460;
     ren.setSize(W9, H9, false); ren.setPixelRatio(window.devicePixelRatio || 1);
     const scene = new T.Scene(); scene.background = new T.Color(0xf5f5f2);
-    scene.add(armA.grp); scene.add(armB.grp);
-    const mkBola = (pos, hex) => { const m9 = new T.Mesh(new T.SphereGeometry(Math.max(0.025, Math.max(armA.A, armA.L) * 0.012), 12, 12), new T.MeshBasicMaterial({ color: hex })); m9.position.copy(pos); scene.add(m9); };
-    mkBola(pA1.v, 0xe67e22); mkBola(pA2.v, 0x0284c7);
-    mkBola(pB1.v.clone().applyMatrix4(R).add(armB.grp.position), 0xe67e22); mkBola(pB2W, 0x0284c7);
-    if (desc > 0.01) { const ln9 = new T.Line(new T.BufferGeometry().setFromPoints([pA2.v.clone(), pB2W.clone()]), new T.LineDashedMaterial({ color: 0xdc2626, dashSize: 0.06, gapSize: 0.04 })); ln9.computeLineDistances(); scene.add(ln9); }
-    const grid = new T.GridHelper(Math.max(armA.A, armA.L, 2) * 2.4, 12, 0xd8d8d2, 0xecece6); grid.position.y = -0.002; scene.add(grid);
+    let dimMax = 1;
+    Object.keys(nodos).forEach((id) => {
+      const nd = nodos[id];
+      nd.arm.grp.quaternion.copy(nd.pose.q); nd.arm.grp.position.copy(nd.pose.p);
+      scene.add(nd.arm.grp);
+      dimMax = Math.max(dimMax, nd.arm.A, nd.arm.L);
+    });
+    const rB = Math.max(0.025, dimMax * 0.011);
+    const bola = (pos, hex) => { const m9 = new T.Mesh(new T.SphereGeometry(rB, 12, 12), new T.MeshBasicMaterial({ color: hex })); m9.position.copy(pos); scene.add(m9); };
+    resVinc.forEach((rv) => {
+      const cH = conectoresDePieza(rv.host.pz, rv.e.id), cS = conectoresDePieza(rv.sat.pz, rv.e.id);
+      cH.forEach((c) => bola(wPt(rv.host, rv.host.arm.mapa(c.x, c.y).v), c.slot === 1 ? 0xe67e22 : 0x0284c7));
+      cS.forEach((c) => bola(wPt(rv.sat, rv.sat.arm.mapa(c.x, c.y).v), c.slot === 1 ? 0xe67e22 : 0x0284c7));
+      if (rv.desc > 0.01) { const ln9 = new T.Line(new T.BufferGeometry().setFromPoints([rv.wH2.clone(), rv.wS2.clone()]), new T.LineDashedMaterial({ color: 0xdc2626, dashSize: 0.06, gapSize: 0.04 })); ln9.computeLineDistances(); scene.add(ln9); }
+    });
+    const grid = new T.GridHelper(Math.max(dimMax, 2) * 2.6, 12, 0xd8d8d2, 0xecece6); grid.position.y = -0.002; scene.add(grid);
+    const raizN = nodos[Object.keys(nodos)[0]];
+    const ctr = new T.Vector3(raizN.arm.A / 2, 0.3, raizN.arm.L / 2).add(raizN.pose.p);
     const cam = new T.PerspectiveCamera(42, W9 / H9, 0.01, 1000);
-    const ctr = new T.Vector3(armA.A / 2, 0.3, armA.L / 2);
-    let th = Math.PI / 4, ph = Math.PI / 3.2, rad = Math.max(armA.A, armA.L, 1.5) * 2.1;
+    let th = Math.PI / 4, ph = Math.PI / 3.2, rad = Math.max(dimMax, 1.5) * 2.1;
     const colocar = () => { cam.position.set(ctr.x + rad * Math.sin(ph) * Math.cos(th), ctr.y + rad * Math.cos(ph), ctr.z + rad * Math.sin(ph) * Math.sin(th)); cam.lookAt(ctr); };
     colocar();
     let drag = null;
     cv.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); });
     cv.addEventListener("pointermove", (e) => { if (!drag) return; th += (e.clientX - drag.x) * 0.008; ph = Math.max(0.15, Math.min(Math.PI - 0.15, ph - (e.clientY - drag.y) * 0.008)); drag = { x: e.clientX, y: e.clientY }; colocar(); });
     cv.addEventListener("pointerup", () => { drag = null; });
-    cv.addEventListener("wheel", (e) => { e.preventDefault(); rad = Math.max(0.5, Math.min(60, rad * (e.deltaY > 0 ? 1.1 : 0.9))); colocar(); }, { passive: false });
+    cv.addEventListener("wheel", (e) => { e.preventDefault(); rad = Math.max(0.5, Math.min(80, rad * (e.deltaY > 0 ? 1.1 : 0.9))); colocar(); }, { passive: false });
     const esc9 = (e) => { if (e.key === "Escape") cerrarEnsamble3D(); };
     document.addEventListener("keydown", esc9);
     _ens3d = { ov: ov, ren: ren, esc: esc9, raf: 0 };
     const loop = () => { if (!_ens3d) return; ren.render(scene, cam); _ens3d.raf = requestAnimationFrame(loop); };
     loop();
   }
-  // Corrige el C2 de la pieza B: lo desliza por su CARRIL (arista o corte) hasta que la distancia
-  // C1→C2 sobre la tela iguale la de la pieza A (raíz de la cuadrática más cercana a la posición actual).
-  function corregirConectorB(RB, cB, dMeta) {
+  // Corrige el C2 del satélite: lo desliza por su CARRIL hasta que la distancia C1→C2 sobre la
+  // tela iguale la del host (raíz de la cuadrática más cercana a la posición actual).
+  function corregirConectorEns(pz, c1r, r2, dMeta) {
     const ev9 = window.CalcCIBSA.evalExpr;
-    const pz = RB.pz, A9 = ev9(pz.ancho) || 0, L9 = ev9(pz.largo) || 0;
-    const c1 = { x: cB[0].x, y: cB[0].y }, r2 = cB[1];
+    const A9 = ev9(pz.ancho) || 0, L9 = ev9(pz.largo) || 0;
+    const c1 = { x: c1r.x, y: c1r.y };
     let a9, u9, len9, cur9;
     if (!r2.esCorte) {
       const sg = segDeAncla(r2.an, A9, L9); if (!sg) return;
@@ -7302,29 +7355,86 @@
     const f = window.CalcCIBSA.fmtNum, out = [];
     (anclas || []).forEach((an) => {
       const pq = posAnclaArista(an, A, L);
-      if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: (an.con ? "C" + an.con + " · " : "") + f(rd3(parseFloat(an.d) || 0)) + " m", tipo: "arista", fix: !!an.fix, con: an.con || 0 });
+      if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: (an.con && an.con.s ? "E" + ensIdxById(an.con.e) + "·C" + an.con.s + " · " : "") + f(rd3(parseFloat(an.d) || 0)) + " m", tipo: "arista", fix: !!an.fix, con: (an.con && an.con.s) || 0 });
     });
     visibles(cortesRaw || []).forEach((c) => {
       (c.anclas || []).forEach((an) => {
         const pq = posAnclaCorte(c, an);
-        if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: (an.con ? "C" + an.con + " · " : "") + f(rd3(pq.t)) + " m", tipo: "corte", emp: an.emp != null, fix: !!an.fix, con: an.con || 0 });
+        if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: (an.con && an.con.s ? "E" + ensIdxById(an.con.e) + "·C" + an.con.s + " · " : "") + f(rd3(pq.t)) + " m", tipo: "corte", emp: an.emp != null, fix: !!an.fix, con: (an.con && an.con.s) || 0 });
       });
     });
     return out;
   }
-  // ---------- F5: CONECTORES DE ENSAMBLE ----------
-  // Un conector es un anchor con rol (an.con = 1|2). Cada pieza admite C1 y C2; dos piezas con
-  // ambos conectores se emparejan (C1↔C1, C2↔C2) en el visor de ensamble.
-  function conectoresDePieza(pz) {
+  // ---------- F5: ENSAMBLES POR VÍNCULO ----------
+  // Un VÍNCULO (state.ensambles: {id, a: pzId, b: pzId}) declara que dos piezas se ensamblan.
+  // Una pieza puede tener VARIOS vínculos (cobertor de auto: cuboide + espejos + antena + alerón).
+  // Un conector es un anchor con rol an.con = { e: ensId, s: 1|2 }: C1/C2 DE ESE VÍNCULO.
+  function ensamblesDe(pz) { return (state.ensambles || []).filter((e) => e.a === pz.id || e.b === pz.id); }
+  function ensOtra(e, pz) { return (state.piezas || []).find((p) => p.id === (e.a === pz.id ? e.b : e.a)); }
+  function ensIdx(e) { return (state.ensambles || []).indexOf(e) + 1; }
+  function ensIdxById(id) { const k = (state.ensambles || []).findIndex((e) => e.id === id); return k === -1 ? "?" : k + 1; }
+  function nombrePieza(pz) { const i = (state.piezas || []).indexOf(pz); return "Pieza " + (i + 1) + ((pz.etiqueta || "").trim() ? " — " + pz.etiqueta.trim() : ""); }
+  function conectoresDePieza(pz, ensId) {
     const ev9 = window.CalcCIBSA.evalExpr;
     const A9 = ev9(pz.ancho) || 0, L9 = ev9(pz.largo) || 0;
-    const out = [];
-    (pz.anclas || []).forEach((an) => { if (an.con) { const p9 = posAnclaArista(an, A9, L9); if (p9) out.push({ an: an, slot: an.con, x: p9.x, y: p9.y, esCorte: false }); } });
-    visibles(pz.cortes || []).forEach((c) => (c.anclas || []).forEach((an) => { if (an.con) { const p9 = posAnclaCorte(c, an); if (p9) out.push({ an: an, slot: an.con, x: p9.x, y: p9.y, esCorte: true, c: c }); } }));
+    const out = [], ok = (an) => an.con && typeof an.con === "object" && (ensId == null || an.con.e === ensId);
+    (pz.anclas || []).forEach((an) => { if (ok(an)) { const p9 = posAnclaArista(an, A9, L9); if (p9) out.push({ an: an, slot: an.con.s, ens: an.con.e, x: p9.x, y: p9.y, esCorte: false }); } });
+    visibles(pz.cortes || []).forEach((c) => (c.anclas || []).forEach((an) => { if (ok(an)) { const p9 = posAnclaCorte(c, an); if (p9) out.push({ an: an, slot: an.con.s, ens: an.con.e, x: p9.x, y: p9.y, esCorte: true, c: c }); } }));
     out.sort((a, b) => a.slot - b.slot);
     return out;
   }
-  function piezaEnsamblable(pz) { const cs = conectoresDePieza(pz); return cs.some((r) => r.slot === 1) && cs.some((r) => r.slot === 2); }
+  function vinculoCompleto(e) {
+    const pa = (state.piezas || []).find((p) => p.id === e.a), pb = (state.piezas || []).find((p) => p.id === e.b);
+    if (!pa || !pb) return false;
+    const has = (cs) => cs.some((c) => c.slot === 1) && cs.some((c) => c.slot === 2);
+    return has(conectoresDePieza(pa, e.id)) && has(conectoresDePieza(pb, e.id));
+  }
+  function vincularPiezas(pzA, pzB) {
+    if (!pzA || !pzB || pzA === pzB) return null;
+    let e = (state.ensambles || []).find((e2) => (e2.a === pzA.id && e2.b === pzB.id) || (e2.a === pzB.id && e2.b === pzA.id));
+    if (!e) { e = { id: "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), a: pzA.id, b: pzB.id }; (state.ensambles = state.ensambles || []).push(e); }
+    return e;
+  }
+  function desvincularEns(e) {
+    const k = (state.ensambles || []).indexOf(e); if (k === -1) return;
+    state.ensambles.splice(k, 1);
+    (state.piezas || []).forEach((pz) => {
+      (pz.anclas || []).forEach((an) => { if (an.con && an.con.e === e.id) delete an.con; });
+      (pz.cortes || []).forEach((c) => (c.anclas || []).forEach((an) => { if (an.con && an.con.e === e.id) delete an.con; }));
+    });
+  }
+  // Panel "🧩 Ensambles" de la ficha corta de la pieza: chips de vínculos + selector para crear.
+  function renderEnsPz(cont, pz) {
+    if (!cont) return; cont.innerHTML = "";
+    const box = document.createElement("div");
+    box.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0;";
+    const cap = document.createElement("span"); cap.className = "muted small"; cap.textContent = "🧩 Ensambles:"; box.appendChild(cap);
+    ensamblesDe(pz).forEach((e) => {
+      const otra = ensOtra(e, pz);
+      const nC = conectoresDePieza(pz, e.id).length;
+      const chip = document.createElement("span"); chip.className = "ficha-quick-btn";
+      chip.style.cssText = "display:inline-flex;align-items:center;gap:6px;cursor:default;";
+      chip.appendChild(document.createTextNode("E" + ensIdx(e) + " · " + (otra ? nombrePieza(otra) : "¿pieza eliminada?") + " (" + nC + "/2 con.)"));
+      const x = document.createElement("button"); x.type = "button"; x.textContent = "✕"; x.title = "Quitar vínculo (borra sus conectores en ambas piezas)";
+      x.style.cssText = "border:0;background:none;cursor:pointer;color:#b91c1c;padding:0 2px;";
+      x.addEventListener("click", () => { if (confirm("¿Quitar el ensamble E" + ensIdx(e) + " con " + (otra ? nombrePieza(otra) : "?") + "? Se borran sus conectores en ambas piezas.")) { desvincularEns(e); renderPiezas(); recompute(); } });
+      chip.appendChild(x);
+      box.appendChild(chip);
+    });
+    const cands = (state.piezas || []).filter((p2) => p2 !== pz && !ensamblesDe(pz).some((e) => ensOtra(e, pz) === p2));
+    if (cands.length) {
+      const sel = document.createElement("select");
+      sel.style.cssText = "font-size:0.85em;max-width:220px;";
+      const o0 = document.createElement("option"); o0.value = ""; o0.textContent = "＋ Vincular con…"; sel.appendChild(o0);
+      cands.forEach((p2) => { const o = document.createElement("option"); o.value = p2.id; o.textContent = nombrePieza(p2); sel.appendChild(o); });
+      sel.addEventListener("change", () => {
+        const p2 = (state.piezas || []).find((x2) => String(x2.id) === sel.value); if (!p2) return;
+        vincularPiezas(pz, p2); renderPiezas(); recompute();
+      });
+      box.appendChild(sel);
+    }
+    cont.appendChild(box);
+  }
   // Modo "conectar anchors": tras elegirlo en el menú de un anchor, el siguiente clic en OTRO
   // anchor de arista traza un corte/guía entre ambos, ya EMPATADO a los dos (edición exprés).
   let _anchorPend = null;
@@ -7797,18 +7907,32 @@
         const otrosC = (reg.c.anclas || []).filter((a2) => a2 !== reg.an && a2.emp == null);
         if (otrosC.length === 1) itemMas("Modificar medida entre anchors…", () => modificarMedidaEntreCorte(reg.c, reg.an, otrosC[0]));
       }
-      // F5: CONECTOR DE ENSAMBLE — anchor con rol; C1 y C2 por pieza emparejan piezas en 🧩 Ensamble 3D.
+      // F5: CONECTOR DE ENSAMBLE por VÍNCULO — cada vínculo declarado (🧩 en la ficha de la pieza)
+      // pide sus propios C1/C2; sin vínculo, instalar un conector CREA el vínculo de una vez.
       { const pzC = (state.prodMode === "compuesto") ? (state.piezas || []).find((p9) => p9.anclas === ctx.anclas || p9.cortes === ctx.cortes) : null;
         if (pzC) {
-          if (reg.an.con) item("🔗 Quitar conector C" + reg.an.con, () => { delete reg.an.con; if (ctx.onChange) ctx.onChange(); });
-          else {
-            const usados = conectoresDePieza(pzC).map((r9) => r9.slot);
-            const libre = usados.indexOf(1) === -1 ? 1 : (usados.indexOf(2) === -1 ? 2 : 0);
-            if (libre) item("🔗 Conector de ensamble (C" + libre + ")", () => {
-              reg.an.con = libre; if (ctx.onChange) ctx.onChange();
-              alert("Conector C" + libre + " instalado." + (libre === 1 ? " Instala C2 en esta pieza, luego C1+C2 en la otra, y abre 🧩 Ensamble 3D." : " Instala C1+C2 en la otra pieza y abre 🧩 Ensamble 3D (bajo el resumen de piezas)."));
+          if (reg.an.con && typeof reg.an.con === "object") {
+            const eC = (state.ensambles || []).find((e2) => e2.id === reg.an.con.e);
+            item("🔗 Quitar conector E" + (eC ? ensIdx(eC) : "?") + "·C" + reg.an.con.s, () => { delete reg.an.con; if (ctx.onChange) ctx.onChange(); });
+          } else if (!reg.an.con) {
+            const vs = ensamblesDe(pzC);
+            vs.forEach((e2) => {
+              const usados = conectoresDePieza(pzC, e2.id).map((r9) => r9.slot);
+              const libre = usados.indexOf(1) === -1 ? 1 : (usados.indexOf(2) === -1 ? 2 : 0);
+              const otra = ensOtra(e2, pzC);
+              if (libre) item("🔗 Conector C" + libre + " del ensamble E" + ensIdx(e2) + " (con " + (otra ? nombrePieza(otra) : "¿?") + ")", () => {
+                reg.an.con = { e: e2.id, s: libre }; if (ctx.onChange) ctx.onChange();
+                if (libre === 2 && !vinculoCompleto(e2)) alert("C1+C2 de E" + ensIdx(e2) + " listos en esta pieza. Instala los de " + (otra ? nombrePieza(otra) : "la otra pieza") + " y abre 🧩 Ensamble 3D.");
+              });
             });
-            else itemMas("🔗 C1 y C2 ya instalados en esta pieza", () => { alert("Esta pieza ya tiene sus 2 conectores. Quita uno (menú de su anchor) si quieres moverlo."); });
+            (state.piezas || []).forEach((p2) => {
+              if (p2 === pzC || vs.some((e2) => ensOtra(e2, pzC) === p2)) return;
+              itemMas("🔗 Vincular con " + nombrePieza(p2) + " y poner su C1 aquí", () => {
+                const e2 = vincularPiezas(pzC, p2); if (!e2) return;
+                reg.an.con = { e: e2.id, s: 1 };
+                renderPiezas(); if (ctx.onChange) ctx.onChange();
+              });
+            });
           }
         } }
       if (!reg.an.fix) itemMas("Bloquear anchor (fijar su posición)", () => { reg.an.fix = true; if (ctx.onChange) ctx.onChange(); });
@@ -9074,6 +9198,7 @@
             <option value="ancho">Uniones a lo ancho</option></select></label>
           <label class="field full"><span>Color (opcional)</span><input class="pz-color" type="text" placeholder="N/A · solo para el plano de taller" /></label>
         </div>
+        <div class="pz-ens"></div>
         <label class="chk"><input class="pz-usaAlto" type="checkbox" /> <span>Volumétrico (agregar alto)</span></label>
         <label class="field pz-alto-field hidden"><span>Alto (m)</span><input class="pz-alto" type="text" inputmode="text" placeholder="se suma 2× alto al largo y al ancho" /></label>
         <label class="chk pz-ojvol-field hidden"><input class="pz-ojVolExt" type="checkbox" checked /> <span>Ojetillos en el borde externo del desplegado</span></label>
@@ -9131,6 +9256,7 @@
       q(".pz-orient").value = pz.orient || "largo";
       q(".pz-color").value = pz.color || "";
       q(".pz-color").addEventListener("input", (e) => { pz.color = e.target.value; });
+      renderEnsPz(q(".pz-ens"), pz);
       // Volumétrico (alto) por pieza
       q(".pz-usaAlto").checked = !!pz.usaAlto;
       q(".pz-alto").value = pz.altura || "";
@@ -9422,17 +9548,17 @@
       resumenHTML = h;
     }
     if (resumen) resumen.innerHTML = resumenHTML;
-    // F5: botón de ensamble (visible con 2+ piezas ensamblables: C1+C2 instalados)
-    { const listasE = (state.piezas || []).filter(piezaEnsamblable);
+    // F5: botón de ensamble (visible con 1+ vínculos COMPLETOS: C1+C2 en ambas piezas)
+    { const listosE = (state.ensambles || []).filter(vinculoCompleto);
       let bE = $("btnEnsamble3D");
-      if (listasE.length >= 2) {
+      if (listosE.length >= 1) {
         if (!bE && resumen) {
           bE = document.createElement("button"); bE.type = "button"; bE.id = "btnEnsamble3D"; bE.className = "btn-outline";
           bE.style.marginTop = "8px";
           bE.addEventListener("click", () => abrirEnsamble3D());
           resumen.parentNode.insertBefore(bE, resumen.nextSibling);
         }
-        if (bE) { bE.classList.remove("hidden"); bE.textContent = "🧩 Ensamble 3D (" + listasE.map((p9, i9) => "Pieza " + (state.piezas.indexOf(p9) + 1)).join(" + ") + ")"; }
+        if (bE) { bE.classList.remove("hidden"); bE.textContent = "🧩 Ensamble 3D (" + listosE.length + (listosE.length === 1 ? " vínculo" : " vínculos") + ")"; }
       } else if (bE) bE.classList.add("hidden"); }
     { const rb = $("piezasResumenBottom"); if (rb) rb.innerHTML = resumenHTML; }
     state.compuesto = { calcs, subtotalGen, desc, descuento, neto, iva, total };
