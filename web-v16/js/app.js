@@ -1842,13 +1842,16 @@
   function fijarAnchorRecien(an, esCorte, ctxA) {
     if (typeof dialogoDistanciaAncla !== "function") return;
     const cur = esCorte ? (parseFloat(an.t) || 0) : (parseFloat(an.d) || 0);
+    let lenC = 0;
+    if (esCorte) { const cH = (ctxA.cortes || []).find((c9) => Array.isArray(c9.anclas) && c9.anclas.indexOf(an) !== -1); const ln9 = cH && lineaRawCorte(cH); if (ln9) lenC = ln9.w; }
+    else { const sg9 = segDeAncla(an, ctxA.A, ctxA.L); if (sg9) lenC = Math.hypot(sg9.b.x - sg9.a.x, sg9.b.y - sg9.a.y); }
     dialogoDistanciaAncla(esCorte ? "Distancia desde el extremo inicial de la línea (m)" : "Distancia desde la esquina (m)", Math.round(cur * 1000) / 1000, (v, bloquear) => {
       const rv = Math.round(v * 1000) / 1000;
       if (esCorte) an.t = rv; else an.d = rv;
       if (bloquear) an.fix = true;
       aplicarEmpates(ctxA.cortes, ctxA.anclas, ctxA.A, ctxA.L);
       if (ctxA.onChange) ctxA.onChange();
-    });
+    }, lenC);
   }
   function irANodo(target, tituloEl) {
     expandirSiCerrada(target);
@@ -4998,17 +5001,23 @@
     const ejeF = (() => {
       if (fanF) return null;   // el abanico manda
       if (fig || !(A > 0) || !(L > 0)) return null;
+      // ejeLado === "A": el usuario eligió mover el OTRO lado — se rota el marco 180° (u y nrm
+      // negados) y toda la maquinaria (mitades, paredes, accesorios, espejo) sigue igual.
+      const flipSi = (r9, c9) => {
+        if (c9 && c9.ejeLado === "A") { r9.u = { x: -r9.u.x, y: -r9.u.y }; r9.nrm = { x: -r9.nrm.x, y: -r9.nrm.y }; r9.inv = true; }
+        return r9;
+      };
       for (const c of visibles(state.cortesUnif)) {
         if (!c || c.tipo !== "guia" || !c.ejeVis) continue;
         const ln = lineaRawCorte(c); if (!ln) continue;
         const ang = (((parseFloat(c.angulo) || 0) % 180) + 180) % 180;
         const x0 = Math.min(ln.a.x, ln.a.x + ln.u.x * ln.w), x1 = Math.max(ln.a.x, ln.a.x + ln.u.x * ln.w);
         const y0 = Math.min(ln.a.y, ln.a.y + ln.u.y * ln.w), y1 = Math.max(ln.a.y, ln.a.y + ln.u.y * ln.w);
-        if ((ang < 1 || ang > 179) && ln.a.y > 0.01 && ln.a.y < L - 0.01 && x0 <= 0.01 && x1 >= A - 0.01) return { horiz: true, pos: ln.a.y, P0: { x: 0, y: ln.a.y }, u: { x: 1, y: 0 }, nrm: { x: 0, y: 1 }, nombre: "Eje · " + (c.legend || "guía"), c: c };
-        if (Math.abs(ang - 90) < 1 && ln.a.x > 0.01 && ln.a.x < A - 0.01 && y0 <= 0.01 && y1 >= L - 0.01) return { horiz: false, pos: ln.a.x, P0: { x: ln.a.x, y: 0 }, u: { x: 0, y: 1 }, nrm: { x: 1, y: 0 }, nombre: "Eje · " + (c.legend || "guía"), c: c };
+        if ((ang < 1 || ang > 179) && ln.a.y > 0.01 && ln.a.y < L - 0.01 && x0 <= 0.01 && x1 >= A - 0.01) return flipSi({ horiz: true, pos: ln.a.y, P0: { x: 0, y: ln.a.y }, u: { x: 1, y: 0 }, nrm: { x: 0, y: 1 }, nombre: "Eje · " + (c.legend || "guía"), c: c }, c);
+        if (Math.abs(ang - 90) < 1 && ln.a.x > 0.01 && ln.a.x < A - 0.01 && y0 <= 0.01 && y1 >= L - 0.01) return flipSi({ horiz: false, pos: ln.a.x, P0: { x: ln.a.x, y: 0 }, u: { x: 0, y: 1 }, nrm: { x: 1, y: 0 }, nombre: "Eje · " + (c.legend || "guía"), c: c }, c);
         // Eje LIBRE (cualquier ángulo — p.ej. diagonal) en productos PLANOS: parte el paño por
         // la línea de la guía. En volumétricos siguen solo los h/v (las paredes exigen ortogonal).
-        if (!(H > 0)) return { libre: true, P0: { x: ln.a.x, y: ln.a.y }, u: { x: ln.u.x, y: ln.u.y }, nrm: { x: -ln.u.y, y: ln.u.x }, nombre: "Eje · " + (c.legend || "guía"), c: c };
+        if (!(H > 0)) return flipSi({ libre: true, P0: { x: ln.a.x, y: ln.a.y }, u: { x: ln.u.x, y: ln.u.y }, nrm: { x: -ln.u.y, y: ln.u.x }, nombre: "Eje · " + (c.legend || "guía"), c: c }, c);
       }
       return null;
     })();
@@ -5306,6 +5315,7 @@
       plieguesUI.push({ nombre: nomAla, set: set, v0: v00 });
       if (!alasInner3D[nomAla]) alasInner3D[nomAla] = { inner: inner, len: len, hAla: hAla };
       (alasParts3D[nomAla] = alasParts3D[nomAla] || []).push({ inner: inner, hAla: hAla, t0: t0 || 0, t1: (t0 || 0) + len });
+      return outer;
     };
     const alasInner3D = {}, alasParts3D = {};
     // Destino por PARTE de pared: elige la parte que contiene la coordenada t (pared partida por el eje).
@@ -5340,7 +5350,8 @@
       };
       setE(0);
       plieguesUI.push({ nombre: ejeF.nombre, set: setE, v0: 0, espejo: (on) => { ejeEspejo = !!on; setE(ejeUltimo); },
-        alasFijas: { val: () => !!(ejeF.c && ejeF.c.ejeAlasFijas), set: (on) => { if (ejeF.c) ejeF.c.ejeAlasFijas = !!on; cerrarVol3D(); setTimeout(() => { abrirVol3D(); }, 30); } } });
+        alasFijas: { val: () => !!(ejeF.c && ejeF.c.ejeAlasFijas), set: (on) => { if (ejeF.c) ejeF.c.ejeAlasFijas = !!on; cerrarVol3D(); setTimeout(() => { abrirVol3D(); }, 30); } },
+        ladoInv: { val: () => !!(ejeF.c && ejeF.c.ejeLado === "A"), set: (on) => { if (ejeF.c) ejeF.c.ejeLado = on ? "A" : ""; cerrarVol3D(); setTimeout(() => { abrirVol3D(); }, 30); } } });
       ejeCtl = { inner: innerE, outerE: outerE, bis: innerB };
     }
     if (!fig) {
@@ -5427,47 +5438,49 @@
         }[k];
         if (!ejeF) { alaPliegue(nom, h, base.P0, base.ux, base.uz, base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4); return; }
         const pos = ejeF.pos, paralela = (ejeF.horiz === horizW);
+        const ladoDe = (mx, my) => (mx - ejeF.P0.x) * ejeF.nrm.x + (my - ejeF.P0.y) * ejeF.nrm.y;   // >0 = lado MÓVIL
         if (paralela) {
-          const lejos = ejeF.horiz ? (k === "inf") : (k === "der");
-          if (!lejos) { alaPliegue(nom, h, base.P0, base.ux, base.uz, base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4); return; }
-          const dist = ejeF.horiz ? (L - pos) : (A - pos);
-          alaPliegue(nom, h, new T.Vector3(0, 0, dist), new T.Vector3(1, 0, 0), new T.Vector3(0, 0, 1), base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4, null, ejeCtl.inner);
+          // Pared PARALELA al eje: entera de un lado. Se construye normal (en mundo) y, si queda
+          // del lado MÓVIL, se anida en la bisagra con attach() — vale para cualquier lado elegido.
+          const tT = horizW ? (k === "sup" ? 0 : L) : (k === "izq" ? 0 : A);
+          const enMovil = (horizW ? ladoDe(A / 2, tT) : ladoDe(tT, L / 2)) > 0;
+          const outerW = alaPliegue(nom, h, base.P0, base.ux, base.uz, base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4);
+          if (enMovil && outerW && ejeCtl.inner.attach) { try { ejeCtl.inner.attach(outerW); } catch (e9) {} }
           return;
         }
         if (ejeF.c && ejeF.c.ejeAlasFijas) {
-          // Opción "aletas rígidas": la aleta perpendicular NO se pliega con el eje — queda entera
-          // (con su triángulo íntegro), colgando del lado fijo como si el eje no la cruzara.
+          // Opción "aletas rígidas": la aleta perpendicular NO se pliega con el eje.
           alaPliegue(nom, h, base.P0, base.ux, base.uz, base.len, base.x0c, base.y0c, base.wS, base.hS, base.W4);
           return;
         }
-        // Aleta perpendicular plegada por su CREASE central (la línea del eje bajando por la pared):
-        // ambas mitades cuelgan del plano BISECTOR — siempre simétricas respecto de ambos lados del
-        // eje, sin "arrastres". Su slider maneja el ángulo del V entre las mitades (0 = plana).
-        const parB = ejeCtl.bis;
-        const xE = horizW ? (k === "sup" ? 0 : L) : (k === "izq" ? 0 : A);   // extremo en la coord del eje
+        // Pared PERPENDICULAR: dos mitades-CREASE construidas en MUNDO (crease vertical en el punto
+        // donde el eje toca esta pared) y colgadas del MARCO FIJO con attach() — simétricas y
+        // agnósticas al lado elegido del eje.
         const dEx = (mx, my) => (k === "sup") ? -my : (k === "inf") ? my - L : (k === "izq") ? -mx : mx - A;
-        const mkMitad = (lado, wM) => {
+        const tEdge = horizW ? (k === "sup" ? 0 : L) : (k === "izq" ? 0 : A);   // coord transversal de la pared
+        const CW9 = horizW
+          ? new T.Vector3(pos - A / 2, H, tEdge - L / 2)
+          : new T.Vector3(tEdge - A / 2, H, pos - L / 2);
+        const mkMitad = (hs, wM) => {
           if (!(wM > 0.01)) return;
-          const ux2 = new T.Vector3(0, (ejeF.horiz ? -1 : 1), 0);   // crease hacia abajo (coords del bisector)
-          const uz2 = new T.Vector3(0, 0, lado);
+          const outer2 = new T.Group(); outer2.position.copy(CW9);
+          const ux2 = new T.Vector3(0, -1, 0);                                        // crease hacia abajo
+          const uz2 = horizW ? new T.Vector3(hs, 0, 0) : new T.Vector3(0, 0, hs);     // hacia SU mitad
           const uy2 = new T.Vector3().crossVectors(uz2, ux2);
-          const outer2 = new T.Group(); outer2.position.set(xE, 0, 0);
           outer2.setRotationFromMatrix(new T.Matrix4().makeBasis(ux2, uy2, uz2));
-          const inner2 = new T.Group(); outer2.add(inner2); parB.add(outer2);
-          const W4c = (mx, my) => new T.Vector3(dEx(mx, my), 0, lado * ((horizW ? mx : my) - pos));
-          if (hayCal) caraCalada(horizW ? (lado < 0 ? 0 : pos) : base.x0c, horizW ? base.y0c : (lado < 0 ? 0 : pos),
+          const inner2 = new T.Group(); outer2.add(inner2);
+          grp.add(outer2);
+          if (ejeCtl.bis && ejeCtl.bis.attach) { try { ejeCtl.bis.attach(outer2); } catch (e9) {} }
+          const W4c = horizW
+            ? ((mx, my) => new T.Vector3(dEx(mx, my), 0, hs * (mx - pos)))
+            : ((mx, my) => new T.Vector3(dEx(mx, my), 0, hs * (my - pos)));
+          caraCalada(horizW ? (hs < 0 ? 0 : pos) : base.x0c, horizW ? base.y0c : (hs < 0 ? 0 : pos),
             horizW ? wM : base.wS, horizW ? h : wM, W4c, inner2);
-          else {
-            const gP = new T.PlaneGeometry(h, wM);
-            const mesh = new T.Mesh(gP, matLona); mesh.rotation.x = -Math.PI / 2; mesh.position.set(h / 2, 0, wM / 2); inner2.add(mesh);
-            const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde); ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); inner2.add(ed);
-          }
-          const sgnV = -lado;   // signos opuestos: las mitades se CIERRAN una hacia la otra (espejo)
-          const setV = (v) => { inner2.rotation.x = sgnV * v * Math.PI / 180; };
+          const setV = (v) => { inner2.rotation.x = hs * v * Math.PI / 180; };        // signos opuestos: V en espejo
           setV(0);
           plieguesUI.push({ nombre: nom, set: setV, v0: 0 });
           if (!alasInner3D[nom]) alasInner3D[nom] = { inner: inner2, len: wM, hAla: h };
-          (alasParts3D[nom] = alasParts3D[nom] || []).push({ inner: inner2, hAla: h, t0: lado < 0 ? 0 : pos, t1: lado < 0 ? pos : (horizW ? A : L), crease: { pos: pos, lado: lado, h: h } });
+          (alasParts3D[nom] = alasParts3D[nom] || []).push({ inner: inner2, hAla: h, t0: hs < 0 ? 0 : pos, t1: hs < 0 ? pos : (horizW ? A : L), crease: { pos: pos, lado: hs, h: h } });
         };
         mkMitad(-1, pos); mkMitad(1, (horizW ? A : L) - pos);
       };
@@ -5797,6 +5810,13 @@
           cbE.addEventListener("change", () => { sv3.espejo = cbE.checked; pl.espejo(cbE.checked); });
           lbE.appendChild(cbE); lbE.appendChild(document.createTextNode(" espejo (ambos lados simétricos)"));
           pw.appendChild(lbE);
+        }
+        if (pl.ladoInv) {   // solo el EJE: elegir QUÉ cara pliega (invertir el lado móvil)
+          const lbL = document.createElement("label"); lbL.className = "vol3d-plg-esp";
+          const cbL = document.createElement("input"); cbL.type = "checkbox"; cbL.checked = pl.ladoInv.val();
+          cbL.addEventListener("change", () => pl.ladoInv.set(cbL.checked));
+          lbL.appendChild(cbL); lbL.appendChild(document.createTextNode(" invertir lado (pliega la otra cara)"));
+          pw.appendChild(lbL);
         }
         if (pl.alasFijas) {   // solo el EJE: aletas perpendiculares rígidas (no se pliegan con el eje)
           const lbF = document.createElement("label"); lbF.className = "vol3d-plg-esp";
@@ -6898,7 +6918,7 @@
     const anLo = tA <= tB ? anA : anB, anHi = tA <= tB ? anB : anA;
     const tLo = Math.min(tA, tB), tHi = Math.max(tA, tB), span = tHi - tLo;
     if (!(span > 0.01)) return "Los 2 anchors están en el mismo punto; sepáralos primero.";
-    if (!(M > 0) || M > span + 1e-9) return "Medida no válida.";
+    if (M == null || isNaN(M) || M < 0 || M > span + 1e-9) return "Medida no válida.";   // 0 = vértice
     let poly = null;
     try { poly = window.SketchCIBSA.construirSketch({ ancho: A, largo: L, ojTotal: 0, ventanas: [], cortes: cortesSpec(ctxI.cortes) }).panoPoly; } catch (_) {}
     if (!poly || poly.length < 3) return "No pude determinar el contorno vivo del paño.";
@@ -6999,11 +7019,13 @@
   function quitarHintConexion() { const d = document.getElementById("anclaConexHint"); if (d) d.remove(); }
   // Diálogo "fijar distancia exacta" del anchor: acepta aritmética y ofrece BLOQUEAR el anchor
   // en esa posición (pre-marcado): fijas el punto de referencia y no se mueve por accidente.
-  function dialogoDistanciaAncla(titulo, cur, fn) {
+  function dialogoDistanciaAncla(titulo, cur, fn, lenCarril) {
     const ov = document.createElement("div"); ov.className = "qr-modal anc-dialog";
     const card = document.createElement("div"); card.className = "qr-card";
     const h = document.createElement("h3"); h.textContent = titulo; card.appendChild(h);
-    const pl = document.createElement("p"); pl.className = "muted small"; pl.textContent = "Acepta aritmética: 5/2 · 1.2+0.35 · (4-0.6)/3 · coma o punto decimal."; card.appendChild(pl);
+    const pl = document.createElement("p"); pl.className = "muted small";
+    pl.textContent = "Acepta aritmética: 5/2 · 1.2+0.35 · (4-0.6)/3 · coma o punto decimal" + (lenCarril > 0 ? " · PORCENTAJE de la arista/línea: 25% · 50%." : ".");
+    card.appendChild(pl);
     const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "decimal"; inp.value = String(cur); inp.className = "anc-dialog-inp";
     card.appendChild(inp);
     const lab = document.createElement("label"); lab.className = "chk anc-dialog-chk";
@@ -7017,8 +7039,14 @@
     ov.appendChild(card); document.body.appendChild(ov);
     const cerrar = () => ov.remove();
     const ok = () => {
-      const v = window.CalcCIBSA.evalExpr(String(inp.value).replace(",", "."));
-      if (v == null || isNaN(v) || v < 0) { alert("Valor no válido: escribe un número o una expresión (ej. 5/2 + 0.1)."); return; }
+      const txt9 = String(inp.value).replace(",", ".").trim();
+      let v;
+      const mP = txt9.match(/^(.*)%\s*$/);   // termina en % → fracción del carril (arista/línea)
+      if (mP && lenCarril > 0) {
+        const pc = window.CalcCIBSA.evalExpr(mP[1]);
+        v = (pc == null || isNaN(pc)) ? null : (pc / 100) * lenCarril;
+      } else v = window.CalcCIBSA.evalExpr(txt9);
+      if (v == null || isNaN(v) || v < 0) { alert("Valor no válido: escribe un número, una expresión (5/2 + 0.1) o un porcentaje (25%)."); return; }
       cerrar(); fn(v, chk.checked);
     };
     bOk.addEventListener("click", ok);
@@ -7109,7 +7137,7 @@
       const txt = prompt("Nueva medida entre los 2 anchors (m) — actual: " + f(span) + " m.\nSe reduce simétricamente hacia el centro; los vértices opuestos quedan fijos como ejes. Acepta aritmética (ej. " + f(span) + "/2):", f(span));
       if (txt == null) return;
       const M = window.CalcCIBSA.evalExpr(String(txt).replace(",", "."));
-      if (M == null || isNaN(M) || !(M > 0)) return alert("Medida no válida.");
+      if (M == null || isNaN(M) || M < 0) return alert("Medida no válida.");   // 0 = degenerar la arista en un VÉRTICE
       if (M > span + 1e-9) return alert("La medida nueva (" + f(M) + " m) no puede superar la actual (" + f(span) + " m): la tela no se puede agregar, solo recortar.");
       const c0 = (tLo + tHi) / 2, q1 = c0 - M / 2, q2 = c0 + M / 2;
       // mover los anchors simétricamente
@@ -7151,7 +7179,7 @@
       const txt = prompt("Nueva medida entre los 2 anchors (m) — actual: " + f(span) + " m.\nSe reduce simétricamente hacia el centro; los vértices vecinos del contorno quedan fijos como ejes. Acepta aritmética (ej. " + f(span) + "/2):", f(span));
       if (txt == null) return;
       const M = window.CalcCIBSA.evalExpr(String(txt).replace(",", "."));
-      if (M == null || isNaN(M) || !(M > 0)) return alert("Medida no válida.");
+      if (M == null || isNaN(M) || M < 0) return alert("Medida no válida.");   // 0 = degenerar la arista en un VÉRTICE
       if (M > span + 1e-9) return alert("La medida nueva (" + f(M) + " m) no puede superar la actual (" + f(span) + " m): la tela no se puede agregar, solo recortar.");
       const err = iterarMedidaEnCorte(ctx, cH, anA, anB, M);
       if (err) return alert(err);
@@ -7445,12 +7473,15 @@
       else itemMas("Desbloquear anchor", () => { reg.an.fix = false; if (ctx.onChange) ctx.onChange(); });
       if (!reg.an.fix) item("Fijar distancia exacta…", () => {
         const cur = (reg.tipo === "arista") ? (parseFloat(reg.an.d) || 0) : (parseFloat(reg.an.t) || 0);
+        let lenC = 0;
+        if (reg.tipo === "arista") { const sg9 = segDeAncla(reg.an, A, L); if (sg9) lenC = Math.hypot(sg9.b.x - sg9.a.x, sg9.b.y - sg9.a.y); }
+        else { const ln9 = lineaRawCorte(reg.c); if (ln9) lenC = ln9.w; }
         dialogoDistanciaAncla((reg.tipo === "arista") ? "Distancia desde la esquina (m)" : "Distancia desde el extremo inicial de la línea (m)", cur, (v, bloquear) => {
           if (reg.tipo === "arista") reg.an.d = rd3(v); else reg.an.t = rd3(v);
           if (bloquear) reg.an.fix = true;
           aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
           if (ctx.onChange) ctx.onChange();
-        });
+        }, lenC);
       });
       if (reg.tipo === "corte" && reg.an.emp != null) itemMas("Desempatar", () => { reg.an.emp = null; if (ctx.onChange) ctx.onChange(); });
       item("Eliminar anchor", () => {
