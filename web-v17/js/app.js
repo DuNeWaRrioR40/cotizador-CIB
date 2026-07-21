@@ -4361,6 +4361,28 @@
   // Volumétrico con ojetillos al borde externo: las aristas verticales conservan sus esquinas.
   function volExtUnif() { return alturaUnif() > 0 && ojEnUnif() === "externo"; }
   function volExtPz(pz) { return !!pz.usaAlto && (window.CalcCIBSA.evalExpr(pz.altura) || 0) > 0 && pz.ojVolExt !== false; }
+  function alasPz(pz) { return pz.volAlas || { sup: true, inf: true, izq: true, der: true }; }
+  // Altos POR ALA de una pieza (paridad con altosUnif): ala apagada = 0; con "altos distintos",
+  // campo vacío/0 = aleta suprimida. Sin volumétrico → null. Fuente única para spec, visor y costeo.
+  function altosPz(pz) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const H = pz.usaAlto ? (ev(pz.altura) || 0) : 0; if (!(H > 0)) return null;
+    const alas = alasPz(pz), dist = !!pz.altosDist;
+    const campo = { sup: "altoSup", inf: "altoInf", izq: "altoIzq", der: "altoDer" };
+    const out = {};
+    ["sup", "inf", "izq", "der"].forEach((k) => {
+      if (alas[k] === false) { out[k] = 0; return; }
+      if (!dist) { out[k] = H; return; }
+      const v = ev(pz[campo[k]]) || 0;
+      out[k] = v > 0 ? v : 0;
+    });
+    return out;
+  }
+  function volPzSpec(pz) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const H = pz.usaAlto ? (ev(pz.altura) || 0) : 0; if (!(H > 0)) return null;
+    return { alto: H, ojEn: pz.ojVolExt === false ? "tapa" : "externo", alas: alasPz(pz), altos: altosPz(pz), bordesEnPliegue: !!pz.bordesPliegue };
+  }
   function ojetillosPosUnif() {
     const a = num("f_ancho", null), l = num("f_largo", null);
     if (!(a > 0) || !(l > 0)) return { pos: [], total: 0, numeros: [] };
@@ -4991,15 +5013,15 @@
       cortes: () => pz.cortes || [],
       aletas: () => pz.aletas || [],
       straps: () => pz.straps || [],
-      altos: () => ({ sup: H, inf: H, izq: H, der: H }),
-      alas: () => (pz.volAlas || { sup: true, inf: true, izq: true, der: true }),
+      altos: () => (altosPz(pz) || { sup: H, inf: H, izq: H, der: H }),
+      alas: () => alasPz(pz),
       ojEn: () => (pz.ojVolExt === false ? "tapa" : "externo"),
-      volSpec: () => null,
+      volSpec: () => volPzSpec(pz),
       ojSpec: () => {
         if (pz.ojMode === "arista") { const r = ojetillosPosiciones(A || 0, L || 0, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), false, volExtPz(pz)); return { ojetillosPos: r.pos, ojNumeros: null }; }
         return { ojTotal: ojIntPz(pz.ojetillos), ojNumeros: null };
       },
-      bordesPliegue: () => false,
+      bordesPliegue: () => !!pz.bordesPliegue,
       vis: () => (pz.vis3D || (pz.vis3D = {})),
     } : {
       cortes: () => state.cortesUnif,
@@ -6389,6 +6411,11 @@
       orient: base ? base.orient : "largo",
       color: base ? base.color : "",
       usaAlto: base ? base.usaAlto : false, altura: base ? base.altura : "",
+      volAlas: base && base.volAlas ? Object.assign({}, base.volAlas) : { sup: true, inf: true, izq: true, der: true },
+      altosDist: base ? !!base.altosDist : false,
+      altoSup: base ? (base.altoSup || "") : "", altoInf: base ? (base.altoInf || "") : "",
+      altoIzq: base ? (base.altoIzq || "") : "", altoDer: base ? (base.altoDer || "") : "",
+      bordesPliegue: base ? !!base.bordesPliegue : false,
       ojMode: base ? base.ojMode : "total",
       ojAristasN: base ? base.ojAristasN : 4,
       ojAristas: base ? (base.ojAristas || []).slice() : [],
@@ -6819,7 +6846,7 @@
       return (w > 0 && h > 0) ? { x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h, circ: ins.forma === "circ", legend: ins.legend || "", fusion: ins.fusion || {}, rotulo: !!ins.rotulo, id: rotId(ins) } : null;
     }).filter(Boolean);
     const spec = { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0, ventanas: ventanas, cortes: cortesSpec(pz.cortes), bolsillos: bolsillosDe(pz.bordeModo, pz.bordes), bordesRot: bordesRotuloDe(pz.bordeModo, pz.bordes, pz.bordeValor, pz.bordeRotUnif), unionesRot: unionesRotObj(pz.unionRot, pz.union, pz.orient, ((telaPorNombre(pz.telaNombre)) || {}).anchoRollo), setsRot: setsRotuloDe(a > 0 ? a : 0, l > 0 ? l : 0, pz.ojMode === "arista" ? pz.ojEdges : null, pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), aletas: aletasSpec(pz.aletas), straps: strapsSpec(pz.straps, { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cintas: cintasSpec(pz.cintas || [], { ancho: a > 0 ? a : 0, largo: l > 0 ? l : 0 }), cotasOcultas: pz.cotasOcultas, cotasPos: pz.cotasPos || (pz.cotasPos = {}), rotDrag: pz.rotDrag, anclas: anclasSpecDe(pz.anclas || [], pz.cortes, a > 0 ? a : 0, l > 0 ? l : 0), notas: pz.notas || [] };
-    if (pz.usaAlto) { const hh = ev(pz.altura); if (hh > 0) spec.volumetrico = { alto: hh, ojEn: pz.ojVolExt === false ? "tapa" : "externo" }; }
+    { const vs = volPzSpec(pz); if (vs) spec.volumetrico = vs; }
     if (pz.ojMode === "arista") {
       const r = ojetillosPosiciones(spec.ancho, spec.largo, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), !!pz.ojNumerar, volExtPz(pz));
       spec.ojetillosPos = r.pos;
@@ -8208,7 +8235,7 @@
       },
       guiaAnexoUI: (i) => {
         const c = visibles(pz.cortes)[i]; if (!c) return;
-        anexoDesdeCorteUI(c, null, { A: () => ev(pz.ancho), L: () => ev(pz.largo), H: () => (pz.usaAlto ? (ev(pz.altura) || 0) : 0), alas: () => null, aletas: () => (pz.aletas || (pz.aletas = [])), despues: irAPieza });
+        anexoDesdeCorteUI(c, null, { A: () => ev(pz.ancho), L: () => ev(pz.largo), H: () => (pz.usaAlto ? (ev(pz.altura) || 0) : 0), alas: () => alasPz(pz), aletas: () => (pz.aletas || (pz.aletas = [])), despues: irAPieza });
       },
       anexoOj: (rid, k, esFus) => {
         const al2 = visibles(pz.aletas || []).find((x2) => x2._rid === rid); if (!al2) return;
@@ -8223,13 +8250,13 @@
       guiaLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "guia")) irAPieza(); },
       ojLibre: (seg, pm) => {
         const c = crearLineaEnSeg(pz.cortes, seg, "guia"); if (!c) return;
-        c.ojAristaLado = ladoHaciaAdentro(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0, pz.usaAlto ? (ev(pz.altura) || 0) : 0, null);
+        c.ojAristaLado = ladoHaciaAdentro(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0, pz.usaAlto ? (ev(pz.altura) || 0) : 0, alasPz(pz));
         c.ojAristaD = String(dOjetillosRef(pz.ojMode === "arista" ? pz.ojEdges : null) || 0.5); c.ojAristaInset = "0.025"; c._advOpen = true;
         irAPieza();
       },
       strapLibre: (seg, pm) => {
         const c = crearLineaEnSeg(pz.cortes, seg, "guia"); if (!c) return;
-        c.strapLado = ladoHaciaAdentro(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0, pz.usaAlto ? (ev(pz.altura) || 0) : 0, null);
+        c.strapLado = ladoHaciaAdentro(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0, pz.usaAlto ? (ev(pz.altura) || 0) : 0, alasPz(pz));
         c.strapD = "0.5"; c.strapOffset = "0"; c.strapInset = "0.15"; c._advOpen = true;
         irAPieza();
       },
@@ -8792,6 +8819,21 @@
         <label class="chk"><input class="pz-usaAlto" type="checkbox" /> <span>Volumétrico (agregar alto)</span></label>
         <label class="field pz-alto-field hidden"><span>Alto (m)</span><input class="pz-alto" type="text" inputmode="text" placeholder="se suma 2× alto al largo y al ancho" /></label>
         <label class="chk pz-ojvol-field hidden"><input class="pz-ojVolExt" type="checkbox" checked /> <span>Ojetillos en el borde externo del desplegado</span></label>
+        <div class="pz-vol-extra hidden">
+          <label class="chk"><input class="pz-bordesPliegue" type="checkbox" /> <span>Bordes/uniones en el largo × ancho (pliegues) en vez de los extremos de las aletas</span></label>
+          <div class="radios"><span class="small muted" style="align-self:center">Alas del volumen (paredes):</span>
+            <label><input class="pz-ala-chk" data-k="sup" type="checkbox" checked /> Superior</label>
+            <label><input class="pz-ala-chk" data-k="inf" type="checkbox" checked /> Inferior</label>
+            <label><input class="pz-ala-chk" data-k="izq" type="checkbox" checked /> Izquierda</label>
+            <label><input class="pz-ala-chk" data-k="der" type="checkbox" checked /> Derecha</label></div>
+          <label class="chk"><input class="pz-altosDist" type="checkbox" /> <span>Altos distintos por aleta</span></label>
+          <div class="pieza-grid pz-altos-campos hidden">
+            <label class="field"><span>Alto sup. (m)</span><input class="pz-altoSup" type="text" inputmode="text" placeholder="0 = sin aleta" /></label>
+            <label class="field"><span>Alto inf. (m)</span><input class="pz-altoInf" type="text" inputmode="text" placeholder="0 = sin aleta" /></label>
+            <label class="field"><span>Alto izq. (m)</span><input class="pz-altoIzq" type="text" inputmode="text" placeholder="0 = sin aleta" /></label>
+            <label class="field"><span>Alto der. (m)</span><input class="pz-altoDer" type="text" inputmode="text" placeholder="0 = sin aleta" /></label>
+          </div>
+        </div>
         <div class="pz-oj-wrap"></div>
         <div class="pz-borde"></div>
         <div class="pz-comp"></div>
@@ -8823,16 +8865,32 @@
       q(".pz-alto").value = pz.altura || "";
       q(".pz-alto-field").classList.toggle("hidden", !pz.usaAlto);
       q(".pz-ojvol-field").classList.toggle("hidden", !pz.usaAlto);
+      q(".pz-vol-extra").classList.toggle("hidden", !pz.usaAlto);
+      q(".pz-bordesPliegue").checked = !!pz.bordesPliegue;
+      q(".pz-bordesPliegue").addEventListener("change", (e) => { pz.bordesPliegue = e.target.checked; recomputeCompuesto(); });
+      { const alasP = alasPz(pz); card.querySelectorAll(".pz-ala-chk").forEach((cb) => {
+          cb.checked = alasP[cb.dataset.k] !== false;
+          cb.addEventListener("change", () => { (pz.volAlas || (pz.volAlas = { sup: true, inf: true, izq: true, der: true }))[cb.dataset.k] = cb.checked; recomputeCompuesto(); });
+        }); }
+      q(".pz-altosDist").checked = !!pz.altosDist;
+      q(".pz-altos-campos").classList.toggle("hidden", !pz.altosDist);
+      q(".pz-altosDist").addEventListener("change", (e) => { pz.altosDist = e.target.checked; q(".pz-altos-campos").classList.toggle("hidden", !pz.altosDist); recomputeCompuesto(); });
+      [["Sup", "altoSup"], ["Inf", "altoInf"], ["Izq", "altoIzq"], ["Der", "altoDer"]].forEach((par) => {
+        const inp = q(".pz-alto" + par[0]); if (!inp) return;
+        inp.value = pz[par[1]] || "";
+        inp.addEventListener("input", (e) => { pz[par[1]] = e.target.value; recomputeCompuesto(); });
+        inp.addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { pz[par[1]] = window.CalcCIBSA.fmtNum(r); e.target.value = pz[par[1]]; recomputeCompuesto(); } });
+      });
       q(".pz-ojVolExt").checked = pz.ojVolExt !== false;
       q(".pz-ojVolExt").addEventListener("change", (e) => { pz.ojVolExt = e.target.checked; recomputeCompuesto(); });
-      q(".pz-usaAlto").addEventListener("change", (e) => { pz.usaAlto = e.target.checked; q(".pz-alto-field").classList.toggle("hidden", !pz.usaAlto); q(".pz-ojvol-field").classList.toggle("hidden", !pz.usaAlto); recomputeCompuesto(); });
+      q(".pz-usaAlto").addEventListener("change", (e) => { pz.usaAlto = e.target.checked; q(".pz-alto-field").classList.toggle("hidden", !pz.usaAlto); q(".pz-ojvol-field").classList.toggle("hidden", !pz.usaAlto); q(".pz-vol-extra").classList.toggle("hidden", !pz.usaAlto); recomputeCompuesto(); });
       q(".pz-alto").addEventListener("input", (e) => { pz.altura = e.target.value; recomputeCompuesto(); });
       q(".pz-alto").addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { pz.altura = window.CalcCIBSA.fmtNum(r); e.target.value = pz.altura; recomputeCompuesto(); } });
       renderPiezaOjetillos(q(".pz-oj-wrap"), pz);
       renderPiezaBordes(q(".pz-borde"), pz);
       renderComplementos(q(".pz-comp"), pz.complementos, recomputeCompuesto);
       renderInscritos(q(".pz-ins"), pz);
-      renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto, anexoDesde: (c, xy) => anexoDesdeCorteUI(c, xy, { A: () => window.CalcCIBSA.evalExpr(pz.ancho), L: () => window.CalcCIBSA.evalExpr(pz.largo), H: () => (pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0), alas: () => null, aletas: () => (pz.aletas || (pz.aletas = [])), despues: () => { renderPiezas(); recompute(); } }) });
+      renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto, anexoDesde: (c, xy) => anexoDesdeCorteUI(c, xy, { A: () => window.CalcCIBSA.evalExpr(pz.ancho), L: () => window.CalcCIBSA.evalExpr(pz.largo), H: () => (pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0), alas: () => alasPz(pz), aletas: () => (pz.aletas || (pz.aletas = [])), despues: () => { renderPiezas(); recompute(); } }) });
       renderAletas(q(".pz-aletas"), { getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto, telaBase: () => pz.telaNombre, baseListo: () => (window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0 && !!pz.telaNombre) });
       renderStraps(q(".pz-straps"), { straps: (pz.straps || (pz.straps = [])), cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
       renderCintas(q(".pz-cintas"), { cintas: (pz.cintas || (pz.cintas = [])), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
@@ -8948,6 +9006,7 @@
         cantidad: Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1),
         union: (u == null || isNaN(u)) ? 0.045 : u,
         altura: pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0,
+        altos: altosPz(pz),
         defaults: BORDE_DEFAULTS, bordes: bordesDePieza(pz), factorTela: facPz(pz),
         ojetillos: ojTotalPieza(pz),
         valorOjetillo: num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT),
@@ -9027,7 +9086,7 @@
         activarClicOcultarCotas(sketchBox, pz.cotasOcultas, recomputeCompuesto);
         activarArrastreCotas(sketchBox, pz.cotasPos || (pz.cotasPos = {}), recomputeCompuesto);
         activarMenuAristas(sketchBox, accionesAristaPieza(pz));
-        activarAnclas(sketchBox, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, vol: () => { const hh = pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0; return hh > 0 ? { altos: { sup: hh, inf: hh, izq: hh, der: hh }, alas: null } : null; }, onChange: () => { renderPiezas(); recompute(); } });
+        activarAnclas(sketchBox, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, vol: () => { const aH = altosPz(pz); return aH ? { altos: aH, alas: alasPz(pz) } : null; }, onChange: () => { renderPiezas(); recompute(); } });
         activarNotas(sketchBox, (pz.notas || (pz.notas = [])), recomputeCompuesto);
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
         menuPlano(sketchBox, [
@@ -9117,7 +9176,7 @@
         body.innerHTML = '<p class="muted small">Completa largo y ancho de esta pieza.</p>';
       } else {
         const sk = document.createElement("div"); sk.className = "sketch"; sk.id = "prevsk_" + pz.id;
-        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); activarArrastreCotas(sk, pz.cotasPos || (pz.cotasPos = {}), recomputeCompuesto); activarMenuAristas(sk, accionesAristaPieza(pz)); activarAnclas(sk, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, vol: () => { const hh = pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0; return hh > 0 ? { altos: { sup: hh, inf: hh, izq: hh, der: hh }, alas: null } : null; }, onChange: () => { renderPiezas(); recompute(); } }); activarNotas(sk, (pz.notas || (pz.notas = [])), recomputeCompuesto); }
+        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); activarArrastreCotas(sk, pz.cotasPos || (pz.cotasPos = {}), recomputeCompuesto); activarMenuAristas(sk, accionesAristaPieza(pz)); activarAnclas(sk, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, vol: () => { const aH = altosPz(pz); return aH ? { altos: aH, alas: alasPz(pz) } : null; }, onChange: () => { renderPiezas(); recompute(); } }); activarNotas(sk, (pz.notas || (pz.notas = [])), recomputeCompuesto); }
         body.appendChild(sk);
         const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn-outline"; dl.textContent = "Descargar plano (PDF)";
         dl.addEventListener("click", () => descargarSketchPieza(pz));
