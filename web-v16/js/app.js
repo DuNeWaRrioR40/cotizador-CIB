@@ -241,7 +241,9 @@
     setRadio("ojmode", state.ojMode); setRadio("bordemodo", state.bordeModo);
     bumpSeqs();
     renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); renderTraseraUnif();
-    renderOjetillos(); setFactorUnifUI(); aplicarVis(); recompute();
+    renderOjetillos(); setFactorUnifUI(); aplicarVis();
+    renderGranelLineas();   // carro de productos a granel: visible al instante al CARGAR una cotización
+    recompute();
     return true;
   }
 
