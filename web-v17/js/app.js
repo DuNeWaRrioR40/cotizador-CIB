@@ -4780,6 +4780,7 @@
             const nS = new T.Vector3().crossVectors(pS2.v.clone().sub(pS1.v), pS3.v.clone().sub(pS1.v));
             return (nH.length() > 1e-9 && nS.length() > 1e-9) ? { pS3: pS3, wH3: wH3, nH: nH, nS: nS, h3: h3, s3: s3 } : null;
           })() : null;
+          let nMontW = null;
           if (tri) {
             FA = mkFrame(uH, tri.nH);
             FB = mkFrame(uS, _ensVolt[e.id] ? tri.nS.clone().negate() : tri.nS);
@@ -4787,12 +4788,24 @@
           } else {
             const mH = (pH1.n.dot(pH2.n) > 0.99) ? pH1.n : new T.Vector3(0, 1, 0);
             const mS = (pS1.n.dot(pS2.n) > 0.99) ? pS1.n : new T.Vector3(0, 1, 0);
-            FA = mkFrame(uH, wNr(host, mH)); FB = mkFrame(uS, mS);
+            nMontW = wNr(host, mH);
+            FA = mkFrame(uH, nMontW); FB = mkFrame(uS, mS);
           }
           let R = FA.clone().multiply(FB.clone().transpose());
-          if (!voltEnNormal && _ensVolt[e.id]) R = new T.Matrix4().makeRotationAxis(uH.clone().normalize(), Math.PI).multiply(R);
           const qS = new T.Quaternion().setFromRotationMatrix(R);
           const pS = wH1.clone().sub(pS1.v.clone().applyQuaternion(qS));
+          const rotarPi = () => {
+            R = new T.Matrix4().makeRotationAxis(uH.clone().normalize(), Math.PI).multiply(R);
+            qS.setFromRotationMatrix(R);
+            pS.copy(wH1.clone().sub(pS1.v.clone().applyQuaternion(qS)));
+          };
+          // AUTO-ARRIBA: sin C3, el satélite se posa del lado POSITIVO de la cara de montaje del
+          // host (encima del plano, nunca colgando debajo). "↔ Voltear" invierte esta elección.
+          if (!voltEnNormal && nMontW) {
+            const cLoc = new T.Box3().setFromObject(sat.arm.grp).getCenter(new T.Vector3());
+            if (cLoc.clone().applyQuaternion(qS).add(pS).sub(wH1).dot(nMontW) < -1e-9) rotarPi();
+          }
+          if (!voltEnNormal && _ensVolt[e.id]) rotarPi();
           sat.pose = { q: qS, p: pS };
           const d2 = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
           const chk = [{ lbl: "C2", dH: d2(h1, h2), dS: d2(s1, s2), sat2: s2, wH: wH2, wS: wPt(sat, pS2.v) }];
