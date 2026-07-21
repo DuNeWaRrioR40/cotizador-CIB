@@ -885,7 +885,9 @@
     // Productos a granel (sin proveedor) — una fila por línea. Si la línea tiene descuento
     // propio, va como línea aparte EN NEGRITA para que el cliente lo vea con su monto.
     (datos.granel || []).forEach((g) => {
-      const det = [[g.detalle, false]];
+      const det = [];
+      if (g.detalleTit) { det.push([g.detalleTit, true, 12]); if (g.detalleResto) det.push([g.detalleResto, false]); }
+      else det.push([g.detalle, false]);
       if (g.descuentoTxt) { det.push(["", false, 0]); det.push([g.descuentoTxt, true]); }
       itemRow(String(g.cantidad), det, g.precioU, money(g.total));
     });
@@ -1282,7 +1284,9 @@
     // Productos a granel (sin proveedor). El descuento propio de la línea va aparte y EN
     // NEGRITA para que el cliente lo vea con su monto.
     (datos.granel || []).forEach((g) => {
-      const det = [[g.detalle, false]];
+      const det = [];
+      if (g.detalleTit) { det.push([g.detalleTit, true, 12]); if (g.detalleResto) det.push([g.detalleResto, false]); }
+      else det.push([g.detalle, false]);
       if (g.descuentoTxt) { det.push(["", false, 0]); det.push([g.descuentoTxt, true]); }
       itemRow(String(g.cantidad), det, g.precioU, money(g.total));
     });

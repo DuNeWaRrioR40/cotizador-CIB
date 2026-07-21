@@ -1012,13 +1012,13 @@
       const k = granelLineaCalc(l);
       if (!(k.cant > 0) || l.precio == null) return null;
       const attrs = [l.color, l.materialidad].filter(Boolean);
-      // FORMATO: pieza clave para que el cliente entienda el producto — va SIEMPRE que exista,
-      // junto al nombre y ANTES de la ficha técnica (igual que se muestra en la App).
+      // TÍTULO para el cliente: SIN modelo técnico (G200 etc.), con el FORMATO integrado —
+      // en el PDF va en NEGRITA y más grande; la ficha técnica sigue en línea aparte.
       const fmt = (l.formato || "").trim();
-      let detalle = granelNombreL(l)
-        + (fmt ? " · Formato " + fmt : "")
-        + (attrs.length ? " · " + attrs.join(" · ") : "")
-        + (l.specs ? " · " + l.specs : "");
+      const nomCli = (l.nombreCliente && l.nombreCliente.trim()) ? l.nombreCliente.trim() : [l.categoria, l.tipo, l.variedad].filter(Boolean).join(" ");
+      const detalleTit = nomCli + (fmt ? " · Formato " + fmt : "");
+      const detalleResto = [attrs.join(" · "), (l.specs || "").trim()].filter(Boolean).join(" · ");
+      let detalle = detalleTit + (detalleResto ? " · " + detalleResto : "");
       const descuentoTxt = k.desc > 0
         ? (k.esMonto ? "Descuento aplicado: -" + money(k.desc)
                      : "Descuento " + f(k.dp) + "% aplicado: -" + money(k.desc))
@@ -1026,7 +1026,7 @@
         : null;
       // En el PDF, Cantidad y Valor unitario van SOLO con el número (sin unidad de medida); la unidad/
       // formato se entiende por el Detalle (y la Variedad). La unidad se sigue mostrando en pantalla.
-      return { cantidad: f(k.cant), detalle: detalle, descuentoTxt: descuentoTxt, precioU: money(l.precio), bruto: k.bruto, descPct: k.dp, descuento: k.desc, total: k.neto };
+      return { cantidad: f(k.cant), detalle: detalle, detalleTit: detalleTit, detalleResto: detalleResto, descuentoTxt: descuentoTxt, precioU: money(l.precio), bruto: k.bruto, descPct: k.dp, descuento: k.desc, total: k.neto };
     }).filter(Boolean);
   }
   function granelTotalPDF() { return granelLineasPDF().reduce((s, g) => s + g.total, 0); }
