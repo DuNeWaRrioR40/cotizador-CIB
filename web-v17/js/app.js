@@ -7886,7 +7886,7 @@
       const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
       const cap = document.createElement("p"); cap.className = "arista-menu-cap"; cap.textContent = "Punto con " + lista.length + " elementos";
       menu.appendChild(cap);
-      const itemP = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); };
+      const itemP = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); return b; };
       // Acciones del PUNTO (da lo mismo cuál anchor apilado: es el mismo lugar)
       const rep = lista.find((r2) => r2.tipo === "arista") || lista[0];
       itemP("⬠ Trazar CALADO desde aquí (circuito)", () => iniciarCircuito(rep));
@@ -7918,15 +7918,15 @@
       const cap = document.createElement("p"); cap.className = "arista-menu-cap";
       cap.textContent = (reg.tipo === "arista") ? "Anchor de arista" : "Anchor del corte/línea";
       menu.appendChild(cap);
-      const item = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); };
+      const item = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); return b; };
       // Grupo "Más opciones": acciones secundarias plegadas (menú corto = usable). Se despliegan con un toggle.
       const masBox = document.createElement("div"); masBox.className = "arista-menu-mas hidden";
-      const itemMas = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); masBox.appendChild(b); };
+      const itemMas = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); masBox.appendChild(b); return b; };
       { const regC = comoArista(reg) || reg;   // el empatado "representa" al de arista; el resto conecta como es
         const nTot = (ctx.anclas || []).length + (ctx.cortes || []).reduce((acc, c2) => acc + ((c2.anclas || []).length), 0);
         if (nTot >= 2) {
           item("Corte hasta otro anchor…", () => iniciarConexion(regC, "corte"));
-          item("Guía hasta otro anchor…", () => iniciarConexion(regC, "guia"));
+          { const bG = item("Guía hasta otro anchor…  ⌨G", () => iniciarConexion(regC, "guia")); if (bG) bG.dataset.hotG = "1"; }
         }
         if (regC.tipo === "arista" && !regC.an.seg) {
           const otros = (ctx.anclas || []).filter((a2) => a2 !== regC.an && !a2.seg && a2.ar === regC.an.ar);
@@ -7954,32 +7954,40 @@
       // pide sus propios C1/C2; sin vínculo, instalar un conector CREA el vínculo de una vez.
       { const pzC = (state.prodMode === "compuesto") ? (state.piezas || []).find((p9) => p9.anclas === ctx.anclas || p9.cortes === ctx.cortes) : null;
         if (pzC) {
+          let hotC = null;   // ⌨C: la acción de conector más natural del menú
           if (reg.an.con && typeof reg.an.con === "object") {
             const eC = (state.ensambles || []).find((e2) => e2.id === reg.an.con.e);
-            item("🔗 Quitar conector E" + (eC ? ensIdx(eC) : "?") + "·C" + reg.an.con.s, () => { delete reg.an.con; if (ctx.onChange) ctx.onChange(); });
+            hotC = item("🔗 Quitar conector E" + (eC ? ensIdx(eC) : "?") + "·C" + reg.an.con.s + "  ⌨C", () => { delete reg.an.con; if (ctx.onChange) ctx.onChange(); });
           } else if (!reg.an.con) {
             const vs = ensamblesDe(pzC);
             vs.forEach((e2) => {
               const usados = conectoresDePieza(pzC, e2.id).map((r9) => r9.slot);
               const libre = usados.indexOf(1) === -1 ? 1 : (usados.indexOf(2) === -1 ? 2 : (usados.indexOf(3) === -1 ? 3 : 0));
               const otra = ensOtra(e2, pzC);
-              if (libre) item("🔗 Conector C" + libre + " del ensamble E" + ensIdx(e2) + (libre === 3 ? " (opcional: fija el plano exacto)" : " (con " + (otra ? nombrePieza(otra) : "¿?") + ")"), () => {
-                reg.an.con = { e: e2.id, s: libre }; if (ctx.onChange) ctx.onChange();
-                if (libre === 2 && !vinculoCompleto(e2)) alert("C1+C2 de E" + ensIdx(e2) + " listos en esta pieza. Instala los de " + (otra ? nombrePieza(otra) : "la otra pieza") + " y abre 🧩 Ensamble 3D.");
-              });
+              if (libre) {
+                const bC = item("🔗 Conector C" + libre + " del ensamble E" + ensIdx(e2) + (libre === 3 ? " (opcional: fija el plano exacto)" : " (con " + (otra ? nombrePieza(otra) : "¿?") + ")") + (hotC ? "" : "  ⌨C"), () => {
+                  reg.an.con = { e: e2.id, s: libre }; if (ctx.onChange) ctx.onChange();
+                  if (libre === 2 && !vinculoCompleto(e2)) alert("C1+C2 de E" + ensIdx(e2) + " listos en esta pieza. Instala los de " + (otra ? nombrePieza(otra) : "la otra pieza") + " y abre 🧩 Ensamble 3D.");
+                });
+                if (!hotC) hotC = bC;
+              }
             });
-            (state.piezas || []).forEach((p2) => {
-              if (p2 === pzC || vs.some((e2) => ensOtra(e2, pzC) === p2)) return;
-              itemMas("🔗 Vincular con " + nombrePieza(p2) + " y poner su C1 aquí", () => {
+            const cands = (state.piezas || []).filter((p2) => p2 !== pzC && !vs.some((e2) => ensOtra(e2, pzC) === p2));
+            cands.forEach((p2) => {
+              const bV = itemMas("🔗 Vincular con " + nombrePieza(p2) + " y poner su C1 aquí" + (!hotC && cands.length === 1 ? "  ⌨C" : ""), () => {
                 const e2 = vincularPiezas(pzC, p2); if (!e2) return;
                 reg.an.con = { e: e2.id, s: 1 };
                 renderPiezas(); if (ctx.onChange) ctx.onChange();
               });
+              if (!hotC && cands.length === 1) hotC = bV;   // sin ambigüedad: única pieza posible
             });
           }
+          if (hotC) hotC.dataset.hotC = "1";
         } }
-      if (!reg.an.fix) itemMas("Bloquear anchor (fijar su posición)", () => { reg.an.fix = true; if (ctx.onChange) ctx.onChange(); });
-      else itemMas("Desbloquear anchor", () => { reg.an.fix = false; if (ctx.onChange) ctx.onChange(); });
+      { const bB = reg.an.fix
+          ? itemMas("Desbloquear anchor  ⌨B", () => { reg.an.fix = false; if (ctx.onChange) ctx.onChange(); })
+          : itemMas("Bloquear anchor (fijar su posición)  ⌨B", () => { reg.an.fix = true; if (ctx.onChange) ctx.onChange(); });
+        if (bB) bB.dataset.hotB = "1"; }
       if (!reg.an.fix) item("Fijar distancia exacta…", () => {
         const cur = (reg.tipo === "arista") ? (parseFloat(reg.an.d) || 0) : (parseFloat(reg.an.t) || 0);
         let lenC = 0;
@@ -8011,6 +8019,15 @@
         });
         menu.appendChild(tg); menu.appendChild(masBox);
       }
+      // Atajos ⌨B (bloquear/desbloquear) y ⌨C (conector) con el menú del anchor abierto.
+      menu._onKey = (ev3) => {
+        if (ev3.target && /input|textarea|select/i.test(ev3.target.tagName || "")) return;
+        const k3 = (ev3.key || "").toLowerCase();
+        if (k3 !== "b" && k3 !== "c" && k3 !== "g") return;
+        const btn = menu.querySelector(k3 === "b" ? 'button[data-hot-b="1"]' : (k3 === "c" ? 'button[data-hot-c="1"]' : 'button[data-hot-g="1"]'));
+        if (btn) { ev3.preventDefault(); btn.click(); }
+      };
+      document.addEventListener("keydown", menu._onKey);
       document.body.appendChild(menu); _arMenu = menu;
       const gEl = svg.querySelector('g.ancla[data-ancla="' + reg.an.id + '"]');
       let cx2 = window.innerWidth / 2, cy2 = window.innerHeight / 2;
@@ -8242,8 +8259,10 @@
           if (!acciones[a]) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it";
           const esAncla = (a === "ancla" || a === "anclaLibre" || a === "corteAncla");
-          b.textContent = esAncla ? t + "  ⌨A" : t;
+          const esGuia = (a === "guia" || a === "guiaLibre");
+          b.textContent = esAncla ? t + "  ⌨A" : (esGuia ? t + "  ⌨G" : t);
           if (esAncla) b.dataset.hotA = "1";
+          if (esGuia) b.dataset.hotG = "1";
           b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
@@ -8251,9 +8270,10 @@
         // Atajo ⌨A: con el menú de la arista abierto, "A" instala el anchor en el punto pinchado
         // (y el diálogo de fijar distancia se abre solo).
         menu._onKey = (ev3) => {
-          if (ev3.key !== "a" && ev3.key !== "A") return;
-          const btnA = menu.querySelector('button[data-hot-a="1"]');
-          if (btnA) { ev3.preventDefault(); btnA.click(); }
+          const k3 = (ev3.key || "").toLowerCase();
+          if (k3 !== "a" && k3 !== "g") return;
+          const btnH = menu.querySelector(k3 === "a" ? 'button[data-hot-a="1"]' : 'button[data-hot-g="1"]');
+          if (btnH) { ev3.preventDefault(); btnH.click(); }
         };
         document.addEventListener("keydown", menu._onKey);
         _arMenuXY = { x: e.clientX, y: e.clientY };
