@@ -1012,10 +1012,13 @@
       const k = granelLineaCalc(l);
       if (!(k.cant > 0) || l.precio == null) return null;
       const attrs = [l.color, l.materialidad].filter(Boolean);
-      let detalle = granelNombreL(l) + (attrs.length ? " · " + attrs.join(" · ") : "") + (l.specs ? " · " + l.specs : "");
-      // Formato del rollo: útil en productos vendidos por rollo o por metro lineal (ancho × largo del rollo).
-      const fmt = (l.formato || "").trim(), vNorm = String(l.variedad || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-      if (fmt && /(lineal|rollo)/.test(vNorm)) detalle += " · Formato " + fmt;
+      // FORMATO: pieza clave para que el cliente entienda el producto — va SIEMPRE que exista,
+      // junto al nombre y ANTES de la ficha técnica (igual que se muestra en la App).
+      const fmt = (l.formato || "").trim();
+      let detalle = granelNombreL(l)
+        + (fmt ? " · Formato " + fmt : "")
+        + (attrs.length ? " · " + attrs.join(" · ") : "")
+        + (l.specs ? " · " + l.specs : "");
       const descuentoTxt = k.desc > 0
         ? (k.esMonto ? "Descuento aplicado: -" + money(k.desc)
                      : "Descuento " + f(k.dp) + "% aplicado: -" + money(k.desc))
@@ -5001,8 +5004,11 @@
         const ang = (((parseFloat(c.angulo) || 0) % 180) + 180) % 180;
         const x0 = Math.min(ln.a.x, ln.a.x + ln.u.x * ln.w), x1 = Math.max(ln.a.x, ln.a.x + ln.u.x * ln.w);
         const y0 = Math.min(ln.a.y, ln.a.y + ln.u.y * ln.w), y1 = Math.max(ln.a.y, ln.a.y + ln.u.y * ln.w);
-        if ((ang < 1 || ang > 179) && ln.a.y > 0.01 && ln.a.y < L - 0.01 && x0 <= 0.01 && x1 >= A - 0.01) return { horiz: true, pos: ln.a.y, nombre: "Eje · " + (c.legend || "guía"), c: c };
-        if (Math.abs(ang - 90) < 1 && ln.a.x > 0.01 && ln.a.x < A - 0.01 && y0 <= 0.01 && y1 >= L - 0.01) return { horiz: false, pos: ln.a.x, nombre: "Eje · " + (c.legend || "guía"), c: c };
+        if ((ang < 1 || ang > 179) && ln.a.y > 0.01 && ln.a.y < L - 0.01 && x0 <= 0.01 && x1 >= A - 0.01) return { horiz: true, pos: ln.a.y, P0: { x: 0, y: ln.a.y }, u: { x: 1, y: 0 }, nrm: { x: 0, y: 1 }, nombre: "Eje · " + (c.legend || "guía"), c: c };
+        if (Math.abs(ang - 90) < 1 && ln.a.x > 0.01 && ln.a.x < A - 0.01 && y0 <= 0.01 && y1 >= L - 0.01) return { horiz: false, pos: ln.a.x, P0: { x: ln.a.x, y: 0 }, u: { x: 0, y: 1 }, nrm: { x: 1, y: 0 }, nombre: "Eje · " + (c.legend || "guía"), c: c };
+        // Eje LIBRE (cualquier ángulo — p.ej. diagonal) en productos PLANOS: parte el paño por
+        // la línea de la guía. En volumétricos siguen solo los h/v (las paredes exigen ortogonal).
+        if (!(H > 0)) return { libre: true, P0: { x: ln.a.x, y: ln.a.y }, u: { x: ln.u.x, y: ln.u.y }, nrm: { x: -ln.u.y, y: ln.u.x }, nombre: "Eje · " + (c.legend || "guía"), c: c };
       }
       return null;
     })();
@@ -5311,9 +5317,9 @@
     let ejeCtl = null;
     if (ejeF) {
       const outerE = new T.Group();
-      outerE.position.set(ejeF.horiz ? -A / 2 : ejeF.pos - A / 2, H, ejeF.horiz ? ejeF.pos - L / 2 : -L / 2);
-      const uxE = ejeF.horiz ? new T.Vector3(1, 0, 0) : new T.Vector3(0, 0, 1);
-      const uzE = ejeF.horiz ? new T.Vector3(0, 0, 1) : new T.Vector3(1, 0, 0);
+      outerE.position.set(ejeF.P0.x - A / 2, H, ejeF.P0.y - L / 2);
+      const uxE = new T.Vector3(ejeF.u.x, 0, ejeF.u.y);
+      const uzE = new T.Vector3(ejeF.nrm.x, 0, ejeF.nrm.y);
       const uyE = new T.Vector3().crossVectors(uzE, uxE);
       outerE.setRotationFromMatrix(new T.Matrix4().makeBasis(uxE, uyE, uzE));
       const innerE = new T.Group(); outerE.add(innerE); grp.add(outerE);
@@ -5391,22 +5397,18 @@
         }
       }
       else if (ejeF) {
-        // EJE: mitad de tapa CERCANA estática; la LEJANA vive dentro de la bisagra del eje (0° = extendida).
-        const wN = ejeF.horiz ? A : ejeF.pos, hN = ejeF.horiz ? ejeF.pos : L;
-        if (hayCal) caraCalada(0, 0, wN, hN, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2));
-        else {
-          const gP = new T.PlaneGeometry(wN, hN);
-          const mesh = new T.Mesh(gP, matLona); mesh.rotation.x = -Math.PI / 2; mesh.position.set(wN / 2 - A / 2, H, hN / 2 - L / 2); grp.add(mesh);
-          const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde); ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); grp.add(ed);
-        }
-        const wF = ejeF.horiz ? A : L, hF = ejeF.horiz ? (L - ejeF.pos) : (A - ejeF.pos);
-        const W4F = ejeF.horiz ? ((mx, my) => new T.Vector3(mx, 0, my - ejeF.pos)) : ((mx, my) => new T.Vector3(my, 0, mx - ejeF.pos));
-        if (hayCal) caraCalada(ejeF.horiz ? 0 : ejeF.pos, ejeF.horiz ? ejeF.pos : 0, ejeF.horiz ? A : A - ejeF.pos, ejeF.horiz ? L - ejeF.pos : L, W4F, ejeCtl.inner);
-        else {
-          const gF = new T.PlaneGeometry(wF, hF);
-          const meshF = new T.Mesh(gF, matLona); meshF.rotation.x = -Math.PI / 2; meshF.position.set(wF / 2, 0, hF / 2); ejeCtl.inner.add(meshF);
-          const edF = new T.LineSegments(new T.EdgesGeometry(gF), matBorde); edF.rotation.copy(meshF.rotation); edF.position.copy(meshF.position); ejeCtl.inner.add(edF);
-        }
+        // EJE (cualquier ángulo): mitad CERCANA estática; la LEJANA vive en la bisagra (0° = extendida).
+        // Ambas mitades = lámina completa con máscara de SEMIPLANO respecto de la línea del eje.
+        const R9 = (A + L) * 2, P9 = ejeF.P0, u9 = ejeF.u, n9 = ejeF.nrm;
+        const quad9 = (sgn) => [
+          { x: P9.x - u9.x * R9, y: P9.y - u9.y * R9 },
+          { x: P9.x + u9.x * R9, y: P9.y + u9.y * R9 },
+          { x: P9.x + u9.x * R9 + sgn * n9.x * R9, y: P9.y + u9.y * R9 + sgn * n9.y * R9 },
+          { x: P9.x - u9.x * R9 + sgn * n9.x * R9, y: P9.y - u9.y * R9 + sgn * n9.y * R9 },
+        ];
+        caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2), grp, quad9(-1));
+        const W4E = (mx, my) => new T.Vector3((mx - P9.x) * u9.x + (my - P9.y) * u9.y, 0, (mx - P9.x) * n9.x + (my - P9.y) * n9.y);
+        caraCalada(0, 0, A, L, W4E, ejeCtl.inner, quad9(1));
       }
       else if (hayCal) caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2)); else panel(A, L, 0, H, 0, -Math.PI / 2, 0);
     } // tapa (arriba)
@@ -5538,11 +5540,12 @@
       const NOM_OJ3 = { sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" };
       // EJE de pliegue: los elementos de la media TAPA lejana van en coords locales de su bisagra.
       const ejeReg = ejeCtl;
-      const enEjeFar = (mx, my) => !!ejeReg && mx >= -1e-9 && mx <= A + 1e-9 && my >= -1e-9 && my <= L + 1e-9 && (ejeF.horiz ? my > ejeF.pos + 1e-9 : mx > ejeF.pos + 1e-9);
+      const enEjeFar = (mx, my) => !!ejeReg && mx >= -1e-9 && mx <= A + 1e-9 && my >= -1e-9 && my <= L + 1e-9 &&
+        ((mx - ejeF.P0.x) * ejeF.nrm.x + (my - ejeF.P0.y) * ejeF.nrm.y) > 1e-9;
       const ejeLocal = (mx, my, off) => new T.Vector3(
-        ejeF.horiz ? Math.max(0, Math.min(A, mx)) : Math.max(0, Math.min(L, my)),
+        (mx - ejeF.P0.x) * ejeF.u.x + (my - ejeF.P0.y) * ejeF.u.y,
         off != null ? off : 0.012,
-        ejeF.horiz ? my - ejeF.pos : mx - ejeF.pos);
+        (mx - ejeF.P0.x) * ejeF.nrm.x + (my - ejeF.P0.y) * ejeF.nrm.y);
       const EPS3 = 1e-6;
       (skOj.ojetillos || []).forEach((p) => {
         const m = mkOje3D();
@@ -5596,7 +5599,11 @@
       const splitPl3 = (pa, pb) => {
         const ts = [0, 1];
         const ejesSp = [["x", 0], ["x", A], ["y", 0], ["y", L]];
-        if (ejeF) ejesSp.push(ejeF.horiz ? ["y", ejeF.pos] : ["x", ejeF.pos]);
+        if (ejeF) {   // quiebre por la LÍNEA del eje (cualquier ángulo)
+          const fa = (pa.x - ejeF.P0.x) * ejeF.nrm.x + (pa.y - ejeF.P0.y) * ejeF.nrm.y;
+          const fb = (pb.x - ejeF.P0.x) * ejeF.nrm.x + (pb.y - ejeF.P0.y) * ejeF.nrm.y;
+          if ((fa < 0) !== (fb < 0) && Math.abs(fb - fa) > 1e-12) { const t9 = -fa / (fb - fa); if (t9 > 1e-9 && t9 < 1 - 1e-9) ts.push(t9); }
+        }
         ejesSp.forEach((ev2) => {
           const a1 = pa[ev2[0]], b1 = pb[ev2[0]];
           if (Math.abs(b1 - a1) < 1e-12) return;
@@ -5735,7 +5742,7 @@
               const t2 = (k2 === "sup" || k2 === "inf") ? midx : midy;
               const pt3 = parteDe({ sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" }[k2], t2);
               padre = pt3 && pt3.inner;
-            } else if (ejeCtl && ejeF && (ejeF.horiz ? midy > ejeF.pos + 1e-6 : midx > ejeF.pos + 1e-6)) {
+            } else if (ejeCtl && ejeF && ((midx - ejeF.P0.x) * ejeF.nrm.x + (midy - ejeF.P0.y) * ejeF.nrm.y) > 1e-6) {
               padre = ejeCtl.inner;
             }
             if (padre && padre.attach) padre.attach(outer);
