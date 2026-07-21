@@ -982,3 +982,8 @@ body.drawer-abierto { overflow: hidden; }
 
 .edit-hist-save { border-color: #0f6e56 !important; color: #0f6e56 !important; font-weight: 700; }
 .edit-hist-save:hover { background: #0f6e56 !important; color: #fff !important; }
+
+/* v17 (F4): fichas de pieza fuera del flujo — viven en el drawer; el plano es el índice */
+.pieza-card .pz-ficha { display: none; }
+.pieza-card .pz-ficha.ficha-drawer { display: block !important; }
+.ficha-tab-cap { align-self: center; padding: 0 6px; white-space: nowrap; opacity: 0.75; }

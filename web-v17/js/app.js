@@ -1523,6 +1523,7 @@
   function irAFicha(fid) {
     const card = document.querySelector('[data-fid="' + fid + '"]'); if (!card) return;
     const sd = fichaSecDe(card); if (sd) abrirFichaDrawer(sd.id);   // v16: la ficha vive en el drawer
+    { const pf = card.closest && card.closest(".pz-ficha"); if (pf) { const cp = pf.closest(".pieza-card"); if (cp) abrirFichaPzEl(cp, pf); } }   // v17: ficha de pieza
     colapsarSubmenusExcepto(card); // enfoca: cierra los demás sub-menús
     let p = card.parentElement;
     while (p && p !== document.body) {
@@ -1823,18 +1824,20 @@
     const tb = document.getElementById("fichaTabs"); if (tb) tb.remove();
     document.body.classList.remove("drawer-abierto");
   }
-  function abrirFichaDrawer(id) {
-    const sec = document.getElementById(id); if (!sec) return;
+  // v17: drawer GENERALIZADO — recibe el elemento y su lista de pestañas (uniforme o pieza).
+  function abrirDrawerEl(sec, tabsDef, cap) {
+    if (!sec) return;
     if (_drawerSec === sec) return;
     cerrarFichaDrawer();
     const bd = document.createElement("div"); bd.id = "fichaBackdrop"; bd.addEventListener("click", cerrarFichaDrawer);
     document.body.appendChild(bd);
     const tabs = document.createElement("div"); tabs.id = "fichaTabs";
-    FICHA_SECS.forEach(([sid, tit]) => {
-      if (!document.getElementById(sid)) return;
-      const b = document.createElement("button"); b.type = "button"; b.className = "ficha-tab" + (sid === id ? " on" : "");
+    if (cap) { const sp = document.createElement("span"); sp.className = "ficha-tab-cap muted small"; sp.textContent = cap; tabs.appendChild(sp); }
+    (tabsDef || []).forEach((par) => {
+      const el2 = par[0], tit = par[1]; if (!el2) return;
+      const b = document.createElement("button"); b.type = "button"; b.className = "ficha-tab" + (el2 === sec ? " on" : "");
       b.textContent = tit;
-      b.addEventListener("click", () => abrirFichaDrawer(sid));
+      b.addEventListener("click", () => abrirDrawerEl(el2, tabsDef, cap));
       tabs.appendChild(b);
     });
     const x = document.createElement("button"); x.type = "button"; x.className = "ficha-tab ficha-tab-x"; x.textContent = "✕";
@@ -1846,6 +1849,32 @@
     _drawerSec = sec;
     document.body.classList.add("drawer-abierto");
     sec.scrollTop = 0;
+  }
+  function abrirFichaDrawer(id) {
+    const sec = document.getElementById(id); if (!sec) return;
+    abrirDrawerEl(sec, FICHA_SECS.map(([sid, tit]) => [document.getElementById(sid), tit]));
+  }
+  // Fichas por PIEZA (compuesto): mismas fichas que el uniforme + las propias del compuesto.
+  const PZ_FICHAS = [
+    ["pz-cortes", "✂ Cortes · Guías"],
+    ["pz-aletas", "🪁 Anexos"],
+    ["pz-ins", "🪟 Paños inscritos"],
+    ["pz-comp", "➕ Complementos"],
+    ["pz-straps", "🎗 Straps"],
+    ["pz-cintas", "🧷 Cintas"],
+    ["pz-oj-wrap", "⭕ Ojetillos"],
+    ["pz-borde", "📏 Bordes"],
+    ["pz-tras-wrap", "🔙 Trasera"],
+  ];
+  function abrirFichaPz(card, cls) { if (!card) return; const sec = card.querySelector("." + cls); if (sec) abrirFichaPzEl(card, sec); }
+  function abrirFichaPzEl(card, sec) {
+    const tabs = PZ_FICHAS.map((par) => { const el2 = card.querySelector("." + par[0]); return el2 ? [el2, par[1]] : null; }).filter(Boolean);
+    let cap = "";
+    try {
+      const numEl = card.querySelector(".pz-num"), etqEl = card.querySelector(".pz-etq");
+      cap = ((numEl && numEl.textContent.trim()) || "Pieza") + (etqEl && etqEl.value ? " — " + etqEl.value.trim() : "");
+    } catch (_) {}
+    abrirDrawerEl(sec, tabs, cap);
   }
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && _drawerSec) cerrarFichaDrawer(); });
   // Tira de acceso RÁPIDO bajo el plano: un clic a cada grupo de fichas (velocidad de cotización).
@@ -1907,6 +1936,7 @@
   function irAElemento(el, flashEl) {
     if (!el) return;
     const sd = fichaSecDe(el); if (sd) abrirFichaDrawer(sd.id);   // v16: la ficha vive en el drawer
+    { const pf = el.closest && el.closest(".pz-ficha"); if (pf) { const cp = pf.closest(".pieza-card"); if (cp) abrirFichaPzEl(cp, pf); } }   // v17: ficha de pieza
     let p = el.parentElement;
     while (p && p !== document.body) {
       if (p.classList) {
@@ -4621,6 +4651,197 @@
     return { alto: H, ojEn: ojEnUnif(), alas: alasUnif(), altos: altosUnif(), bordesEnPliegue: !!($("f_bordesPliegue") && $("f_bordesPliegue").checked) };
   }
 
+  // ---------- F5: VISOR DE ENSAMBLE 3D (piezas emparejadas por conectores) ----------
+  // Representación simplificada del ARMADO de cada pieza (base + paredes según altos + calados
+  // de la base como contornos). La pieza B se posa sobre la A calzando C1↔C1 y orientando C2:
+  // los marcos tangentes de las caras se alinean (las caras quedan coplanares/enfrentadas).
+  // DESCALCE: se mide en 2D (distancia de confección sobre la tela); si |dA−dB| > 1 cm se dibuja
+  // la cota elástica roja entre los C2 y la barra ofrece corregir el C2 de B sobre su carril.
+  let _ens3d = null, _ensVolteado = false;
+  function cerrarEnsamble3D() {
+    if (!_ens3d) return;
+    try { cancelAnimationFrame(_ens3d.raf); } catch (_) {}
+    try { _ens3d.ren.dispose(); } catch (_) {}
+    try { document.removeEventListener("keydown", _ens3d.esc); } catch (_) {}
+    _ens3d.ov.remove(); _ens3d = null;
+  }
+  async function abrirEnsamble3D() {
+    const ev9 = window.CalcCIBSA.evalExpr, f9 = window.CalcCIBSA.fmtNum;
+    const listas = (state.piezas || []).map((pz) => ({ pz: pz, cons: conectoresDePieza(pz), idx: state.piezas.indexOf(pz) })).filter((r) => r.cons.some((c) => c.slot === 1) && r.cons.some((c) => c.slot === 2));
+    if (listas.length < 2) return alert("Para ensamblar: instala conectores C1 y C2 en DOS piezas (menú del anchor → 🔗 Conector de ensamble).");
+    const RA = listas[0], RB = listas[1];
+    try {
+      await ensureLib("THREE", [
+        "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
+        "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js",
+        "https://unpkg.com/three@0.128.0/build/three.min.js",
+      ]);
+    } catch (e) { return alert("No se pudo cargar el visor 3D (revisa la conexión)."); }
+    cerrarEnsamble3D();
+    const T = window.THREE;
+    const nomDe = (r) => "Pieza " + (r.idx + 1) + ((r.pz.etiqueta || "").trim() ? " — " + r.pz.etiqueta.trim() : "");
+    // --- armado simplificado de una pieza: grupo 3D + mapa desplegado(x,y) → {v, n} ---
+    function armar(r, colHex) {
+      const pz = r.pz;
+      const A = ev9(pz.ancho) || 0, L = ev9(pz.largo) || 0;
+      const altos = altosPz(pz) || { sup: 0, inf: 0, izq: 0, der: 0 };
+      const grp = new T.Group();
+      const mat = new T.MeshBasicMaterial({ color: colHex, transparent: true, opacity: 0.32, side: T.DoubleSide, depthWrite: false });
+      const lin = new T.LineBasicMaterial({ color: 0x475569 });
+      const V3 = (p) => new T.Vector3(p[0], p[1], p[2]);
+      const quad = (p1, p2, p3, p4) => {
+        const g = new T.BufferGeometry().setFromPoints([V3(p1), V3(p2), V3(p3), V3(p1), V3(p3), V3(p4)]);
+        g.computeVertexNormals();
+        grp.add(new T.Mesh(g, mat));
+        grp.add(new T.Line(new T.BufferGeometry().setFromPoints([V3(p1), V3(p2), V3(p3), V3(p4), V3(p1)]), lin));
+      };
+      quad([0, 0, 0], [A, 0, 0], [A, 0, L], [0, 0, L]);                                            // base (plan y→z)
+      if (altos.sup > 0) quad([0, 0, 0], [A, 0, 0], [A, altos.sup, 0], [0, altos.sup, 0]);          // pared sup (z=0)
+      if (altos.inf > 0) quad([0, 0, L], [A, 0, L], [A, altos.inf, L], [0, altos.inf, L]);          // pared inf (z=L)
+      if (altos.izq > 0) quad([0, 0, 0], [0, 0, L], [0, altos.izq, L], [0, altos.izq, 0]);          // pared izq (x=0)
+      if (altos.der > 0) quad([A, 0, 0], [A, 0, L], [A, altos.der, L], [A, altos.der, 0]);          // pared der (x=A)
+      // calados de la base: contorno rojo (rect/circ; otras formas se omiten en esta vista)
+      try {
+        const rojo = new T.LineBasicMaterial({ color: 0xb91c1c });
+        (cortesSpec(pz.cortes) || []).forEach((c) => {
+          if (c.tipo !== "calado" && c.tipo !== "recorte") return;
+          const pts = [];
+          if (c.forma === "circ" && c.d > 0) {
+            const cx = c.x + c.d / 2, cz = c.y + c.d / 2, rr = c.d / 2;
+            for (let i = 0; i <= 32; i++) { const a2 = (i / 32) * Math.PI * 2; pts.push(new T.Vector3(cx + Math.cos(a2) * rr, 0.003, cz + Math.sin(a2) * rr)); }
+          } else if (c.w > 0 && c.h > 0) {
+            pts.push(new T.Vector3(c.x, 0.003, c.y), new T.Vector3(c.x + c.w, 0.003, c.y), new T.Vector3(c.x + c.w, 0.003, c.y + c.h), new T.Vector3(c.x, 0.003, c.y + c.h), new T.Vector3(c.x, 0.003, c.y));
+          } else return;
+          grp.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), rojo));
+        });
+      } catch (_) {}
+      const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+      const mapa = (x, y) => {
+        if (x < -1e-6) return { v: new T.Vector3(0, clamp(-x, 0, altos.izq || 0.001), clamp(y, 0, L)), n: new T.Vector3(-1, 0, 0) };
+        if (x > A + 1e-6) return { v: new T.Vector3(A, clamp(x - A, 0, altos.der || 0.001), clamp(y, 0, L)), n: new T.Vector3(1, 0, 0) };
+        if (y < -1e-6) return { v: new T.Vector3(clamp(x, 0, A), clamp(-y, 0, altos.sup || 0.001), 0), n: new T.Vector3(0, 0, -1) };
+        if (y > L + 1e-6) return { v: new T.Vector3(clamp(x, 0, A), clamp(y - L, 0, altos.inf || 0.001), L), n: new T.Vector3(0, 0, 1) };
+        return { v: new T.Vector3(clamp(x, 0, A), 0, clamp(y, 0, L)), n: new T.Vector3(0, 1, 0) };
+      };
+      return { grp: grp, mapa: mapa, A: A, L: L, altos: altos };
+    }
+    const armA = armar(RA, 0x2563eb), armB = armar(RB, 0x16a34a);
+    const cA = [RA.cons.find((c) => c.slot === 1), RA.cons.find((c) => c.slot === 2)];
+    const cB = [RB.cons.find((c) => c.slot === 1), RB.cons.find((c) => c.slot === 2)];
+    const pA1 = armA.mapa(cA[0].x, cA[0].y), pA2 = armA.mapa(cA[1].x, cA[1].y);
+    const pB1 = armB.mapa(cB[0].x, cB[0].y), pB2 = armB.mapa(cB[1].x, cB[1].y);
+    // distancias de CONFECCIÓN (2D, sobre la tela)
+    const dA2 = Math.hypot(cA[1].x - cA[0].x, cA[1].y - cA[0].y);
+    const dB2 = Math.hypot(cB[1].x - cB[0].x, cB[1].y - cB[0].y);
+    const uA = pA2.v.clone().sub(pA1.v), uB = pB2.v.clone().sub(pB1.v);
+    if (uA.length() < 1e-6 || uB.length() < 1e-6) return alert("Los conectores C1 y C2 de una pieza están en el mismo punto — sepáralos para definir la orientación.");
+    const mkFrame = (u, m) => {
+      const t = u.clone().normalize();
+      let b = m.clone().sub(t.clone().multiplyScalar(m.dot(t)));
+      if (b.lengthSq() < 1e-10) b = (Math.abs(t.y) < 0.9) ? new T.Vector3(0, 1, 0) : new T.Vector3(1, 0, 0);
+      b.sub(t.clone().multiplyScalar(b.dot(t))).normalize();
+      const w = new T.Vector3().crossVectors(t, b);
+      return new T.Matrix4().makeBasis(t, b, w);
+    };
+    const FA = mkFrame(uA, pA1.n), FB = mkFrame(uB, pB1.n);
+    let R = FA.clone().multiply(FB.clone().transpose());
+    if (_ensVolteado) R = new T.Matrix4().makeRotationAxis(uA.clone().normalize(), Math.PI).multiply(R);
+    armB.grp.quaternion.setFromRotationMatrix(R);
+    armB.grp.position.copy(pA1.v.clone().sub(pB1.v.clone().applyMatrix4(R)));
+    const pB2W = pB2.v.clone().applyMatrix4(R).add(armB.grp.position);
+    // --- escena / overlay ---
+    const ov = document.createElement("div");
+    ov.style.cssText = "position:fixed;inset:0;z-index:1250;background:rgba(15,16,18,0.72);display:flex;align-items:center;justify-content:center;";
+    const panel = document.createElement("div");
+    panel.style.cssText = "background:var(--surface,#fff);border-radius:14px;width:min(860px,96vw);max-height:94vh;display:flex;flex-direction:column;overflow:hidden;";
+    const head = document.createElement("div");
+    head.style.cssText = "display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border,#ddd);flex-wrap:wrap;";
+    head.innerHTML = '<strong style="flex:1">🧩 Ensamble 3D — <span style="color:#2563eb">' + nomDe(RA) + '</span> + <span style="color:#16a34a">' + nomDe(RB) + '</span></strong>';
+    const bVolt = document.createElement("button"); bVolt.type = "button"; bVolt.className = "btn-outline"; bVolt.textContent = "↔ Voltear " + nomDe(RB).split(" — ")[0];
+    bVolt.addEventListener("click", () => { _ensVolteado = !_ensVolteado; cerrarEnsamble3D(); setTimeout(abrirEnsamble3D, 20); });
+    const bX = document.createElement("button"); bX.type = "button"; bX.className = "btn-outline"; bX.textContent = "✕";
+    bX.addEventListener("click", cerrarEnsamble3D);
+    head.appendChild(bVolt); head.appendChild(bX);
+    const cv = document.createElement("canvas");
+    cv.style.cssText = "width:100%;height:min(58vh,520px);display:block;touch-action:none;cursor:grab;";
+    const barra = document.createElement("div");
+    barra.style.cssText = "padding:10px 14px;border-top:1px solid var(--border,#ddd);display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:0.92em;";
+    const desc = Math.abs(dA2 - dB2);
+    if (desc <= 0.01) {
+      barra.innerHTML = '<span style="color:#15803d;font-weight:600">✅ Ensamble calzado</span><span class="muted">C1↔C1 y C2↔C2 coinciden (descalce ' + Math.round(desc * 1000) + ' mm, dentro de la tolerancia de confección de 1 cm).</span>';
+    } else {
+      const sp = document.createElement("span");
+      sp.style.cssText = "color:#b91c1c;font-weight:600";
+      sp.textContent = "⚠ Descalce " + f9(rd3(desc)) + " m entre los C2 (" + nomDe(RA).split(" — ")[0] + ": " + f9(rd3(dA2)) + " m · " + nomDe(RB).split(" — ")[0] + ": " + f9(rd3(dB2)) + " m)";
+      barra.appendChild(sp);
+      const bFix = document.createElement("button"); bFix.type = "button"; bFix.className = "btn-outline";
+      bFix.textContent = "🔧 Corregir C2 de " + nomDe(RB).split(" — ")[0] + " → " + f9(rd3(dA2)) + " m";
+      bFix.addEventListener("click", () => corregirConectorB(RB, cB, dA2));
+      barra.appendChild(bFix);
+    }
+    barra.insertAdjacentHTML("beforeend", '<span class="muted small" style="margin-left:auto">● <span style="color:#e67e22">C1</span> · <span style="color:#0284c7">C2</span> — arrastra para rotar, rueda/pellizco para acercar</span>');
+    panel.appendChild(head); panel.appendChild(cv); panel.appendChild(barra);
+    ov.appendChild(panel); document.body.appendChild(ov);
+    ov.addEventListener("click", (e) => { if (e.target === ov) cerrarEnsamble3D(); });
+    // escena
+    const ren = new T.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
+    const W9 = cv.clientWidth || 800, H9 = cv.clientHeight || 500;
+    ren.setSize(W9, H9, false); ren.setPixelRatio(window.devicePixelRatio || 1);
+    const scene = new T.Scene(); scene.background = new T.Color(0xf5f5f2);
+    scene.add(armA.grp); scene.add(armB.grp);
+    const mkBola = (pos, hex) => { const m9 = new T.Mesh(new T.SphereGeometry(Math.max(0.025, Math.max(armA.A, armA.L) * 0.012), 12, 12), new T.MeshBasicMaterial({ color: hex })); m9.position.copy(pos); scene.add(m9); };
+    mkBola(pA1.v, 0xe67e22); mkBola(pA2.v, 0x0284c7);
+    mkBola(pB1.v.clone().applyMatrix4(R).add(armB.grp.position), 0xe67e22); mkBola(pB2W, 0x0284c7);
+    if (desc > 0.01) { const ln9 = new T.Line(new T.BufferGeometry().setFromPoints([pA2.v.clone(), pB2W.clone()]), new T.LineDashedMaterial({ color: 0xdc2626, dashSize: 0.06, gapSize: 0.04 })); ln9.computeLineDistances(); scene.add(ln9); }
+    const grid = new T.GridHelper(Math.max(armA.A, armA.L, 2) * 2.4, 12, 0xd8d8d2, 0xecece6); grid.position.y = -0.002; scene.add(grid);
+    const cam = new T.PerspectiveCamera(42, W9 / H9, 0.01, 1000);
+    const ctr = new T.Vector3(armA.A / 2, 0.3, armA.L / 2);
+    let th = Math.PI / 4, ph = Math.PI / 3.2, rad = Math.max(armA.A, armA.L, 1.5) * 2.1;
+    const colocar = () => { cam.position.set(ctr.x + rad * Math.sin(ph) * Math.cos(th), ctr.y + rad * Math.cos(ph), ctr.z + rad * Math.sin(ph) * Math.sin(th)); cam.lookAt(ctr); };
+    colocar();
+    let drag = null;
+    cv.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener("pointermove", (e) => { if (!drag) return; th += (e.clientX - drag.x) * 0.008; ph = Math.max(0.15, Math.min(Math.PI - 0.15, ph - (e.clientY - drag.y) * 0.008)); drag = { x: e.clientX, y: e.clientY }; colocar(); });
+    cv.addEventListener("pointerup", () => { drag = null; });
+    cv.addEventListener("wheel", (e) => { e.preventDefault(); rad = Math.max(0.5, Math.min(60, rad * (e.deltaY > 0 ? 1.1 : 0.9))); colocar(); }, { passive: false });
+    const esc9 = (e) => { if (e.key === "Escape") cerrarEnsamble3D(); };
+    document.addEventListener("keydown", esc9);
+    _ens3d = { ov: ov, ren: ren, esc: esc9, raf: 0 };
+    const loop = () => { if (!_ens3d) return; ren.render(scene, cam); _ens3d.raf = requestAnimationFrame(loop); };
+    loop();
+  }
+  // Corrige el C2 de la pieza B: lo desliza por su CARRIL (arista o corte) hasta que la distancia
+  // C1→C2 sobre la tela iguale la de la pieza A (raíz de la cuadrática más cercana a la posición actual).
+  function corregirConectorB(RB, cB, dMeta) {
+    const ev9 = window.CalcCIBSA.evalExpr;
+    const pz = RB.pz, A9 = ev9(pz.ancho) || 0, L9 = ev9(pz.largo) || 0;
+    const c1 = { x: cB[0].x, y: cB[0].y }, r2 = cB[1];
+    let a9, u9, len9, cur9;
+    if (!r2.esCorte) {
+      const sg = segDeAncla(r2.an, A9, L9); if (!sg) return;
+      len9 = Math.hypot(sg.b.x - sg.a.x, sg.b.y - sg.a.y); if (!(len9 > 0)) return;
+      a9 = sg.a; u9 = { x: (sg.b.x - sg.a.x) / len9, y: (sg.b.y - sg.a.y) / len9 };
+      const d9 = Math.max(0, Math.min(len9, parseFloat(r2.an.d) || 0));
+      cur9 = (r2.an.esq === "fin") ? len9 - d9 : d9;
+    } else {
+      const ln = lineaRawCorte(r2.c); if (!ln) return;
+      a9 = ln.a; u9 = ln.u; len9 = ln.w; cur9 = Math.max(0, Math.min(len9, parseFloat(r2.an.t) || 0));
+    }
+    const wx = c1.x - a9.x, wy = c1.y - a9.y;
+    const uw = u9.x * wx + u9.y * wy;
+    const disc = uw * uw - (wx * wx + wy * wy - dMeta * dMeta);
+    if (disc < 0) return alert("Sobre este carril no existe un punto a " + window.CalcCIBSA.fmtNum(rd3(dMeta)) + " m del C1. Mueve el C1, usa otro carril para el C2, o ajusta las dimensiones.");
+    const s1 = uw + Math.sqrt(disc), s2 = uw - Math.sqrt(disc);
+    const cand = [s1, s2].filter((s) => s >= -1e-6 && s <= len9 + 1e-6).sort((x9, y9) => Math.abs(x9 - cur9) - Math.abs(y9 - cur9));
+    if (!cand.length) return alert("El punto a " + window.CalcCIBSA.fmtNum(rd3(dMeta)) + " m del C1 cae fuera de este carril. Mueve el C1 o usa otro carril para el C2.");
+    const sN = Math.max(0, Math.min(len9, cand[0]));
+    if (!r2.esCorte) r2.an.d = rd3((r2.an.esq === "fin") ? len9 - sN : sN);
+    else r2.an.t = rd3(sN);
+    aplicarEmpates(pz.cortes, pz.anclas || [], A9, L9);
+    renderPiezas(); recompute();
+    cerrarEnsamble3D(); setTimeout(abrirEnsamble3D, 40);
+  }
+
   // ---------- Vista cliente (monitor espejo, fase 1: mismo equipo) ----------
   // Una 2ª ventana de la app (?vista=cliente) muestra SOLO el plano en grande, en vivo, sin
   // precios ni controles. Canal: BroadcastChannel (mismo navegador) + snapshot en localStorage
@@ -7081,16 +7302,29 @@
     const f = window.CalcCIBSA.fmtNum, out = [];
     (anclas || []).forEach((an) => {
       const pq = posAnclaArista(an, A, L);
-      if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: f(rd3(parseFloat(an.d) || 0)) + " m", tipo: "arista", fix: !!an.fix });
+      if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: (an.con ? "C" + an.con + " · " : "") + f(rd3(parseFloat(an.d) || 0)) + " m", tipo: "arista", fix: !!an.fix, con: an.con || 0 });
     });
     visibles(cortesRaw || []).forEach((c) => {
       (c.anclas || []).forEach((an) => {
         const pq = posAnclaCorte(c, an);
-        if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: f(rd3(pq.t)) + " m", tipo: "corte", emp: an.emp != null, fix: !!an.fix });
+        if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: (an.con ? "C" + an.con + " · " : "") + f(rd3(pq.t)) + " m", tipo: "corte", emp: an.emp != null, fix: !!an.fix, con: an.con || 0 });
       });
     });
     return out;
   }
+  // ---------- F5: CONECTORES DE ENSAMBLE ----------
+  // Un conector es un anchor con rol (an.con = 1|2). Cada pieza admite C1 y C2; dos piezas con
+  // ambos conectores se emparejan (C1↔C1, C2↔C2) en el visor de ensamble.
+  function conectoresDePieza(pz) {
+    const ev9 = window.CalcCIBSA.evalExpr;
+    const A9 = ev9(pz.ancho) || 0, L9 = ev9(pz.largo) || 0;
+    const out = [];
+    (pz.anclas || []).forEach((an) => { if (an.con) { const p9 = posAnclaArista(an, A9, L9); if (p9) out.push({ an: an, slot: an.con, x: p9.x, y: p9.y, esCorte: false }); } });
+    visibles(pz.cortes || []).forEach((c) => (c.anclas || []).forEach((an) => { if (an.con) { const p9 = posAnclaCorte(c, an); if (p9) out.push({ an: an, slot: an.con, x: p9.x, y: p9.y, esCorte: true, c: c }); } }));
+    out.sort((a, b) => a.slot - b.slot);
+    return out;
+  }
+  function piezaEnsamblable(pz) { const cs = conectoresDePieza(pz); return cs.some((r) => r.slot === 1) && cs.some((r) => r.slot === 2); }
   // Modo "conectar anchors": tras elegirlo en el menú de un anchor, el siguiente clic en OTRO
   // anchor de arista traza un corte/guía entre ambos, ya EMPATADO a los dos (edición exprés).
   let _anchorPend = null;
@@ -7563,6 +7797,20 @@
         const otrosC = (reg.c.anclas || []).filter((a2) => a2 !== reg.an && a2.emp == null);
         if (otrosC.length === 1) itemMas("Modificar medida entre anchors…", () => modificarMedidaEntreCorte(reg.c, reg.an, otrosC[0]));
       }
+      // F5: CONECTOR DE ENSAMBLE — anchor con rol; C1 y C2 por pieza emparejan piezas en 🧩 Ensamble 3D.
+      { const pzC = (state.prodMode === "compuesto") ? (state.piezas || []).find((p9) => p9.anclas === ctx.anclas || p9.cortes === ctx.cortes) : null;
+        if (pzC) {
+          if (reg.an.con) item("🔗 Quitar conector C" + reg.an.con, () => { delete reg.an.con; if (ctx.onChange) ctx.onChange(); });
+          else {
+            const usados = conectoresDePieza(pzC).map((r9) => r9.slot);
+            const libre = usados.indexOf(1) === -1 ? 1 : (usados.indexOf(2) === -1 ? 2 : 0);
+            if (libre) item("🔗 Conector de ensamble (C" + libre + ")", () => {
+              reg.an.con = libre; if (ctx.onChange) ctx.onChange();
+              alert("Conector C" + libre + " instalado." + (libre === 1 ? " Instala C2 en esta pieza, luego C1+C2 en la otra, y abre 🧩 Ensamble 3D." : " Instala C1+C2 en la otra pieza y abre 🧩 Ensamble 3D (bajo el resumen de piezas)."));
+            });
+            else itemMas("🔗 C1 y C2 ya instalados en esta pieza", () => { alert("Esta pieza ya tiene sus 2 conectores. Quita uno (menú de su anchor) si quieres moverlo."); });
+          }
+        } }
       if (!reg.an.fix) itemMas("Bloquear anchor (fijar su posición)", () => { reg.an.fix = true; if (ctx.onChange) ctx.onChange(); });
       else itemMas("Desbloquear anchor", () => { reg.an.fix = false; if (ctx.onChange) ctx.onChange(); });
       if (!reg.an.fix) item("Fijar distancia exacta…", () => {
@@ -8146,17 +8394,19 @@
   // Acciones del menú de arista para una PIEZA del compuesto (mismas opciones, sobre pz.*).
   function accionesAristaPieza(pz) {
     const f = window.CalcCIBSA.fmtNum, ev = window.CalcCIBSA.evalExpr;
-    const irAPieza = () => {
+    const irAPieza = (fcls) => {
       pz._colap = false; renderPiezas(); recomputeCompuesto();
       setTimeout(() => {
         const idxP = state.piezas.indexOf(pz);
         const card = document.querySelectorAll("#piezasList .pieza-card")[idxP];
-        if (card) { try { card.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { card.scrollIntoView(); } }
+        if (!card) return;
+        if (fcls) { abrirFichaPz(card, fcls); return; }   // v17: la ficha vive en el drawer
+        try { card.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { card.scrollIntoView(); }
       }, 60);
     };
     return {
-      corteOj: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "oj", dOjetillosRef(pz.ojMode === "arista" ? pz.ojEdges : null)); irAPieza(); },
-      corteStrap: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "strap"); irAPieza(); },
+      corteOj: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "oj", dOjetillosRef(pz.ojMode === "arista" ? pz.ojEdges : null)); irAPieza("pz-cortes"); },
+      corteStrap: (i) => { const c = visibles(pz.cortes)[i]; if (!c) return; prepararCorteArista(c, "strap"); irAPieza("pz-cortes"); },
       guiaEje: (i) => {
         const c = visibles(pz.cortes)[i]; if (!c || c.tipo !== "guia") return;
         if (c.ejeVis) { c.ejeVis = false; renderPiezas(); recomputeCompuesto(); return; }
@@ -8182,7 +8432,7 @@
         const v = ev(String(txt).replace(",", "."));
         if (v == null || isNaN(v) || v < 0) { alert("Valor no válido."); return; }
         c.tapa.ar[k].ojD = v > 0 ? String(v) : "";
-        irAPieza(); },
+        irAPieza("pz-cortes"); },
       tapaFus: (i, k) => {
         const c = visibles(pz.cortes)[i]; if (!c || !c.tapa || !c.tapa.on) return;
         if (!c.tapa.ar) c.tapa.ar = {}; if (!c.tapa.ar[k]) c.tapa.ar[k] = { fus: true, ojD: "" };
@@ -8235,7 +8485,7 @@
       },
       guiaAnexoUI: (i) => {
         const c = visibles(pz.cortes)[i]; if (!c) return;
-        anexoDesdeCorteUI(c, null, { A: () => ev(pz.ancho), L: () => ev(pz.largo), H: () => (pz.usaAlto ? (ev(pz.altura) || 0) : 0), alas: () => alasPz(pz), aletas: () => (pz.aletas || (pz.aletas = [])), despues: irAPieza });
+        anexoDesdeCorteUI(c, null, { A: () => ev(pz.ancho), L: () => ev(pz.largo), H: () => (pz.usaAlto ? (ev(pz.altura) || 0) : 0), alas: () => alasPz(pz), aletas: () => (pz.aletas || (pz.aletas = [])), despues: () => irAPieza("pz-aletas") });
       },
       anexoOj: (rid, k, esFus) => {
         const al2 = visibles(pz.aletas || []).find((x2) => x2._rid === rid); if (!al2) return;
@@ -8245,34 +8495,34 @@
         if (esFus) e.onF = true; else e.on = true;
         if (!(window.CalcCIBSA.evalExpr(e.d) > 0)) e.d = String(dOjetillosRef(pz.ojMode === "arista" ? pz.ojEdges : null) || 0.5);
         al2._colap = false;
-        irAPieza();
+        irAPieza("pz-aletas");
       },
-      guiaLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "guia")) irAPieza(); },
+      guiaLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "guia")) irAPieza("pz-cortes"); },
       ojLibre: (seg, pm) => {
         const c = crearLineaEnSeg(pz.cortes, seg, "guia"); if (!c) return;
         c.ojAristaLado = ladoHaciaAdentro(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0, pz.usaAlto ? (ev(pz.altura) || 0) : 0, alasPz(pz));
         c.ojAristaD = String(dOjetillosRef(pz.ojMode === "arista" ? pz.ojEdges : null) || 0.5); c.ojAristaInset = "0.025"; c._advOpen = true;
-        irAPieza();
+        irAPieza("pz-cortes");
       },
       strapLibre: (seg, pm) => {
         const c = crearLineaEnSeg(pz.cortes, seg, "guia"); if (!c) return;
         c.strapLado = ladoHaciaAdentro(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0, pz.usaAlto ? (ev(pz.altura) || 0) : 0, alasPz(pz));
         c.strapD = "0.5"; c.strapOffset = "0"; c.strapInset = "0.15"; c._advOpen = true;
-        irAPieza();
+        irAPieza("pz-cortes");
       },
-      corteLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "corte")) irAPieza(); },
+      corteLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "corte")) irAPieza("pz-cortes"); },
       oj: (k) => {
         pz.ojMode = "arista";
         if (!pz.ojEdges) pz.ojEdges = ojEdgesDefault();
         const e = pz.ojEdges[k] || (pz.ojEdges[k] = defOjEdge());
         e.on = true; if (!(ev(e.d) > 0)) e.d = "0.5";
-        irAPieza();
+        irAPieza("pz-oj-wrap");
       },
-      strap: (k) => { (pz.straps || (pz.straps = [])).push({ matId: null, modo: "unica", arista: k, d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "0.1", inset: "0.1", offBorde: "0.01", legend: "", sets: [] }); irAPieza(); },
+      strap: (k) => { (pz.straps || (pz.straps = [])).push({ matId: null, modo: "unica", arista: k, d: "0.5", supr: "", cx: "", cy: "", angulo: "0", offset: "0.1", inset: "0.1", offBorde: "0.01", legend: "", sets: [] }); irAPieza("pz-straps"); },
       cinta: (k, pm) => {
         const t = pm ? rd3(Math.max(0, (k === "sup" || k === "inf") ? pm.x : pm.y)) : null;
         (pz.cintas || (pz.cintas = [])).push(nuevaCinta({ modo: "arista", arista: k, desde: (t != null && t > 0.005) ? window.CalcCIBSA.fmtNum(t) : "0" }));
-        irAPieza(); },
+        irAPieza("pz-cintas"); },
       corte: (k) => {
         const c = nuevaCorte(); c.tipo = "calado"; c.forma = "rect"; c.largo = "0.5"; c.ancho = "0.5";
         const bL = ev(pz.largo), bA = ev(pz.ancho);
@@ -8282,7 +8532,7 @@
           if (k === "izq") { c.padIzq = "0"; c.padDer = f(Math.max(0, bA - 0.5)); c.padSup = f(Math.max(0, (bL - 0.5) / 2)); c.padInf = c.padSup; }
           if (k === "der") { c.padDer = "0"; c.padIzq = f(Math.max(0, bA - 0.5)); c.padSup = f(Math.max(0, (bL - 0.5) / 2)); c.padInf = c.padSup; }
         }
-        c._colap = false; pz.cortes.push(c); irAPieza();
+        c._colap = false; pz.cortes.push(c); irAPieza("pz-cortes");
       },
       guia: (k) => {
         const c = nuevaCorte(); c.tipo = "guia";
@@ -8293,7 +8543,7 @@
           if (k === "izq") { c.largo = f(bL); c.padIzq = "0"; c.padSup = "0"; c.angulo = "90"; c.pivX = "0"; }
           if (k === "der") { c.largo = f(bL); c.padIzq = f(bA); c.padSup = "0"; c.angulo = "90"; c.pivX = "0"; }
         }
-        c._colap = false; pz.cortes.push(c); irAPieza();
+        c._colap = false; pz.cortes.push(c); irAPieza("pz-cortes");
       },
     };
   }
@@ -8793,6 +9043,14 @@
 
   function renderPiezas() {
     const list = $("piezasList"); if (!list) return;
+    // v17: si el drawer muestra una ficha de pieza, el re-render la destruiría — recordar y reabrir.
+    let _reabrirPz = null;
+    if (_drawerSec && _drawerSec.closest && _drawerSec.closest("#piezasList")) {
+      const cardV = _drawerSec.closest(".pieza-card");
+      const parV = PZ_FICHAS.find((par) => _drawerSec.classList.contains(par[0]));
+      if (cardV && parV) _reabrirPz = { id: cardV.dataset.id, cls: parV[0] };
+      cerrarFichaDrawer();
+    }
     list.innerHTML = "";
     state.piezas.forEach((pz, idx) => {
       const card = document.createElement("div");
@@ -8834,22 +9092,35 @@
             <label class="field"><span>Alto der. (m)</span><input class="pz-altoDer" type="text" inputmode="text" placeholder="0 = sin aleta" /></label>
           </div>
         </div>
-        <div class="pz-oj-wrap"></div>
-        <div class="pz-borde"></div>
-        <div class="pz-comp"></div>
-        <div class="pz-ins"></div>
-        <div class="pz-cortes"></div>
-        <div class="pz-aletas"></div>
-        <div class="pz-straps"></div>
-        <div class="pz-cintas"></div>
-        <label class="chk"><input class="pz-tras" type="checkbox" /> <span>Incluir vista trasera (espejo)</span></label>
-        <p class="pz-tras-hint muted small hidden">Define primero largo y ancho de la pieza para habilitar la vista trasera.</p>
-        <div class="pz-back trasera-box hidden"></div>
+        <div class="pz-ficha pz-oj-wrap"></div>
+        <div class="pz-ficha pz-borde"></div>
+        <div class="pz-ficha pz-comp"></div>
+        <div class="pz-ficha pz-ins"></div>
+        <div class="pz-ficha pz-cortes"></div>
+        <div class="pz-ficha pz-aletas"></div>
+        <div class="pz-ficha pz-straps"></div>
+        <div class="pz-ficha pz-cintas"></div>
+        <div class="pz-ficha pz-tras-wrap">
+          <label class="chk"><input class="pz-tras" type="checkbox" /> <span>Incluir vista trasera (espejo)</span></label>
+          <p class="pz-tras-hint muted small hidden">Define primero largo y ancho de la pieza para habilitar la vista trasera.</p>
+          <div class="pz-back trasera-box hidden"></div>
+        </div>
+        <div class="pz-quick ficha-quick"></div>
         <div class="pz-sketch sketch"></div>
         <div><button class="btn-outline pz-descargar" type="button">Descargar plano (PDF)</button></div>
         <div class="pieza-sub muted small"></div>`;
       list.appendChild(card);
       const q = (s) => card.querySelector(s);
+      { const strip = q(".pz-quick");
+        if (strip) {
+          const capQ = document.createElement("span"); capQ.className = "muted small"; capQ.textContent = "Elementos:"; strip.appendChild(capQ);
+          PZ_FICHAS.forEach((par) => {
+            if (!q("." + par[0])) return;
+            const b = document.createElement("button"); b.type = "button"; b.className = "ficha-quick-btn"; b.textContent = par[1];
+            b.addEventListener("click", () => abrirFichaPz(card, par[0]));
+            strip.appendChild(b);
+          });
+        } }
       q(".pz-etq").value = pz.etiqueta || "";
       q(".pz-largo").value = pz.largo || "";
       q(".pz-ancho").value = pz.ancho || "";
@@ -8969,6 +9240,7 @@
       }
       hacerColapsablePieza(card, pz);
     });
+    if (_reabrirPz) { const cardN = list.querySelector('[data-id="' + _reabrirPz.id + '"]'); if (cardN) abrirFichaPz(cardN, _reabrirPz.cls); }
   }
 
   function bordesDePieza(pz) {
@@ -9150,6 +9422,18 @@
       resumenHTML = h;
     }
     if (resumen) resumen.innerHTML = resumenHTML;
+    // F5: botón de ensamble (visible con 2+ piezas ensamblables: C1+C2 instalados)
+    { const listasE = (state.piezas || []).filter(piezaEnsamblable);
+      let bE = $("btnEnsamble3D");
+      if (listasE.length >= 2) {
+        if (!bE && resumen) {
+          bE = document.createElement("button"); bE.type = "button"; bE.id = "btnEnsamble3D"; bE.className = "btn-outline";
+          bE.style.marginTop = "8px";
+          bE.addEventListener("click", () => abrirEnsamble3D());
+          resumen.parentNode.insertBefore(bE, resumen.nextSibling);
+        }
+        if (bE) { bE.classList.remove("hidden"); bE.textContent = "🧩 Ensamble 3D (" + listasE.map((p9, i9) => "Pieza " + (state.piezas.indexOf(p9) + 1)).join(" + ") + ")"; }
+      } else if (bE) bE.classList.add("hidden"); }
     { const rb = $("piezasResumenBottom"); if (rb) rb.innerHTML = resumenHTML; }
     state.compuesto = { calcs, subtotalGen, desc, descuento, neto, iva, total };
     renderPreviewCompuesto();
