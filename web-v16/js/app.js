@@ -135,7 +135,7 @@
     const ts = parseInt(r && r[0], 10) || 0; if (!ts) return null; // descarta encabezado / filas inválidas
     let snap = null; try { snap = r[6] ? JSON.parse(r[6]) : null; } catch (e) {}
     const est = (snap && snap.estado) || {};
-    return { ts: ts, nombre: (r[1] || "").toString().trim(), apellido: (r[2] || "").toString().trim(), tipo: (r[3] || "").toString().trim(), version: parseInt(r[4], 10) || 1, fecha: (r[5] || "").toString().trim(), editado: (snap && snap.editado) || "", venta: (snap && snap.venta) || null, snap: snap, modo: est.docMode || "formal", prod: est.prodMode || "uniforme" };
+    return { ts: ts, rev: (snap && snap.rev) || 0, nombre: (r[1] || "").toString().trim(), apellido: (r[2] || "").toString().trim(), tipo: (r[3] || "").toString().trim(), version: parseInt(r[4], 10) || 1, fecha: (r[5] || "").toString().trim(), editado: (snap && snap.editado) || "", venta: (snap && snap.venta) || null, snap: snap, modo: est.docMode || "formal", prod: est.prodMode || "uniforme" };
   }
   // Une historial local + remoto (Sheet), deduplica por cliente+tipo (mayor versión / ts más reciente),
   // sube al Sheet las entradas locales que aún no estén allí (migración), y deja el resultado en localStorage.
@@ -149,11 +149,18 @@
         .catch((e) => console.warn("CIBSA: no se pudo migrar el historial local al Sheet —", e && e.message ? e.message : e));
     }
     const porClave = {};
+    const revDe = (e) => (e && e.rev) || (e && e.snap && e.snap.rev) || (e && e.ts) || 0;
     (remotas || []).concat(locales).forEach((e) => {
       if (!e || !e.ts) return;
       const k = (e.nombre || "").trim().toLowerCase() + "|" + (e.apellido || "").trim().toLowerCase() + "|" + e.tipo + "|" + (parseInt(e.version, 10) || 1);
       const prev = porClave[k];
-      if (!prev || e.ts >= prev.ts) porClave[k] = e; // misma versión: conserva la generación más reciente
+      // Misma clave: gana la REVISIÓN más nueva (una edición hecha en OTRO dispositivo conserva el
+      // mismo ts del registro pero sube su rev → antes la copia local vieja la pisaba en el empate).
+      const gana = !prev
+        || revDe(e) > revDe(prev)
+        || (revDe(e) === revDe(prev) && !!e.editado && !prev.editado)   // legado sin rev: la copia marcada «editado» manda
+        || (revDe(e) === revDe(prev) && !!e.editado === !!prev.editado && e.ts >= prev.ts);
+      if (gana) porClave[k] = e;
     });
     const merged = Object.keys(porClave).map((k) => porClave[k]).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, HIST_MAX);
     histStore(merged);
@@ -433,9 +440,14 @@
     const b = $("editHistBanner"); if (!b) return; b.innerHTML = "";
     const who = ((ent.nombre || "") + " " + (ent.apellido || "")).trim() || (ent.razonSocial || "esta cotización");
     const sp = document.createElement("span"); sp.innerHTML = "✏️ Editando <b>" + esc(who) + "</b> v" + ("0" + (parseInt(ent.version, 10) || 1)).slice(-2) + ". Al generar, se <b>actualiza ese registro</b> (quedará marcado como «editado»).";
+    // Guardar = el MISMO flujo de "Generar" (regenera el PDF y actualiza el registro editado):
+    // botón explícito en la banda para que el cierre de la edición sea visible y obvio.
+    const btnOk = document.createElement("button"); btnOk.type = "button"; btnOk.className = "btn-outline edit-hist-save"; btnOk.textContent = "💾 Guardar cambios (generar)";
+    btnOk.title = "Regenera la cotización y ACTUALIZA este registro del historial";
+    btnOk.addEventListener("click", () => { const g = $("btnGenerar"); if (g) g.click(); });
     const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn-outline edit-hist-cancel"; btn.textContent = "Cancelar edición";
     btn.addEventListener("click", () => { _editHist = null; ocultarEdicionBanner(); });
-    b.appendChild(sp); b.appendChild(btn); b.classList.remove("hidden");
+    b.appendChild(sp); b.appendChild(btnOk); b.appendChild(btn); b.classList.remove("hidden");
   }
   // Diálogo del lápiz: ¿nueva versión desde estos datos o sobrescribir la versión guardada?
   // Devuelve "nueva" | "sobrescribir" | null (cancelar).
@@ -549,6 +561,7 @@
     const i = arr.findIndex((e) => k(e.nombre) === k(nomK) && k(e.apellido) === k(ape) && e.tipo === tipo && (parseInt(e.version, 10) || 1) === vNum);
     const editando = !!_editHist;
     const ent = { ts: editando ? _editHist.ts : Date.now(), fecha: editando ? _editHist.fecha : histFechaCorta(new Date()), nombre: nomK, apellido: ape, razonSocial: razon, tipo: tipo, modo: state.docMode, prod: state.prodMode, version: vNum, snap: snapshotCotizacion() };
+    ent.rev = Date.now(); if (ent.snap) ent.snap.rev = ent.rev;   // sello de REVISIÓN: gana la copia más nueva al sincronizar entre dispositivos
     if (ent.snap) ent.snap.correlativo = corr;
     if (editando) { ent.editado = edFechaHora(new Date()); if (ent.snap) ent.snap.editado = ent.editado; }   // marca "editado" (se persiste en el snap → al Sheet)
     if (i >= 0 && _histReplace) arr.splice(i, 1); // sobrescribir SOLO si se eligió (o se está editando); si no, se guarda como registro nuevo

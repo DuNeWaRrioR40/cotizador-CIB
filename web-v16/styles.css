@@ -979,3 +979,6 @@ body.drawer-abierto { overflow: hidden; }
 .vc-img3d { display: block; margin: 14px auto 0; max-width: min(92vw, 900px); max-height: 46vh; border-radius: 10px; box-shadow: 0 4px 24px rgba(0,0,0,0.18); background: #fff; }
 
 .help-pop > div:first-child { white-space: pre-line; }
+
+.edit-hist-save { border-color: #0f6e56 !important; color: #0f6e56 !important; font-weight: 700; }
+.edit-hist-save:hover { background: #0f6e56 !important; color: #fff !important; }
