@@ -194,14 +194,14 @@
   function histFechaCorta(d) { return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2); }
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
-  const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email", "f_fono1_cliente", "f_fono2_cliente", "f_emp_fono1", "f_emp_fono2"];
+  const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_visita", "f_despacho", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email", "f_fono1_cliente", "f_fono2_cliente", "f_emp_fono1", "f_emp_fono2"];
   const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "vis3D", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "factorUnif", "granelLineas"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
     // Telas adicionales marcadas (multi-tela uniforme) + categoría FAV activa, para reponer la selección completa.
     const telaOpc = (state.telasOpcSel || []).slice();
-    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, altosDist: $("f_altosDist") ? $("f_altosDist").checked : false, bordesPliegue: $("f_bordesPliegue") ? $("f_bordesPliegue").checked : false, ojVolExt: $("f_ojVolExt") ? $("f_ojVolExt").checked : true, empresaOn: $("f_empresaOn") ? $("f_empresaOn").checked : false, descMonto: $("f_descMonto") ? $("f_descMonto").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", telasFrozen: telasFrozenMap(), estado: st };
+    const snap = { campos: campos, usaAlto: $("f_usaAlto") ? $("f_usaAlto").checked : false, altosDist: $("f_altosDist") ? $("f_altosDist").checked : false, bordesPliegue: $("f_bordesPliegue") ? $("f_bordesPliegue").checked : false, ojVolExt: $("f_ojVolExt") ? $("f_ojVolExt").checked : true, empresaOn: $("f_empresaOn") ? $("f_empresaOn").checked : false, descMonto: $("f_descMonto") ? $("f_descMonto").checked : false, visitaOn: $("f_visitaOn") ? $("f_visitaOn").checked : false, despachoOn: $("f_despachoOn") ? $("f_despachoOn").checked : false, telaUnif: $("f_tela") ? $("f_tela").value : "", telaOpc: telaOpc, favCat: (typeof favCatActiva !== "undefined" ? favCatActiva : null), vendedor: $("f_vendedor") ? $("f_vendedor").value : "", telasFrozen: telasFrozenMap(), estado: st };
     try { return JSON.parse(JSON.stringify(snap)); } catch (e) { return null; }
   }
   function setSelectIfOption(id, val) { const sel = $(id); if (!sel || val == null) return; if (Array.from(sel.options).some((o) => o.value === val)) sel.value = val; }
@@ -236,6 +236,9 @@
     if ($("wOjVol")) $("wOjVol").classList.toggle("hidden", !snap.usaAlto);
     if ($("wAlas")) $("wAlas").classList.toggle("hidden", !snap.usaAlto);
     { const c = $("f_altosDist"); if (c) c.checked = !!snap.altosDist; }
+    if ($("f_visitaOn")) $("f_visitaOn").checked = !!snap.visitaOn;
+    if ($("f_despachoOn")) $("f_despachoOn").checked = !!snap.despachoOn;
+    if (typeof syncExtrasCond === "function") syncExtrasCond();
     { const c = $("f_bordesPliegue"); if (c) c.checked = !!snap.bordesPliegue; if ($("wBordesPliegue")) $("wBordesPliegue").classList.toggle("hidden", !snap.usaAlto); }
     if (typeof sincAltosDistUI === "function") sincAltosDistUI();
     if (typeof sincAlasUI === "function") sincAlasUI();
@@ -8939,6 +8942,19 @@
     const monto = Math.round(sub * pct / 100);
     return { esMonto: false, pct, monto, label: pct > 0 ? `Descuento ${window.CalcCIBSA.fmtNum(pct)}% (pago contado)` : null };
   }
+  // --- Ítems discrecionales de "Condiciones": Visita a Terreno y Despacho ---
+  // Se activan con su checkbox y toman un valor NETO libre. Se suman al subtotal (NO reciben el
+  // descuento por pago contado; el IVA aplica sobre el neto total como el resto).
+  function extraCondActivo(id) { const c = $(id); return !!(c && c.checked); }
+  function extrasCondiciones() {
+    const out = [];
+    if (extraCondActivo("f_visitaOn")) out.push({ titulo: "Visita a Terreno", neto: Math.max(0, Math.round(num("f_visita", 0) || 0)) });
+    if (extraCondActivo("f_despachoOn")) out.push({ titulo: "Despacho", neto: Math.max(0, Math.round(num("f_despacho", 0) || 0)) });
+    return out;
+  }
+  function extrasCondNeto() { return extrasCondiciones().reduce((s, e) => s + e.neto, 0); }
+  function syncExtraCond(idChk, idInput) { const c = $(idChk), i = $(idInput); if (i) i.disabled = !(c && c.checked); }
+  function syncExtrasCond() { syncExtraCond("f_visitaOn", "f_visita"); syncExtraCond("f_despachoOn", "f_despacho"); }
   function recomputeCompuesto() {
     const list = $("piezasList"), resumen = $("piezasResumen");
     let subtotalGen = 0; const calcs = [];
@@ -9083,6 +9099,9 @@
     { const c = $("f_ojVolExt"); if (c) c.checked = true; } { const w = $("wOjVol"); if (w) w.classList.add("hidden"); }
     state.volAlas = { sup: true, inf: true, izq: true, der: true }; sincAlasUI(); { const w = $("wAlas"); if (w) w.classList.add("hidden"); }
     { const c = $("f_altosDist"); if (c) c.checked = false; ["f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer"].forEach((id) => { const el = $(id); if (el) el.value = ""; }); if (typeof sincAltosDistUI === "function") sincAltosDistUI(); }
+    { const v = $("f_visita"); if (v) v.value = "0"; const vo = $("f_visitaOn"); if (vo) vo.checked = false;
+      const d = $("f_despacho"); if (d) d.value = "0"; const dOn = $("f_despachoOn"); if (dOn) dOn.checked = false;
+      if (typeof syncExtrasCond === "function") syncExtrasCond(); }
     state.figura3D = null;
     state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.anclasUnif = []; state.notasUnif = []; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
     state.cortesUnif = []; state.backCortesUnif = []; state.backComplementosUnif = []; state.aletasUnif = []; state.backAletasUnif = []; state.strapsUnif = []; state.cintasUnif = []; state.factorUnif = "1";
@@ -9121,6 +9140,11 @@
   { const c = $("f_empresaOn"); if (c) c.addEventListener("change", toggleEmpresa); }
   { const c = $("f_telaGlobalOn"); if (c) c.addEventListener("change", toggleTelaGlobal); }
   { const c = $("f_descMonto"); if (c) c.addEventListener("change", () => { actualizarDescSuffix(); recompute(); }); actualizarDescSuffix(); }
+  { const c = $("f_visitaOn"); if (c) c.addEventListener("change", () => { syncExtraCond("f_visitaOn", "f_visita"); recompute(); }); }
+  { const c = $("f_despachoOn"); if (c) c.addEventListener("change", () => { syncExtraCond("f_despachoOn", "f_despacho"); recompute(); }); }
+  { const v = $("f_visita"); if (v) { agregarCalc(v); v.addEventListener("input", recompute); } }
+  { const d = $("f_despacho"); if (d) { agregarCalc(d); d.addEventListener("input", recompute); } }
+  syncExtrasCond();
   { const b = $("btnEscanearQR"); if (b) b.addEventListener("click", abrirQR); }
   { const b = $("qrCerrar"); if (b) b.addEventListener("click", cerrarQR); }
 
@@ -9206,7 +9230,8 @@
     const granelLineas = granelLineasPDF();
     if (!granelLineas.length) return alert("Agrega al menos un producto a granel con cantidad.");
     // Solo-granel: el descuento global no aplica; cada línea ya trae su propio descuento.
-    const subtotal = granelLineas.reduce((s, g) => s + g.total, 0);
+    const extras = extrasCondiciones();
+    const subtotal = granelLineas.reduce((s, g) => s + g.total, 0) + extras.reduce((s, e) => s + e.neto, 0);
     const neto = subtotal;
     const iva = Math.round(neto * CFG.IVA_PCT / 100);
     const total = neto + iva;
@@ -9220,7 +9245,7 @@
       descuentoLabel: null,
       vendedor: vendedorSel(),
       observaciones: $("f_observaciones").value.trim() || null,
-      complementos: [], aletas: [], granel: granelLineas, calc: calc,
+      complementos: [], aletas: [], granel: granelLineas, extras: extras, calc: calc,
     };
     datos.correlativo = guardarHistorial(nombre, apellido, datos.version);
     abrirProgreso();
@@ -9296,7 +9321,8 @@
     const carpaSub = carpaSub0 + minProd;
     const dI = descuentoInfo(carpaSub);
     const descuento = dI.monto;
-    const subtotal = carpaSub + granelNeto;
+    const extras = extrasCondiciones(), extrasNeto = extras.reduce((s, e) => s + e.neto, 0);
+    const subtotal = carpaSub + granelNeto + extrasNeto;   // extras (visita/despacho) sin descuento pago contado
     const neto = subtotal - descuento;
     const iva = Math.round(neto * CFG.IVA_PCT / 100);
     const total = neto + iva;
@@ -9327,6 +9353,7 @@
         return { nombre: (a.legend && a.legend.trim()) || ALETA_NOM[a.tipo] || "Anexo", n: (al2 > 0 && aa2 > 0) ? aletaOjN(a, al2, aa2) : 0 };
       }))),
       granel: granelLineas,
+      extras: extras,
       minProduccion: minProd, minProdUF: CFG.MIN_PRODUCCION_UF, ufValor: state.ufValor,
       sketch: skSpec,
     };
@@ -9387,6 +9414,7 @@
         valorTotal: r.piezaTotal != null ? r.piezaTotal : r.o.subtotalLote,
       })),
       granel: granelLineasPDF(),
+      extras: extrasCondiciones(),
     };
     // Mínimo de producción escalonado: TODA la orden en una secuencia (cada unidad de cada pieza).
     { const unitNets = []; datos.piezas.forEach((p) => { const nP = Math.max(1, p.cantidad), per = (p.valorTotal || 0) / nP; for (let k = 0; k < nP; k++) unitNets.push(per); });

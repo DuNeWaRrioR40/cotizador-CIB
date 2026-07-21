@@ -891,6 +891,10 @@
       if (g.descuentoTxt) { det.push(["", false, 0]); det.push([g.descuentoTxt, true]); }
       itemRow(String(g.cantidad), det, g.precioU, money(g.total));
     });
+    // Ítems discrecionales de Condiciones (Visita a Terreno / Despacho): fila propia, sin descuento.
+    (datos.extras || []).forEach((ex) => {
+      itemRow("", [[ex.titulo, true]], "", money(ex.neto));
+    });
     // Mínimo de producción de taller (escalonado por unidad): completa el neto confeccionado.
     if (datos.minProduccion > 0) {
       const ufTxt = datos.minProdUF ? `${String(datos.minProdUF).replace(".", ",")} UF/u` : "mínimo de taller";
@@ -1290,8 +1294,13 @@
       if (g.descuentoTxt) { det.push(["", false, 0]); det.push([g.descuentoTxt, true]); }
       itemRow(String(g.cantidad), det, g.precioU, money(g.total));
     });
+    // Ítems discrecionales de Condiciones (Visita a Terreno / Despacho): fila propia, sin descuento.
+    (datos.extras || []).forEach((ex) => {
+      itemRow("", [[ex.titulo, true]], "", money(ex.neto));
+    });
     // Mínimo de producción (escalonado por unidad): el monto ya viene calculado desde la app.
     const granelT = (datos.granel || []).reduce((s, g) => s + g.total, 0);
+    const extrasT = (datos.extras || []).reduce((s, e) => s + (e.neto || 0), 0);
     const carpaSub0 = datos.piezas.reduce((s, p) => s + p.valorTotal, 0);
     const minProd = datos.minProduccion || 0;
     if (minProd > 0) {
@@ -1302,7 +1311,7 @@
     // Totales. El descuento global (pago contado) aplica SOLO a las piezas de carpa.
     // El producto a granel ya viene neto con su propio descuento por línea.
     const carpaSub = carpaSub0 + minProd;
-    const subtotal = carpaSub + granelT;
+    const subtotal = carpaSub + granelT + extrasT;
     const descPct = datos.descuentoPct || 0;
     const descEsMonto = !!datos.descuentoEsMonto;
     const descuento = descEsMonto ? Math.min(Math.max(0, datos.descuento || 0), carpaSub) : Math.round(carpaSub * descPct / 100);
