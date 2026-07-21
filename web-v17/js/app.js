@@ -7462,6 +7462,14 @@
       x.style.cssText = "border:0;background:none;cursor:pointer;color:#b91c1c;padding:0 2px;";
       x.addEventListener("click", () => { if (confirm("¿Quitar el ensamble E" + ensIdx(e) + " con " + (otra ? nombrePieza(otra) : "?") + "? Se borran sus conectores en ambas piezas.")) { desvincularEns(e); renderPiezas(); recompute(); } });
       chip.appendChild(x);
+      // 📋 PLANTILLA: si la otra pieza ya tiene sus conectores, ver su constelación sobre ESTE plano.
+      if (otra && conectoresDePieza(otra, e.id).length >= 2) {
+        const bP = document.createElement("button"); bP.type = "button"; bP.textContent = "📋";
+        bP.title = "Plantilla de calce: arrastra/rota la disposición de conectores de " + nombrePieza(otra) + " sobre este plano y fíjala en tus anchors";
+        bP.style.cssText = "border:0;background:none;cursor:pointer;padding:0 2px;";
+        bP.addEventListener("click", () => iniciarPlantillaCon(pz, e));
+        chip.appendChild(bP);
+      }
       box.appendChild(chip);
     });
     const cands = (state.piezas || []).filter((p2) => p2 !== pz && !ensamblesDe(pz).some((e) => ensOtra(e, pz) === p2));
@@ -7477,6 +7485,177 @@
       box.appendChild(sel);
     }
     cont.appendChild(box);
+  }
+  // ---------- F5.4: PLANTILLA DE CALCE ----------
+  // La constelación de conectores del vínculo instalada en la pieza A se proyecta como "fantasma"
+  // arrastrable/rotable/espejable sobre el plano de la pieza B. NO crea geometría: verifica el
+  // calce contra los anchors YA diseñados de B (imán) y al fijar solo ASIGNA los roles C1/C2/C3.
+  let _plantCon = null;
+  function cancelarPlantillaCon() {
+    if (!_plantCon) return;
+    try { _plantCon.g.remove(); } catch (_) {}
+    try { _plantCon.tb.remove(); } catch (_) {}
+    try { document.removeEventListener("keydown", _plantCon.esc); } catch (_) {}
+    _plantCon = null;
+  }
+  function iniciarPlantillaCon(pz, e) {
+    cancelarPlantillaCon();
+    const ev9 = window.CalcCIBSA.evalExpr;
+    const otra = ensOtra(e, pz); if (!otra) return;
+    const consA = conectoresDePieza(otra, e.id);
+    if (consA.length < 2) return alert("Instala al menos C1 y C2 del vínculo en " + nombrePieza(otra) + " primero.");
+    const card = document.querySelector('#piezasList [data-id="' + pz.id + '"]');
+    const cont = card && card.querySelector(".pz-sketch");
+    const svg = cont && cont.querySelector("svg.sketch-svg");
+    if (!svg) return alert("Define las dimensiones de " + nombrePieza(pz) + " para ver su plano y usar la plantilla.");
+    // Anchors existentes de B (metros) + posición px desde el SVG (calibración del mapa m→px).
+    const A9 = ev9(pz.ancho) || 0, L9 = ev9(pz.largo) || 0;
+    const regs = [];
+    (pz.anclas || []).forEach((an) => { const q = posAnclaArista(an, A9, L9); if (q) regs.push({ an: an, x: q.x, y: q.y }); });
+    visibles(pz.cortes || []).forEach((c) => (c.anclas || []).forEach((an) => { const q = posAnclaCorte(c, an); if (q) regs.push({ an: an, x: q.x, y: q.y }); }));
+    regs.forEach((r) => { const g2 = svg.querySelector('g.ancla[data-ancla="' + r.an.id + '"]'); if (g2) { r.px = parseFloat(g2.dataset.x); r.py = parseFloat(g2.dataset.y); } });
+    const cal = regs.filter((r) => isFinite(r.px));
+    if (cal.length < 2) return alert("La plantilla calza contra TUS anchors: instala en este plano los anchors donde irán los conectores (⌨A) y reintenta.");
+    let mejor = null;
+    for (let i = 0; i < cal.length; i++) for (let j = i + 1; j < cal.length; j++) {
+      const dm = Math.hypot(cal[i].x - cal[j].x, cal[i].y - cal[j].y);
+      if (!mejor || dm > mejor.dm) mejor = { i: i, j: j, dm: dm };
+    }
+    if (!(mejor && mejor.dm > 1e-6)) return alert("Tus anchors están todos en el mismo punto — sepáralos para calibrar la plantilla.");
+    const s = Math.hypot(cal[mejor.i].px - cal[mejor.j].px, cal[mejor.i].py - cal[mejor.j].py) / mejor.dm;
+    const tx = cal[mejor.i].px - s * cal[mejor.i].x, ty = cal[mejor.i].py - s * cal[mejor.i].y;
+    // Constelación de A relativa a su centroide.
+    const cxA = consA.reduce((a2, c2) => a2 + c2.x, 0) / consA.length, cyA = consA.reduce((a2, c2) => a2 + c2.y, 0) / consA.length;
+    const loc = consA.map((c2) => ({ slot: c2.slot, dx: c2.x - cxA, dy: c2.y - cyA }));
+    const st = { cx: A9 / 2, cy: L9 / 2, th: 0, mir: 1 };
+    const posG = (l2) => {
+      const mx = st.mir * l2.dx, my = l2.dy;
+      return { x: st.cx + mx * Math.cos(st.th) - my * Math.sin(st.th), y: st.cy + mx * Math.sin(st.th) + my * Math.cos(st.th) };
+    };
+    const rSnap = 16 / s;   // imán: ~16 px en metros
+    const NS = "http://www.w3.org/2000/svg";
+    const g = document.createElementNS(NS, "g"); g.setAttribute("class", "plantilla-con"); g.style.cursor = "grab";
+    svg.appendChild(g);
+    const colS = (sl) => (sl === 1 ? "#e67e22" : (sl === 2 ? "#0284c7" : "#9333ea"));
+    const toVB = (cx2, cy2) => { const pt = svg.createSVGPoint(); pt.x = cx2; pt.y = cy2; const m2 = svg.getScreenCTM(); if (!m2) return null; const p2 = pt.matrixTransform(m2.inverse()); return { x: p2.x, y: p2.y }; };
+    const snapDe = () => loc.map((l2) => {
+      const q = posG(l2); let mej = null;
+      regs.forEach((r) => { const d2 = Math.hypot(r.x - q.x, r.y - q.y); if (d2 < rSnap && (!mej || d2 < mej.d)) mej = { r: r, d: d2 }; });
+      return { l: l2, q: q, snap: mej };
+    });
+    function dibujar() {
+      while (g.firstChild) g.removeChild(g.firstChild);
+      const est = snapDe();
+      // hilo de la constelación
+      for (let i = 1; i < est.length; i++) {
+        const ln = document.createElementNS(NS, "line");
+        ln.setAttribute("x1", s * est[i - 1].q.x + tx); ln.setAttribute("y1", s * est[i - 1].q.y + ty);
+        ln.setAttribute("x2", s * est[i].q.x + tx); ln.setAttribute("y2", s * est[i].q.y + ty);
+        ln.setAttribute("stroke", "#64748b"); ln.setAttribute("stroke-dasharray", "5 4"); ln.setAttribute("stroke-width", "1.4");
+        g.appendChild(ln);
+      }
+      est.forEach((e2) => {
+        const px2 = s * e2.q.x + tx, py2 = s * e2.q.y + ty;
+        if (e2.snap) {   // anillo sobre el anchor imantado
+          const an2 = document.createElementNS(NS, "circle");
+          an2.setAttribute("cx", s * e2.snap.r.x + tx); an2.setAttribute("cy", s * e2.snap.r.y + ty); an2.setAttribute("r", 9);
+          an2.setAttribute("fill", "none"); an2.setAttribute("stroke", "#15803d"); an2.setAttribute("stroke-width", "2.4");
+          g.appendChild(an2);
+        }
+        const c3 = document.createElementNS(NS, "circle");
+        c3.setAttribute("cx", px2); c3.setAttribute("cy", py2); c3.setAttribute("r", 6);
+        c3.setAttribute("fill", colS(e2.l.slot)); c3.setAttribute("fill-opacity", "0.55");
+        c3.setAttribute("stroke", e2.snap ? "#15803d" : "#d97706"); c3.setAttribute("stroke-width", "2.4");
+        g.appendChild(c3);
+        const t3 = document.createElementNS(NS, "text");
+        t3.setAttribute("x", px2 + 9); t3.setAttribute("y", py2 - 8);
+        t3.setAttribute("style", "font-size:11px;font-weight:700;fill:" + colS(e2.l.slot));
+        t3.textContent = "C" + e2.l.slot + (e2.snap && e2.snap.d > 0.01 ? " ⚠" + window.CalcCIBSA.fmtNum(rd3(e2.snap.d)) + "m" : "");
+        g.appendChild(t3);
+      });
+      // manija de rotación
+      const est0 = est[0], estN = est[est.length - 1];
+      const rMax = Math.max.apply(null, est.map((e2) => Math.hypot(e2.q.x - st.cx, e2.q.y - st.cy))) + 26 / s;
+      const hx = s * (st.cx + rMax * Math.cos(st.th - Math.PI / 2)) + tx, hy = s * (st.cy + rMax * Math.sin(st.th - Math.PI / 2)) + ty;
+      const lh = document.createElementNS(NS, "line");
+      lh.setAttribute("x1", s * st.cx + tx); lh.setAttribute("y1", s * st.cy + ty); lh.setAttribute("x2", hx); lh.setAttribute("y2", hy);
+      lh.setAttribute("stroke", "#94a3b8"); lh.setAttribute("stroke-dasharray", "3 3"); lh.setAttribute("stroke-width", "1");
+      g.appendChild(lh);
+      const h3 = document.createElementNS(NS, "circle");
+      h3.setAttribute("cx", hx); h3.setAttribute("cy", hy); h3.setAttribute("r", 8);
+      h3.setAttribute("fill", "#f1f5f9"); h3.setAttribute("stroke", "#475569"); h3.setAttribute("stroke-width", "2");
+      h3.setAttribute("class", "plantilla-rot"); h3.style.cursor = "crosshair";
+      g.appendChild(h3);
+    }
+    // AJUSTE FINO tipo Kabsch 2D al soltar: con 2+ puntos imantados, la constelación "hace clic".
+    function ajustar() {
+      const pares = snapDe().filter((e2) => e2.snap);
+      if (pares.length < 2) return;
+      const n2 = pares.length;
+      const cxL = pares.reduce((a2, p2) => a2 + st.mir * p2.l.dx, 0) / n2, cyL = pares.reduce((a2, p2) => a2 + p2.l.dy, 0) / n2;
+      const cxT = pares.reduce((a2, p2) => a2 + p2.snap.r.x, 0) / n2, cyT = pares.reduce((a2, p2) => a2 + p2.snap.r.y, 0) / n2;
+      let sa = 0, sb = 0;
+      pares.forEach((p2) => {
+        const lx = st.mir * p2.l.dx - cxL, ly = p2.l.dy - cyL;
+        const txx = p2.snap.r.x - cxT, tyy = p2.snap.r.y - cyT;
+        sa += lx * txx + ly * tyy; sb += lx * tyy - ly * txx;
+      });
+      if (Math.abs(sa) < 1e-12 && Math.abs(sb) < 1e-12) return;
+      st.th = Math.atan2(sb, sa);
+      st.cx = cxT - (cxL * Math.cos(st.th) - cyL * Math.sin(st.th));
+      st.cy = cyT - (cxL * Math.sin(st.th) + cyL * Math.cos(st.th));
+      dibujar();
+    }
+    let drag = null;
+    g.addEventListener("pointerdown", (e3) => {
+      e3.preventDefault(); e3.stopPropagation();
+      const p2 = toVB(e3.clientX, e3.clientY); if (!p2) return;
+      const rot = e3.target.classList && e3.target.classList.contains("plantilla-rot");
+      drag = { rot: rot, x: p2.x, y: p2.y };
+      try { g.setPointerCapture(e3.pointerId); } catch (_) {}
+    });
+    g.addEventListener("pointermove", (e3) => {
+      if (!drag) return;
+      const p2 = toVB(e3.clientX, e3.clientY); if (!p2) return;
+      if (drag.rot) {
+        st.th = Math.atan2((p2.y - ty) / s - st.cy, (p2.x - tx) / s - st.cx) + Math.PI / 2;
+      } else {
+        st.cx += (p2.x - drag.x) / s; st.cy += (p2.y - drag.y) / s;
+        drag.x = p2.x; drag.y = p2.y;
+      }
+      dibujar();
+    });
+    g.addEventListener("pointerup", () => { if (drag && !drag.rot) ajustar(); drag = null; });
+    g.addEventListener("dblclick", (e3) => { e3.preventDefault(); st.th += Math.PI / 2; dibujar(); });
+    // barra de acciones flotante
+    const tb = document.createElement("div");
+    tb.style.cssText = "position:absolute;top:6px;left:50%;transform:translateX(-50%);z-index:40;display:flex;gap:6px;background:var(--surface,#fff);border:1px solid var(--border,#ccc);border-radius:10px;padding:5px 8px;box-shadow:0 3px 10px rgba(0,0,0,0.12);align-items:center;flex-wrap:wrap;";
+    tb.innerHTML = '<span class="muted small">📋 ' + nombrePieza(otra).split(" — ")[0] + " → aquí:</span>";
+    const mkB = (t2, fn) => { const b2 = document.createElement("button"); b2.type = "button"; b2.className = "btn-outline"; b2.style.fontSize = "0.82em"; b2.textContent = t2; b2.addEventListener("click", fn); tb.appendChild(b2); return b2; };
+    mkB("↻ 90°", () => { st.th += Math.PI / 2; dibujar(); });
+    mkB("⇋ Espejo", () => { st.mir = -st.mir; dibujar(); ajustar(); });
+    mkB("✓ Fijar roles", () => {
+      const est = snapDe();
+      const sinSnap = est.filter((e2) => !e2.snap);
+      if (sinSnap.length) return alert("C" + sinSnap.map((e2) => e2.l.slot).join(", C") + " no está sobre un anchor tuyo (borde ámbar). Acércalo con el arrastre o crea el anchor que falta (⌨A) y reintenta.");
+      const usados = {};
+      for (const e2 of est) { const id2 = e2.snap.r.an.id; if (usados[id2]) return alert("Dos conectores caen sobre el MISMO anchor — sepáralos."); usados[id2] = 1; }
+      (pz.anclas || []).forEach((an) => { if (an.con && an.con.e === e.id) delete an.con; });
+      (pz.cortes || []).forEach((c2) => (c2.anclas || []).forEach((an) => { if (an.con && an.con.e === e.id) delete an.con; }));
+      est.forEach((e2) => { e2.snap.r.an.con = { e: e.id, s: e2.l.slot }; });
+      const peores = est.filter((e2) => e2.snap.d > 0.01);
+      cancelarPlantillaCon();
+      renderPiezas(); recompute();
+      alert("Conectores del vínculo E" + ensIdx(e) + " fijados en " + nombrePieza(pz) + (peores.length ? ".\n⚠ Ojo: " + peores.map((e2) => "C" + e2.l.slot + " quedó a " + window.CalcCIBSA.fmtNum(rd3(e2.snap.d)) + " m del punto de la plantilla").join("; ") + " — revisa el descalce en 🧩 Ensamble 3D." : ". Calce exacto — abre 🧩 Ensamble 3D."));
+    });
+    mkB("✕", cancelarPlantillaCon);
+    cont.style.position = cont.style.position || "relative";
+    cont.appendChild(tb);
+    const esc9 = (e3) => { if (e3.key === "Escape") cancelarPlantillaCon(); };
+    document.addEventListener("keydown", esc9);
+    _plantCon = { g: g, tb: tb, esc: esc9 };
+    dibujar();
+    try { cont.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (_) {}
   }
   // Modo "conectar anchors": tras elegirlo en el menú de un anchor, el siguiente clic en OTRO
   // anchor de arista traza un corte/guía entre ambos, ya EMPATADO a los dos (edición exprés).
