@@ -987,3 +987,8 @@ body.drawer-abierto { overflow: hidden; }
 .pieza-card .pz-ficha { display: none; }
 .pieza-card .pz-ficha.ficha-drawer { display: block !important; }
 .ficha-tab-cap { align-self: center; padding: 0 6px; white-space: nowrap; opacity: 0.75; }
+
+/* Borrador (v17-12): ficha azul de trabajo en curso en el historial */
+.hist-chip.borrador { border-color: #2563eb; background: #eff6ff; }
+.hist-chip.borrador .hist-main { color: #1e3a8a; }
+.hist-badge.borrador { background: #2563eb; color: #fff; border-radius: 6px; padding: 1px 7px; font-weight: 700; letter-spacing: 0.04em; }

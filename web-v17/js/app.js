@@ -135,7 +135,7 @@
     const ts = parseInt(r && r[0], 10) || 0; if (!ts) return null; // descarta encabezado / filas inválidas
     let snap = null; try { snap = r[6] ? JSON.parse(r[6]) : null; } catch (e) {}
     const est = (snap && snap.estado) || {};
-    return { ts: ts, rev: (snap && snap.rev) || 0, nombre: (r[1] || "").toString().trim(), apellido: (r[2] || "").toString().trim(), tipo: (r[3] || "").toString().trim(), version: parseInt(r[4], 10) || 1, fecha: (r[5] || "").toString().trim(), editado: (snap && snap.editado) || "", venta: (snap && snap.venta) || null, snap: snap, modo: est.docMode || "formal", prod: est.prodMode || "uniforme" };
+    return { ts: ts, rev: (snap && snap.rev) || 0, borrador: !!(snap && snap.borrador), borrNom: (snap && snap.borrNom) || "", nombre: (r[1] || "").toString().trim(), apellido: (r[2] || "").toString().trim(), tipo: (r[3] || "").toString().trim(), version: parseInt(r[4], 10) || 1, fecha: (r[5] || "").toString().trim(), editado: (snap && snap.editado) || "", venta: (snap && snap.venta) || null, snap: snap, modo: est.docMode || "formal", prod: est.prodMode || "uniforme" };
   }
   // Une historial local + remoto (Sheet), deduplica por cliente+tipo (mayor versión / ts más reciente),
   // sube al Sheet las entradas locales que aún no estén allí (migración), y deja el resultado en localStorage.
@@ -545,6 +545,48 @@
     else { $("f_version").value = String(maxVer).padStart(2, "0"); _histReplace = true; }
     return true;
   }
+  // ---------- BORRADOR (estado "en trabajo"): 1 slot, ficha azul, sin validación ni PDF ----------
+  // Clave fija ("borrador|·|borrador|1") → la fusión por rev lo trata como UN slot entre dispositivos.
+  let _borrCargado = false;
+  function guardarBorrador() {
+    const nom = ($("f_nombre") ? $("f_nombre").value.trim() : ""), ape = ($("f_apellido") ? $("f_apellido").value.trim() : "");
+    const emp = empresaDatos(), razon = (emp && emp.razon ? emp.razon : "").trim();
+    const quien = ((nom || razon) + " " + ape).trim();
+    let arr = histPrune(histLoad());
+    const prev = arr.find((e) => e.borrador);
+    if (prev && !_borrCargado) {
+      const pn = prev.borrNom || "(sin cliente)";
+      if (!confirm("Ya existe un borrador guardado (" + pn + " · " + (prev.fecha || "") + ").\n¿Reemplazarlo con el trabajo actual?")) return;
+    }
+    arr = arr.filter((e) => !e.borrador);
+    const snap = snapshotCotizacion();
+    snap.borrador = true; snap.borrNom = quien;
+    const ent = { ts: prev ? prev.ts : Date.now(), fecha: histFechaCorta(new Date()), nombre: "borrador", apellido: "·", razonSocial: "", tipo: "borrador", modo: state.docMode, prod: state.prodMode, version: 1, snap: snap, borrador: true, borrNom: quien };
+    ent.rev = Date.now(); ent.snap.rev = ent.rev;
+    tombRemove(ent);   // por si el slot fue borrado antes: que no lo mate la lápida al sincronizar
+    arr.unshift(ent);
+    histStore(arr.slice(0, HIST_MAX));
+    renderHistorial();
+    _borrCargado = true;
+    const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+    if (tok) window.SheetsCIBSA.reemplazarHistorial(tok, HIST_HOJA, ent, entryToRow(ent), HIST_ENC).catch((e) => console.warn("CIBSA: no se pudo subir el borrador —", e && e.message ? e.message : e));
+    const b = $("btnBorrador");
+    if (b) { const t0 = b.textContent; b.textContent = "✓ Borrador guardado"; b.disabled = true; setTimeout(() => { b.textContent = t0; b.disabled = false; }, 1600); }
+  }
+  // Al GENERAR de verdad, el borrador del que nació este trabajo se descarta (sin confirmaciones).
+  function descartarBorradorTrasGenerar() {
+    if (!_borrCargado) return;
+    _borrCargado = false;
+    const ent = histLoad().find((e) => e.borrador); if (!ent) return;
+    tombAdd(ent);
+    histStore(histLoad().filter((e) => !e.borrador));
+    renderHistorial();
+    const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+    if (tok) {
+      window.SheetsCIBSA.borrarFilasHistorialClave(tok, HIST_HOJA, ent).catch(() => {});
+      window.SheetsCIBSA.guardarTombstones(tok, HIST_HOJA, tombLoad()).catch(() => {});
+    }
+  }
   function guardarHistorial(nombre, apellido, version) {
     _forzarNueva = false;   // consumido en prepararVersionHistorial; se limpia siempre
     const nom = (nombre || "").trim(), ape = (apellido || "").trim();
@@ -575,6 +617,7 @@
     histStore(arr);
     renderHistorial();
     if (editando) { _editHist = null; ocultarEdicionBanner(); }   // fin del modo edición
+    descartarBorradorTrasGenerar();   // el trabajo dejó de ser borrador
     // Sincroniza esta cotización a la hoja HISTORIAL del Sheet (mejor esfuerzo; no bloquea el PDF).
     const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
     if (tok) {
@@ -685,13 +728,24 @@
     const granelPref = entTieneGranel(ent) ? '<span class="hist-granel">Granel/</span>' : "";
     const editado = (ent.editado || (ent.snap && ent.snap.editado) || "");
     const badge = editado ? ' · <span class="hist-badge editado">editado ' + esc(editado) + '</span>' : (esUltima ? ' · <span class="hist-badge">última versión</span>' : '');
-    const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "") + (editado ? " editado" : "");
-    const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = "Duplicar para editar (como versión siguiente)";
+    const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "") + (editado ? " editado" : "") + (ent.borrador ? " borrador" : "");
+    const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = ent.borrador ? "Continuar este borrador (restaura el trabajo tal como quedó)" : "Duplicar para editar (como versión siguiente)";
     const vBadge = (function () { const v = ventaDe(ent); return v ? ' · <span class="hist-venta">' + (v.tipo === "boleta" ? "B" : "F") + " " + esc(String(v.numero)) + "</span>" : ""; })();
     main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + badge + '</span>' +
       tituloHtml +
       '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + vBadge + '</span>';
-    main.addEventListener("click", () => aplicarHistorial(ent));
+    if (ent.borrador) {
+      main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + ' · <span class="hist-badge borrador">BORRADOR</span></span>' +
+        '<span class="hist-nom">' + esc(ent.borrNom || "(sin cliente aún)") + '</span>' +
+        '<span class="hist-tipo">trabajo en curso — toca para continuar</span>';
+    }
+    main.addEventListener("click", () => {
+      if (!ent.borrador) return aplicarHistorial(ent);
+      _editHist = null; ocultarEdicionBanner();
+      if (ent.snap) restaurarCotizacion(ent.snap);
+      _borrCargado = true;
+      recompute();
+    });
     const acts = document.createElement("div"); acts.className = "hist-acts";
     const bDl = document.createElement("button"); bDl.type = "button"; bDl.className = "hist-act"; bDl.title = "Descargar respaldo (.json)"; bDl.textContent = "⬇";
     bDl.addEventListener("click", (e) => { e.stopPropagation(); descargarRegistro(ent); });
@@ -4807,9 +4861,10 @@
           }
           if (!voltEnNormal && _ensVolt[e.id]) rotarPi();
           sat.pose = { q: qS, p: pS };
-          const d2 = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
-          const chk = [{ lbl: "C2", dH: d2(h1, h2), dS: d2(s1, s2), sat2: s2, wH: wH2, wS: wPt(sat, pS2.v) }];
-          if (tri) chk.push({ lbl: "C3", dH: d2(h1, tri.h3), dS: d2(s1, tri.s3), sat2: tri.s3, wH: tri.wH3, wS: wPt(sat, tri.pS3.v) });
+          // Descalce en el ARMADO (3D): sobre la hoja, un par que cruza pliegues queda "inflado"
+          // en +2 alturas; lo que debe calzar en el ensamble es la distancia del producto armado.
+          const chk = [{ lbl: "C2", dH: pH1.v.distanceTo(pH2.v), dS: pS1.v.distanceTo(pS2.v), sat2: s2, wH: wH2, wS: wPt(sat, pS2.v) }];
+          if (tri) chk.push({ lbl: "C3", dH: wH1.distanceTo(tri.wH3), dS: pS1.v.distanceTo(tri.pS3.v), sat2: tri.s3, wH: tri.wH3, wS: wPt(sat, tri.pS3.v) });
           chk.forEach((c9) => { c9.desc = Math.abs(c9.dH - c9.dS); });
           resVinc.push({ e: e, host: host, sat: sat, chk: chk, c1Sat: s1, conC3: !!tri });
           pend.splice(k, 1); avance = true;
@@ -4826,6 +4881,13 @@
     head.style.cssText = "display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border,#ddd);flex-wrap:wrap;";
     const leyenda = Object.keys(nodos).map((id) => '<span style="color:#' + nodos[id].col.toString(16).padStart(6, "0") + ';font-weight:600">' + nombrePieza(nodos[id].pz) + '</span>').join(" · ");
     head.innerHTML = '<strong style="flex:1">🧩 Ensamble 3D — ' + leyenda + '</strong>';
+    // 🔃 Girar la vista 180° (roll de cámara): los ensambles a menudo se leen "colgando" —
+    // este botón invierte el arriba/abajo EN PANTALLA sin tocar las piezas ni los conectores.
+    let vistaInv = false;
+    const b180 = document.createElement("button"); b180.type = "button"; b180.className = "btn-outline"; b180.textContent = "🔃 180°";
+    b180.title = "Girar la vista 180° (invierte arriba/abajo en pantalla; no mueve las piezas)";
+    b180.addEventListener("click", () => { vistaInv = !vistaInv; cam.up.set(0, vistaInv ? -1 : 1, 0); colocar(); b180.classList.toggle("on", vistaInv); });
+    head.appendChild(b180);
     const bX = document.createElement("button"); bX.type = "button"; bX.className = "btn-outline"; bX.textContent = "✕"; bX.addEventListener("click", cerrarEnsamble3D);
     head.appendChild(bX);
     const cv = document.createElement("canvas");
@@ -4839,7 +4901,7 @@
       const malos = rv.chk.filter((c9) => c9.desc > 0.01);
       if (!malos.length) {
         const peor = Math.max.apply(null, rv.chk.map((c9) => c9.desc));
-        fila.innerHTML = '<span style="color:#15803d;font-weight:600">✅ ' + nomV + '</span><span class="muted small">calzado (descalce ' + Math.round(peor * 1000) + ' mm)' + (rv.conC3 ? ' · plano fijado por C3' : '') + '</span>';
+        fila.innerHTML = '<span style="color:#15803d;font-weight:600">✅ ' + nomV + '</span><span class="muted small">calzado (descalce armado ' + Math.round(peor * 1000) + ' mm)' + (rv.conC3 ? ' · plano fijado por C3' : '') + '</span>';
       } else {
         fila.innerHTML = '<span style="color:#b91c1c;font-weight:600">⚠ ' + nomV + '</span><span class="muted small">' + malos.map((c9) => c9.lbl + ": " + f9(rd3(c9.dS)) + " vs " + f9(rd3(c9.dH)) + " m").join(" · ") + '</span>';
         malos.forEach((c9) => {
@@ -7526,12 +7588,15 @@
     const tx = cal[mejor.i].px - s * cal[mejor.i].x, ty = cal[mejor.i].py - s * cal[mejor.i].y;
     // Constelación de A relativa a su centroide.
     const cxA = consA.reduce((a2, c2) => a2 + c2.x, 0) / consA.length, cyA = consA.reduce((a2, c2) => a2 + c2.y, 0) / consA.length;
-    const loc = consA.map((c2) => ({ slot: c2.slot, dx: c2.x - cxA, dy: c2.y - cyA }));
+    const loc = consA.map((c2) => ({ slot: c2.slot, dx: c2.x - cxA, dy: c2.y - cyA, libre: false, fx: null, fy: null }));
     const st = { cx: A9 / 2, cy: L9 / 2, th: 0, mir: 1 };
-    const posG = (l2) => {
+    const posRig = (l2) => {
       const mx = st.mir * l2.dx, my = l2.dy;
       return { x: st.cx + mx * Math.cos(st.th) - my * Math.sin(st.th), y: st.cy + mx * Math.sin(st.th) + my * Math.cos(st.th) };
     };
+    // Punto LIBERADO: se despega de la constelación rígida (compensa los pliegues de un
+    // volumétrico, donde la hoja "infla" las distancias en +2 alturas). Tap = soltar/re-anclar.
+    const posG = (l2) => (l2.libre && l2.fx != null) ? { x: l2.fx, y: l2.fy } : posRig(l2);
     const rSnap = 16 / s;   // imán: ~16 px en metros
     const NS = "http://www.w3.org/2000/svg";
     const g = document.createElementNS(NS, "g"); g.setAttribute("class", "plantilla-con"); g.style.cursor = "grab";
@@ -7562,10 +7627,21 @@
           an2.setAttribute("fill", "none"); an2.setAttribute("stroke", "#15803d"); an2.setAttribute("stroke-width", "2.4");
           g.appendChild(an2);
         }
+        if (e2.l.libre) {   // correa punteada al lugar rígido de la constelación
+          const qr = posRig(e2.l);
+          const lr = document.createElementNS(NS, "line");
+          lr.setAttribute("x1", s * qr.x + tx); lr.setAttribute("y1", s * qr.y + ty);
+          lr.setAttribute("x2", px2); lr.setAttribute("y2", py2);
+          lr.setAttribute("stroke", "#a78bfa"); lr.setAttribute("stroke-dasharray", "2 3"); lr.setAttribute("stroke-width", "1.2");
+          g.appendChild(lr);
+        }
         const c3 = document.createElementNS(NS, "circle");
-        c3.setAttribute("cx", px2); c3.setAttribute("cy", py2); c3.setAttribute("r", 6);
+        c3.setAttribute("cx", px2); c3.setAttribute("cy", py2); c3.setAttribute("r", e2.l.libre ? 7 : 6);
         c3.setAttribute("fill", colS(e2.l.slot)); c3.setAttribute("fill-opacity", "0.55");
         c3.setAttribute("stroke", e2.snap ? "#15803d" : "#d97706"); c3.setAttribute("stroke-width", "2.4");
+        if (e2.l.libre) c3.setAttribute("stroke-dasharray", "4 2.5");
+        c3.setAttribute("data-idx", String(loc.indexOf(e2.l)));
+        c3.style.cursor = "pointer";
         g.appendChild(c3);
         const t3 = document.createElementNS(NS, "text");
         t3.setAttribute("x", px2 + 9); t3.setAttribute("y", py2 - 8);
@@ -7589,7 +7665,7 @@
     }
     // AJUSTE FINO tipo Kabsch 2D al soltar: con 2+ puntos imantados, la constelación "hace clic".
     function ajustar() {
-      const pares = snapDe().filter((e2) => e2.snap);
+      const pares = snapDe().filter((e2) => e2.snap && !e2.l.libre);
       if (pares.length < 2) return;
       const n2 = pares.length;
       const cxL = pares.reduce((a2, p2) => a2 + st.mir * p2.l.dx, 0) / n2, cyL = pares.reduce((a2, p2) => a2 + p2.l.dy, 0) / n2;
@@ -7611,21 +7687,33 @@
       e3.preventDefault(); e3.stopPropagation();
       const p2 = toVB(e3.clientX, e3.clientY); if (!p2) return;
       const rot = e3.target.classList && e3.target.classList.contains("plantilla-rot");
-      drag = { rot: rot, x: p2.x, y: p2.y };
+      const ia = e3.target.getAttribute ? e3.target.getAttribute("data-idx") : null;
+      drag = { rot: rot, idx: ia != null ? parseInt(ia, 10) : null, x: p2.x, y: p2.y, mov: 0 };
       try { g.setPointerCapture(e3.pointerId); } catch (_) {}
     });
     g.addEventListener("pointermove", (e3) => {
       if (!drag) return;
       const p2 = toVB(e3.clientX, e3.clientY); if (!p2) return;
+      drag.mov += Math.abs(p2.x - drag.x) + Math.abs(p2.y - drag.y);
       if (drag.rot) {
         st.th = Math.atan2((p2.y - ty) / s - st.cy, (p2.x - tx) / s - st.cx) + Math.PI / 2;
+      } else if (drag.idx != null && loc[drag.idx] && loc[drag.idx].libre) {
+        loc[drag.idx].fx = (p2.x - tx) / s; loc[drag.idx].fy = (p2.y - ty) / s;   // mueve SOLO ese punto
       } else {
         st.cx += (p2.x - drag.x) / s; st.cy += (p2.y - drag.y) / s;
-        drag.x = p2.x; drag.y = p2.y;
       }
+      drag.x = p2.x; drag.y = p2.y;
       dibujar();
     });
-    g.addEventListener("pointerup", () => { if (drag && !drag.rot) ajustar(); drag = null; });
+    g.addEventListener("pointerup", () => {
+      if (drag && drag.idx != null && drag.mov < 4 && loc[drag.idx]) {   // TAP sobre un punto: soltar / re-anclar
+        const l2 = loc[drag.idx];
+        if (l2.libre) { l2.libre = false; l2.fx = l2.fy = null; }
+        else { const q = posG(l2); l2.libre = true; l2.fx = q.x; l2.fy = q.y; }
+        dibujar();
+      } else if (drag && !drag.rot) ajustar();
+      drag = null;
+    });
     g.addEventListener("dblclick", (e3) => { e3.preventDefault(); st.th += Math.PI / 2; dibujar(); });
     // barra de acciones flotante
     const tb = document.createElement("div");
@@ -7649,6 +7737,7 @@
       alert("Conectores del vínculo E" + ensIdx(e) + " fijados en " + nombrePieza(pz) + (peores.length ? ".\n⚠ Ojo: " + peores.map((e2) => "C" + e2.l.slot + " quedó a " + window.CalcCIBSA.fmtNum(rd3(e2.snap.d)) + " m del punto de la plantilla").join("; ") + " — revisa el descalce en 🧩 Ensamble 3D." : ". Calce exacto — abre 🧩 Ensamble 3D."));
     });
     mkB("✕", cancelarPlantillaCon);
+    { const h9 = document.createElement("span"); h9.className = "muted small"; h9.textContent = "· toca un punto para soltarlo de la constelación (compensa pliegues) y arrástralo solo; tócalo de nuevo para re-anclarlo"; tb.appendChild(h9); }
     cont.style.position = cont.style.position || "relative";
     cont.appendChild(tb);
     const esc9 = (e3) => { if (e3.key === "Escape") cancelarPlantillaCon(); };
@@ -9855,6 +9944,7 @@
   // mantenerCliente=true: borra toda la cotización pero conserva los datos del cliente (nombre, apellido,
   // correo, dirección, comuna y los datos de empresa). false: limpia todo, incluido el cliente.
   function limpiarCampos(mantenerCliente) {
+    _borrCargado = false;   // el trabajo nuevo ya no está ligado al borrador guardado
     ["f_largo", "f_ancho", "f_titulo", "f_observaciones", "f_color"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
     if (!mantenerCliente) {
       ["f_nombre", "f_apellido", "f_email", "f_dir_cliente", "f_comuna_cliente",
@@ -9924,6 +10014,7 @@
   { const a = $("f_suprimirCotas"), b = $("f_suprimirCotas2");
     if (a && b) { a.addEventListener("change", () => { b.checked = a.checked; }); b.addEventListener("change", () => { a.checked = b.checked; }); } }
   $("btnGenerar").addEventListener("click", generar);
+  { const bB = $("btnBorrador"); if (bB) bB.addEventListener("click", guardarBorrador); }
   { const b = $("btnDescargarSketch"); if (b) b.addEventListener("click", descargarSketchUnif); }
   { const b = $("btnVistaCliente"); if (b) b.addEventListener("click", abrirVistaCliente); }
   { const b = $("btnVistaClienteComp"); if (b) b.addEventListener("click", abrirVistaCliente); }
