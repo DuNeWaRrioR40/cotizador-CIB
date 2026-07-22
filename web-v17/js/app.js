@@ -6421,6 +6421,36 @@
             cont.appendChild(b3);
           }
         } else if (prev3p) prev3p.remove();
+        // 📋 plantilla de calce en la banda lateral: vínculos cuya OTRA pieza ya tiene ≥2 conectores.
+        const prevCn = cont.querySelector(":scope > .sketch-con-btn");
+        const vsE = pzB ? ensamblesDe(pzB).filter((e9) => { const o9 = ensOtra(e9, pzB); return o9 && conectoresDePieza(o9, e9.id).length >= 2; }) : [];
+        if (vsE.length) {
+          if (!prevCn) {
+            const bC = document.createElement("button");
+            bC.type = "button"; bC.className = "sketch-con-btn"; bC.textContent = "📋";
+            bC.title = "Plantilla de calce: proyectar la constelación de conectores de la otra pieza sobre este plano";
+            bC.addEventListener("click", (e) => {
+              e.stopPropagation();
+              const vs2 = ensamblesDe(pzB).filter((e9) => { const o9 = ensOtra(e9, pzB); return o9 && conectoresDePieza(o9, e9.id).length >= 2; });
+              if (!vs2.length) return;
+              if (vs2.length === 1) return iniciarPlantillaCon(pzB, vs2[0]);
+              const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
+              const cap9 = document.createElement("p"); cap9.className = "arista-menu-cap"; cap9.textContent = "¿Qué ensamble proyectar?"; menu.appendChild(cap9);
+              vs2.forEach((e9) => {
+                const o9 = ensOtra(e9, pzB);
+                const b9 = document.createElement("button"); b9.type = "button"; b9.className = "arista-menu-it";
+                b9.textContent = "E" + ensIdx(e9) + " · " + (o9 ? nombrePieza(o9) : "¿?");
+                b9.addEventListener("click", () => { menu.remove(); iniciarPlantillaCon(pzB, e9); });
+                menu.appendChild(b9);
+              });
+              const rc = bC.getBoundingClientRect();
+              menu.style.position = "fixed"; menu.style.left = Math.max(8, rc.left - 230) + "px"; menu.style.top = Math.max(8, rc.top) + "px"; menu.style.zIndex = "1300";
+              document.body.appendChild(menu);
+              setTimeout(() => { const off = (ev2) => { if (!menu.contains(ev2.target)) { menu.remove(); document.removeEventListener("click", off); } }; document.addEventListener("click", off); }, 0);
+            });
+            cont.appendChild(bC);
+          }
+        } else if (prevCn) prevCn.remove();
       }
     });
   }
@@ -7738,6 +7768,19 @@
     });
     mkB("✕", cancelarPlantillaCon);
     { const h9 = document.createElement("span"); h9.className = "muted small"; h9.textContent = "· toca un punto para soltarlo de la constelación (compensa pliegues) y arrástralo solo; tócalo de nuevo para re-anclarlo"; tb.appendChild(h9); }
+    // ▾ minimizar: la barra tapa el plano — colapsada queda como pastilla "📋▸" en la esquina.
+    { const bMin = document.createElement("button"); bMin.type = "button"; bMin.className = "btn-outline"; bMin.style.fontSize = "0.82em";
+      bMin.textContent = "▾"; bMin.title = "Minimizar / expandir esta barra (para ver el plano completo)";
+      bMin.addEventListener("click", () => {
+        const min = bMin.dataset.min !== "1";
+        bMin.dataset.min = min ? "1" : "";
+        Array.prototype.forEach.call(tb.children, (ch) => { if (ch !== bMin) ch.style.display = min ? "none" : ""; });
+        bMin.textContent = min ? "📋▸" : "▾";
+        tb.style.left = min ? "auto" : "50%";
+        tb.style.right = min ? "6px" : "auto";
+        tb.style.transform = min ? "none" : "translateX(-50%)";
+      });
+      tb.insertBefore(bMin, tb.firstChild); }
     cont.style.position = cont.style.position || "relative";
     cont.appendChild(tb);
     const esc9 = (e3) => { if (e3.key === "Escape") cancelarPlantillaCon(); };
