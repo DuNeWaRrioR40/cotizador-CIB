@@ -8081,7 +8081,7 @@
       const limpiarCx = () => { _anchorPend = null; quitarHintConexion(); if (g) g.classList.remove("ancla-sel"); document.removeEventListener("keydown", esc2); };
       document.addEventListener("keydown", esc2);
       _anchorPend = { an: reg.an, tipo: tipo, ctx: ctx, limpiar: limpiarCx };
-      hintConexion(tipo === "corte" ? "Pincha el 2º anchor para trazar el CORTE entre ambos (Esc cancela)" : "Pincha el 2º anchor para trazar la GUÍA entre ambos (Esc cancela)");
+      hintConexion(tipo === "corte" ? "Pincha el 2º anchor para trazar el CORTE entre ambos (Esc cancela)" : tipo === "cinta" ? "Pincha el 2º anchor DE LA MISMA ARISTA: la cinta correrá entre ambos (Esc cancela)" : "Pincha el 2º anchor para trazar la GUÍA entre ambos (Esc cancela)");
     }
     // Posición de CUALQUIER anchor: de arista/segmento propio, o montado en un corte/guía.
     function posAnclaAny(an) {
@@ -8097,6 +8097,23 @@
       const p1 = posAnclaAny(an1), p2 = posAnclaAny(an2);
       if (!p1 || !p2) return;
       const len = Math.hypot(p2.x - p1.x, p2.y - p1.y); if (!(len > 1e-6)) return;
+      // CINTA entre 2 anchors: tramo [desde, hasta] sobre la MISMA arista del paño base.
+      if (pend.tipo === "cinta") {
+        if (an1.seg || an2.seg || !an1.ar || an1.ar !== an2.ar) return alert("La cinta por tramo corre sobre UNA arista del paño: elige 2 anchors de la MISMA arista (sup/inf/izq/der).");
+        const lenAr = (an1.ar === "sup" || an1.ar === "inf") ? A : L;
+        const dIni = (an9) => { const d9 = Math.max(0, Math.min(lenAr, parseFloat(an9.d) || 0)); return (an9.esq === "fin") ? lenAr - d9 : d9; };
+        const f9 = window.CalcCIBSA.fmtNum;
+        const d1 = dIni(an1), d2 = dIni(an2);
+        if (Math.abs(d1 - d2) < 0.01) return alert("Los 2 anchors están en el mismo punto de la arista — sepáralos para definir el tramo de la cinta.");
+        const pzK = (state.prodMode === "compuesto") ? (state.piezas || []).find((p9) => p9.anclas === ctx.anclas || p9.cortes === ctx.cortes) : null;
+        const destK = pzK ? (pzK.cintas || (pzK.cintas = [])) : ((state.prodMode !== "compuesto") ? (state.cintasUnif || (state.cintasUnif = [])) : null);
+        if (!destK) return;
+        destK.push(nuevaCinta({ modo: "arista", arista: an1.ar, desde: f9(rd3(Math.min(d1, d2))), hasta: f9(rd3(Math.max(d1, d2))) }));
+        if (ctx.onChange) ctx.onChange();
+        if (pzK) setTimeout(() => { const cardK = document.querySelector('#piezasList [data-id="' + pzK.id + '"]'); if (cardK) abrirFichaPz(cardK, "pz-cintas"); }, 60);
+        else { if (typeof renderCintasUnif === "function") renderCintasUnif(); irASeccion($("wCintasUnif") || $("cintasUnif")); }
+        return;
+      }
       const c = crearLineaEnSeg(ctx.cortes, { a: p1, b: p2 }, pend.tipo); if (!c) return;
       const id1 = nuevoIdAncla(ctx.anclas, ctx.cortes);
       c.anclas = [{ id: id1, t: 0, emp: an1.id }, { id: id1 + 1, t: rd3(len), emp: an2.id }];
@@ -8430,6 +8447,9 @@
         if (nTot >= 2) {
           item("Corte hasta otro anchor…", () => iniciarConexion(regC, "corte"));
           { const bG = item("Guía hasta otro anchor…  ⌨G", () => iniciarConexion(regC, "guia")); if (bG) bG.dataset.hotG = "1"; }
+          if (regC.tipo === "arista" && !regC.an.seg && (ctx.anclas || []).some((a2) => a2 !== regC.an && !a2.seg && a2.ar === regC.an.ar)) {
+            const bT = item("Cinta hasta otro anchor (tramo)…  ⌨T", () => iniciarConexion(regC, "cinta")); if (bT) bT.dataset.hotT = "1";
+          }
         }
         if (regC.tipo === "arista" && !regC.an.seg) {
           const otros = (ctx.anclas || []).filter((a2) => a2 !== regC.an && !a2.seg && a2.ar === regC.an.ar);
@@ -8561,7 +8581,7 @@
       menu._onKey = (ev3) => {
         if (ev3.target && /input|textarea|select/i.test(ev3.target.tagName || "")) return;
         const k3 = (ev3.key || "").toLowerCase();
-        if (k3 !== "b" && k3 !== "c" && k3 !== "g" && k3 !== "s" && k3 !== "e") return;
+        if (k3 !== "b" && k3 !== "c" && k3 !== "g" && k3 !== "s" && k3 !== "e" && k3 !== "t") return;
         const btn = menu.querySelector('button[data-hot-' + k3 + '="1"]');
         if (btn) { ev3.preventDefault(); btn.click(); }
       };
