@@ -1791,14 +1791,27 @@
       return '<p class="muted small">Ingresa largo y ancho para ver el plano del producto.</p>';
     }
     const ML = conCotas ? margenCotasLados(sk) : { top: 0, bottom: 0, left: 0, right: 0 };
-    const mLeft = ML.left + 24, mTop = ML.top + 32, mRight = ML.right + 30, mBot = ML.bottom + 26; // + espacio para rótulos de orientación
+    // Cotas ARRASTRADAS hacia AFUERA (cotasPos.d negativo): el margen debe crecer con ellas —
+    // si no, invaden la banda de los rótulos de orientación (SUPERIOR / LADO IZQUIERDO / …).
+    const extraM = { top: 0, bottom: 0, left: 0, right: 0 };
+    if (conCotas && sk.cotasPos) {
+      cotasVisibles(sk).forEach((c) => {
+        const cpo = c.key && sk.cotasPos[c.key];
+        if (cpo && cpo.d < 0 && extraM[c.side] != null) extraM[c.side] = Math.max(extraM[c.side], -cpo.d);
+      });
+    }
+    let mLeft = ML.left + 24, mTop = ML.top + 32, mRight = ML.right + 30, mBot = ML.bottom + 26; // + espacio para rótulos de orientación
     // Bounds del paño (base + aletas) — las cotas se anclan AQUÍ (los straps NO afectan las cotas).
     let pMinX = 0, pMaxX = sk.ancho, pMinY = 0, pMaxY = sk.largo;
     (sk.aletas || []).forEach((a) => { pMinX = Math.min(pMinX, a.x); pMaxX = Math.max(pMaxX, a.x + a.w); pMinY = Math.min(pMinY, a.y); pMaxY = Math.max(pMaxY, a.y + a.h); });
     // El dibujo se dimensiona SOLO por el paño (los straps no lo alteran: se dibujan encima).
     const minX = pMinX, maxX = pMaxX, minY = pMinY, maxY = pMaxY;
     const bw = maxX - minX, bh = maxY - minY;
-    const scale = Math.min((maxW - mLeft - mRight) / bw, (maxH - mTop - mBot) / bh);
+    let scale = Math.min((maxW - mLeft - mRight) / bw, (maxH - mTop - mBot) / bh);
+    if (extraM.top || extraM.bottom || extraM.left || extraM.right) {   // 2ª pasada: márgenes siguen a las cotas arrastradas
+      mLeft += extraM.left * scale; mTop += extraM.top * scale; mRight += extraM.right * scale; mBot += extraM.bottom * scale;
+      scale = Math.min((maxW - mLeft - mRight) / bw, (maxH - mTop - mBot) / bh);
+    }
     const w = sk.ancho * scale, h = sk.largo * scale;
     const px = (sx) => mLeft + (sx - minX) * scale, py = (sy) => mTop + (sy - minY) * scale;
     const ox = px(0), oy = py(0);
