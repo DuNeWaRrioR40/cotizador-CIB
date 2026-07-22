@@ -5202,7 +5202,7 @@
     });
   }
   function refrescarBtnQR() {
-    ["btnVistaQR", "btnVistaQRComp"].forEach((id) => {
+    ["btnVistaQR", "btnVistaQRComp", "btnVistaQRComp2"].forEach((id) => {
       const b = $(id); if (!b) return;
       if (_vcRem) {
         const m = Math.max(0, _vcRem.exp - Date.now());
@@ -10174,6 +10174,8 @@
   { const el = $("f_v3dVC"); if (el) el.addEventListener("change", () => setV3dVC(el.checked)); }
   { const el = $("f_v3dVCc"); if (el) el.addEventListener("change", () => setV3dVC(el.checked)); }
   { const b = $("btnVistaQRComp"); if (b) b.addEventListener("click", toggleVistaQR); }
+  { const b = $("btnVistaClienteComp2"); if (b) b.addEventListener("click", abrirVistaCliente); }
+  { const b = $("btnVistaQRComp2"); if (b) b.addEventListener("click", toggleVistaQR); }
   { const b = $("btnDescargarCorte"); if (b) b.addEventListener("click", descargarCorte); }
   { const t = $("f_trasUnif"); if (t) t.addEventListener("change", () => { state.trasUnif = t.checked; recompute(); }); }
   { const cb = $("f_usarPlano"); if (cb) cb.addEventListener("change", () => { document.body.classList.toggle("no-plano", !cb.checked); recompute(); }); }
