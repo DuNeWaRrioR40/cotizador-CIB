@@ -1589,10 +1589,20 @@
       p = p.parentElement;
     }
     if (typeof card._abrir === "function") card._abrir();
-    // Deja la ficha cerca del borde superior (con margen via CSS scroll-margin-top), no centrada.
-    setTimeout(() => { try { card.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { card.scrollIntoView(); } }, 30);
-    flashTitulo(card.querySelector(".ins-head") || card);
-    const f1 = card.querySelector(".field"); if (f1) flashTitulo(f1); // primer campo (ej. "Tipo" del anexo)
+    // Aterrizar EN la ficha: dentro del drawer (panel fijo con scroll propio) el scrollIntoView
+    // del mismo frame en que se abre es poco fiable y dejaba la lista en la 1ª ficha — se
+    // desplaza el CONTENEDOR del drawer directamente, re-buscando la ficha por si hubo re-render.
+    setTimeout(() => {
+      const card2 = document.querySelector('[data-fid="' + fid + '"]') || card;
+      const dw = card2.closest ? card2.closest(".ficha-drawer") : null;
+      if (dw) {
+        try { const rc = card2.getBoundingClientRect(), rd = dw.getBoundingClientRect(); dw.scrollTop += rc.top - rd.top - 14; } catch (_) {}
+      } else {
+        try { card2.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { card2.scrollIntoView(); }
+      }
+      flashTitulo(card2.querySelector(".ins-head") || card2);
+      const f1 = card2.querySelector(".field"); if (f1) flashTitulo(f1); // primer campo (ej. "Tipo" del anexo)
+    }, 80);
   }
   // Menú "de capas" bajo un plano: lista los elementos que lo afectan, con enlace a su ficha
   // y un checkbox "ocultar" para excluirlo sin volver al editor. grupos: [{label, items:[{obj,titulo}]}].
@@ -2000,8 +2010,12 @@
       }
       p = p.parentElement;
     }
-    setTimeout(() => { try { el.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { el.scrollIntoView(); } }, 30);
-    flashTitulo(flashEl || el);
+    setTimeout(() => {
+      const dw = el.closest ? el.closest(".ficha-drawer") : null;
+      if (dw) { try { const rc = el.getBoundingClientRect(), rd = dw.getBoundingClientRect(); dw.scrollTop += rc.top - rd.top - 14; } catch (_) {} }
+      else { try { el.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { el.scrollIntoView(); } }
+      flashTitulo(flashEl || el);
+    }, 80);
     navCerrar();
   }
   function limpiarTitulo(t) { return (t || "").replace(/[▸▾✂☰✕?]/g, "").replace(/●\s*con datos/gi, "").replace(/\s+/g, " ").trim(); }
@@ -8795,6 +8809,7 @@
         } else if (kTapa != null && idxCorte != null) {
           items = [["Ojetillos en esta arista (cada X m)…", "tapaOj"], ["Strap en esta arista", "strapLibre"],
                    ["Ojetillos (fila en esta arista)", "ojLibre"], ["Fusionar / liberar esta arista", "tapaFus"]];
+          if (pm && seg) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else if (idxCorte != null) {
           items = [["Ojetillos sobre el corte", "corteOj"], ["Strap sobre el corte", "corteStrap"]];
           items.push(["Anexo (aleta/faldón) desde esta línea…", "guiaAnexoUI"]);

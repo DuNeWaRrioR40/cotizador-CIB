@@ -1902,7 +1902,10 @@
           o += `<line class="cota" x1="${f1(dimX)}" y1="${f1(ya)}" x2="${f1(dimX)}" y2="${f1(yb)}"/>`;
           o += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(ya)}" x2="${f1(dimX + TICK)}" y2="${f1(ya)}"/>`;
           o += `<line class="cota-tick" x1="${f1(dimX - TICK)}" y1="${f1(yb)}" x2="${f1(dimX + TICK)}" y2="${f1(yb)}"/>`;
-          const my = (ya + yb) / 2 + tSh, tx = (c.side === "right") ? dimX + 3 : dimX - 3;
+          // rotate(-90) extiende los glifos hacia la IZQUIERDA del ancla: en el lado izquierdo eso
+          // aleja el número de la línea, pero en el DERECHO lo hacía atravesarla — el ancla derecha
+          // necesita despegarse el alto del texto (+11px) para que el número quede fuera de la línea.
+          const my = (ya + yb) / 2 + tSh, tx = (c.side === "right") ? dimX + 11 : dimX - 3;
           o += `<text class="cota-lbl" x="${f1(tx)}" y="${f1(my)}" text-anchor="middle" transform="rotate(-90 ${f1(tx)} ${f1(my)})">${fmt(c.value)}m</text>`;
         }
         s += c.key ? `<g class="cota-g" data-ck="${esc(c.key)}" data-cax="${c.axis}" data-cdir="${(c.side === "bottom" || c.side === "right") ? 1 : -1}">${o}</g>` : o;
