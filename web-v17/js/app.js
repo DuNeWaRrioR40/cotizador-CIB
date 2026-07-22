@@ -4730,26 +4730,72 @@
     } catch (e) { return alert("No se pudo cargar el visor 3D (revisa la conexión)."); }
     cerrarEnsamble3D();
     const T = window.THREE;
-    // --- armado simplificado (base + paredes + contornos de calados) + mapa desplegado→3D ---
-    function armar(pz, colHex) {
+    // --- F5b: textura del PLANO REAL de la pieza (calados, ojetillos, straps, cintas tal como
+    // están dibujados) rasterizada del SVG y envuelta sobre el armado vía UV del desplegado.
+    // Calibración gratis: el SVG trae data-mscale / data-ox / data-oy. Mejor esfuerzo: si algo
+    // falla (estilos, fuentes, timeout) se cae al color plano de siempre.
+    async function texturaDePieza(pz) {
+      try {
+        if (!window.SketchCIBSA || document.body.classList.contains("no-plano")) return null;
+        const html = sketchDualSVG(sketchPieza(pz), false, null, null);
+        const div = document.createElement("div"); div.innerHTML = html;
+        const sv = div.querySelector("svg.sketch-svg"); if (!sv) return null;
+        const ms = parseFloat(sv.dataset.mscale), ox = parseFloat(sv.dataset.ox), oy = parseFloat(sv.dataset.oy);
+        if (!(ms > 0) || !isFinite(ox) || !isFinite(oy)) return null;
+        const vb = (sv.getAttribute("viewBox") || "").split(/\s+/).map(Number);
+        const VW = vb[2] || 0, VH = vb[3] || 0; if (!(VW > 0 && VH > 0)) return null;
+        // menos ruido sobre la tela: fuera cotas y numeración (los elementos del diseño se quedan)
+        sv.querySelectorAll('[class*="cota"], .oj-num, .oj-num-lbl, .sketch-zoom-btn').forEach((el2) => el2.remove());
+        // estilos: el plano se pinta con clases de styles.css → incrustarlas para el rasterizado
+        let css = "";
+        try {
+          Array.prototype.forEach.call(document.styleSheets, (sh) => {
+            let rules; try { rules = sh.cssRules; } catch (_) { rules = null; }
+            if (rules) Array.prototype.forEach.call(rules, (r) => { if (r.cssText) css += r.cssText + "\n"; });
+          });
+        } catch (_) {}
+        const st9 = document.createElementNS("http://www.w3.org/2000/svg", "style"); st9.textContent = css;
+        const bg9 = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        bg9.setAttribute("x", "0"); bg9.setAttribute("y", "0"); bg9.setAttribute("width", String(VW)); bg9.setAttribute("height", String(VH)); bg9.setAttribute("fill", "#ffffff");
+        sv.insertBefore(bg9, sv.firstChild); sv.insertBefore(st9, sv.firstChild);
+        const img = new Image();
+        const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(sv));
+        await new Promise((res, rej) => { const tt = setTimeout(() => rej(new Error("timeout")), 4000); img.onload = () => { clearTimeout(tt); res(); }; img.onerror = () => { clearTimeout(tt); rej(new Error("img")); }; img.src = url; });
+        const k = Math.min(2.5, 2048 / Math.max(VW, VH));
+        const cv2 = document.createElement("canvas");
+        cv2.width = Math.max(64, Math.round(VW * k)); cv2.height = Math.max(64, Math.round(VH * k));
+        cv2.getContext("2d").drawImage(img, 0, 0, cv2.width, cv2.height);
+        const tex = new T.CanvasTexture(cv2);
+        tex.anisotropy = 4;
+        return { tex: tex, u: (x2) => (ox + ms * x2) * k / cv2.width, v: (y2) => 1 - (oy + ms * y2) * k / cv2.height };
+      } catch (_) { return null; }
+    }
+    // --- armado simplificado (base + paredes) + mapa desplegado→3D; con textura si está disponible ---
+    function armar(pz, colHex, texI) {
       const A = ev9(pz.ancho) || 0, L = ev9(pz.largo) || 0;
       const altos = altosPz(pz) || { sup: 0, inf: 0, izq: 0, der: 0 };
       const grp = new T.Group();
       const mat = new T.MeshBasicMaterial({ color: colHex, transparent: true, opacity: 0.32, side: T.DoubleSide, depthWrite: false });
-      const lin = new T.LineBasicMaterial({ color: 0x475569 });
+      const matTex = texI ? new T.MeshBasicMaterial({ map: texI.tex, side: T.DoubleSide, transparent: true, opacity: 0.97 }) : null;
+      const lin = new T.LineBasicMaterial({ color: texI ? colHex : 0x475569 });   // con textura, la silueta lleva el color de la pieza
       const V3 = (q) => new T.Vector3(q[0], q[1], q[2]);
-      const quad = (q1, q2, q3, q4) => {
+      const quad = (q1, q2, q3, q4, uvp) => {
         const g = new T.BufferGeometry().setFromPoints([V3(q1), V3(q2), V3(q3), V3(q1), V3(q3), V3(q4)]);
         g.computeVertexNormals();
-        grp.add(new T.Mesh(g, mat));
+        if (matTex && uvp) {
+          const U9 = (i2) => texI.u(uvp[i2][0]), V9 = (i2) => texI.v(uvp[i2][1]);
+          g.setAttribute("uv", new T.BufferAttribute(new Float32Array([U9(0), V9(0), U9(1), V9(1), U9(2), V9(2), U9(0), V9(0), U9(2), V9(2), U9(3), V9(3)]), 2));
+          grp.add(new T.Mesh(g, matTex));
+        } else grp.add(new T.Mesh(g, mat));
         grp.add(new T.Line(new T.BufferGeometry().setFromPoints([V3(q1), V3(q2), V3(q3), V3(q4), V3(q1)]), lin));
       };
-      quad([0, 0, 0], [A, 0, 0], [A, 0, L], [0, 0, L]);
-      if (altos.sup > 0) quad([0, 0, 0], [A, 0, 0], [A, altos.sup, 0], [0, altos.sup, 0]);
-      if (altos.inf > 0) quad([0, 0, L], [A, 0, L], [A, altos.inf, L], [0, altos.inf, L]);
-      if (altos.izq > 0) quad([0, 0, 0], [0, 0, L], [0, altos.izq, L], [0, altos.izq, 0]);
-      if (altos.der > 0) quad([A, 0, 0], [A, 0, L], [A, altos.der, L], [A, altos.der, 0]);
+      quad([0, 0, 0], [A, 0, 0], [A, 0, L], [0, 0, L], [[0, 0], [A, 0], [A, L], [0, L]]);
+      if (altos.sup > 0) quad([0, 0, 0], [A, 0, 0], [A, altos.sup, 0], [0, altos.sup, 0], [[0, 0], [A, 0], [A, -altos.sup], [0, -altos.sup]]);
+      if (altos.inf > 0) quad([0, 0, L], [A, 0, L], [A, altos.inf, L], [0, altos.inf, L], [[0, L], [A, L], [A, L + altos.inf], [0, L + altos.inf]]);
+      if (altos.izq > 0) quad([0, 0, 0], [0, 0, L], [0, altos.izq, L], [0, altos.izq, 0], [[0, 0], [0, L], [-altos.izq, L], [-altos.izq, 0]]);
+      if (altos.der > 0) quad([A, 0, 0], [A, 0, L], [A, altos.der, L], [A, altos.der, 0], [[A, 0], [A, L], [A + altos.der, L], [A + altos.der, 0]]);
       try {
+        if (texI) throw 0;   // con textura del plano real, los calados ya vienen dibujados
         const rojo = new T.LineBasicMaterial({ color: 0xb91c1c });
         (cortesSpec(pz.cortes) || []).forEach((c) => {
           if (c.tipo !== "calado" && c.tipo !== "recorte") return;
@@ -4790,7 +4836,8 @@
       nodos[id] = { pz: pz, arm: null, pose: null, grado: 1 };
     }));
     let colK = 0;
-    Object.keys(nodos).forEach((id) => { nodos[id].arm = armar(nodos[id].pz, PAL[colK++ % PAL.length]); nodos[id].col = PAL[(colK - 1) % PAL.length]; });
+    for (const idT of Object.keys(nodos)) nodos[idT].texI = await texturaDePieza(nodos[idT].pz);   // mejor esfuerzo: null → color plano
+    Object.keys(nodos).forEach((id) => { nodos[id].arm = armar(nodos[id].pz, PAL[colK++ % PAL.length], nodos[id].texI); nodos[id].col = PAL[(colK - 1) % PAL.length]; });
     const wPt = (nd, v) => v.clone().applyQuaternion(nd.pose.q).add(nd.pose.p);
     const wNr = (nd, v) => v.clone().applyQuaternion(nd.pose.q);
     // BFS por componentes; cada raíz nueva se corre en X para no superponer ensambles independientes
@@ -7541,6 +7588,42 @@
     let e = (state.ensambles || []).find((e2) => (e2.a === pzA.id && e2.b === pzB.id) || (e2.a === pzB.id && e2.b === pzA.id));
     if (!e) { e = { id: "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), a: pzA.id, b: pzB.id }; (state.ensambles = state.ensambles || []).push(e); }
     return e;
+  }
+  // Descriptor humano de un conector para la PAUTA impresa (instrucción de taller).
+  function descConectorTaller(pz, rc) {
+    const f2 = window.CalcCIBSA.fmtNum, an = rc.an;
+    const d9 = (v) => f2(rd3(parseFloat(v) || 0)) + " m";
+    if (rc.esCorte) {
+      const idx = (pz.cortes || []).indexOf(rc.c) + 1;
+      const tipoL = (rc.c && rc.c.tipo === "guia") ? "Guía" : "Corte";
+      const nomC = (rc.c && rc.c.legend && rc.c.legend.trim()) ? " «" + rc.c.legend.trim() + "»" : "";
+      return "sobre " + tipoL + " " + idx + nomC + ", a " + d9(an.t) + " del extremo inicial de la línea";
+    }
+    if (an.seg) return "borde de la altura, a " + d9(an.d) + " del extremo " + (an.esq === "fin" ? "final" : "inicial");
+    const nom = { sup: "arista superior", inf: "arista inferior", izq: "arista izquierda", der: "arista derecha" };
+    return (nom[an.ar] || "arista") + " del paño, a " + d9(an.d) + " de la esquina " + (an.esq === "fin" ? "final" : "inicial");
+  }
+  // Pauta de ensamble para el PDF: una entrada por vínculo, con la ubicación de CADA conector
+  // en ambas piezas (mismas distancias ya validadas en el visor 🧩).
+  function pautaEnsambles() {
+    const out = [];
+    (state.ensambles || []).forEach((e) => {
+      const pa = (state.piezas || []).find((p) => p.id === e.a), pb = (state.piezas || []).find((p) => p.id === e.b);
+      if (!pa || !pb) return;
+      const ca = conectoresDePieza(pa, e.id), cb = conectoresDePieza(pb, e.id);
+      if (!ca.length && !cb.length) return;
+      const lineas = [];
+      [1, 2, 3].forEach((s) => {
+        const ra = ca.find((r) => r.slot === s), rb = cb.find((r) => r.slot === s);
+        if (!ra && !rb) return;
+        const nomA = nombrePieza(pa).split(" — ")[0], nomB = nombrePieza(pb).split(" — ")[0];
+        lineas.push("C" + s + (s === 3 ? " (fija el plano)" : "") + " — " +
+          nomA + ": " + (ra ? descConectorTaller(pa, ra) : "(pendiente)") + "  <->  " +
+          nomB + ": " + (rb ? descConectorTaller(pb, rb) : "(pendiente)"));
+      });
+      out.push({ titulo: "Ensamble E" + ensIdx(e) + ": " + nombrePieza(pa) + " + " + nombrePieza(pb), lineas: lineas, completo: vinculoCompleto(e) });
+    });
+    return out;
   }
   function desvincularEns(e) {
     const k = (state.ensambles || []).indexOf(e); if (k === -1) return;
@@ -10324,6 +10407,7 @@
       cliente: { nombre: cliente.nombre, apellido: cliente.apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente"), fonos: [empVal("f_fono1_cliente"), empVal("f_fono2_cliente")].filter(Boolean) }, empresa: empresaDatos(),
       version: versionStr, fecha: new Date(), suprimirCotas: suprimeCotas(),
       titulo: $("f_titulo").value.trim() || null,
+      pautaEnsamble: pautaEnsambles(),
       diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
       descuentoPct: dI.pct, descuentoEsMonto: dI.esMonto, descuento: dI.monto,
       descuentoLabel: dI.label,

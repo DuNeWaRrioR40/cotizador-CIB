@@ -1363,6 +1363,24 @@
       String(datos.observaciones).split(/\r?\n/).forEach((par) => {
         wrap(par || " ", font, 10.5, W - 2 * M).forEach((ln) => { ensure(); txt(ln, M, oy, { size: 10.5, color: BLACK() }); oy -= 13; });
       });
+      ny = oy;
+    }
+
+    // PAUTA DE ENSAMBLE (unión entre piezas por conectores): instrucción de confección para el
+    // taller — mismas ubicaciones y distancias validadas en el visor de ensamble de la app.
+    if (datos.pautaEnsamble && datos.pautaEnsamble.length) {
+      let py2 = ny - 18;
+      const ensureE = () => { if (py2 < 54) { nuevaPagina(false); py2 = y - 12; } };
+      ensureE();
+      txt("PAUTA DE ENSAMBLE (unión entre piezas):", M, py2, { f: bold }); py2 -= 14;
+      datos.pautaEnsamble.forEach((pe) => {
+        const tit = pe.titulo + (pe.completo ? "" : "  — INCOMPLETO (faltan conectores)");
+        wrap(tit, bold, 10.5, W - 2 * M).forEach((ln) => { ensureE(); txt(ln, M, py2, { f: bold, size: 10.5, color: BLACK() }); py2 -= 13; });
+        pe.lineas.forEach((ln0) => {
+          wrap("•  " + ln0, font, 10.5, W - 2 * M - 6).forEach((ln, i2) => { ensureE(); txt((i2 === 0 ? "" : "   ") + ln, M + 6, py2, { size: 10.5, color: BLACK() }); py2 -= 13; });
+        });
+        py2 -= 5;
+      });
     }
 
     // (La representación gráfica / plano de las piezas se entrega como archivo aparte, no va en la cotización.)
