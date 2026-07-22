@@ -4928,6 +4928,21 @@
     head.style.cssText = "display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border,#ddd);flex-wrap:wrap;";
     const leyenda = Object.keys(nodos).map((id) => '<span style="color:#' + nodos[id].col.toString(16).padStart(6, "0") + ';font-weight:600">' + nombrePieza(nodos[id].pz) + '</span>').join(" · ");
     head.innerHTML = '<strong style="flex:1">🧩 Ensamble 3D — ' + leyenda + '</strong>';
+    // 🖥 Inyectar al cliente: captura el ensamble como imagen y la envía a la Vista cliente
+    // (monitor y QR), igual que el botón homólogo del visor 🧊. 2º clic la retira.
+    const bIny = document.createElement("button"); bIny.type = "button"; bIny.className = "btn-outline";
+    const inyTxt = () => { bIny.textContent = _vc3d ? "🖥 Cliente: sí" : "🖥 Inyectar al cliente"; };
+    bIny.title = "Enviar esta imagen del ensamble a la Vista cliente (monitor / QR); tócalo de nuevo para retirarla";
+    bIny.addEventListener("click", () => {
+      if (_vc3d) { setV3dVC(false); inyTxt(); return; }
+      try { ren.render(scene, cam); _vc3d = cv.toDataURL("image/jpeg", 0.82); } catch (_) { _vc3d = ""; }
+      ["f_v3dVC", "f_v3dVCc"].forEach((id2) => { const el2 = $(id2); if (el2) el2.checked = !!_vc3d; });
+      publicarVistaCliente();
+      inyTxt();
+      if (!_vc3d) alert("No se pudo capturar la imagen del ensamble.");
+    });
+    inyTxt();
+    head.appendChild(bIny);
     // 🔃 Girar la vista 180° (roll de cámara): los ensambles a menudo se leen "colgando" —
     // este botón invierte el arriba/abajo EN PANTALLA sin tocar las piezas ni los conectores.
     let vistaInv = false;
