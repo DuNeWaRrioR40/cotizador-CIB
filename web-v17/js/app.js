@@ -6277,10 +6277,38 @@
           else { h0 = { x: g.x + g.w, y: g.y }; h1 = { x: g.x + g.w, y: g.y + g.h }; caida = g.w; dirC = { x: -1, y: 0 }; }
           const len = Math.hypot(h1.x - h0.x, h1.y - h0.y); if (!(len > 0) || !(caida > 0)) return;
           const W3 = (mx, my) => new T.Vector3(mx - A / 2, yBase, my - L / 2);
-          const P0 = W3(h0.x, h0.y), P1 = W3(h1.x, h1.y);
-          const ux = new T.Vector3().subVectors(P1, P0).normalize();
-          const uz = new T.Vector3(dirC.x, 0, dirC.y);
-          const uy = new T.Vector3().crossVectors(uz, ux);
+          // Bisagra dentro del ALA de una pared (fuera del paño base, dBorde negativo): su posición
+          // ARMADA no es la prolongación plana a la altura de la tapa — BAJA por la pared (la caja
+          // se arma con la tapa arriba y paredes colgando). Orientación por "Áng. ensamble 3D":
+          // 0° = sigue el plano de la pared; 90° (default) = paralelo al piso hacia afuera (flange).
+          const kW = (() => { const midx = (h0.x + h1.x) / 2, midy = (h0.y + h1.y) / 2;
+            if (midy < -1e-6) return "sup"; if (midy > L + 1e-6) return "inf";
+            if (midx < -1e-6) return "izq"; if (midx > A + 1e-6) return "der"; return null; })();
+          const hW = kW ? (hV(kW) || 0) : 0;
+          let P0, P1, ux, uz, uy;
+          if (kW && H > 0 && hW > 0) {
+            const distDe = (pq) => (kW === "sup") ? -pq.y : (kW === "inf") ? (pq.y - L) : (kW === "izq") ? -pq.x : (pq.x - A);
+            const bordePt = (pq) => (kW === "sup") ? { x: pq.x, y: 0 } : (kW === "inf") ? { x: pq.x, y: L } : (kW === "izq") ? { x: 0, y: pq.y } : { x: A, y: pq.y };
+            const wallN = (kW === "sup") ? new T.Vector3(0, 0, -1) : (kW === "inf") ? new T.Vector3(0, 0, 1) : (kW === "izq") ? new T.Vector3(-1, 0, 0) : new T.Vector3(1, 0, 0);
+            const arma = (pq) => {
+              const dRaw = distDe(pq), d9 = Math.max(0, Math.min(dRaw, hW)), sobra = Math.max(0, dRaw - hW);
+              const e9 = bordePt(pq), v9 = W3(e9.x, e9.y);
+              v9.y = yBase - d9;
+              return v9.add(wallN.clone().multiplyScalar(sobra));
+            };
+            P0 = arma(h0); P1 = arma(h1);
+            ux = new T.Vector3().subVectors(P1, P0).normalize();
+            const evA9 = window.CalcCIBSA.evalExpr;
+            let angA9 = evA9(a.ens3dAng); if (angA9 == null || isNaN(angA9)) angA9 = 90;
+            const thA9 = angA9 * Math.PI / 180;
+            uz = new T.Vector3(0, -1, 0).multiplyScalar(Math.cos(thA9)).add(wallN.clone().multiplyScalar(Math.sin(thA9))).normalize();
+            uy = new T.Vector3().crossVectors(uz, ux).normalize();
+          } else {
+            P0 = W3(h0.x, h0.y); P1 = W3(h1.x, h1.y);
+            ux = new T.Vector3().subVectors(P1, P0).normalize();
+            uz = new T.Vector3(dirC.x, 0, dirC.y);
+            uy = new T.Vector3().crossVectors(uz, ux);
+          }
           const outer = new T.Group(); outer.position.copy(P0);
           outer.setRotationFromMatrix(new T.Matrix4().makeBasis(ux, uy, uz));
           const inner = new T.Group(); outer.add(inner); grp.add(outer);
@@ -8413,6 +8441,41 @@
         const otrosC = (reg.c.anclas || []).filter((a2) => a2 !== reg.an && a2.emp == null);
         if (otrosC.length === 1) itemMas("Modificar medida entre anchors…", () => modificarMedidaEntreCorte(reg.c, reg.an, otrosC[0]));
       }
+      // ⚓→STRAP: instala un strap ÚNICO (manual) exactamente en el punto del anchor — colocar
+      // anchors es cómodo (⌨A, % y empates); el strap discreto hereda esa comodidad. El anchor
+      // se conserva como referencia (bórralo aparte si no lo quieres).
+      { const posS = (reg.tipo === "arista") ? posAnclaArista(reg.an, A, L) : posAnclaCorte(reg.c, reg.an);
+        const pzS = (state.prodMode === "compuesto") ? (state.piezas || []).find((p9) => p9.anclas === ctx.anclas || p9.cortes === ctx.cortes) : null;
+        const strapsDest = pzS ? (pzS.straps || (pzS.straps = [])) : ((state.prodMode !== "compuesto") ? state.strapsUnif : null);
+        if (posS && strapsDest) {
+          const bS = item("Strap aquí (único, en este punto)  ⌨S", () => {
+            let ang = 0;
+            if (reg.tipo === "arista" && reg.an.ar && !reg.an.seg) {
+              ang = { sup: 270, inf: 90, izq: 180, der: 0 }[reg.an.ar] || 0;
+            } else {
+              // perpendicular al carril (línea o borde libre), hacia el interior del paño
+              let u9 = null;
+              if (reg.tipo === "corte") { const ln9 = lineaRawCorte(reg.c); if (ln9) u9 = ln9.u; }
+              else if (reg.an.seg) { const dx9 = reg.an.seg.b.x - reg.an.seg.a.x, dy9 = reg.an.seg.b.y - reg.an.seg.a.y, l9 = Math.hypot(dx9, dy9) || 1; u9 = { x: dx9 / l9, y: dy9 / l9 }; }
+              if (u9) {
+                let nx9 = -u9.y, ny9 = u9.x;
+                const cx9 = A / 2 - posS.x, cy9 = L / 2 - posS.y;   // hacia el centro del paño
+                if (nx9 * cx9 + ny9 * cy9 < 0) { nx9 = -nx9; ny9 = -ny9; }
+                ang = Math.round(Math.atan2(ny9, nx9) * 180 / Math.PI);
+              }
+            }
+            const f9 = window.CalcCIBSA.fmtNum;
+            strapsDest.push({ matId: null, modo: "unica", arista: "sup", d: "", supr: "", cx: f9(rd3(posS.x)), cy: f9(rd3(posS.y)), angulo: String(ang), offset: "0.1", inset: "0.1", offBorde: "0.01", legend: "", sets: [] });
+            if (ctx.onChange) ctx.onChange();
+            if (pzS) {
+              setTimeout(() => { const cardS = document.querySelector('#piezasList [data-id="' + pzS.id + '"]'); if (cardS) abrirFichaPz(cardS, "pz-straps"); }, 60);
+            } else {
+              if (typeof renderStrapsUnif === "function") renderStrapsUnif();
+              irASeccion($("wStrapsUnif") || $("strapsUnif"));
+            }
+          });
+          if (bS) bS.dataset.hotS = "1";
+        } }
       // F5: CONECTOR DE ENSAMBLE por VÍNCULO — cada vínculo declarado (🧩 en la ficha de la pieza)
       // pide sus propios C1/C2; sin vínculo, instalar un conector CREA el vínculo de una vez.
       { const pzC = (state.prodMode === "compuesto") ? (state.piezas || []).find((p9) => p9.anclas === ctx.anclas || p9.cortes === ctx.cortes) : null;
@@ -8464,7 +8527,7 @@
         }, lenC);
       });
       if (reg.tipo === "corte" && reg.an.emp != null) itemMas("Desempatar", () => { reg.an.emp = null; if (ctx.onChange) ctx.onChange(); });
-      item("Eliminar anchor", () => {
+      { const bE9 = item("Eliminar anchor  ⌨E", () => {
         if (reg.tipo === "arista") {
           const i = ctx.anclas.indexOf(reg.an); if (i >= 0) ctx.anclas.splice(i, 1);
           (ctx.cortes || []).forEach((c) => (c.anclas || []).forEach((a) => { if (a.emp === reg.an.id) a.emp = null; }));
@@ -8472,7 +8535,7 @@
           const i = (reg.c.anclas || []).indexOf(reg.an); if (i >= 0) reg.c.anclas.splice(i, 1);
         }
         if (ctx.onChange) ctx.onChange();
-      });
+      }); if (bE9) bE9.dataset.hotE = "1"; }
       if (masBox.childNodes.length) {
         const tg = document.createElement("button"); tg.type = "button"; tg.className = "arista-menu-it arista-menu-toggle"; tg.textContent = "⋯ Más opciones (" + masBox.childNodes.length + ")";
         tg.addEventListener("click", (ev2) => {
@@ -8486,8 +8549,8 @@
       menu._onKey = (ev3) => {
         if (ev3.target && /input|textarea|select/i.test(ev3.target.tagName || "")) return;
         const k3 = (ev3.key || "").toLowerCase();
-        if (k3 !== "b" && k3 !== "c" && k3 !== "g") return;
-        const btn = menu.querySelector(k3 === "b" ? 'button[data-hot-b="1"]' : (k3 === "c" ? 'button[data-hot-c="1"]' : 'button[data-hot-g="1"]'));
+        if (k3 !== "b" && k3 !== "c" && k3 !== "g" && k3 !== "s" && k3 !== "e") return;
+        const btn = menu.querySelector('button[data-hot-' + k3 + '="1"]');
         if (btn) { ev3.preventDefault(); btn.click(); }
       };
       document.addEventListener("keydown", menu._onKey);
