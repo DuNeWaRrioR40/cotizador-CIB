@@ -4848,6 +4848,18 @@
           const dir3 = outw.clone().multiplyScalar(Math.cos(th9)).add(nF.clone().multiplyScalar(Math.sin(th9)));
           const q3v = P2.v.clone().add(dir3.clone().multiplyScalar(depth));
           const q4v = P1.v.clone().add(dir3.clone().multiplyScalar(depth));
+          // Anti z-fight: el flange COPLANAR con la cara de montaje desaparecía (lucha de pixeles
+          // con la cara de la otra pieza). Se levanta 6 mm hacia el exterior de la pieza — visible
+          // sin alterar ninguna medida.
+          { const nP = new T.Vector3().crossVectors(P2.v.clone().sub(P1.v), dir3);
+            if (nP.lengthSq() > 1e-9) {
+              nP.normalize();
+              const midQ = P1.v.clone().add(P2.v).add(q3v).add(q4v).multiplyScalar(0.25);
+              const cenP = new T.Vector3(A / 2, Math.max(0.15, (altos.sup + altos.inf + altos.izq + altos.der) / 8), L / 2);
+              const sg9 = midQ.sub(cenP).dot(nP) >= 0 ? 1 : -1;
+              const off9 = nP.multiplyScalar(sg9 * 0.006);
+              P1.v.add(off9); P2.v.add(off9); q3v.add(off9); q4v.add(off9);
+            } }
           const uvp = [[h1s.x, h1s.y], [h2s.x, h2s.y], [h2s.x + dirS.x * depth, h2s.y + dirS.y * depth], [h1s.x + dirS.x * depth, h1s.y + dirS.y * depth]];
           const g2 = new T.BufferGeometry().setFromPoints([P1.v, P2.v, q3v, P1.v, q3v, q4v]);
           g2.computeVertexNormals();

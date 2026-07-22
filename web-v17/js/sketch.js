@@ -1378,8 +1378,14 @@
     // que su geometría se desplaza H hacia afuera respecto del paño base. Los straps no aplican.
     const sk0 = construirSketch(spec);
     const aletasV = (sk0.aletas || []).map((a) => {
-      const dx = a.fused === "r" ? -hDe("izq") : a.fused === "l" ? hDe("der") : 0;
-      const dy = a.fused === "t" ? hDe("inf") : a.fused === "b" ? -hDe("sup") : 0;
+      // Corrimiento LEGADO: la aleta de borde (dBorde 0, bisagra en la arista del paño) se empuja
+      // más allá del ala para colgar del rim. Si la bisagra YA está fuera del paño (dBorde negativo,
+      // v17: el usuario la colgó explícitamente del rim/pared), NO se corre — corrió doble y la
+      // aleta quedaba "despegada" a un alto de pared de distancia.
+      const yaFuera = (a.fused === "b") ? (a.y + a.h < -1e-9) : (a.fused === "t") ? (a.y > (sk0.largo || 0) + 1e-9)
+                    : (a.fused === "r") ? (a.x + a.w < -1e-9) : (a.x > (sk0.ancho || 0) + 1e-9);
+      const dx = yaFuera ? 0 : (a.fused === "r" ? -hDe("izq") : a.fused === "l" ? hDe("der") : 0);
+      const dy = yaFuera ? 0 : (a.fused === "t" ? hDe("inf") : a.fused === "b" ? -hDe("sup") : 0);
       return Object.assign({}, a, { x: a.x + dx, y: a.y + dy, ojetillos: (a.ojetillos || []).map((p) => ({ x: p.x + dx, y: p.y + dy })) });
     });
     const skVol = Object.assign({}, sk0, { aletas: aletasV, straps: sk0.straps || [] });
