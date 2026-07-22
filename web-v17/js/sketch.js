@@ -201,7 +201,10 @@
 
   // Geometría del anexo (aleta/solapa/faldón/cenefa) en coordenadas del paño: rectángulo + arista fusionada.
   function aletaGeomRect(a, ancho, largo) {
-    const dB = Math.max(0, parseFloat(a.dBorde) || 0), L = parseFloat(a.largo), W = parseFloat(a.ancho), off = parseFloat(a.offset) || 0;
+    // dBorde NEGATIVO es válido (v17): el anexo cuelga fuera del paño base (rim/ala del
+    // desplegado — flange de costura). El clamp histórico aplastaba el valor a 0 y "teletransportaba"
+    // la aleta al borde del paño en el 2D y en los visores 3D.
+    const dB = parseFloat(a.dBorde) || 0, L = parseFloat(a.largo), W = parseFloat(a.ancho), off = parseFloat(a.offset) || 0;
     const be = a.baseEdge || "inf";
     if (be === "inf") return { x: off, y: largo - dB, w: W, h: L, fused: "t" };
     if (be === "sup") return { x: off, y: dB - L, w: W, h: L, fused: "b" };
