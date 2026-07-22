@@ -261,7 +261,9 @@
   // iOS puede descartar de memoria la pestaña al abrir el PDF y recargarla al volver.
   // Guardamos el estado justo antes de descargar y lo reponemos al recargar (ventana corta, un solo uso).
   const BORR_KEY = "cibsa_borrador_v1", BORR_MAX_MS = 10 * 60 * 1000;
-  function guardarBorrador() {
+  // (Renombrada en v17-35: colisionaba con guardarBorrador del historial — la declaración
+  // posterior ganaba y CADA descarga mostraba el confirm de reemplazo del borrador.)
+  function guardarRespaldoDescarga() {
     try {
       const snap = snapshotCotizacion(); if (!snap) return;
       localStorage.setItem(BORR_KEY, JSON.stringify({ ts: Date.now(), snap: snap }));
@@ -10824,7 +10826,7 @@
   }
 
   function descargar(url, filename) {
-    guardarBorrador(); // iPhone: si iOS recarga la pestaña al abrir el archivo, al volver se repone el estado
+    guardarRespaldoDescarga(); // iPhone: si iOS recarga la pestaña al abrir el archivo, al volver se repone el estado
     const a = document.createElement("a");
     a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
   }
