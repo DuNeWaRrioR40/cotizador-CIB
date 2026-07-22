@@ -3382,6 +3382,7 @@
         card.appendChild(addHelpTo(selField("Tipo", [["aleta", "Aleta"], ["solapa", "Solapa"], ["faldon", "Faldón"], ["cenefa", "Cenefa"]], "tipo", true), "Tipo de anexo: Aleta, Solapa, Faldón (caída frontal) o Cenefa. Solo cambia el nombre por defecto en el plano.", "ALETA-TIPO"));
         card.appendChild(addHelpTo(txtField("Nombre / leyenda (plano)", "legend", "Ej. Faldón frontal", true), "Nombre del anexo que aparece en el plano y en la cotización. Si lo dejas vacío usa el tipo.", "ALETA-NOMBRE"));
         card.appendChild(addHelpTo(txtField("Descripción de diseño", "descripcion", "Detalle del faldón/cenefa", true, true), "Texto libre para detallar el diseño del faldón/cenefa (colores, leyendas, terminaciones). Aparece en la cotización.", "ALETA-DESC"));
+        card.appendChild(addHelpTo(numField("Áng. ensamble 3D (°)", "ens3dAng", "vacío = auto"), "Pliegue del anexo en el visor de ENSAMBLE (🧩), girando sobre su arista fusionada: 0° = estirado en el plano de su cara; 90° = perpendicular hacia afuera (apéndice de costura paralelo a la cara de montaje); admite negativos (hacia adentro). Vacío = automático: 0° si cuelga de la base, 90° si cuelga de una pared.", "ALETA-ENS3D"));
         const lt = document.createElement("label"); lt.className = "field full"; lt.innerHTML = "<span>Tela</span>";
         const selT = document.createElement("select"); state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre; selT.appendChild(o); }); // el nombre ya incluye Proveedor · Modelo · Formato
         selT.value = a.telaNombre || (ctx.telaBase && ctx.telaBase()) || ((state.telas[0] && state.telas[0].nombre) || ""); a.telaNombre = selT.value;
@@ -4817,6 +4818,47 @@
         if (y > L + 1e-6) return { v: new T.Vector3(clamp(x, 0, A), clamp(y - L, 0, altos.inf || 0.001), L), n: new T.Vector3(0, 0, 1) };
         return { v: new T.Vector3(clamp(x, 0, A), 0, clamp(y, 0, L)), n: new T.Vector3(0, 1, 0) };
       };
+      // F5c: ANEXOS con bisagra — aletas/solapas/cenefas plegadas sobre su arista fusionada.
+      // Es la información de TRASLAPO/COSTURA del taller: el "apéndice de x cm que recorre la
+      // cara en paralelo". Ángulo por anexo (ens3dAng); AUTO = 0° en base, 90° en paredes.
+      try {
+        aplicarAnexosDeGuia(pz.aletas || [], pz.cortes, A, L, pz.usaAlto ? ((ev9(pz.altura)) || 0) : 0, null);
+        const raws = visibles(pz.aletas || []);
+        const specsA = aletasSpec(pz.aletas || []);
+        const matAn = new T.MeshBasicMaterial({ color: colHex, transparent: true, opacity: 0.5, side: T.DoubleSide, depthWrite: false });
+        specsA.forEach((aS, ai) => {
+          const gR = window.SketchCIBSA.aletaGeomRect(aS, A, L); if (!gR || !(gR.w > 0) || !(gR.h > 0)) return;
+          let h1s, h2s, dirS, depth;
+          if (gR.fused === "t") { h1s = { x: gR.x, y: gR.y }; h2s = { x: gR.x + gR.w, y: gR.y }; dirS = { x: 0, y: 1 }; depth = gR.h; }
+          else if (gR.fused === "b") { h1s = { x: gR.x, y: gR.y + gR.h }; h2s = { x: gR.x + gR.w, y: gR.y + gR.h }; dirS = { x: 0, y: -1 }; depth = gR.h; }
+          else if (gR.fused === "l") { h1s = { x: gR.x, y: gR.y }; h2s = { x: gR.x, y: gR.y + gR.h }; dirS = { x: 1, y: 0 }; depth = gR.w; }
+          else { h1s = { x: gR.x + gR.w, y: gR.y }; h2s = { x: gR.x + gR.w, y: gR.y + gR.h }; dirS = { x: -1, y: 0 }; depth = gR.w; }
+          const P1 = mapa(h1s.x, h1s.y), P2 = mapa(h2s.x, h2s.y);
+          const mid = { x: (h1s.x + h2s.x) / 2, y: (h1s.y + h2s.y) / 2 };
+          const eps = 0.02;
+          const PM = mapa(mid.x, mid.y), PI = mapa(mid.x - dirS.x * eps, mid.y - dirS.y * eps);
+          const outw = PM.v.clone().sub(PI.v);
+          if (outw.length() < 1e-9) return;
+          outw.normalize();
+          const nF = PM.n.clone();
+          const raw = raws[ai] || {};
+          let angV = ev9(raw.ens3dAng);
+          if (angV == null || isNaN(angV)) angV = (Math.abs(nF.y) > 0.9) ? 0 : 90;   // AUTO: base plano · pared = flange
+          const th9 = angV * Math.PI / 180;
+          const dir3 = outw.clone().multiplyScalar(Math.cos(th9)).add(nF.clone().multiplyScalar(Math.sin(th9)));
+          const q3v = P2.v.clone().add(dir3.clone().multiplyScalar(depth));
+          const q4v = P1.v.clone().add(dir3.clone().multiplyScalar(depth));
+          const uvp = [[h1s.x, h1s.y], [h2s.x, h2s.y], [h2s.x + dirS.x * depth, h2s.y + dirS.y * depth], [h1s.x + dirS.x * depth, h1s.y + dirS.y * depth]];
+          const g2 = new T.BufferGeometry().setFromPoints([P1.v, P2.v, q3v, P1.v, q3v, q4v]);
+          g2.computeVertexNormals();
+          if (matTex) {
+            const U9 = (i2) => texI.u(uvp[i2][0]), V9 = (i2) => texI.v(uvp[i2][1]);
+            g2.setAttribute("uv", new T.BufferAttribute(new Float32Array([U9(0), V9(0), U9(1), V9(1), U9(2), V9(2), U9(0), V9(0), U9(2), V9(2), U9(3), V9(3)]), 2));
+            grp.add(new T.Mesh(g2, matTex));
+          } else grp.add(new T.Mesh(g2, matAn));
+          grp.add(new T.Line(new T.BufferGeometry().setFromPoints([P1.v, P2.v, q3v, q4v, P1.v]), lin));
+        });
+      } catch (_) {}
       return { grp: grp, mapa: mapa, A: A, L: L };
     }
     const mkFrame = (u, m) => {
@@ -8797,11 +8839,15 @@
     menuDirAnexo(horiz, (dir) => {
       const cfg = anexoDesdeLinea(ln, A, L, ctx2.H ? ctx2.H() : 0, ctx2.alas ? ctx2.alas() : null, dir);
       if (!cfg) return;
-      if (cfg.dBorde < -1e-9) return alert("Esa línea queda fuera del paño base hacia ese lado; el anexo debe colgar dentro del paño.");
+      // dBorde NEGATIVO = el anexo cuelga hacia AFUERA del paño base (línea en las alas del
+      // desplegado, p.ej. el rim de una pared): válido — es el apéndice/flange de costura.
+      // Solo se rechaza si además se saldría de la HOJA completa más allá de lo dibujable.
+      const H9 = ctx2.H ? (ctx2.H() || 0) : 0;
+      if (cfg.dBorde < -(H9 + 1e-9) - 3) return alert("Esa línea queda demasiado lejos del paño base hacia ese lado.");
       menuTipoAnexo((tipo) => {
         const f = window.CalcCIBSA.fmtNum;
         const al2 = nuevaAleta();
-        al2.tipo = tipo; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
+        al2.tipo = tipo; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(cfg.dBorde);
         al2.ancho = f(cfg.ancho); al2.largo = "0.5"; al2.offset = f(cfg.offset); al2._colap = false;
         al2.guiaId = c.id; al2.guiaDir = cfg.dir;
         ctx2.aletas().push(al2);
@@ -8821,8 +8867,8 @@
       if (!c) return;
       const ln = lineaRawCorte(c); if (!ln) return;
       const cfg = anexoDesdeLinea(ln, A, L, H, alas, al2.guiaDir || null);
-      if (!cfg || cfg.dBorde < -1e-9) return;
-      al2.baseEdge = cfg.baseEdge; al2.dBorde = f(Math.max(0, cfg.dBorde));
+      if (!cfg) return;
+      al2.baseEdge = cfg.baseEdge; al2.dBorde = f(cfg.dBorde);
       al2.offset = f(cfg.offset); al2.ancho = f(cfg.ancho);
     });
   }
