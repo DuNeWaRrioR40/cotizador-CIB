@@ -6281,7 +6281,7 @@
           // ARMADA no es la prolongación plana a la altura de la tapa — BAJA por la pared (la caja
           // se arma con la tapa arriba y paredes colgando). Orientación por "Áng. ensamble 3D":
           // 0° = sigue el plano de la pared; 90° (default) = paralelo al piso hacia afuera (flange).
-          const kW = (() => { const midx = (h0.x + h1.x) / 2, midy = (h0.y + h1.y) / 2;
+          const kW = a.paredOrigen || (() => { const midx = (h0.x + h1.x) / 2, midy = (h0.y + h1.y) / 2;
             if (midy < -1e-6) return "sup"; if (midy > L + 1e-6) return "inf";
             if (midx < -1e-6) return "izq"; if (midx > A + 1e-6) return "der"; return null; })();
           const hW = kW ? (hV(kW) || 0) : 0;
@@ -8789,7 +8789,7 @@
           b.textContent = esAncla ? t + "  ⌨A" : (esGuia ? t + "  ⌨G" : t);
           if (esAncla) b.dataset.hotA = "1";
           if (esGuia) b.dataset.hotG = "1";
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre" || a === "anexoLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anexoLibre") acciones[a](seg, pm, ln.getAttribute("data-arista") || null); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -8856,6 +8856,17 @@
   // Parámetros de un ANEXO colgado de una línea horizontal/vertical: baseEdge + dBorde tales que
   // su línea de fusión coincide EXACTO con la línea. Cuelga hacia el lado con menos tela (afuera);
   // luego se ajusta todo en la ficha del anexo. null = línea diagonal (no soportado aún).
+  // Pared a la que pertenece un segmento del desplegado (para etiquetar el ORIGEN de un anexo:
+  // la arista que el usuario seleccionó es la fuente de verdad, no la inferencia por coordenadas).
+  function paredDeSeg(seg, A, L) {
+    if (!seg || !(A > 0) || !(L > 0)) return null;
+    const ys = [seg.a.y, seg.b.y], xs = [seg.a.x, seg.b.x];
+    if (ys.every((v) => v < -1e-6) || (Math.max.apply(null, ys) <= 1e-6 && Math.min.apply(null, ys) < -1e-6)) return "sup";
+    if (ys.every((v) => v > L + 1e-6) || (Math.min.apply(null, ys) >= L - 1e-6 && Math.max.apply(null, ys) > L + 1e-6)) return "inf";
+    if (xs.every((v) => v < -1e-6) || (Math.max.apply(null, xs) <= 1e-6 && Math.min.apply(null, xs) < -1e-6)) return "izq";
+    if (xs.every((v) => v > A + 1e-6) || (Math.min.apply(null, xs) >= A - 1e-6 && Math.max.apply(null, xs) > A + 1e-6)) return "der";
+    return null;
+  }
   function anexoDesdeLinea(ln, A, L, H, alas, dir) {
     const horiz = Math.abs(ln.u.y) < 0.05, vert = Math.abs(ln.u.x) < 0.05;
     if (!horiz && !vert) return null;
@@ -8912,7 +8923,7 @@
         const al2 = nuevaAleta();
         al2.tipo = tipo; al2.baseEdge = cfg.baseEdge; al2.dBorde = f(cfg.dBorde);
         al2.ancho = f(cfg.ancho); al2.largo = "0.5"; al2.offset = f(cfg.offset); al2._colap = false;
-        al2.guiaId = c.id; al2.guiaDir = cfg.dir;
+        al2.guiaId = c.id; al2.guiaDir = cfg.dir; al2.paredOrigen = c.origenAla || null;
         ctx2.aletas().push(al2);
         ctx2.despues();
       });
@@ -8933,6 +8944,7 @@
       if (!cfg) return;
       al2.baseEdge = cfg.baseEdge; al2.dBorde = f(cfg.dBorde);
       al2.offset = f(cfg.offset); al2.ancho = f(cfg.ancho);
+      al2.paredOrigen = c.origenAla || al2.paredOrigen || null;
     });
   }
   // Crea un corte/guía A LO LARGO de un segmento propio (rim o lateral de un ala): la línea nace
@@ -9033,8 +9045,9 @@
     },
     // Anexo directo sobre un borde de la ALTURA (rim / lateral de un ala): la aleta necesita una
     // línea de la cual colgar → se crea la guía sobre el borde y se abre el selector de anexo.
-    anexoLibre: (seg, pm) => {
+    anexoLibre: (seg, pm, kAr) => {
       const c = crearLineaEnSeg(state.cortesUnif, seg, "guia"); if (!c) return;
+      c.origenAla = kAr || paredDeSeg(seg, num("f_ancho", 0), num("f_largo", 0));   // la ARISTA SELECCIONADA manda
       anexoDesdeCorteUI(c, null, { A: () => num("f_ancho", null), L: () => num("f_largo", null), H: alturaUnif, alas: alasUnif, aletas: () => state.aletasUnif, despues: () => { renderAletasUnif(); recompute(); irASeccion($("aletasUnif")); } });
     },
     anexoOj: (rid, k, esFus) => {
@@ -9221,8 +9234,9 @@
         irAPieza("pz-aletas");
       },
       guiaLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "guia")) irAPieza("pz-cortes"); },
-      anexoLibre: (seg, pm) => {
+      anexoLibre: (seg, pm, kAr) => {
         const c = crearLineaEnSeg(pz.cortes, seg, "guia"); if (!c) return;
+        c.origenAla = kAr || paredDeSeg(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0);   // la ARISTA SELECCIONADA manda
         anexoDesdeCorteUI(c, null, { A: () => ev(pz.ancho), L: () => ev(pz.largo), H: () => (pz.usaAlto ? (ev(pz.altura) || 0) : 0), alas: () => alasPz(pz), aletas: () => (pz.aletas || (pz.aletas = [])), despues: () => irAPieza("pz-aletas") });
       },
       ojLibre: (seg, pm) => {
