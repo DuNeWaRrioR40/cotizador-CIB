@@ -6451,6 +6451,18 @@
             cont.appendChild(bC);
           }
         } else if (prevCn) prevCn.remove();
+        // 🧩 abrir el ensamble 3D desde la banda lateral (piezas que participan en un vínculo completo)
+        const prevEn = cont.querySelector(":scope > .sketch-ens-btn");
+        const enVinc = pzB ? (state.ensambles || []).some((e9) => (e9.a === pzB.id || e9.b === pzB.id) && vinculoCompleto(e9)) : false;
+        if (enVinc) {
+          if (!prevEn) {
+            const bE2 = document.createElement("button");
+            bE2.type = "button"; bE2.className = "sketch-ens-btn"; bE2.textContent = "🧩";
+            bE2.title = "Abrir el Ensamble 3D (piezas emparejadas por conectores)";
+            bE2.addEventListener("click", (e) => { e.stopPropagation(); abrirEnsamble3D(); });
+            cont.appendChild(bE2);
+          }
+        } else if (prevEn) prevEn.remove();
       }
     });
   }
@@ -8555,11 +8567,11 @@
           if (pm) items.push(["Anchor sobre la línea", "corteAncla"], ["Nota (texto libre)…", "nota"]);
         } else if (esLibre && seg) {
           // Borde lateral de un ala (la ALTURA): elementos posicionados en SU propio segmento.
-          items = [["Ojetillos (en este borde)", "ojLibre"], ["Strap (en este borde)", "strapLibre"], ["Corte / calado (en este borde)", "corteLibre"], ["Línea de construcción (en este borde)", "guiaLibre"]];
+          items = [["Ojetillos (en este borde)", "ojLibre"], ["Strap (en este borde)", "strapLibre"], ["Anexo (aleta/solapa/faldón/cenefa) en este borde…", "anexoLibre"], ["Corte / calado (en este borde)", "corteLibre"], ["Línea de construcción (en este borde)", "guiaLibre"]];
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else if (esRim && seg) {
           // Rim (borde externo del ala): ojetillos externos por arista + elementos en el rim mismo.
-          items = [["Ojetillos (borde externo)", "oj"], ["Ojetillos (fila en el rim)", "ojLibre"], ["Strap (en el rim)", "strapLibre"], ["Cintas / cierres (de la arista)", "cinta"], ["Corte / calado (en el rim)", "corteLibre"], ["Línea de construcción (en el rim)", "guiaLibre"]];
+          items = [["Ojetillos (borde externo)", "oj"], ["Ojetillos (fila en el rim)", "ojLibre"], ["Strap (en el rim)", "strapLibre"], ["Anexo (aleta/solapa/faldón/cenefa) en el rim…", "anexoLibre"], ["Cintas / cierres (de la arista)", "cinta"], ["Corte / calado (en el rim)", "corteLibre"], ["Línea de construcción (en el rim)", "guiaLibre"]];
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else {
           items = [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]];
@@ -8574,7 +8586,7 @@
           b.textContent = esAncla ? t + "  ⌨A" : (esGuia ? t + "  ⌨G" : t);
           if (esAncla) b.dataset.hotA = "1";
           if (esGuia) b.dataset.hotG = "1";
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre" || a === "anexoLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         document.body.appendChild(menu); _arMenu = menu;
@@ -8812,6 +8824,12 @@
       const c = visibles(state.cortesUnif)[i]; if (!c) return;
       anexoDesdeCorteUI(c, null, { A: () => num("f_ancho", null), L: () => num("f_largo", null), H: alturaUnif, alas: alasUnif, aletas: () => state.aletasUnif, despues: () => { renderAletasUnif(); recompute(); irASeccion($("aletasUnif")); } });
     },
+    // Anexo directo sobre un borde de la ALTURA (rim / lateral de un ala): la aleta necesita una
+    // línea de la cual colgar → se crea la guía sobre el borde y se abre el selector de anexo.
+    anexoLibre: (seg, pm) => {
+      const c = crearLineaEnSeg(state.cortesUnif, seg, "guia"); if (!c) return;
+      anexoDesdeCorteUI(c, null, { A: () => num("f_ancho", null), L: () => num("f_largo", null), H: alturaUnif, alas: alasUnif, aletas: () => state.aletasUnif, despues: () => { renderAletasUnif(); recompute(); irASeccion($("aletasUnif")); } });
+    },
     anexoOj: (rid, k, esFus) => {
       const al2 = visibles(state.aletasUnif).find((x2) => x2._rid === rid); if (!al2) return;
       al2.ojMode = "arista";
@@ -8996,6 +9014,10 @@
         irAPieza("pz-aletas");
       },
       guiaLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "guia")) irAPieza("pz-cortes"); },
+      anexoLibre: (seg, pm) => {
+        const c = crearLineaEnSeg(pz.cortes, seg, "guia"); if (!c) return;
+        anexoDesdeCorteUI(c, null, { A: () => ev(pz.ancho), L: () => ev(pz.largo), H: () => (pz.usaAlto ? (ev(pz.altura) || 0) : 0), alas: () => alasPz(pz), aletas: () => (pz.aletas || (pz.aletas = [])), despues: () => irAPieza("pz-aletas") });
+      },
       ojLibre: (seg, pm) => {
         const c = crearLineaEnSeg(pz.cortes, seg, "guia"); if (!c) return;
         c.ojAristaLado = ladoHaciaAdentro(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0, pz.usaAlto ? (ev(pz.altura) || 0) : 0, alasPz(pz));
@@ -9926,11 +9948,13 @@
     { const listosE = (state.ensambles || []).filter(vinculoCompleto);
       let bE = $("btnEnsamble3D");
       if (listosE.length >= 1) {
-        if (!bE && resumen) {
+        if (!bE) {
           bE = document.createElement("button"); bE.type = "button"; bE.id = "btnEnsamble3D"; bE.className = "btn-outline";
-          bE.style.marginTop = "8px";
+          bE.style.cssText = "margin:8px 0;display:block;";
           bE.addEventListener("click", () => abrirEnsamble3D());
-          resumen.parentNode.insertBefore(bE, resumen.nextSibling);
+          const anc = $("btnAgregarPieza");   // bajo el plano de la última pieza, sobre "Agregar pieza"
+          if (anc && anc.parentNode) anc.parentNode.insertBefore(bE, anc);
+          else if (resumen) resumen.parentNode.insertBefore(bE, resumen.nextSibling);
         }
         if (bE) { bE.classList.remove("hidden"); bE.textContent = "🧩 Ensamble 3D (" + listosE.length + (listosE.length === 1 ? " vínculo" : " vínculos") + ")"; }
       } else if (bE) bE.classList.add("hidden"); }
