@@ -6417,7 +6417,9 @@
               const t2 = (k2 === "sup" || k2 === "inf") ? midx : midy;
               const pt3 = parteDe({ sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" }[k2], t2);
               padre = pt3 && pt3.inner;
-            } else if (ejeCtl && ejeF && ((midx - ejeF.P0.x) * ejeF.nrm.x + (midy - ejeF.P0.y) * ejeF.nrm.y) > 1e-6) {
+            } else if (ejeCtl && ejeF && !(ejeF.c && ejeF.c.ejeAlasFijas) && ((midx - ejeF.P0.x) * ejeF.nrm.x + (midy - ejeF.P0.y) * ejeF.nrm.y) > 1e-6) {
+              // "Aletas rígidas" ahora también aplica a los ANEXOS: con el check activo, el anexo
+              // del lado móvil NO viaja con la bisagra del eje (queda en el marco fijo).
               padre = ejeCtl.inner;
             }
             if (padre && padre.attach) padre.attach(outer);
