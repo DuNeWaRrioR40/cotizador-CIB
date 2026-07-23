@@ -721,6 +721,9 @@
     const persistir = (venta) => {
       if (!ent.snap) ent.snap = {};
       if (venta) { ent.snap.venta = venta; ent.venta = venta; } else { delete ent.snap.venta; delete ent.venta; }
+      // Sello de REVISIÓN: sin esto, la fusión entre dispositivos empataba revs y la copia local
+      // VIEJA (sin venta) le ganaba a la remota con venta — la ODT/factura "no llegaba" nunca.
+      ent.rev = Date.now(); ent.snap.rev = ent.rev;
       const arr = histLoad();
       const i = arr.findIndex((e) => e.ts === ent.ts);
       if (i >= 0) arr[i] = ent; else arr.unshift(ent);
