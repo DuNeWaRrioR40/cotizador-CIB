@@ -7459,6 +7459,20 @@
     menu.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, xy.x - mw / 2)) + "px";
     menu.style.top = Math.max(8, Math.min(window.innerHeight - mh - 8, xy.y + 12)) + "px";
   }
+  // Presentación de atajos en los menús del plano: "texto  ⌨X" pasa a texto a la izquierda
+  // + "(x)" chiquito alineado a la derecha (mismo dato, menos ruido en el título del item).
+  function aplicarAtajosMenu(menu) {
+    if (!menu) return;
+    menu.querySelectorAll("button.arista-menu-it").forEach((b) => {
+      const m = (b.textContent || "").match(/^([\s\S]*?)\s*⌨(\S)$/);
+      if (!m) return;
+      b.textContent = "";
+      const sp = document.createElement("span"); sp.textContent = m[1];
+      const kb = document.createElement("span"); kb.className = "menu-atajo"; kb.textContent = "(" + m[2].toLowerCase() + ")";
+      b.appendChild(sp); b.appendChild(kb);
+      b.style.display = "flex"; b.style.justifyContent = "space-between"; b.style.alignItems = "center"; b.style.gap = "10px"; b.style.textAlign = "left";
+    });
+  }
   function cerrarMenuAristas() { if (_arMenu) { if (_arMenu._onKey) document.removeEventListener("keydown", _arMenu._onKey); _arMenu.remove(); _arMenu = null; } }
   document.addEventListener("click", (e) => { if (_arMenu && !_arMenu.contains(e.target)) cerrarMenuAristas(); });
   // Expande la sección colapsada que contenga el elemento, hace scroll y destella su título.
@@ -8141,6 +8155,12 @@
     // bloqueados ahí) y actúan como ejes: dos cortes "Eliminar" empatados forman el trapecio.
     // Todo queda vinculado: arrastrar cualquiera de los 4 anchors re-deriva la geometría.
     function modificarMedidaEntre(anA, anB) {
+      // GUARDARRAÍL (v17): en un VOLUMÉTRICO las paredes nacen del rectángulo base — pellizcar
+      // sus aristas deforma todo el desplegado (paredes, rims, costeo). La confección digital
+      // imita a la real: fallar VISIBLE y con receta, jamás alucinar un diseño deforme.
+      if (ctx.vol && ctx.vol()) {
+        return alert("En un producto VOLUMÉTRICO no se pueden modificar las aristas del paño base con esta macro: las paredes se derivan del rectángulo y el desplegado se deformaría.\n\nLa confección digital imita a la real — para un techo en A con tapas triangulares:\n1) MANTO: paño plano con una guía-eje en la cumbrera (el visor 🧊 lo pliega en A).\n2) TAPAS: piezas aparte (rectángulo + 2 recortes diagonales, ahí sí soportado).\n3) Únelas con conectores en el 🧩 Ensamble 3D.");
+      }
       const f = window.CalcCIBSA.fmtNum;
       const segE = aristaSegAncla(anA.ar, A, L); if (!segE) return;
       const len = Math.hypot(segE.b.x - segE.a.x, segE.b.y - segE.a.y);
@@ -8188,6 +8208,12 @@
       if (ctx.onChange) ctx.onChange();
     }
     function modificarMedidaEntreCorte(cH, anA, anB) {
+      // GUARDARRAÍL (v17): en un VOLUMÉTRICO las paredes nacen del rectángulo base — pellizcar
+      // sus aristas deforma todo el desplegado (paredes, rims, costeo). La confección digital
+      // imita a la real: fallar VISIBLE y con receta, jamás alucinar un diseño deforme.
+      if (ctx.vol && ctx.vol()) {
+        return alert("En un producto VOLUMÉTRICO no se pueden modificar las aristas del paño base con esta macro: las paredes se derivan del rectángulo y el desplegado se deformaría.\n\nLa confección digital imita a la real — para un techo en A con tapas triangulares:\n1) MANTO: paño plano con una guía-eje en la cumbrera (el visor 🧊 lo pliega en A).\n2) TAPAS: piezas aparte (rectángulo + 2 recortes diagonales, ahí sí soportado).\n3) Únelas con conectores en el 🧩 Ensamble 3D.");
+      }
       const f = window.CalcCIBSA.fmtNum;
       const ln = lineaRawCorte(cH); if (!ln) return;
       const clampT = (an2) => Math.max(0, Math.min(ln.w, parseFloat(an2.t) || 0));
@@ -8602,6 +8628,7 @@
         if (btn) { ev3.preventDefault(); btn.click(); }
       };
       document.addEventListener("keydown", menu._onKey);
+      aplicarAtajosMenu(menu);
       document.body.appendChild(menu); _arMenu = menu;
       const gEl = svg.querySelector('g.ancla[data-ancla="' + reg.an.id + '"]');
       let cx2 = window.innerWidth / 2, cy2 = window.innerHeight / 2;
@@ -8826,7 +8853,7 @@
           items = [["Ojetillos (borde externo)", "oj"], ["Ojetillos (fila en el rim)", "ojLibre"], ["Strap (en el rim)", "strapLibre"], ["Anexo (aleta/solapa/faldón/cenefa) en el rim…", "anexoLibre"], ["Cintas / cierres (de la arista)", "cinta"], ["Corte / calado (en el rim)", "corteLibre"], ["Línea de construcción (en el rim)", "guiaLibre"]];
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else {
-          items = [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]];
+          items = [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Anexo (aleta/solapa/faldón/cenefa)…", "anexoArista"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]];
           if (seg) items.push(["Ojetillos sobre el pliegue (fila)", "ojLibre"], ["Strap sobre el pliegue", "strapLibre"]);
           if (pm) items.push(["Anchor (punto de anclaje)", "ancla"], ["Nota (texto libre)…", "nota"]);
         }
@@ -8841,6 +8868,7 @@
           b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anexoLibre") acciones[a](seg, pm, ln.getAttribute("data-arista") || null); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
+        aplicarAtajosMenu(menu);
         document.body.appendChild(menu); _arMenu = menu;
         // Atajo ⌨A: con el menú de la arista abierto, "A" instala el anchor en el punto pinchado
         // (y el diálogo de fijar distancia se abre solo).
@@ -9092,6 +9120,20 @@
       const c = visibles(state.cortesUnif)[i]; if (!c) return;
       anexoDesdeCorteUI(c, null, { A: () => num("f_ancho", null), L: () => num("f_largo", null), H: alturaUnif, alas: alasUnif, aletas: () => state.aletasUnif, despues: () => { renderAletasUnif(); recompute(); irASeccion($("aletasUnif")); } });
     },
+    // Anexo directo desde una ARISTA del paño base: elige tipo y crea la aleta colgada de esa
+    // arista a lo ancho completo (dBorde 0); se ajusta después en su ficha.
+    anexoArista: (k) => {
+      const A9 = num("f_ancho", 0), L9 = num("f_largo", 0);
+      if (!(A9 > 0) || !(L9 > 0)) return alert("Completa las dimensiones del paño base.");
+      menuTipoAnexo((tipo) => {
+        const f = window.CalcCIBSA.fmtNum;
+        const al2 = nuevaAleta();
+        al2.tipo = tipo; al2.baseEdge = k; al2.dBorde = "0"; al2.offset = "0";
+        al2.ancho = f((k === "sup" || k === "inf") ? A9 : L9); al2.largo = "0.5"; al2._colap = false;
+        state.aletasUnif.push(al2);
+        renderAletasUnif(); recompute(); irASeccion($("wAletasUnif") || $("aletasUnif"));
+      });
+    },
     // Anexo directo sobre un borde de la ALTURA (rim / lateral de un ala): la aleta necesita una
     // línea de la cual colgar → se crea la guía sobre el borde y se abre el selector de anexo.
     anexoLibre: (seg, pm, kAr) => {
@@ -9283,6 +9325,18 @@
         irAPieza("pz-aletas");
       },
       guiaLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "guia")) irAPieza("pz-cortes"); },
+      anexoArista: (k) => {
+        const A9 = ev(pz.ancho) || 0, L9 = ev(pz.largo) || 0;
+        if (!(A9 > 0) || !(L9 > 0)) return alert("Completa las dimensiones de la pieza.");
+        menuTipoAnexo((tipo) => {
+          const f9 = window.CalcCIBSA.fmtNum;
+          const al2 = nuevaAleta();
+          al2.tipo = tipo; al2.baseEdge = k; al2.dBorde = "0"; al2.offset = "0";
+          al2.ancho = f9((k === "sup" || k === "inf") ? A9 : L9); al2.largo = "0.5"; al2._colap = false;
+          (pz.aletas || (pz.aletas = [])).push(al2);
+          irAPieza("pz-aletas");
+        });
+      },
       anexoLibre: (seg, pm, kAr) => {
         const c = crearLineaEnSeg(pz.cortes, seg, "guia"); if (!c) return;
         c.origenAla = kAr || paredDeSeg(seg, ev(pz.ancho) || 0, ev(pz.largo) || 0);   // la ARISTA SELECCIONADA manda

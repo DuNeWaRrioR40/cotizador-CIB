@@ -1000,3 +1000,6 @@ body.drawer-abierto { overflow: hidden; }
 /* v17-16: 🧩 en la banda lateral del plano */
 .sketch-ens-btn { position: absolute; top: 202px; right: 6px; z-index: 5; width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); font-size: 15px; line-height: 1; cursor: pointer; box-shadow: 0 1px 5px rgba(0,0,0,0.2); }
 .sketch-ens-btn:hover { background: #16a34a; border-color: #16a34a; }
+
+/* v17-37: atajos de teclado en los menús del plano — letra chica alineada a la derecha */
+.arista-menu-it .menu-atajo { opacity: 0.5; font-size: 0.82em; font-family: ui-monospace, SFMono-Regular, monospace; }

@@ -956,7 +956,7 @@
       }
     }
     // Straps (cintas): banda recta + línea media + remates zigzag + etiqueta.
-    (sk.straps || []).forEach((st) => {
+    (sk.straps || []).forEach((st, iSt) => {
       const poly = st.corners.map((c) => f1(px(c.x)) + "," + f1(py(c.y))).join(" ");
       s += `<polygon class="strap" points="${poly}"/>`;
       s += `<line class="strap-mid" x1="${f1(px(st.a.x))}" y1="${f1(py(st.a.y))}" x2="${f1(px(st.b.x))}" y2="${f1(py(st.b.y))}"/>`;
@@ -965,10 +965,20 @@
         s += `<polyline class="strap-rem" points="${zz.map((p) => f1(p.x) + "," + f1(p.y)).join(" ")}"/>`;
       });
       // Las cintas de un SET no rotulan inline (se enciman); su rótulo va por el callout opt-in del set.
-      if (!st.set) {
+      // v17: el rótulo inline adopta el COMPORTAMIENTO DE LOS CALLOUTS — arrastrable (offset en
+      // rotDrag, clave "st:i" estable) y colapsable con ☰ (eran los rótulos más molestos del plano).
+      if (!st.set && !sk.rotColapsar) {
         const Mx = px((st.a.x + st.b.x) / 2), My = py((st.a.y + st.b.y) / 2), offpx = st.hw * scale + 8;
         const lbl = st.nombre + " " + fmt(st.largo) + " m";
-        s += `<text class="strap-lbl" x="${f1(Mx + st.perp.x * offpx)}" y="${f1(My + st.perp.y * offpx)}" text-anchor="middle">${esc(lbl)}</text>`;
+        const rkS = "st:" + iSt;
+        const mvS = (sk.rotDrag || {})[rkS] || null;
+        const dxS = mvS ? (mvS.dx || 0) * scale : 0, dyS = mvS ? (mvS.dy || 0) * scale : 0;
+        const lxS = Mx + st.perp.x * offpx + dxS, lyS = My + st.perp.y * offpx + dyS;
+        let gS = `<g class="callout-drag" data-rk="${rkS}">`;
+        if (mvS && (Math.abs(dxS) > 2 || Math.abs(dyS) > 2)) gS += `<line class="callout-line" x1="${f1(Mx)}" y1="${f1(My)}" x2="${f1(lxS)}" y2="${f1(lyS - 3)}"/>`;
+        gS += `<rect class="callout-hit" x="${f1(lxS - 26)}" y="${f1(lyS - 9)}" width="52" height="13" fill="transparent"/>`;
+        gS += `<text class="strap-lbl" x="${f1(lxS)}" y="${f1(lyS)}" text-anchor="middle">${esc(lbl)}</text></g>`;
+        s += gS;
       }
     });
     // ===== Cintas / cierres: banda continua a lo largo de una arista, con 4 estados por tramo =====
@@ -1062,6 +1072,55 @@
       // rimOut (volumétrico): el bolsillo/borde vive por DEFECTO en el EXTREMO del ala (rim),
       // desplazado hacia afuera el alto de su ala; sin rimOut, en el largo×ancho clásico.
       const ro = (t.rimOut && t.rimOut[bo.arista]) || 0;
+      // ---- CONTORNO MODIFICADO (recortes → diagonales): el bolsillo SIGUE las aristas reales
+      // de su lado (bolsillos en ángulo, v17). Cada tramo del contorno se clasifica por la
+      // dirección dominante de su normal exterior; los del lado del bolsillo reciben su banda.
+      // Con el rectángulo clásico o en rim volumétrico se usa la banda de siempre (cero cambios).
+      const pp = sk.panoPoly;
+      const rectBase = !pp || pp.length < 3 || (pp.length === 4 && pp.every((q) => (Math.abs(q.x) < EPS || Math.abs(q.x - sk.ancho) < EPS) && (Math.abs(q.y) < EPS || Math.abs(q.y - sk.largo) < EPS)));
+      if (!rectBase && !ro) {
+        const cxM = pp.reduce((s2, q) => s2 + q.x, 0) / pp.length, cyM = pp.reduce((s2, q) => s2 + q.y, 0) / pp.length;
+        const tramos = [];
+        for (let i = 0; i < pp.length; i++) {
+          const a2 = pp[i], b2 = pp[(i + 1) % pp.length];
+          const dxM = b2.x - a2.x, dyM = b2.y - a2.y, lM = Math.hypot(dxM, dyM);
+          if (!(lM > 0.02)) continue;
+          let nx2 = dyM / lM, ny2 = -dxM / lM;                    // candidata a normal exterior
+          const mx2 = (a2.x + b2.x) / 2, my2 = (a2.y + b2.y) / 2;
+          if (nx2 * (mx2 - cxM) + ny2 * (my2 - cyM) < 0) { nx2 = -nx2; ny2 = -ny2; }
+          const lado2 = (Math.abs(nx2) >= Math.abs(ny2)) ? (nx2 < 0 ? "izq" : "der") : (ny2 < 0 ? "sup" : "inf");
+          if (lado2 !== bo.arista) continue;
+          tramos.push({ a: a2, b: b2, nx: -nx2, ny: -ny2, lM: lM });   // normal hacia ADENTRO
+        }
+        if (tramos.length) {
+          let mejor = tramos[0]; tramos.forEach((tr) => { if (tr.lM > mejor.lM) mejor = tr; });
+          let totM = 0;
+          tramos.forEach((tr) => {
+            totM += tr.lM;
+            const ax2 = px(tr.a.x), ay2 = py(tr.a.y), bx2 = px(tr.b.x), by2 = py(tr.b.y);
+            const lPx = Math.hypot(bx2 - ax2, by2 - ay2); if (!(lPx > 2)) return;
+            const inx = tr.nx * bandW, iny = tr.ny * bandW;
+            s += `<polygon class="pocket" points="${f1(ax2)},${f1(ay2)} ${f1(bx2)},${f1(by2)} ${f1(bx2 + inx)},${f1(by2 + iny)} ${f1(ax2 + inx)},${f1(ay2 + iny)}"/>`;
+            s += `<line class="pocket-line" x1="${f1(ax2 + inx)}" y1="${f1(ay2 + iny)}" x2="${f1(bx2 + inx)}" y2="${f1(by2 + iny)}"/>`;
+            const nSt = Math.max(2, Math.round(lPx / 12));
+            for (let k2 = 0; k2 <= nSt; k2++) {
+              const tt2 = k2 / nSt, sx2 = ax2 + inx + (bx2 - ax2) * tt2, sy2 = ay2 + iny + (by2 - ay2) * tt2;
+              s += `<line class="pocket-stitch" x1="${f1(sx2 - tr.nx * stitch)}" y1="${f1(sy2 - tr.ny * stitch)}" x2="${f1(sx2 + tr.nx * stitch)}" y2="${f1(sy2 + tr.ny * stitch)}"/>`;
+            }
+          });
+          const diamTxt2 = `Bolsillo Ø${fmt(bo.diam)}m`, largoTxt2 = `L${fmt(totM)}m`;
+          const mAx = px(mejor.a.x), mAy = py(mejor.a.y), mBx = px(mejor.b.x), mBy = py(mejor.b.y);
+          const mcx = (mAx + mBx) / 2 + mejor.nx * bandW / 2, mcy = (mAy + mBy) / 2 + mejor.ny * bandW / 2;
+          let angT = Math.atan2(mBy - mAy, mBx - mAx) * 180 / Math.PI;
+          if (angT > 90) angT -= 180; if (angT < -90) angT += 180;
+          if (bo.rotulo && cb && cb.slots && cb.slots.has(bo)) {
+            const k3 = calloutKey(bo, "pk"); callout(mcx, mcy, diamTxt2, largoTxt2, bo, k3, calloutOff(k3));
+          } else {
+            s += `<text class="pocket-lbl" x="${f1(mcx)}" y="${f1(mcy + 2.5)}" text-anchor="middle" transform="rotate(${f1(angT)} ${f1(mcx)} ${f1(mcy)})">${diamTxt2} · ${largoTxt2}</text>`;
+          }
+          return;   // banda siguiendo el contorno real — no dibujar la clásica
+        }
+      }
       let bx, by, bw, bh;
       if (bo.arista === "sup") { bx = ox; by = oy - ro; bw = w; bh = bandW; }
       else if (bo.arista === "inf") { bx = ox; by = oy + h + ro - bandW; bw = w; bh = bandW; }
