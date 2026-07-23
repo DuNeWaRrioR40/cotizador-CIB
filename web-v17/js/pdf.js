@@ -1438,6 +1438,8 @@
     tituloCentrado(page, "PLANO DEL PRODUCTO", W, y, bold, 15, BLUE()); y -= 15;
     tituloCentrado(page, "(plano referencial para taller)", W, y, font, 10, BLUE()); y -= 14;
     y = stampCorrelativo(page, datos, W, y, bold); y -= 8;
+    // ODT (orden de trabajo): SOLO existe cuando la cotización pasó a VENTA — arriba del título.
+    if (datos.odt) { txt("ODT N° " + datos.odt, M, y, { f: bold, size: 13, color: PDFLib.rgb(0.82, 0.23, 0.18) }); y -= 18; }
     if (datos.titulo) { txt(`"${datos.titulo}"`, M, y, { f: bold, size: 12 }); y -= 18; }
 
     // Modo "de aprobación": sin cotas, sin Ojetillos, sin Observaciones ni cuadro de materiales.
@@ -1507,6 +1509,7 @@
       pgSk = doc.addPage([W, H]);
       let ys = dibujarEncabezado(pgSk, cibsa, null, W, M, H - 40);
       tituloCentrado(pgSk, "PLANO DEL PRODUCTO", W, ys, bold, 13, BLUE()); ys -= 16;
+      if (datos.odt) { pgSk.drawText(san("ODT N° " + datos.odt), { x: M, y: ys, size: 13, font: bold, color: PDFLib.rgb(0.82, 0.23, 0.18) }); ys -= 18; }
       if (datos.titulo) { pgSk.drawText(san('"' + datos.titulo + '"'), { x: M, y: ys, size: 12, font: bold, color: BLUE() }); ys -= 18; }
       skTop = ys; skBottom = 52;
     }

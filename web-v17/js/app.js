@@ -495,6 +495,7 @@
   }
   // Editar un registro EXISTENTE: el lápiz ofrece "nueva versión desde estos datos" o "sobrescribir esta versión".
   async function editarHistorial(ent) {
+    { const v9 = ventaDe(ent); _odtActual = (v9 && v9.odt) || null; }
     const nextVer = histMaxVerDe(ent) + 1;
     const modo = await preguntarEditar(ent, nextVer);
     if (modo === null) return;   // cancelar
@@ -646,6 +647,7 @@
   }
   function aplicarHistorial(ent) {
     _editHist = null; ocultarEdicionBanner();   // cargar un registro (no editar) cancela cualquier edición en curso
+    { const v9 = ventaDe(ent); _odtActual = (v9 && v9.odt) || null; }   // ODT del trabajo vendido → los planos la muestran
     if (ent && ent.snap) { // memoria completa: reconstruye toda la cotización
       restaurarCotizacion(ent.snap);
     } else { // registros antiguos (solo cliente + tipo)
@@ -704,6 +706,11 @@
     const inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "numeric"; inp.className = "anc-dialog-inp";
     inp.placeholder = "N° de documento"; inp.value = (v0 && v0.numero) || "";
     card.appendChild(inp);
+    // ODT (orden de trabajo): código interno que vincula factura/plano/cliente/pagos. Nace con
+    // la VENTA — una mera cotización no genera ODT y no figura en ningún plano.
+    const inpO = document.createElement("input"); inpO.type = "text"; inpO.className = "anc-dialog-inp";
+    inpO.placeholder = "ODT (orden de trabajo)"; inpO.value = (v0 && v0.odt) || "";
+    card.appendChild(inpO);
     const acc = document.createElement("div"); acc.className = "qr-acciones";
     const mkB = (t) => { const b = document.createElement("button"); b.type = "button"; b.className = "btn-outline"; b.textContent = t; acc.appendChild(b); return b; };
     const bOk = mkB("Guardar vínculo");
@@ -724,7 +731,7 @@
     bOk.addEventListener("click", () => {
       const nro = inp.value.trim();
       if (!nro) return alert("Ingresa el número de " + (tipoSel === "boleta" ? "boleta" : "factura") + ".");
-      persistir({ tipo: tipoSel, numero: nro, ts: Date.now() });
+      persistir({ tipo: tipoSel, numero: nro, odt: inpO.value.trim() || null, ts: Date.now() });
       cerrar();
     });
     if (bQuitar) bQuitar.addEventListener("click", () => { if (confirm("¿Quitar el vínculo de venta de esta ficha?")) { persistir(null); cerrar(); } });
@@ -746,7 +753,7 @@
     const badge = editado ? ' · <span class="hist-badge editado">editado ' + esc(editado) + '</span>' : (esUltima ? ' · <span class="hist-badge">última versión</span>' : '');
     const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "") + (editado ? " editado" : "") + (ent.borrador ? " borrador" : "");
     const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = ent.borrador ? "Continuar este borrador (restaura el trabajo tal como quedó)" : "Duplicar para editar (como versión siguiente)";
-    const vBadge = (function () { const v = ventaDe(ent); return v ? ' · <span class="hist-venta">' + (v.tipo === "boleta" ? "B" : "F") + " " + esc(String(v.numero)) + "</span>" : ""; })();
+    const vBadge = (function () { const v = ventaDe(ent); return v ? ' · <span class="hist-venta">' + (v.tipo === "boleta" ? "B" : "F") + " " + esc(String(v.numero)) + (v.odt ? " · ODT " + esc(String(v.odt)) : "") + "</span>" : ""; })();
     main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + badge + '</span>' +
       tituloHtml +
       '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + vBadge + '</span>';
@@ -771,7 +778,7 @@
     bDel.addEventListener("click", (e) => { e.stopPropagation(); borrarRegistro(ent); });
     const vnt = ventaDe(ent);
     const bFa = document.createElement("button"); bFa.type = "button"; bFa.className = "hist-act venta" + (vnt ? " on" : "");
-    bFa.title = vnt ? ("Vendido — " + (vnt.tipo === "boleta" ? "Boleta" : "Factura") + " N° " + vnt.numero + " (clic para editar)") : "Vincular a venta (factura/boleta)";
+    bFa.title = vnt ? ("Vendido — " + (vnt.tipo === "boleta" ? "Boleta" : "Factura") + " N° " + vnt.numero + (vnt.odt ? " · ODT " + vnt.odt : "") + " (clic para editar; ahí también se ingresa la ODT)") : "Vincular a venta (factura/boleta + ODT)";
     bFa.textContent = "🧾";
     bFa.addEventListener("click", (e) => { e.stopPropagation(); dialogoVenta(ent); });
     acts.appendChild(bDl); acts.appendChild(bEd); acts.appendChild(bFa); acts.appendChild(bDel);
@@ -820,11 +827,12 @@
     const g = (id) => { const el = $(id); return el ? el.value : ""; };
     const nom = (g("histFNombre") || "").trim().toLowerCase();
     const correl = (g("histFCorrel") || "").replace(/[^0-9]/g, ""); // solo dígitos del N° de cotización
+    const odt = (g("histFOdt") || "").trim().toLowerCase();   // ODT o N° de documento de la venta
     const tipo = g("histFTipo") || "";
     const dv = g("histFDesde"), hv = g("histFHasta");
     const desde = dv ? new Date(dv + "T00:00:00").getTime() : null;
     const hasta = hv ? new Date(hv + "T23:59:59").getTime() : null;
-    return { nom, correl, tipo, desde, hasta, activo: !!(nom || correl || tipo || desde != null || hasta != null) };
+    return { nom, correl, odt, tipo, desde, hasta, activo: !!(nom || correl || odt || tipo || desde != null || hasta != null) };
   }
   // Lista filtrada: sin filtros NO muestra nada (ni los de la semana); con filtros muestra todo lo que coincida.
   function renderListaFiltrada() {
@@ -836,6 +844,7 @@
     const res = arr.filter((e) => {
       if (f.nom && !(((e.nombre || "") + " " + (e.apellido || "")).trim().toLowerCase().includes(f.nom))) return false;
       if (f.correl) { const c = correlSnap(e); if (!c || !String(c).includes(f.correl)) return false; }
+      if (f.odt) { const v9 = ventaDe(e); const cad = v9 ? ((String(v9.odt || "") + " " + String(v9.numero || "")).toLowerCase()) : ""; if (!cad.includes(f.odt)) return false; }
       if (f.tipo && (e.tipo || "") !== f.tipo) return false;
       if (f.desde != null && (e.ts || 0) < f.desde) return false;
       if (f.hasta != null && (e.ts || 0) > f.hasta) return false;
@@ -1324,8 +1333,8 @@
   { const n = $("histGalNext"); if (n) n.addEventListener("click", () => galScroll(1)); }
   { const t = $("histGalTrack"); if (t) t.addEventListener("scroll", () => { if (t._galRaf) return; t._galRaf = requestAnimationFrame(() => { t._galRaf = 0; actualizarFlechasGal(); }); }); }
   // Filtros de la lista: re-renderizan al cambiar (la lista solo aparece con algún filtro activo).
-  ["histFNombre", "histFCorrel", "histFDesde", "histFHasta", "histFTipo"].forEach((id) => { const el = $(id); if (el) ["input", "change"].forEach((ev) => el.addEventListener(ev, renderListaFiltrada)); });
-  { const b = $("histFLimpiar"); if (b) b.addEventListener("click", () => { ["histFNombre", "histFCorrel", "histFDesde", "histFHasta"].forEach((id) => { const e = $(id); if (e) e.value = ""; }); const t = $("histFTipo"); if (t) t.value = ""; renderListaFiltrada(); }); }
+  ["histFNombre", "histFCorrel", "histFOdt", "histFDesde", "histFHasta", "histFTipo"].forEach((id) => { const el = $(id); if (el) ["input", "change"].forEach((ev) => el.addEventListener(ev, renderListaFiltrada)); });
+  { const b = $("histFLimpiar"); if (b) b.addEventListener("click", () => { ["histFNombre", "histFCorrel", "histFOdt", "histFDesde", "histFHasta"].forEach((id) => { const e = $(id); if (e) e.value = ""; }); const t = $("histFTipo"); if (t) t.value = ""; renderListaFiltrada(); }); }
   // ----- Exportar historial a CSV / Excel -----
   function histFechaLarga(ts) { const d = new Date(ts || Date.now()); return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2) + "/" + d.getFullYear(); }
   function histStamp() { const d = new Date(); return "" + d.getFullYear() + ("0" + (d.getMonth() + 1)).slice(-2) + ("0" + d.getDate()).slice(-2); }
@@ -9809,6 +9818,7 @@
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, [], { cortes: ojEnCortesN(state.cortesUnif, ancho, largo, state.aletasUnif), anexos: ojEnAletasN(state.aletasUnif) }).concat(materialesCortes(state.cortesUnif)),
       sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag, notas: state.notasUnif }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: volUnifSpec() } : {}),
       vista3D: (_vista3D && _vista3D.firma === firmaVol()) ? _vista3D.png : null,
+      odt: _odtActual,
       figImg: state.figImgUnif ? state.figImgUnif.url : null,
       figImgPano: (state.figImgUnif && state.figImgUnif.url) ? _figBaked : null,
       trasera: state.trasUnif,
@@ -9850,6 +9860,7 @@
   // El cotizador valoriza el RECTÁNGULO (+ factor de diseño); la foto/plano del cliente se
   // inscribe encima para que todos VEAN la figura compleja — sin edición, sin campos nuevos.
   let _figEditOn = false, _figBaked = null;
+  let _odtActual = null;   // ODT del registro VENDIDO cargado (null = mera cotización: sin ODT en planos)
   function importarFigImg(file) {
     if (!file) return;
     const rd = new FileReader();
@@ -10000,6 +10011,7 @@
       observaciones: terminacionesPieza(pz).concat(obsComplementos(pz.complementos)).concat(obsVentanas(pz)).concat(obsCortes(pz.cortes)),
       materiales: materialesResumen(ojTotalPieza(pz), pz.complementos, pz.inscritos, { cortes: ojEnCortesN(pz.cortes, window.CalcCIBSA.evalExpr(pz.ancho), window.CalcCIBSA.evalExpr(pz.largo), pz.aletas), anexos: ojEnAletasN(pz.aletas) }).concat(materialesCortes(pz.cortes)),
       sketch: sketchPieza(pz),
+      odt: _odtActual,
       trasera: pz.trasera,
       backExtra: { cortes: cortesSpec(pz.backCortes), aletas: aletasSpec(pz.backAletas) },
       materialesTrasera: materialesTraseras(pz.backCortes, pz.backComplementos),
@@ -10601,6 +10613,7 @@
   // correo, dirección, comuna y los datos de empresa). false: limpia todo, incluido el cliente.
   function limpiarCampos(mantenerCliente) {
     _borrCargado = null;   // el trabajo nuevo ya no está ligado a ningún borrador
+    _odtActual = null;      // sin venta cargada no hay ODT que mostrar
     ["f_largo", "f_ancho", "f_titulo", "f_observaciones", "f_color"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
     if (!mantenerCliente) {
       ["f_nombre", "f_apellido", "f_email", "f_dir_cliente", "f_comuna_cliente",
@@ -10931,6 +10944,7 @@
         complementosLineas: compLineasPDF(pz.complementos),
         inscritosLineas: inscritosLineasPDF(pz).concat(aletasLineasPDF(pz.aletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))).concat(aletasLineasPDF(pz.backAletas, r.lote.N, num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), facPz(pz))).concat(strapsLineasPDF(pz.straps, { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 })).concat(cintasLineasPDF(pz.cintas || [], { ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0 })).concat(cortesLineasPDF(sketchPieza(pz), num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), r.lote.N)),
         sketch: sketchPieza(pz),
+      odt: _odtActual,
         valorUnitario: r.o.valorUnitario + (r.compUnit || 0) + (((r.insTot || 0) + (r.aleTot || 0) + (r.strapTot || 0) + (r.corteTot || 0)) / r.lote.N),
         valorTotal: r.piezaTotal != null ? r.piezaTotal : r.o.subtotalLote,
       })),
