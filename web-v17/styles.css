@@ -1012,3 +1012,6 @@ body.drawer-abierto { overflow: hidden; }
 .sketch-svg .figimg-marco { fill: none; stroke: #7c3aed; stroke-width: 1.2; stroke-dasharray: 5 4; }
 .sketch-svg .figimg-mv { cursor: move; }
 .sketch-svg .figimg-hd { fill: #fff; stroke: #7c3aed; stroke-width: 1.4; cursor: pointer; }
+
+/* v17-63: fila de imagen/DXF en la ficha de la aleta */
+.aleta-figimg { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; }

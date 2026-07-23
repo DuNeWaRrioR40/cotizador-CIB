@@ -137,7 +137,15 @@
     if (js && js.length > 45000) {
       try {
         const s2 = JSON.parse(js);
-        if (s2 && s2.estado && s2.estado.figImgUnif) { s2.estado.figImgUnif = null; const js2 = JSON.stringify(s2); if (js2.length < js.length) js = js2; }
+        if (s2 && s2.estado) {
+          if (s2.estado.figImgUnif) s2.estado.figImgUnif = null;
+          // v17-63: las imágenes de aletas también pueden reventar la celda — misma regla
+          // (solo se omiten en la nube; respaldo local y .json descargado las conservan).
+          const strip9 = (l) => (l || []).forEach((a9) => { if (a9 && a9.figImg) a9.figImg = null; });
+          strip9(s2.estado.aletasUnif); strip9(s2.estado.backAletasUnif);
+          (s2.estado.piezas || []).forEach((p9) => { strip9(p9.aletas); strip9(p9.backAletas); });
+          const js2 = JSON.stringify(s2); if (js2.length < js.length) js = js2;
+        }
       } catch (_) {}
     }
     return [e.ts, e.nombre || "", e.apellido || "", e.tipo || "", parseInt(e.version, 10) || 1, e.fecha || "", js];
@@ -2526,12 +2534,15 @@
   function telasConsideradasTxt(telas) { return (telas || []).map((t) => telaCli(t)).join(" o "); }
   // Lote (motor v4) para una tela arbitraria con los mismos parámetros del formulario uniforme.
   function loteParaTela(tela, largo, ancho) {
+    // FUNDIR (v17-62): aletas fundidas agrandan el rect cotizado — área Y orientación de uniones
+    // leen la tela real (paño + anexos = un solo corte).
+    const xf = extFundidas([state.aletasUnif, state.backAletasUnif]);
     return window.CalcCIBSA.calcularLote({
-      largo, ancho, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo,
+      largo: largo + xf.sup + xf.inf, ancho: ancho + xf.izq + xf.der, valorM2: tela.valorM2, anchoRollo: tela.anchoRollo,
       cantidad: Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1),
       union: num("f_union", 0.045), altura: alturaUnif(), altos: altosUnif(), defaults: BORDE_DEFAULTS,
       bordes: bordesActuales(), factorTela: facUnif(),
-      ojetillos: nOjetillos(), valorOjetillo: num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT),
+      ojetillos: nOjetillos() + xf.oj, valorOjetillo: num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT),
     });
   }
   // Orientación de costuras por GRUPO de ancho de rollo: las telas que comparten rollo comparten elección.
@@ -2851,6 +2862,9 @@
     const ev = window.CalcCIBSA.evalExpr;
     const al = ev(a.largo), aa = ev(a.ancho), tela = telaPorNombre(a.telaNombre), N = Math.max(1, cantidad || 1);
     if (!tela || al == null || aa == null || al <= 0 || aa <= 0) return null;
+    // FUNDIDA (v17-62): su área, uniones y ojetillos ya viajan en el lote del paño base.
+    // Aquí solo se cobran sus materiales/complementos propios.
+    if (a.fundir) return { tela, al, aa, lote: null, o: null, N, subtotal: compTotalUnit(a.complementos) * N, fundida: true };
     const u = ev(a.union);
     let lote;
     try {
@@ -2877,18 +2891,38 @@
   function aletasTotal(list, cantidad, valorOj, factor) {
     return visibles(list).reduce((s, a) => { const r = calcAleta(a, cantidad, valorOj, factor); return s + (r ? r.subtotal : 0); }, 0);
   }
+  // FUNDIR AL PAÑO (v17-62): pertenencia DECLARADA. Las aletas marcadas "fundir" se cortan del
+  // MISMO trozo de tela que el paño base, así que el rect cotizado crece con su salida real
+  // (largo − dBorde; dBorde negativo suma) y la orientación de uniones lee la tela COMPLETA.
+  // Por lado se toma el MÁXIMO (la tela se corta del bounding box). Sus ojetillos van al lote base.
+  function extFundidas(lists) {
+    const ev = window.CalcCIBSA.evalExpr;
+    const out = { sup: 0, inf: 0, izq: 0, der: 0, oj: 0, hay: false };
+    (lists || []).forEach((list) => visibles(list).forEach((a) => {
+      if (!a.fundir) return;
+      const al = ev(a.largo), aa = ev(a.ancho); if (!(al > 0) || !(aa > 0)) return;
+      const ext = Math.max(0, al - (ev(a.dBorde) || 0));
+      const lado = a.baseEdge || "inf";
+      if (ext > out[lado]) out[lado] = ext;
+      out.oj += aletaOjN(a, al, aa);
+      out.hay = true;
+    }));
+    return out;
+  }
   let ROTSEQ = 0;
   function rotId(o) { if (o._rid == null) o._rid = ++ROTSEQ; return o._rid; }
   function aletasSpec(list) {
     const ev = window.CalcCIBSA.evalExpr;
-    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), ojMode: a.ojMode || "simple", ojParejo: !!a.ojParejo, ojEdges: (a.ojMode === "arista" && a.ojEdges) ? aletaOjEdgesSpec(a.ojEdges) : null, legend: a.legend || "", rotulo: !!a.rotulo, id: rotId(a) })).filter((a) => a.largo > 0 && a.ancho > 0);
+    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), ojMode: a.ojMode || "simple", ojParejo: !!a.ojParejo, ojEdges: (a.ojMode === "arista" && a.ojEdges) ? aletaOjEdgesSpec(a.ojEdges) : null, legend: a.legend || "", rotulo: !!a.rotulo, id: rotId(a), figImg: (a.figImg && a.figImg.url) ? a.figImg.url : null })).filter((a) => a.largo > 0 && a.ancho > 0);
   }
   function aletasLineasPDF(list, cantidad, valorOj, factor) {
     return visibles(list).map((a) => {
       const r = calcAleta(a, cantidad, valorOj, factor); if (!r) return null;
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (ALETA_NOM[a.tipo] || "Aleta");
-      let t = nom + " en " + telaCli(r.tela) + " " + window.CalcCIBSA.fmtNum(r.al) + "×" + window.CalcCIBSA.fmtNum(r.aa) + " m — " + money(r.subtotal / r.N) + "/u";
-      { const nOjA = aletaOjN(a, r.al, r.aa); if (nOjA > 0) t += " · incluye " + nOjA + " ojetillos"; }
+      let t = r.fundida
+        ? (nom + " " + window.CalcCIBSA.fmtNum(r.al) + "×" + window.CalcCIBSA.fmtNum(r.aa) + " m — fundida al paño base (tela y uniones cotizadas en el paño)" + (r.subtotal > 0 ? " · materiales " + money(r.subtotal / r.N) + "/u" : ""))
+        : (nom + " en " + telaCli(r.tela) + " " + window.CalcCIBSA.fmtNum(r.al) + "×" + window.CalcCIBSA.fmtNum(r.aa) + " m — " + money(r.subtotal / r.N) + "/u");
+      { const nOjA = aletaOjN(a, r.al, r.aa); if (nOjA > 0) t += r.fundida ? " · " + nOjA + " ojetillos (sumados al lote del paño)" : " · incluye " + nOjA + " ojetillos"; }
       if (a.descripcion && a.descripcion.trim()) t += " · " + a.descripcion.trim();
       return t;
     }).filter(Boolean);
@@ -3576,13 +3610,58 @@
           ojWrap.appendChild(panel);
         }
         pintarOjArista();
+        // FUNDIR AL PAÑO (v17-62): declarado por el usuario, nunca inferido.
+        const fl = document.createElement("label"); fl.className = "chk";
+        fl.title = "La aleta se corta del MISMO paño que la base (una sola tela): el área y la orientación de uniones se cotizan sobre el rectángulo total (paño + salida de la aleta). La tela propia de la aleta se ignora; sus ojetillos se suman al lote del paño.";
+        const fcb = document.createElement("input"); fcb.type = "checkbox"; fcb.checked = !!a.fundir;
+        fcb.addEventListener("change", () => { a.fundir = fcb.checked; refresh(); onChange(); });
+        const fsp = document.createElement("span"); fsp.textContent = "🧵 Fundir al paño base (cotizar TODO como un solo paño: área + uniones)";
+        fl.appendChild(fcb); fl.appendChild(fsp); card.appendChild(fl);
+        // IMAGEN / DXF DE LA ALETA (v17-63): "la aleta es el marco" — la imagen llena su
+        // rectángulo (solo visualización); un DXF además ofrece dictar las medidas de la aleta.
+        const gfila = document.createElement("div"); gfila.className = "aleta-figimg";
+        const fin = document.createElement("input"); fin.type = "file"; fin.accept = "image/*,.dxf"; fin.style.display = "none";
+        const bImp = document.createElement("button"); bImp.type = "button"; bImp.className = "btn-outline";
+        const bQ = document.createElement("button"); bQ.type = "button"; bQ.className = "btn-outline";
+        const sincFig = () => { bImp.textContent = a.figImg ? "🖼 Cambiar plano/foto" : "🖼 Plano/foto en esta aleta"; bQ.textContent = "✕ Quitar imagen"; bQ.classList.toggle("hidden", !a.figImg); };
+        bImp.title = "Inscribe una foto o DXF básico que llena el rectángulo de la aleta (solo visualización; se deforma cambiando las medidas de la aleta). Un DXF además ofrece dictar largo y ancho.";
+        bImp.addEventListener("click", () => fin.click());
+        bQ.addEventListener("click", () => { a.figImg = null; sincFig(); onChange(); });
+        fin.addEventListener("change", () => {
+          const file = fin.files && fin.files[0]; fin.value = ""; if (!file) return;
+          const esDxf = /\.dxf$/i.test(file.name || "");
+          const rd = new FileReader();
+          rd.onload = () => {
+            if (esDxf) {
+              let img;
+              try { img = dxfAImagen(rd.result); } catch (e) { return alert("No se pudo interpretar el DXF: " + (e.message || e)); }
+              if (img.err) return alert(img.err);
+              const f = window.CalcCIBSA.fmtNum;
+              if (confirm("El DXF mide " + f(rd3(img.wM)) + " × " + f(rd3(img.hM)) + " m.\n\n¿Usar estas medidas para la ALETA? (ancho " + f(rd3(img.wM)) + " a lo largo de la arista · salida " + f(rd3(img.hM)) + ")")) {
+                a.ancho = f(rd3(img.wM)); a.largo = f(rd3(img.hM));
+              }
+              a.figImg = { url: img.url };
+              const om = Object.keys(img.omitidas || {});
+              alert("DXF inscrito en la aleta: " + img.trazos + " trazos · " + f(rd3(img.wM)) + " × " + f(rd3(img.hM)) + " m · trazo dibujado " + f(rd3(img.perimM)) + " m." + (om.length ? "\n\nOmitido (no soportado): " + om.map((k2) => k2 + " ×" + img.omitidas[k2]).join(", ") : ""));
+              pintar(); onChange();
+            } else {
+              a.figImg = { url: rd.result };
+              sincFig(); refresh(); onChange();
+            }
+          };
+          if (esDxf) rd.readAsText(file); else rd.readAsDataURL(file);
+        });
+        sincFig();
+        gfila.appendChild(bImp); gfila.appendChild(bQ); gfila.appendChild(fin); card.appendChild(gfila);
         const mcap = document.createElement("p"); mcap.className = "muted small"; mcap.textContent = "Materiales de la aleta:"; card.appendChild(mcap);
         const mdiv = document.createElement("div"); card.appendChild(mdiv); renderComplementos(mdiv, a.complementos, onChange);
         const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
         function refresh() {
           const r = calcAleta(a, ctx.cantidad(), ctx.valorOj(), ctx.factor ? ctx.factor() : 1);
           const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum, dB = ev(a.dBorde), un = ev(a.union) || 0.045;
-          let html = r ? ("Aleta <b>" + f(r.al) + "×" + f(r.aa) + " m</b> · subtotal <b>" + money(r.subtotal) + "</b> (" + r.N + " u)") : "Completa tela, largo y ancho de la aleta.";
+          let html = r ? (r.fundida
+            ? ("Aleta <b>" + f(r.al) + "×" + f(r.aa) + " m</b> · <b>FUNDIDA al paño base</b> — área, uniones y ojetillos cotizan en el lote del paño (+" + f(Math.max(0, (ev(a.largo) || 0) - (ev(a.dBorde) || 0))) + " m hacia " + ({ sup: "arriba", inf: "abajo", izq: "izquierda", der: "derecha" }[a.baseEdge || "inf"]) + ")" + (r.subtotal > 0 ? " · materiales <b>" + money(r.subtotal) + "</b>" : ""))
+            : ("Aleta <b>" + f(r.al) + "×" + f(r.aa) + " m</b> · subtotal <b>" + money(r.subtotal) + "</b> (" + r.N + " u)")) : "Completa tela, largo y ancho de la aleta.";
           if (dB != null && dB < un - 1e-9) html += " · <span style=\"color:#d8443a\">⚠ distancia (" + f(dB) + ") menor que la unión (" + f(un) + ")</span>";
           dims.innerHTML = html;
         }
@@ -4458,8 +4537,10 @@
       // DESACOPLE: el valor de los ojetillos del anexo se resta de esta fila y se cobra en la
       // fila global «Ojetillos» (con desglose por pieza) — así el cliente puede negociarlos.
       const nOjA = aletaOjN(a, r.al, r.aa);
-      const ojMon = nOjA * (valorOjUnif() || 0) * r.N;
-      let det = nom + " en " + telaCli(r.tela) + " " + f(r.al) + "×" + f(r.aa) + " m";
+      // FUNDIDA: sus ojetillos ya viajan (y se cobran) en el lote del paño base — no se restan aquí.
+      const ojMon = r.fundida ? 0 : nOjA * (valorOjUnif() || 0) * r.N;
+      let det = nom + (r.fundida ? " " : " en " + telaCli(r.tela) + " ") + f(r.al) + "×" + f(r.aa) + " m";
+      if (r.fundida) det += " · fundida al paño base (tela y uniones cotizadas en el paño)";
       if (nOjA > 0) det += " · " + nOjA + " ojetillos (cobrados en la fila «Ojetillos»)";
       if (a.descripcion && a.descripcion.trim()) det += " · " + a.descripcion.trim();
       return { cantidad: r.N, detalle: det, precio: Math.round((r.subtotal - ojMon) / r.N), totalNeto: r.subtotal - ojMon };
@@ -9850,11 +9931,12 @@
       let lote = state.loteUnif; try { if (!lote) lote = loteParaTela(tela, largo, ancho); } catch (e) { lote = null; }
       if (lote) {
         const o = orientDeTela(tela) === "ancho" ? lote.oAncho : lote.oLargo;
-        piezas.push(cortePiezaDesc("Paño base", tela, o, N, largo, ancho));
+        const xf9 = extFundidas([state.aletasUnif, state.backAletasUnif]);
+        piezas.push(cortePiezaDesc("Paño base" + (xf9.hay ? " (incluye anexos fundidos)" : ""), tela, o, N, largo + xf9.sup + xf9.inf, ancho + xf9.izq + xf9.der));
       }
       visibles(state.aletasUnif).forEach((a, i) => {
         const r = calcAleta(a, N, valorOjUnif(), facUnif());
-        if (r) piezas.push(cortePiezaDesc((a.legend && a.legend.trim()) ? a.legend.trim() : ((ALETA_NOM[a.tipo] || "Anexo") + " " + (i + 1)), r.tela, r.o, r.N, r.al, r.aa));
+        if (r && !r.fundida) piezas.push(cortePiezaDesc((a.legend && a.legend.trim()) ? a.legend.trim() : ((ALETA_NOM[a.tipo] || "Anexo") + " " + (i + 1)), r.tela, r.o, r.N, r.al, r.aa));
       });
     }
     return piezas;
@@ -10004,52 +10086,59 @@
     for (let k = 0; k <= NS; k++) out.push(evalT(t0 + (t1 - t0) * k / NS));
     return out;
   }
+  // DXF → calcomanía rasterizada (COMPARTIDO por paño base y aletas): parsea, apaisa si viene
+  // "de pie", convierte unidades ($INSUNITS) y dibuja a canvas con la semántica de capas de la norma.
+  function dxfAImagen(text) {
+    const res = parseDXFBasico(text);
+    if (!res.tramos.length) return { err: "El DXF no trae geometría soportada (LINE / ARC / CIRCLE / POLYLINE / SPLINE)." };
+    let x0 = 1e20, y0 = 1e20, x1 = -1e20, y1 = -1e20, perimU = 0;
+    res.tramos.forEach((tr) => { let pv = null; tr.forEach((p) => {
+      if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x; if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y;
+      if (pv) perimU += Math.hypot(p.x - pv.x, p.y - pv.y); pv = p;
+    }); });
+    let wU = x1 - x0, hU = y1 - y0;
+    if (!(wU > 1e-9) || !(hU > 1e-9)) return { err: "La geometría del DXF es degenerada (sin área)." };
+    let girada = false;
+    if (hU > wU * 1.2) {   // vino "de pie" (eje largo en Y): girar 90° para apaisar
+      res.tramos = res.tramos.map((tr) => { const t2 = tr.map((p) => ({ x: p.y - y0, y: x1 - p.x })); t2.capa = tr.capa; return t2; });
+      const wN = hU; hU = wU; wU = wN;
+      x0 = 0; y0 = 0; x1 = wU; y1 = hU;
+      girada = true;
+    }
+    // $INSUNITS → metros; sin unidad: heurística (figuras > 100 unidades ≈ mm)
+    const F = { "1": 0.0254, "2": 0.3048, "4": 0.001, "5": 0.01, "6": 1 }[res.unidades] || (Math.max(wU, hU) > 100 ? 0.001 : 1);
+    const K = Math.min(1600 / wU, 1600 / hU), PAD = 6;
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(2, Math.round(wU * K) + PAD * 2); cv.height = Math.max(2, Math.round(hU * K) + PAD * 2);
+    const g2 = cv.getContext("2d");
+    // v17-64: fondo TRANSPARENTE — el DXF son solo trazos; lo que no es figura no tapa la tela.
+    const wBase = Math.max(1.5, Math.min(3, cv.width / 600));
+    g2.lineJoin = "round"; g2.lineCap = "round";
+    // NORMA DXF CIBSA — capas con semántica: CORTE/CALADO sólido negro · DOBLEZ/PLIEGUE/EJE/BEND
+    // punteado · REF atenuada gris. Cualquier otra capa: sólido negro (retrocompatible).
+    const estiloCapa = (capa) => {
+      const c9 = String(capa || "").toUpperCase();
+      if (c9.indexOf("REF") === 0) return { st: "#a2a9b3", w: wBase * 0.55, dash: [] };
+      if (c9.indexOf("DOBLEZ") === 0 || c9.indexOf("PLIEGUE") === 0 || c9.indexOf("EJE") === 0 || c9.indexOf("BEND") === 0) return { st: "#111111", w: wBase * 0.8, dash: [wBase * 5, wBase * 4] };
+      return { st: "#111111", w: wBase, dash: [] };
+    };
+    res.tramos.forEach((tr) => {
+      const es = estiloCapa(tr.capa);
+      g2.strokeStyle = es.st; g2.lineWidth = es.w; g2.setLineDash(es.dash);
+      g2.beginPath();
+      tr.forEach((p, k) => { const X2 = PAD + (p.x - x0) * K, Y2 = PAD + (y1 - p.y) * K; if (k) g2.lineTo(X2, Y2); else g2.moveTo(X2, Y2); });
+      g2.stroke();
+    });
+    g2.setLineDash([]);
+    return { url: cv.toDataURL("image/png"), wM: wU * F, hM: hU * F, perimM: perimU * F, girada: girada, omitidas: res.omitidas, trazos: res.tramos.length };
+  }
   function importarFigDXF(file) {
     const rd = new FileReader();
     rd.onload = () => {
-      let res;
-      try { res = parseDXFBasico(rd.result); } catch (e) { return alert("No se pudo interpretar el DXF: " + (e.message || e)); }
-      if (!res.tramos.length) return alert("El DXF no trae geometría soportada (LINE / ARC / CIRCLE / POLYLINE / SPLINE).");
-      let x0 = 1e20, y0 = 1e20, x1 = -1e20, y1 = -1e20, perimU = 0;
-      res.tramos.forEach((tr) => { let pv = null; tr.forEach((p) => {
-        if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x; if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y;
-        if (pv) perimU += Math.hypot(p.x - pv.x, p.y - pv.y); pv = p;
-      }); });
-      let wU = x1 - x0, hU = y1 - y0;
-      if (!(wU > 1e-9) || !(hU > 1e-9)) return alert("La geometría del DXF es degenerada (sin área).");
-      let girada = false;
-      if (hU > wU * 1.2) {   // vino "de pie" (eje largo en Y): girar 90° para apaisar
-        res.tramos = res.tramos.map((tr) => { const t2 = tr.map((p) => ({ x: p.y - y0, y: x1 - p.x })); t2.capa = tr.capa; return t2; });
-        const wN = hU; hU = wU; wU = wN;
-        x0 = 0; y0 = 0; x1 = wU; y1 = hU;
-        girada = true;
-      }
-      // $INSUNITS → metros; sin unidad: heurística (figuras > 100 unidades ≈ mm)
-      const F = { "1": 0.0254, "2": 0.3048, "4": 0.001, "5": 0.01, "6": 1 }[res.unidades] || (Math.max(wU, hU) > 100 ? 0.001 : 1);
-      const wM = wU * F, hM = hU * F;
-      const K = Math.min(1600 / wU, 1600 / hU), PAD = 6;
-      const cv = document.createElement("canvas");
-      cv.width = Math.max(2, Math.round(wU * K) + PAD * 2); cv.height = Math.max(2, Math.round(hU * K) + PAD * 2);
-      const g2 = cv.getContext("2d");
-      g2.fillStyle = "#ffffff"; g2.fillRect(0, 0, cv.width, cv.height);
-      const wBase = Math.max(1.5, Math.min(3, cv.width / 600));
-      g2.lineJoin = "round"; g2.lineCap = "round";
-      // NORMA DXF CIBSA — capas con semántica: CORTE/CALADO sólido negro · DOBLEZ/PLIEGUE/EJE
-      // punteado · REF atenuada gris. Cualquier otra capa: sólido negro (retrocompatible).
-      const estiloCapa = (capa) => {
-        const c9 = String(capa || "").toUpperCase();
-        if (c9.indexOf("REF") === 0) return { st: "#a2a9b3", w: wBase * 0.55, dash: [] };
-        if (c9.indexOf("DOBLEZ") === 0 || c9.indexOf("PLIEGUE") === 0 || c9.indexOf("EJE") === 0 || c9.indexOf("BEND") === 0) return { st: "#111111", w: wBase * 0.8, dash: [wBase * 5, wBase * 4] };   // BEND: flat patterns de sheet metal
-        return { st: "#111111", w: wBase, dash: [] };
-      };
-      res.tramos.forEach((tr) => {
-        const es = estiloCapa(tr.capa);
-        g2.strokeStyle = es.st; g2.lineWidth = es.w; g2.setLineDash(es.dash);
-        g2.beginPath();
-        tr.forEach((p, k) => { const X2 = PAD + (p.x - x0) * K, Y2 = PAD + (y1 - p.y) * K; if (k) g2.lineTo(X2, Y2); else g2.moveTo(X2, Y2); });
-        g2.stroke();
-      });
-      g2.setLineDash([]);
+      let img;
+      try { img = dxfAImagen(rd.result); } catch (e) { return alert("No se pudo interpretar el DXF: " + (e.message || e)); }
+      if (img.err) return alert(img.err);
+      const wM = img.wM, hM = img.hM;
       // CUBICAR desde el DXF: si el paño no calza con la figura, ofrecer usar SUS medidas como
       // paño base — la tela real se corta desde ese rectángulo, así que la valorización de
       // siempre (rect + factor) pasa a ser la del material REAL. El perímetro se informa aparte.
@@ -10066,14 +10155,14 @@
         if (wM <= A9 + 1e-9 && hM <= L9 + 1e-9) { fx = (A9 - wM) / 2; fy = (L9 - hM) / 2; }
         else { const rI = wM / hM, rP = A9 / L9; if (rI > rP) { fw = A9; fh = A9 / rI; fx = 0; fy = (L9 - fh) / 2; } else { fh = L9; fw = L9 * rI; fy = 0; fx = (A9 - fw) / 2; } }
       }
-      state.figImgUnif = { url: cv.toDataURL("image/png"), x: rd3(fx), y: rd3(fy), w: rd3(fw), h: rd3(fh) };
+      state.figImgUnif = { url: img.url, x: rd3(fx), y: rd3(fy), w: rd3(fw), h: rd3(fh) };
       _figBaked = null; _figEditOn = true;
       sincBtnFigImg(); recompute();
-      const f9 = window.CalcCIBSA.fmtNum, om = Object.keys(res.omitidas);
-      const perimM = perimU * F, perimRect = 2 * (wM + hM);
-      alert("DXF interpretado: " + res.tramos.length + " trazos · figura de " + f9(rd3(wM)) + " × " + f9(rd3(hM)) + " m" + (girada ? " (girada 90° para quedar horizontal — ↻ para girarla de nuevo)" : "") + ((fw === wM && fh === hM) ? " (inscrita a TAMAÑO REAL)" : " (más grande que el paño: encajada — ajústala con ✥)") +
+      const f9 = window.CalcCIBSA.fmtNum, om = Object.keys(img.omitidas);
+      const perimM = img.perimM, perimRect = 2 * (wM + hM);
+      alert("DXF interpretado: " + img.trazos + " trazos · figura de " + f9(rd3(wM)) + " × " + f9(rd3(hM)) + " m" + (img.girada ? " (girada 90° para quedar horizontal — ↻ para girarla de nuevo)" : "") + ((fw === wM && fh === hM) ? " (inscrita a TAMAÑO REAL)" : " (más grande que el paño: encajada — ajústala con ✥)") +
         "\n\nTrazo total dibujado: " + f9(rd3(perimM)) + " m (rectángulo equivalente: " + f9(rd3(perimRect)) + " m).\nDato REAL para valorar corte/costura/orillado de la terminación — ajusta el factor o los bordes a conciencia." +
-        (om.length ? "\n\nOmitido (no soportado): " + om.map((k2) => k2 + " ×" + res.omitidas[k2]).join(", ") : ""));
+        (om.length ? "\n\nOmitido (no soportado): " + om.map((k2) => k2 + " ×" + img.omitidas[k2]).join(", ") : ""));
     };
     rd.readAsText(file);
   }
@@ -10592,6 +10681,9 @@
     const thr = inscritosThrough(pz, ancho, largo);
     let anchoB = ancho - thr.dAncho, largoB = largo - thr.dLargo;
     if (anchoB < 1e-6 || largoB < 1e-6) { anchoB = ancho; largoB = largo; }
+    // FUNDIR (v17-62): aletas fundidas de la pieza agrandan su rect cotizado.
+    const xfP = extFundidas([pz.aletas, pz.backAletas]);
+    anchoB += xfP.izq + xfP.der; largoB += xfP.sup + xfP.inf;
     let lote;
     try {
       lote = window.CalcCIBSA.calcularLote({
@@ -10601,7 +10693,7 @@
         altura: pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0,
         altos: altosPz(pz),
         defaults: BORDE_DEFAULTS, bordes: bordesDePieza(pz), factorTela: facPz(pz),
-        ojetillos: ojTotalPieza(pz),
+        ojetillos: ojTotalPieza(pz) + xfP.oj,
         valorOjetillo: num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT),
       });
     } catch (e) { return null; }

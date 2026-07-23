@@ -331,6 +331,12 @@
     // Aletas / solapas / faldón / cenefa
     (sk.aletas || []).forEach((a) => {
       const X = px(a.x), Wp = a.w * scale, Hp = a.h * scale, Ytop = py(a.y), Ybot = py(a.y + a.h);
+      // v17-63: imagen/DXF de la aleta llenando su rect (rotada -90° en aletas laterales).
+      const embA = (T.aletaImgsEmb && a.id != null) ? T.aletaImgsEmb[a.id] : null;
+      if (embA) { try {
+        if (a.fused === "l" || a.fused === "r") page.drawImage(embA, { x: X, y: Ybot + Hp, width: Hp, height: Wp, rotate: PDFLib.degrees(-90), opacity: 0.85 });
+        else page.drawImage(embA, { x: X, y: Ybot, width: Wp, height: Hp, opacity: 0.85 });
+      } catch (e) {} }
       page.drawRectangle({ x: X, y: Ybot, width: Wp, height: Hp, borderColor: AMBER, borderWidth: 1, color: AMBER, opacity: 0.1, borderOpacity: 1 });
       let fa, fb;
       if (a.fused === "t") { fa = { x: X, y: Ytop }; fb = { x: X + Wp, y: Ytop }; }
@@ -652,7 +658,7 @@
     }
     // Elementos del paño (ventanas, bolsillos, ojetillos, aletas, cortes)
     const r = Math.max(0.8, Math.max(1.4, Math.min(2.6, scale * 0.022)) - 0.9); // ojetillos del plano: ~2 puntos más chicos (la leyenda usa su propio radio fijo)
-    elementosPDF(page, sk, { px: px, py: py, scale: scale, x0: x0, topRect: topRect, wpx: wpx, hpx: hpx, r: r, cb: cb }, font);
+    elementosPDF(page, sk, { px: px, py: py, scale: scale, x0: x0, topRect: topRect, wpx: wpx, hpx: hpx, r: r, cb: cb, aletaImgsEmb: opts.aletaImgsEmb || null }, font);
     notasPDF(page, sk.notas, px, py, scale, spec.rotDrag, font);
     // Cotas (rojo): mayor = paño base; menor = padding / ventanas
     if (conCotas) {
@@ -1515,7 +1521,16 @@
     }
     let figEmb = null;
     if (datos.figImgPano) { try { figEmb = await doc.embedPng(b64ToBytes(String(datos.figImgPano).split(",")[1] || "")); } catch (e) { figEmb = null; } }
-    dibujarSketchPDF(pgSk, datos.sketch, { x: M, top: skTop, w: W - 2 * M, h: skTop - skBottom }, font, { cotas: !limpio, figImgEmb: figEmb });
+    // v17-63: imágenes de aletas (dataURL en el spec) → embebidas por id de aleta.
+    const aleEmb = {};
+    for (const a9 of ((datos.sketch && datos.sketch.aletas) || [])) {
+      if (!a9 || !a9.figImg || a9.id == null) continue;
+      try {
+        const u9 = String(a9.figImg), b9 = u9.split(",")[1] || "";
+        aleEmb[a9.id] = (u9.indexOf("image/jpeg") >= 0 || u9.indexOf("image/jpg") >= 0) ? await doc.embedJpg(b64ToBytes(b9)) : await doc.embedPng(b64ToBytes(b9));
+      } catch (e) {}
+    }
+    dibujarSketchPDF(pgSk, datos.sketch, { x: M, top: skTop, w: W - 2 * M, h: skTop - skBottom }, font, { cotas: !limpio, figImgEmb: figEmb, aletaImgsEmb: aleEmb });
 
     // Página ADICIONAL con la vista 3D elegida en el visor (complementa el plano, no lo sustituye).
     if (datos.vista3D && datos.sketch && datos.sketch.volumetrico) {

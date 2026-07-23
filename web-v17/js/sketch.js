@@ -646,7 +646,7 @@
       const g = aletaGeomRect(a, ancho, largo);
       const pts = aletaOjPuntos(a, ancho, largo);
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (NOMARI[a.tipo] || "Aleta");
-      return { x: g.x, y: g.y, w: g.w, h: g.h, fused: g.fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null), largo: parseFloat(a.largo) || 0, ancho: parseFloat(a.ancho) || 0, offset: parseFloat(a.offset) || 0, dBorde: parseFloat(a.dBorde) || 0 };
+      return { x: g.x, y: g.y, w: g.w, h: g.h, fused: g.fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null), largo: parseFloat(a.largo) || 0, ancho: parseFloat(a.ancho) || 0, offset: parseFloat(a.offset) || 0, dBorde: parseFloat(a.dBorde) || 0, figImg: a.figImg || null };
     });
     // Straps (cintas/webbing): banda RECTA de ancho fijo (del material) y largo del usuario, en cualquier
     // ángulo/posición. Puede iniciar fuera, cruzar y salir del paño. Remates = costuras perpendiculares en
@@ -1029,6 +1029,15 @@
     (sk.aletas || []).forEach((a) => {
       const X = px(a.x), Y = py(a.y), Wp = a.w * scale, Hp = a.h * scale;
       s += `<rect class="aleta" x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}"/>`;
+      // v17-63: "la aleta es el marco" — imagen/DXF llenando su rect (solo visualización).
+      // En aletas laterales (izq/der) la imagen apaisada se gira 90° para correr con la arista.
+      if (a.figImg && !sk.espejo) {
+        const fiA = ++FIGIMG_SEQ;
+        s += `<clipPath id="figclip${fiA}"><rect x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}"/></clipPath>`;
+        s += (a.fused === "l" || a.fused === "r")
+          ? `<image class="figimg" clip-path="url(#figclip${fiA})" href="${a.figImg}" transform="translate(${f1(X + Wp)},${f1(Y)}) rotate(90)" x="0" y="0" width="${f1(Hp)}" height="${f1(Wp)}" preserveAspectRatio="none" opacity="0.85"/>`
+          : `<image class="figimg" clip-path="url(#figclip${fiA})" href="${a.figImg}" x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}" preserveAspectRatio="none" opacity="0.85"/>`;
+      }
       let fa, fb;
       if (a.fused === "t") { fa = { x: X, y: Y }; fb = { x: X + Wp, y: Y }; }
       else if (a.fused === "b") { fa = { x: X, y: Y + Hp }; fb = { x: X + Wp, y: Y + Hp }; }
