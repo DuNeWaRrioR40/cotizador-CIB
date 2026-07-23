@@ -9899,6 +9899,7 @@
       ba.classList.toggle("hidden", !state.figImgUnif);
       ba.textContent = _figEditOn ? "✔ Listo (fijar imagen)" : "✥ Ajustar imagen";
     }
+    const br = $("btnFigRot"); if (br) br.classList.toggle("hidden", !state.figImgUnif);
   }
   // ---------- F7.2: DXF BÁSICO → calcomanía (interpretación MERAMENTE GRÁFICA) ----------
   // Subconjunto auditado contra DXF reales de clientes: LINE, ARC, CIRCLE, POLYLINE+VERTEX y
@@ -10014,8 +10015,15 @@
         if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x; if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y;
         if (pv) perimU += Math.hypot(p.x - pv.x, p.y - pv.y); pv = p;
       }); });
-      const wU = x1 - x0, hU = y1 - y0;
+      let wU = x1 - x0, hU = y1 - y0;
       if (!(wU > 1e-9) || !(hU > 1e-9)) return alert("La geometría del DXF es degenerada (sin área).");
+      let girada = false;
+      if (hU > wU * 1.2) {   // vino "de pie" (eje largo en Y): girar 90° para apaisar
+        res.tramos = res.tramos.map((tr) => { const t2 = tr.map((p) => ({ x: p.y - y0, y: x1 - p.x })); t2.capa = tr.capa; return t2; });
+        const wN = hU; hU = wU; wU = wN;
+        x0 = 0; y0 = 0; x1 = wU; y1 = hU;
+        girada = true;
+      }
       // $INSUNITS → metros; sin unidad: heurística (figuras > 100 unidades ≈ mm)
       const F = { "1": 0.0254, "2": 0.3048, "4": 0.001, "5": 0.01, "6": 1 }[res.unidades] || (Math.max(wU, hU) > 100 ? 0.001 : 1);
       const wM = wU * F, hM = hU * F;
@@ -10063,11 +10071,25 @@
       sincBtnFigImg(); recompute();
       const f9 = window.CalcCIBSA.fmtNum, om = Object.keys(res.omitidas);
       const perimM = perimU * F, perimRect = 2 * (wM + hM);
-      alert("DXF interpretado: " + res.tramos.length + " trazos · figura de " + f9(rd3(wM)) + " × " + f9(rd3(hM)) + " m" + ((fw === wM && fh === hM) ? " (inscrita a TAMAÑO REAL)" : " (más grande que el paño: encajada — ajústala con ✥)") +
+      alert("DXF interpretado: " + res.tramos.length + " trazos · figura de " + f9(rd3(wM)) + " × " + f9(rd3(hM)) + " m" + (girada ? " (girada 90° para quedar horizontal — ↻ para girarla de nuevo)" : "") + ((fw === wM && fh === hM) ? " (inscrita a TAMAÑO REAL)" : " (más grande que el paño: encajada — ajústala con ✥)") +
         "\n\nTrazo total dibujado: " + f9(rd3(perimM)) + " m (rectángulo equivalente: " + f9(rd3(perimRect)) + " m).\nDato REAL para valorar corte/costura/orillado de la terminación — ajusta el factor o los bordes a conciencia." +
         (om.length ? "\n\nOmitido (no soportado): " + om.map((k2) => k2 + " ×" + res.omitidas[k2]).join(", ") : ""));
     };
     rd.readAsText(file);
+  }
+  function rotarFigImg() {
+    const fi = state.figImgUnif; if (!fi || !fi.url) return;
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement("canvas"); cv.width = img.height; cv.height = img.width;
+      const g2 = cv.getContext("2d");
+      g2.translate(cv.width / 2, cv.height / 2); g2.rotate(Math.PI / 2); g2.drawImage(img, -img.width / 2, -img.height / 2);
+      fi.url = cv.toDataURL("image/png");
+      const cxF = fi.x + fi.w / 2, cyF = fi.y + fi.h / 2, nw = fi.h, nh = fi.w;
+      fi.x = rd3(cxF - nw / 2); fi.y = rd3(cyF - nh / 2); fi.w = rd3(nw); fi.h = rd3(nh);
+      _figBaked = null; recompute();
+    };
+    img.src = fi.url;
   }
   // "Hornea" la calcomanía ya deformada/recortada al rect del paño (PNG con alpha) para el PDF.
   function bakeFigImg(cb) {
@@ -10149,6 +10171,7 @@
       });
       const ba = $("btnFigAdj");
       if (ba) ba.addEventListener("click", () => { _figEditOn = !_figEditOn; sincBtnFigImg(); recompute(); });
+      const br = $("btnFigRot"); if (br) br.addEventListener("click", rotarFigImg);
       sincBtnFigImg();
     } }
   async function descargarCorte() {
@@ -10825,12 +10848,15 @@
     state.bordeModo = "uniforme"; state.bordeValor = "0.045";
     state.bordes = { sup: { tipo: "borde", valor: "0.045", diam: "" }, inf: { tipo: "borde", valor: "0.045", diam: "" }, izq: { tipo: "borde", valor: "0.045", diam: "" }, der: { tipo: "borde", valor: "0.045", diam: "" } };
     const rb = document.querySelector('input[name="bordemodo"][value="uniforme"]'); if (rb) rb.checked = true;
-    // Reset producto compuesto → vuelve a uniforme
-    state.prodMode = "uniforme"; state.piezas = []; state.compuesto = null;
+    // Plano del cliente (calcomanía): fuera imagen, fuera modo ajuste
+    state.figImgUnif = null; _figBaked = null; _figEditOn = false;
+    if (typeof sincBtnFigImg === "function") sincBtnFigImg();
+    // Reset producto compuesto → vuelve a uniforme (incluye vínculos de ensamble)
+    state.prodMode = "uniforme"; state.piezas = []; state.compuesto = null; state.ensambles = [];
     state.complementosUnif = [];
     const ru = document.querySelector('input[name="prodmode"][value="uniforme"]'); if (ru) ru.checked = true;
     // Filtros del historial de cotizaciones recientes: todos los campos como recién abiertos.
-    ["histFNombre", "histFCorrel", "histFDesde", "histFHasta"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
+    ["histFNombre", "histFCorrel", "histFDesde", "histFHasta", "histFOdt"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
     { const t = $("histFTipo"); if (t) t.value = ""; }
     if (typeof renderListaFiltrada === "function") renderListaFiltrada();
     // Navegación / filtros de productos a granel: vuelve al inicio (categorías), sin selección ni comparador.

@@ -1946,20 +1946,22 @@
     // Contorno del paño: rectángulo, o el polígono recortado si hay cortes "Eliminar" (la parte se va).
     if (sk.panoPoly && sk.panoPoly.length >= 3) {
       s += `<polygon class="edge" points="${sk.panoPoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
-      // F7.1: plano/foto del CLIENTE — calcomanía DEFORMABLE {x,y,w,h en metros} recortada al
-      // contorno REAL del paño (panoPoly: respeta recortes/diagonales). Lo que sobresale no se ve.
-      if (sk.figImg && sk.figImg.url && !sk.espejo) {
-        const fiK = ++FIGIMG_SEQ;
-        const fx = (sk.figImg.x != null) ? sk.figImg.x : 0, fy = (sk.figImg.y != null) ? sk.figImg.y : 0;
-        const fw = (sk.figImg.w > 0) ? sk.figImg.w : sk.ancho, fh = (sk.figImg.h > 0) ? sk.figImg.h : sk.largo;
-        const clipInner = (sk.panoPoly && sk.panoPoly.length >= 3)
-          ? `<polygon points="${sk.panoPoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`
-          : `<rect x="${f1(px(0))}" y="${f1(py(0))}" width="${f1(sk.ancho * scale)}" height="${f1(sk.largo * scale)}"/>`;
-        s += `<clipPath id="figclip${fiK}">${clipInner}</clipPath>`;
-        s += `<image class="figimg" clip-path="url(#figclip${fiK})" href="${sk.figImg.url}" x="${f1(px(fx))}" y="${f1(py(fy))}" width="${f1(fw * scale)}" height="${f1(fh * scale)}" preserveAspectRatio="none" opacity="0.85"/>`;
-      }
     } else {
       s += `<rect class="edge" x="${f1(ox)}" y="${f1(oy)}" width="${f1(w)}" height="${f1(h)}"/>`;
+    }
+    // F7.1: plano/foto del CLIENTE — calcomanía DEFORMABLE {x,y,w,h en metros} recortada al
+    // contorno REAL del paño (panoPoly con recortes/diagonales, o el rectángulo simple).
+    // BUG v17-61: este bloque vivía DENTRO de la rama del polígono — con paño rectangular
+    // sin cortes jamás se emitía la <image> (plano "en blanco" con solo el marco del editor).
+    if (sk.figImg && sk.figImg.url && !sk.espejo) {
+      const fiK = ++FIGIMG_SEQ;
+      const fx = (sk.figImg.x != null) ? sk.figImg.x : 0, fy = (sk.figImg.y != null) ? sk.figImg.y : 0;
+      const fw = (sk.figImg.w > 0) ? sk.figImg.w : sk.ancho, fh = (sk.figImg.h > 0) ? sk.figImg.h : sk.largo;
+      const clipInner = (sk.panoPoly && sk.panoPoly.length >= 3)
+        ? `<polygon points="${sk.panoPoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`
+        : `<rect x="${f1(px(0))}" y="${f1(py(0))}" width="${f1(sk.ancho * scale)}" height="${f1(sk.largo * scale)}"/>`;
+      s += `<clipPath id="figclip${fiK}">${clipInner}</clipPath>`;
+      s += `<image class="figimg" clip-path="url(#figclip${fiK})" href="${sk.figImg.url}" x="${f1(px(fx))}" y="${f1(py(fy))}" width="${f1(fw * scale)}" height="${f1(fh * scale)}" preserveAspectRatio="none" opacity="0.85"/>`;
     }
     // Elementos del paño (aletas, ventanas, bolsillos, ojetillos, cortes)
     s += elementosSketch(sk, { px: px, py: py, scale: scale, r: r, ojeSVG: ojeSVG, ox: ox, oy: oy, w: w, h: h, cb: cb });
