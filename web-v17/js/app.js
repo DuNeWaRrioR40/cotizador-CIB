@@ -8833,6 +8833,7 @@
         let items;
         if (idxAnexo != null && seg) {
           items = [[esFusAnexo ? "Ojetillos (línea de fusión del anexo)" : "Ojetillos (arista del anexo)", "anexoOj"],
+                   ["Calado DENTRO del anexo (centrado)", "anexoCal"],
                    ["Corte / calado (en este borde)", "corteLibre"], ["Línea de construcción (en este borde)", "guiaLibre"]];
           if (pm) items.push(["Anchor (punto de anclaje)", "anclaLibre"], ["Nota (texto libre)…", "nota"]);
         } else if (kTapa != null && idxCorte != null) {
@@ -8865,7 +8866,7 @@
           b.textContent = esAncla ? t + "  ⌨A" : (esGuia ? t + "  ⌨G" : t);
           if (esAncla) b.dataset.hotA = "1";
           if (esGuia) b.dataset.hotG = "1";
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anexoLibre") acciones[a](seg, pm, ln.getAttribute("data-arista") || null); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "anexoCal") acciones.anexoCal(parseInt(idxAnexo, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anexoLibre") acciones[a](seg, pm, ln.getAttribute("data-arista") || null); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         aplicarAtajosMenu(menu);
@@ -9120,6 +9121,21 @@
       const c = visibles(state.cortesUnif)[i]; if (!c) return;
       anexoDesdeCorteUI(c, null, { A: () => num("f_ancho", null), L: () => num("f_largo", null), H: alturaUnif, alas: alasUnif, aletas: () => state.aletasUnif, despues: () => { renderAletasUnif(); recompute(); irASeccion($("aletasUnif")); } });
     },
+    // Calado DENTRO de un anexo (aunque sobresalga del paño): paddings negativos calculados
+    // solos desde la geometría real del anexo — el dibujo ya los soporta; faltaba la puerta.
+    anexoCal: (rid) => {
+      const al2 = visibles(state.aletasUnif).find((x2) => x2._rid === rid); if (!al2) return;
+      const A9 = num("f_ancho", 0), L9 = num("f_largo", 0); if (!(A9 > 0 && L9 > 0)) return;
+      let g; try { g = window.SketchCIBSA.aletaGeomRect(aletasSpec([al2])[0], A9, L9); } catch (_) { g = null; }
+      if (!g || !(g.w > 0.05) || !(g.h > 0.05)) return alert("Completa las medidas del anexo primero.");
+      const f = window.CalcCIBSA.fmtNum;
+      const cw = Math.min(0.5, g.w * 0.8), ch = Math.min(0.3, g.h * 0.8);
+      const c = nuevaCorte(); c.tipo = "calado"; c.forma = "rect"; c.ancho = f(cw); c.largo = f(ch);
+      c.padIzq = f(g.x + (g.w - cw) / 2); c.padSup = f(g.y + (g.h - ch) / 2);
+      c.padDer = f(A9 - g.x - (g.w + cw) / 2); c.padInf = f(L9 - g.y - (g.h + ch) / 2);
+      c._colap = false; state.cortesUnif.push(c);
+      renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif"));
+    },
     // Anexo directo desde una ARISTA del paño base: elige tipo y crea la aleta colgada de esa
     // arista a lo ancho completo (dBorde 0); se ajusta después en su ficha.
     anexoArista: (k) => {
@@ -9325,6 +9341,18 @@
         irAPieza("pz-aletas");
       },
       guiaLibre: (seg, pm) => { if (crearLineaEnSeg(pz.cortes, seg, "guia")) irAPieza("pz-cortes"); },
+      anexoCal: (rid) => {
+        const al2 = visibles(pz.aletas || []).find((x2) => x2._rid === rid); if (!al2) return;
+        const A9 = ev(pz.ancho) || 0, L9 = ev(pz.largo) || 0; if (!(A9 > 0 && L9 > 0)) return;
+        let g; try { g = window.SketchCIBSA.aletaGeomRect(aletasSpec([al2])[0], A9, L9); } catch (_) { g = null; }
+        if (!g || !(g.w > 0.05) || !(g.h > 0.05)) return alert("Completa las medidas del anexo primero.");
+        const f9 = window.CalcCIBSA.fmtNum;
+        const cw = Math.min(0.5, g.w * 0.8), ch = Math.min(0.3, g.h * 0.8);
+        const c = nuevaCorte(); c.tipo = "calado"; c.forma = "rect"; c.ancho = f9(cw); c.largo = f9(ch);
+        c.padIzq = f9(g.x + (g.w - cw) / 2); c.padSup = f9(g.y + (g.h - ch) / 2);
+        c.padDer = f9(A9 - g.x - (g.w + cw) / 2); c.padInf = f9(L9 - g.y - (g.h + ch) / 2);
+        c._colap = false; pz.cortes.push(c); irAPieza("pz-cortes");
+      },
       anexoArista: (k) => {
         const A9 = ev(pz.ancho) || 0, L9 = ev(pz.largo) || 0;
         if (!(A9 > 0) || !(L9 > 0)) return alert("Completa las dimensiones de la pieza.");
