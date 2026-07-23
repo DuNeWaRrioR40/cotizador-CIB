@@ -2692,7 +2692,7 @@
     container.appendChild(add);
   }
   function renderComplementosUnif() { const cu = $("compUnif"); if (cu) renderComplementos(cu, state.complementosUnif, recompute); }
-  function renderCortesUnif() { const cc = $("cortesUnif"); if (cc) renderCortes(cc, { cortes: state.cortesUnif, baseLargo: () => num("f_largo", null), baseAncho: () => num("f_ancho", null), onChange: recompute, anexoDesde: (c, xy) => anexoDesdeCorteUI(c, xy, { A: () => num("f_ancho", null), L: () => num("f_largo", null), H: alturaUnif, alas: alasUnif, aletas: () => state.aletasUnif, despues: () => { renderAletasUnif(); recompute(); irASeccion($("aletasUnif")); } }) }); }
+  function renderCortesUnif() { const cc = $("cortesUnif"); if (cc) renderCortes(cc, { aletas: () => state.aletasUnif, cortes: state.cortesUnif, baseLargo: () => num("f_largo", null), baseAncho: () => num("f_ancho", null), onChange: recompute, anexoDesde: (c, xy) => anexoDesdeCorteUI(c, xy, { A: () => num("f_ancho", null), L: () => num("f_largo", null), H: alturaUnif, alas: alasUnif, aletas: () => state.aletasUnif, despues: () => { renderAletasUnif(); recompute(); irASeccion($("aletasUnif")); } }) }); }
   function cantUnif() { return Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1); }
   function valorOjUnif() { return num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT); }
   function renderAletasUnif() {
@@ -4165,6 +4165,34 @@
           l.appendChild(inp); pgrid.appendChild(l);
         });
         card.appendChild(pgrid);
+        // Vínculo con un ANEXO: el calado declara con quién viaja (se puede fijar/soltar aquí,
+        // no solo desde el menú del anexo). dx/dy relativos se calculan desde la posición actual.
+        if (ctx.aletas) {
+          const lstA = visibles(ctx.aletas() || []);
+          if (lstA.length && c.tipo !== "corte" && c.tipo !== "guia") {
+            const lv = document.createElement("label"); lv.className = "field full"; lv.innerHTML = "<span>Viaja con (anexo)</span>";
+            const sv = document.createElement("select");
+            const o0 = document.createElement("option"); o0.value = ""; o0.textContent = "— ninguno (fijo al paño base) —"; sv.appendChild(o0);
+            lstA.forEach((al9, i9) => {
+              if (al9.id == null) al9.id = "ax" + Date.now().toString(36) + Math.floor(Math.random() * 99) + i9;
+              const o9 = document.createElement("option"); o9.value = String(al9.id);
+              o9.textContent = "Anexo " + (i9 + 1) + ((al9.legend && al9.legend.trim()) ? " — " + al9.legend.trim() : (ALETA_NOM[al9.tipo] ? " — " + ALETA_NOM[al9.tipo] : ""));
+              sv.appendChild(o9);
+            });
+            sv.value = (c.anexoRef && c.anexoRef.id != null) ? String(c.anexoRef.id) : "";
+            sv.addEventListener("change", () => {
+              const ev9 = window.CalcCIBSA.evalExpr;
+              if (!sv.value) { delete c.anexoRef; delete c._anxAppl; onChange(); return; }
+              const al9 = lstA.find((a2) => String(a2.id) === sv.value); if (!al9) return;
+              let g9; try { g9 = window.SketchCIBSA.aletaGeomRect(aletasSpec([al9])[0], ctx.baseAncho() || 0, ctx.baseLargo() || 0); } catch (_) { g9 = null; }
+              if (!g9) return alert("Completa las medidas del anexo primero.");
+              c.anexoRef = { id: al9.id, dx: rd3((ev9(c.padIzq) || 0) - g9.x), dy: rd3((ev9(c.padSup) || 0) - g9.y) };
+              delete c._anxAppl;
+              onChange();
+            });
+            lv.appendChild(sv); card.appendChild(lv);
+          }
+        }
         const acc = document.createElement("div"); acc.className = "pz-actions"; acc.style.marginTop = "6px";
         const bC = document.createElement("button"); bC.type = "button"; bC.className = "pz-btn"; bC.textContent = "Centrar";
         bC.addEventListener("click", () => { centrarCorte(ctx.baseLargo(), ctx.baseAncho(), c); setPad(); refresh(); onChange(); });
@@ -10064,7 +10092,7 @@
       renderPiezaBordes(q(".pz-borde"), pz);
       renderComplementos(q(".pz-comp"), pz.complementos, recomputeCompuesto);
       renderInscritos(q(".pz-ins"), pz);
-      renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto, anexoDesde: (c, xy) => anexoDesdeCorteUI(c, xy, { A: () => window.CalcCIBSA.evalExpr(pz.ancho), L: () => window.CalcCIBSA.evalExpr(pz.largo), H: () => (pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0), alas: () => alasPz(pz), aletas: () => (pz.aletas || (pz.aletas = [])), despues: () => { renderPiezas(); recompute(); } }) });
+      renderCortes(q(".pz-cortes"), { aletas: () => (pz.aletas || []), cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto, anexoDesde: (c, xy) => anexoDesdeCorteUI(c, xy, { A: () => window.CalcCIBSA.evalExpr(pz.ancho), L: () => window.CalcCIBSA.evalExpr(pz.largo), H: () => (pz.usaAlto ? (window.CalcCIBSA.evalExpr(pz.altura) || 0) : 0), alas: () => alasPz(pz), aletas: () => (pz.aletas || (pz.aletas = [])), despues: () => { renderPiezas(); recompute(); } }) });
       renderAletas(q(".pz-aletas"), { getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), aletas: pz.aletas, cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), valorOj: () => num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT), factor: () => facPz(pz), onChange: recomputeCompuesto, telaBase: () => pz.telaNombre, baseListo: () => (window.CalcCIBSA.evalExpr(pz.largo) > 0 && window.CalcCIBSA.evalExpr(pz.ancho) > 0 && !!pz.telaNombre) });
       renderStraps(q(".pz-straps"), { straps: (pz.straps || (pz.straps = [])), cantidad: () => Math.max(1, parseInt(window.CalcCIBSA.evalExpr(pz.cantidad) || 1, 10) || 1), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
       renderCintas(q(".pz-cintas"), { cintas: (pz.cintas || (pz.cintas = [])), getAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), getLargo: () => window.CalcCIBSA.evalExpr(pz.largo), onChange: recomputeCompuesto });
@@ -10116,7 +10144,7 @@
         q(sel).addEventListener("input", () => {
           (pz.inscritos || []).forEach((ins) => centrarInscrito(pz, ins)); if (pz.inscritos && pz.inscritos.length) renderInscritos(q(".pz-ins"), pz);
           const bl = window.CalcCIBSA.evalExpr(pz.largo), ba = window.CalcCIBSA.evalExpr(pz.ancho);
-          (pz.cortes || []).forEach((c) => centrarCorte(bl, ba, c)); if (pz.cortes && pz.cortes.length) renderCortes(q(".pz-cortes"), { cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
+          (pz.cortes || []).forEach((c) => centrarCorte(bl, ba, c)); if (pz.cortes && pz.cortes.length) renderCortes(q(".pz-cortes"), { aletas: () => (pz.aletas || []), cortes: pz.cortes, baseLargo: () => window.CalcCIBSA.evalExpr(pz.largo), baseAncho: () => window.CalcCIBSA.evalExpr(pz.ancho), onChange: recomputeCompuesto });
         });
       });
       q(".pz-tela").addEventListener("change", (e) => { pz.telaNombre = e.target.value; recomputeCompuesto(); });
