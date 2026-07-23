@@ -549,27 +549,30 @@
   }
   // ---------- BORRADOR (estado "en trabajo"): 1 slot, ficha azul, sin validación ni PDF ----------
   // Clave fija ("borrador|·|borrador|1") → la fusión por rev lo trata como UN slot entre dispositivos.
-  let _borrCargado = false;
+  let _borrCargado = null;   // clave (slug de cliente) del borrador del que nació el trabajo actual
   function guardarBorrador() {
     const nom = ($("f_nombre") ? $("f_nombre").value.trim() : ""), ape = ($("f_apellido") ? $("f_apellido").value.trim() : "");
     const emp = empresaDatos(), razon = (emp && emp.razon ? emp.razon : "").trim();
     const quien = ((nom || razon) + " " + ape).trim();
+    // v17-48: UN BORRADOR POR CLIENTE (antes: slot único global — el borrador de un cliente
+    // bloqueaba el de otro). La clave viaja en "apellido" del registro reservado "borrador".
+    const slug = (quien || "(sin cliente)").toLowerCase();
     let arr = histPrune(histLoad());
-    const prev = arr.find((e) => e.borrador);
-    if (prev && !_borrCargado) {
+    const prev = arr.find((e) => e.borrador && (e.apellido || "") === slug);
+    if (prev && _borrCargado !== slug) {
       const pn = prev.borrNom || "(sin cliente)";
-      if (!confirm("Ya existe un borrador guardado (" + pn + " · " + (prev.fecha || "") + ").\n¿Reemplazarlo con el trabajo actual?")) return;
+      if (!confirm("Ya existe un borrador de ESTE cliente (" + pn + " · " + (prev.fecha || "") + ").\n¿Reemplazarlo con el trabajo actual?\n\n(Los borradores de otros clientes no se tocan.)")) return;
     }
-    arr = arr.filter((e) => !e.borrador);
+    arr = arr.filter((e) => !(e.borrador && (e.apellido || "") === slug));
     const snap = snapshotCotizacion();
     snap.borrador = true; snap.borrNom = quien;
-    const ent = { ts: prev ? prev.ts : Date.now(), fecha: histFechaCorta(new Date()), nombre: "borrador", apellido: "·", razonSocial: "", tipo: "borrador", modo: state.docMode, prod: state.prodMode, version: 1, snap: snap, borrador: true, borrNom: quien };
+    const ent = { ts: prev ? prev.ts : Date.now(), fecha: histFechaCorta(new Date()), nombre: "borrador", apellido: slug, razonSocial: "", tipo: "borrador", modo: state.docMode, prod: state.prodMode, version: 1, snap: snap, borrador: true, borrNom: quien };
     ent.rev = Date.now(); ent.snap.rev = ent.rev;
     tombRemove(ent);   // por si el slot fue borrado antes: que no lo mate la lápida al sincronizar
     arr.unshift(ent);
     histStore(arr.slice(0, HIST_MAX));
     renderHistorial();
-    _borrCargado = true;
+    _borrCargado = slug;
     const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
     if (tok) window.SheetsCIBSA.reemplazarHistorial(tok, HIST_HOJA, ent, entryToRow(ent), HIST_ENC).catch((e) => console.warn("CIBSA: no se pudo subir el borrador —", e && e.message ? e.message : e));
     const b = $("btnBorrador");
@@ -578,8 +581,8 @@
   // Al GENERAR de verdad, el borrador del que nació este trabajo se descarta (sin confirmaciones).
   function descartarBorradorTrasGenerar() {
     if (!_borrCargado) return;
-    _borrCargado = false;
-    const ent = histLoad().find((e) => e.borrador); if (!ent) return;
+    const slugB = _borrCargado; _borrCargado = null;
+    const ent = histLoad().find((e) => e.borrador && (e.apellido || "") === slugB); if (!ent) return;
     tombAdd(ent);
     histStore(histLoad().filter((e) => !e.borrador));
     renderHistorial();
@@ -745,7 +748,7 @@
       if (!ent.borrador) return aplicarHistorial(ent);
       _editHist = null; ocultarEdicionBanner();
       if (ent.snap) restaurarCotizacion(ent.snap);
-      _borrCargado = true;
+      _borrCargado = ent.apellido || "·";
       recompute();
     });
     const acts = document.createElement("div"); acts.className = "hist-acts";
@@ -10460,7 +10463,7 @@
   // mantenerCliente=true: borra toda la cotización pero conserva los datos del cliente (nombre, apellido,
   // correo, dirección, comuna y los datos de empresa). false: limpia todo, incluido el cliente.
   function limpiarCampos(mantenerCliente) {
-    _borrCargado = false;   // el trabajo nuevo ya no está ligado al borrador guardado
+    _borrCargado = null;   // el trabajo nuevo ya no está ligado a ningún borrador
     ["f_largo", "f_ancho", "f_titulo", "f_observaciones", "f_color"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
     if (!mantenerCliente) {
       ["f_nombre", "f_apellido", "f_email", "f_dir_cliente", "f_comuna_cliente",
