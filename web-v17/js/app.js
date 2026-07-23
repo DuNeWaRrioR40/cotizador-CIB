@@ -3907,6 +3907,7 @@
     return {
       x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: w, h: h,
       circ: c.forma === "circ", ojCirc: ojIntPz(c.ojCirc),
+      enAnexo: !!c.anexoRef, anexoId: c.anexoRef ? c.anexoRef.id : null,
       oj: { sup: ojIntPz(c.oj.sup), inf: ojIntPz(c.oj.inf), izq: ojIntPz(c.oj.izq), der: ojIntPz(c.oj.der) },
       lados: { sup: L.sup !== false, inf: L.inf !== false, izq: L.izq !== false, der: L.der !== false },
       angulo: window.CalcCIBSA.evalExpr(c.angulo) || 0, pivX: num01(c.pivX, 0.5), pivY: num01(c.pivY, 0.5),
@@ -5634,6 +5635,14 @@
       }
       return null;
     })();
+    // GUARDARRAÍL (v17): 2+ guías-EJE que NO pasan por un punto común no están modeladas — ni
+    // eje único ni abanico. Antes: la primera "ganaba" y el resto plegaba a la deriva (origami
+    // deforme, en silencio). Ahora se avisa con la receta; se pliega solo con la primera.
+    if (!fig && !fanF && ejeF) {
+      let ejesN = 0;
+      try { for (const c9 of visibles(V.cortes())) { if (c9 && c9.tipo === "guia" && c9.ejeVis) { const ln9 = lineaRawCorte(c9); if (ln9 && ln9.w > 0.3) ejesN++; } } } catch (_) {}
+      if (ejesN >= 2) alert("Este diseño tiene " + ejesN + " guías-EJE que NO pasan por un punto común.\n\nEl visor pliega con: UN eje libre, o VARIOS en ABANICO (todos cruzando un punto común, como una pirámide). Con esta topología solo se aplica el PRIMERO; los demás quedan sin plegar.\n\nPara un techo en A con tapas: deja como eje SOLO la cumbrera (el manto pliega en A) y modela las tapas como PIEZAS aparte unidas por conectores (🧩 Ensamble) — la confección digital imita a la real.");
+    }
     if (!(A > 0) || !(L > 0)) return alert("Define las dimensiones para ver el 3D.");
     if (!(H > 0)) H = 0;   // modo PLANO: lámina + anexos plegables (y/o eje de pliegue)
     try {
@@ -5840,7 +5849,7 @@
       try {
         (cortesSpec(V.cortes()) || []).forEach((cr) => {
           if (!cr || cr.tipo === "corte" || cr.tipo === "guia") return;
-          if (cr.circ) { caladosCerr.push({ circ: true, cx: cr.x + cr.w / 2, cy: cr.y + cr.h / 2, r: Math.min(cr.w, cr.h) / 2 }); return; }
+          if (cr.circ) { caladosCerr.push({ circ: true, cx: cr.x + cr.w / 2, cy: cr.y + cr.h / 2, r: Math.min(cr.w, cr.h) / 2, anexoId: cr.anexoId || null }); return; }
           const Ld4 = cr.lados || {};
           if (!(Ld4.sup !== false && Ld4.inf !== false && Ld4.izq !== false && Ld4.der !== false)) return;
           let cs = [{ x: cr.x, y: cr.y }, { x: cr.x + cr.w, y: cr.y }, { x: cr.x + cr.w, y: cr.y + cr.h }, { x: cr.x, y: cr.y + cr.h }];
@@ -5850,7 +5859,7 @@
             const co = Math.cos(angC), si = Math.sin(angC);
             cs = cs.map((pp) => ({ x: Px + (pp.x - Px) * co - (pp.y - Py) * si, y: Py + (pp.x - Px) * si + (pp.y - Py) * co }));
           }
-          caladosCerr.push({ poly: cs });
+          caladosCerr.push({ poly: cs, anexoId: cr.anexoId || null });
         });
         // Zonas "Eliminar" de cortes-línea (fadeKill): también se borran de la cara — el
         // triángulo seccionado de un ala (o de la tapa) desaparece del 3D.
@@ -5862,15 +5871,18 @@
     }
     // Cara con calados: geometría propia (UV en coords de la HOJA) + canvas donde los calados se
     // BORRAN (alfa 0 → se ve a través). W4(mx,my) mapea hoja→mundo; región [x0c..+wS]×[y0c..+hS].
-    const caraCalada = (x0c, y0c, wS, hS, W4, grupoDest, soloPoly) => {
+    const caraCalada = (x0c, y0c, wS, hS, W4, grupoDest, soloPoly, listaCal) => {
       const gDest = grupoDest || grp;
+      // El VÍNCULO desempata la ambigüedad anexo/paño: sin lista propia, esta cara solo recibe
+      // los calados SIN anexo; la lámina de un anexo pasa su lista con los suyos.
+      const caladosCara = listaCal || caladosCerr.filter((cc9) => !cc9.anexoId);
       const K = Math.max(48, Math.min(160, Math.floor(1024 / Math.max(wS, hS))));
       const cv = document.createElement("canvas");
       cv.width = Math.max(2, Math.round(wS * K)); cv.height = Math.max(2, Math.round(hS * K));
       const g2d = cv.getContext("2d");
       g2d.fillStyle = "#d9d2c2"; g2d.fillRect(0, 0, cv.width, cv.height);
       g2d.globalCompositeOperation = "destination-out";
-      caladosCerr.forEach((cc) => {
+      caladosCara.forEach((cc) => {
         g2d.beginPath();
         if (cc.circ) g2d.arc((cc.cx - x0c) * K, (cc.cy - y0c) * K, cc.r * K, 0, 2 * Math.PI);
         else cc.poly.forEach((pp, i) => { const qx = (pp.x - x0c) * K, qy = (pp.y - y0c) * K; if (i) g2d.lineTo(qx, qy); else g2d.moveTo(qx, qy); });
@@ -6368,12 +6380,21 @@
           const outer = new T.Group(); outer.position.copy(P0);
           outer.setRotationFromMatrix(new T.Matrix4().makeBasis(ux, uy, uz));
           const inner = new T.Group(); outer.add(inner); grp.add(outer);
-          const gP = new T.PlaneGeometry(len, caida);
-          const mesh = new T.Mesh(gP, matLona);
-          mesh.rotation.x = -Math.PI / 2; mesh.position.set(len / 2, 0, caida / 2);
-          inner.add(mesh);
-          const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde);
-          ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); inner.add(ed);
+          const misCal = (a.id != null) ? caladosCerr.filter((cc9) => cc9.anexoId != null && cc9.anexoId === a.id) : [];
+          if (misCal.length) {
+            // Calados VINCULADOS: perforan la lámina del ANEXO (caraCalada con su propia lista).
+            const axx9 = (h1.x - h0.x) / len, axy9 = (h1.y - h0.y) / len;
+            const W4a = (mx, my) => new T.Vector3((mx - h0.x) * axx9 + (my - h0.y) * axy9, 0, (mx - h0.x) * dirC.x + (my - h0.y) * dirC.y);
+            caraCalada(g.x, g.y, g.w, g.h, W4a, inner, null, misCal);
+            inner.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(0, 0, 0), new T.Vector3(len, 0, 0), new T.Vector3(len, 0, caida), new T.Vector3(0, 0, caida), new T.Vector3(0, 0, 0)]), matBorde));
+          } else {
+            const gP = new T.PlaneGeometry(len, caida);
+            const mesh = new T.Mesh(gP, matLona);
+            mesh.rotation.x = -Math.PI / 2; mesh.position.set(len / 2, 0, caida / 2);
+            inner.add(mesh);
+            const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde);
+            ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); inner.add(ed);
+          }
           try {
             const pts = SK2.aletaOjPuntos(aSpec, A, L);
             const rOj2 = Math.max(0.02, diag * 0.006);
