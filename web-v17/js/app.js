@@ -9010,6 +9010,30 @@
   // VÍNCULO guía→anexo: cada anexo con guiaId re-deriva su posición desde la línea ACTUAL de su
   // guía en cada recompute (mover la guía —anchors, empates, campos— arrastra al anexo). Se
   // desvincula desde la ficha del anexo.
+  // Cortes VINCULADOS a un anexo (c.anexoRef = {id, dx, dy}): siguen al anexo cuando este se
+  // reposiciona, conservando su offset relativo. Si el usuario mueve el CORTE a mano, la
+  // relativa se actualiza sola (comparando contra lo último aplicado). Anexo borrado → el
+  // corte queda libre donde está. Sus anchors (t sobre la línea) viajan gratis por ser relativos.
+  function aplicarCortesDeAnexo(cortes, aletas, A, L) {
+    if (!(A > 0 && L > 0) || !window.SketchCIBSA) return;
+    const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
+    (cortes || []).forEach((c) => {
+      if (!c || !c.anexoRef) return;
+      const al = visibles(aletas || []).find((a2) => a2 && a2.id != null && a2.id === c.anexoRef.id);
+      if (!al) return;
+      let g; try { g = window.SketchCIBSA.aletaGeomRect(aletasSpec([al])[0], A, L); } catch (_) { g = null; }
+      if (!g) return;
+      const px9 = ev(c.padIzq) || 0, py9 = ev(c.padSup) || 0;
+      if (c._anxAppl && (Math.abs(px9 - c._anxAppl.x) > 1e-6 || Math.abs(py9 - c._anxAppl.y) > 1e-6)) {
+        c.anexoRef.dx = rd3(px9 - g.x); c.anexoRef.dy = rd3(py9 - g.y);   // movimiento manual: nueva relativa
+      }
+      const nx = g.x + (c.anexoRef.dx || 0), ny = g.y + (c.anexoRef.dy || 0);
+      c.padIzq = f(nx); c.padSup = f(ny);
+      const w9 = ev(c.ancho) || 0, h9 = ev(c.largo) || 0;
+      c.padDer = f(A - nx - w9); c.padInf = f(L - ny - h9);
+      c._anxAppl = { x: ev(c.padIzq) || 0, y: ev(c.padSup) || 0 };
+    });
+  }
   function aplicarAnexosDeGuia(aletas, cortes, A, L, H, alas) {
     if (!(A > 0 && L > 0)) return;
     const f = window.CalcCIBSA.fmtNum;
@@ -9024,6 +9048,7 @@
       al2.offset = f(cfg.offset); al2.ancho = f(cfg.ancho);
       al2.paredOrigen = c.origenAla || al2.paredOrigen || null;
     });
+    aplicarCortesDeAnexo(cortes, aletas, A, L);   // los calados vinculados siguen a su anexo
   }
   // Crea un corte/guía A LO LARGO de un segmento propio (rim o lateral de un ala): la línea nace
   // exactamente sobre ese borde y luego se ajusta con sus campos o con anchors.
@@ -9133,6 +9158,8 @@
       const c = nuevaCorte(); c.tipo = "calado"; c.forma = "rect"; c.ancho = f(cw); c.largo = f(ch);
       c.padIzq = f(g.x + (g.w - cw) / 2); c.padSup = f(g.y + (g.h - ch) / 2);
       c.padDer = f(A9 - g.x - (g.w + cw) / 2); c.padInf = f(L9 - g.y - (g.h + ch) / 2);
+      if (al2.id == null) al2.id = "ax" + Date.now().toString(36) + Math.floor(Math.random() * 99);
+      c.anexoRef = { id: al2.id, dx: rd3((g.w - cw) / 2), dy: rd3((g.h - ch) / 2) };   // viaja con el anexo
       c._colap = false; state.cortesUnif.push(c);
       renderCortesUnif(); recompute(); irASeccion($("wCortesUnif") || $("cortesUnif"));
     },
@@ -9351,6 +9378,8 @@
         const c = nuevaCorte(); c.tipo = "calado"; c.forma = "rect"; c.ancho = f9(cw); c.largo = f9(ch);
         c.padIzq = f9(g.x + (g.w - cw) / 2); c.padSup = f9(g.y + (g.h - ch) / 2);
         c.padDer = f9(A9 - g.x - (g.w + cw) / 2); c.padInf = f9(L9 - g.y - (g.h + ch) / 2);
+        if (al2.id == null) al2.id = "ax" + Date.now().toString(36) + Math.floor(Math.random() * 99);
+        c.anexoRef = { id: al2.id, dx: rd3((g.w - cw) / 2), dy: rd3((g.h - ch) / 2) };   // viaja con el anexo
         c._colap = false; pz.cortes.push(c); irAPieza("pz-cortes");
       },
       anexoArista: (k) => {
