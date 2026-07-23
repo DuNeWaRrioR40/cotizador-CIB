@@ -1007,3 +1007,8 @@ body.drawer-abierto { overflow: hidden; }
 /* v17-47: estado On/Off del eje en el menú de la guía */
 .arista-menu-it .menu-eje-st { opacity: 0.45; }
 .arista-menu-it .menu-eje-st.on { opacity: 1; color: #15803d; font-weight: 700; }
+
+/* v17-51: mini-editor de la calcomanía del plano del cliente */
+.sketch-svg .figimg-marco { fill: none; stroke: #7c3aed; stroke-width: 1.2; stroke-dasharray: 5 4; }
+.sketch-svg .figimg-mv { cursor: move; }
+.sketch-svg .figimg-hd { fill: #fff; stroke: #7c3aed; stroke-width: 1.4; cursor: pointer; }

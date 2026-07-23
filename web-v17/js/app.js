@@ -7,7 +7,7 @@
   const state = {
     telas: [], telasOpcSel: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
-    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, ensambles: [], figura3D: null, anclasUnif: [], notasUnif: [], subVC: false, vis3D: null, cotasOcultas: {}, cotasPos: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
+    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, ensambles: [], figImgUnif: null, figura3D: null, anclasUnif: [], notasUnif: [], subVC: false, vis3D: null, cotasOcultas: {}, cotasPos: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [], cintasUnif: [],
@@ -130,7 +130,18 @@
   const CORREL_KEY = "cibsa_correl_max_v1"; // marca de máximo histórico del correlativo (solo sube; sobrevive al borrado)
   const HIST_HOJA = (CFG.HOJA_HISTORIAL || "HISTORIAL");
   const HIST_ENC = ["Timestamp", "Nombre", "Apellido", "Tipo", "Version", "Fecha", "Datos(JSON)"];
-  function entryToRow(e) { return [e.ts, e.nombre || "", e.apellido || "", e.tipo || "", parseInt(e.version, 10) || 1, e.fecha || "", JSON.stringify(e.snap || null)]; }
+  function entryToRow(e) {
+    let js = JSON.stringify(e.snap || null);
+    // Celda de Sheet ≈ 50k chars: si el snap trae el plano del cliente (imagen) y excede, se
+    // omite SOLO la imagen en la nube (el respaldo local y el .json descargado la conservan).
+    if (js && js.length > 45000) {
+      try {
+        const s2 = JSON.parse(js);
+        if (s2 && s2.estado && s2.estado.figImgUnif) { s2.estado.figImgUnif = null; const js2 = JSON.stringify(s2); if (js2.length < js.length) js = js2; }
+      } catch (_) {}
+    }
+    return [e.ts, e.nombre || "", e.apellido || "", e.tipo || "", parseInt(e.version, 10) || 1, e.fecha || "", js];
+  }
   function rowToEntry(r) {
     const ts = parseInt(r && r[0], 10) || 0; if (!ts) return null; // descarta encabezado / filas inválidas
     let snap = null; try { snap = r[6] ? JSON.parse(r[6]) : null; } catch (e) {}
@@ -195,7 +206,7 @@
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
   const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_visita", "f_despacho", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email", "f_fono1_cliente", "f_fono2_cliente", "f_emp_fono1", "f_emp_fono2"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "vis3D", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "ensambles", "factorUnif", "granelLineas"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "vis3D", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "ensambles", "figImgUnif", "factorUnif", "granelLineas"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -5448,11 +5459,12 @@
     aplicarAnexosDeGuia(state.aletasUnif, state.cortesUnif, ancho || 0, largo || 0, alturaUnif(), alasUnif());
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
-      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar, anclas: anclasSpecDe(state.anclasUnif, state.cortesUnif, ancho || 0, largo || 0), notas: state.notasUnif }, ojSpecUnif());
+      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar, anclas: anclasSpecDe(state.anclasUnif, state.cortesUnif, ancho || 0, largo || 0), notas: state.notasUnif, figImg: state.figImgUnif || null }, ojSpecUnif());
       if (alturaUnif() > 0) especUnif.volumetrico = volUnifSpec();
       _vcEspecUnif = especUnif;
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
       activarArrastreCallouts(sk);
+      sincBtnFigImg(); activarFigImgEditor(sk);   // F7.1: mini-editor de la calcomanía del cliente
       const refrescarOcUnif = () => { renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); recompute(); };
       activarClicOcultarCotas(sk, state.cotasOcultas, refrescarOcUnif);
       activarArrastreCotas(sk, state.cotasPos, refrescarOcUnif);
@@ -9797,6 +9809,8 @@
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, [], { cortes: ojEnCortesN(state.cortesUnif, ancho, largo, state.aletasUnif), anexos: ojEnAletasN(state.aletasUnif) }).concat(materialesCortes(state.cortesUnif)),
       sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag, notas: state.notasUnif }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: volUnifSpec() } : {}),
       vista3D: (_vista3D && _vista3D.firma === firmaVol()) ? _vista3D.png : null,
+      figImg: state.figImgUnif ? state.figImgUnif.url : null,
+      figImgPano: (state.figImgUnif && state.figImgUnif.url) ? _figBaked : null,
       trasera: state.trasUnif,
       backExtra: { cortes: cortesSpec(state.backCortesUnif), aletas: aletasSpec(state.backAletasUnif) },
       materialesTrasera: materialesTraseras(state.backCortesUnif, state.backComplementosUnif),
@@ -9832,7 +9846,127 @@
     }
     return piezas;
   }
+  // ---------- F7: PLANO DEL CLIENTE inscrito en el paño (solo visualización) ----------
+  // El cotizador valoriza el RECTÁNGULO (+ factor de diseño); la foto/plano del cliente se
+  // inscribe encima para que todos VEAN la figura compleja — sin edición, sin campos nuevos.
+  let _figEditOn = false, _figBaked = null;
+  function importarFigImg(file) {
+    if (!file) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAXF = 1200, k = Math.min(1, MAXF / Math.max(img.width, img.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.max(2, Math.round(img.width * k)); cv.height = Math.max(2, Math.round(img.height * k));
+        const g2 = cv.getContext("2d");
+        g2.fillStyle = "#ffffff"; g2.fillRect(0, 0, cv.width, cv.height);   // PNG transparente → fondo blanco
+        g2.drawImage(img, 0, 0, cv.width, cv.height);
+        // Encaje inicial "contain" dentro del paño (después el usuario la deforma a gusto).
+        const A9 = num("f_ancho", 0), L9 = num("f_largo", 0);
+        let fx = 0, fy = 0, fw = A9 > 0 ? A9 : 1, fh = L9 > 0 ? L9 : 1;
+        if (A9 > 0 && L9 > 0) {
+          const rI = cv.width / cv.height, rP = A9 / L9;
+          if (rI > rP) { fw = A9; fh = A9 / rI; fy = (L9 - fh) / 2; } else { fh = L9; fw = L9 * rI; fx = (A9 - fw) / 2; }
+        }
+        state.figImgUnif = { url: cv.toDataURL("image/jpeg", 0.72), x: rd3(fx), y: rd3(fy), w: rd3(fw), h: rd3(fh) };
+        _figBaked = null; _figEditOn = true;   // recién inyectada: modo ajuste listo para calzar
+        sincBtnFigImg(); recompute();
+      };
+      img.onerror = () => alert("No se pudo leer la imagen (usa JPG o PNG).");
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(file);
+  }
+  function sincBtnFigImg() {
+    const b = $("btnFigImg"); if (b) b.textContent = state.figImgUnif ? "✕ Quitar plano del cliente" : "🖼 Plano del cliente en el paño…";
+    const ba = $("btnFigAdj");
+    if (ba) {
+      ba.classList.toggle("hidden", !state.figImgUnif);
+      ba.textContent = _figEditOn ? "✔ Listo (fijar imagen)" : "✥ Ajustar imagen";
+    }
+  }
+  // "Hornea" la calcomanía ya deformada/recortada al rect del paño (PNG con alpha) para el PDF.
+  function bakeFigImg(cb) {
+    const fi = state.figImgUnif;
+    const A9 = num("f_ancho", 0), L9 = num("f_largo", 0);
+    if (!fi || !fi.url || !(A9 > 0) || !(L9 > 0)) { _figBaked = null; return cb && cb(); }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const K = Math.min(1400 / A9, 1400 / L9);
+        const cv = document.createElement("canvas");
+        cv.width = Math.max(2, Math.round(A9 * K)); cv.height = Math.max(2, Math.round(L9 * K));
+        const g2 = cv.getContext("2d");
+        const fx = fi.x || 0, fy = fi.y || 0, fw = fi.w > 0 ? fi.w : A9, fh = fi.h > 0 ? fi.h : L9;
+        g2.drawImage(img, fx * K, fy * K, fw * K, fh * K);   // el canvas recorta lo que sobresale
+        _figBaked = cv.toDataURL("image/png");
+      } catch (_) { _figBaked = null; }
+      cb && cb();
+    };
+    img.onerror = () => { _figBaked = null; cb && cb(); };
+    img.src = fi.url;
+  }
+  // Mini-editor de la calcomanía: mover (cuerpo), estirar ancho/largo (bordes) o ambos
+  // (esquinas). Suelta → re-render limpio; lo que sale del paño queda recortado por el clip.
+  function activarFigImgEditor(cont) {
+    const svg = cont && cont.querySelector("svg.sketch-svg"); if (!svg) return;
+    const fi = state.figImgUnif; if (!fi || !fi.url || !_figEditOn) return;
+    const ms = parseFloat(svg.dataset.mscale), ox = parseFloat(svg.dataset.ox), oy = parseFloat(svg.dataset.oy);
+    if (!(ms > 0) || !isFinite(ox) || !isFinite(oy)) return;
+    const NS = "http://www.w3.org/2000/svg";
+    const g = document.createElementNS(NS, "g"); g.setAttribute("class", "figimg-ed"); svg.appendChild(g);
+    const imgEl = svg.querySelector("image.figimg");
+    const toVB = (cx2, cy2) => { const pt = svg.createSVGPoint(); pt.x = cx2; pt.y = cy2; const m2 = svg.getScreenCTM(); if (!m2) return null; const q = pt.matrixTransform(m2.inverse()); return { x: q.x, y: q.y }; };
+    const draw = () => {
+      while (g.firstChild) g.removeChild(g.firstChild);
+      const x = ox + fi.x * ms, y = oy + fi.y * ms, w = fi.w * ms, h = fi.h * ms;
+      if (imgEl) { imgEl.setAttribute("x", x); imgEl.setAttribute("y", y); imgEl.setAttribute("width", Math.max(1, w)); imgEl.setAttribute("height", Math.max(1, h)); }
+      const mk = (tag, at) => { const el2 = document.createElementNS(NS, tag); Object.keys(at).forEach((k2) => el2.setAttribute(k2, at[k2])); g.appendChild(el2); return el2; };
+      mk("rect", { class: "figimg-marco", x: x, y: y, width: Math.max(1, w), height: Math.max(1, h) });
+      mk("rect", { class: "figimg-mv", "data-h": "mv", x: x, y: y, width: Math.max(1, w), height: Math.max(1, h), fill: "transparent" });
+      [["nw", x, y], ["n", x + w / 2, y], ["ne", x + w, y], ["w", x, y + h / 2], ["e", x + w, y + h / 2], ["sw", x, y + h], ["s", x + w / 2, y + h], ["se", x + w, y + h]].forEach((hh) => {
+        mk("rect", { class: "figimg-hd", "data-h": hh[0], x: hh[1] - 5, y: hh[2] - 5, width: 10, height: 10 });
+      });
+    };
+    let dragF = null;
+    g.addEventListener("pointerdown", (e3) => {
+      const md = e3.target.getAttribute && e3.target.getAttribute("data-h"); if (!md) return;
+      e3.preventDefault(); e3.stopPropagation();
+      const p2 = toVB(e3.clientX, e3.clientY); if (!p2) return;
+      dragF = { md: md, x: p2.x, y: p2.y };
+      try { g.setPointerCapture(e3.pointerId); } catch (_) {}
+    });
+    g.addEventListener("pointermove", (e3) => {
+      if (!dragF) return;
+      const p2 = toVB(e3.clientX, e3.clientY); if (!p2) return;
+      const dx = (p2.x - dragF.x) / ms, dy = (p2.y - dragF.y) / ms;
+      dragF.x = p2.x; dragF.y = p2.y;
+      const MINF = 0.05, md = dragF.md;
+      if (md === "mv") { fi.x = rd3(fi.x + dx); fi.y = rd3(fi.y + dy); }
+      if (md.indexOf("e") !== -1) fi.w = rd3(Math.max(MINF, fi.w + dx));
+      if (md.indexOf("w") !== -1 && md !== "sw" && md !== "nw") { const nw2 = Math.max(MINF, fi.w - dx); fi.x = rd3(fi.x + (fi.w - nw2)); fi.w = rd3(nw2); }
+      if (md === "nw" || md === "sw") { const nw2 = Math.max(MINF, fi.w - dx); fi.x = rd3(fi.x + (fi.w - nw2)); fi.w = rd3(nw2); }
+      if (md.indexOf("s") !== -1) fi.h = rd3(Math.max(MINF, fi.h + dy));
+      if (md === "n" || md === "ne" || md === "nw") { const nh2 = Math.max(MINF, fi.h - dy); fi.y = rd3(fi.y + (fi.h - nh2)); fi.h = rd3(nh2); }
+      draw();
+    });
+    g.addEventListener("pointerup", () => { if (dragF) { dragF = null; _figBaked = null; } });
+    draw();
+  }
+  { const b = $("btnFigImg"), fi = $("figImgFile");
+    if (b && fi) {
+      b.addEventListener("click", () => {
+        if (state.figImgUnif) { state.figImgUnif = null; sincBtnFigImg(); recompute(); return; }
+        fi.value = ""; fi.click();
+      });
+      fi.addEventListener("change", () => importarFigImg(fi.files && fi.files[0]));
+      const ba = $("btnFigAdj");
+      if (ba) ba.addEventListener("click", () => { _figEditOn = !_figEditOn; sincBtnFigImg(); recompute(); });
+      sincBtnFigImg();
+    } }
   async function descargarCorte() {
+    if (state.figImgUnif && state.figImgUnif.url && !_figBaked) await new Promise((res) => bakeFigImg(res));
     const piezas = planoCorteDatos();
     if (!piezas.length) return alert("Ingresa largo, ancho y tela del producto para el plano de corte.");
     try {

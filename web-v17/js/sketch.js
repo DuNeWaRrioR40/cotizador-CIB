@@ -5,6 +5,7 @@
    paño base "desaparece" (queda calado abierto). */
 (function (global) {
   const OFF_MIN0 = 16, OFF_STEP = 18, OFF_GAP = 20, TICK = 3, EXTGAP = 3, EPS = 0.001;
+  let FIGIMG_SEQ = 0;   // ids únicos de clipPath para el plano del cliente inscrito
   // Registro de la decisión "auto" del rótulo-guía por id de elemento (true = el auto generó el
   // rótulo porque el título no cabía). Se rellena solo en render en vivo (opts.live) para que la UI
   // pueda deshabilitar el checkbox "Rótulo" cuando el auto ya lo está generando.
@@ -717,7 +718,7 @@
     // cortes/guías (1er/último de sus ojetillos) a los del perímetro base.
     let ojNumeros = spec.ojNumeros || null;
     if (ojNumeros != null) cortes.forEach((c) => { if (c.ojNum && c.ojNum.length) ojNumeros = ojNumeros.concat(c.ojNum); });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, anclas: spec.espejo ? [] : (spec.anclas || []), notas: spec.espejo ? [] : (spec.notas || []), bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, cotasPos: spec.cotasPos || null, panoPoly: panoPoly, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar, cintas: (spec.cintas || []) };
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, anclas: spec.espejo ? [] : (spec.anclas || []), notas: spec.espejo ? [] : (spec.notas || []), bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, cotasPos: spec.cotasPos || null, panoPoly: panoPoly, figImg: spec.figImg || null, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar, cintas: (spec.cintas || []) };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
@@ -1720,6 +1721,13 @@
     const rimOutV = spec.volumetrico.bordesEnPliegue ? null : { sup: hs * scB, inf: hi * scB, izq: hz * scB, der: hd * scB };
     s += elementosSketch(skT, { px: (x) => X(hz + x), py: (y) => Y(hs + y), scale: scB, r: rT, ojeSVG: ojeT, ox: X(hz), oy: Y(hs), w: A * scB, h: L * scB, rimOut: rimOutV });
     // Etiqueta de la tapa (esquina sup-izq, para no chocar con los elementos).
+    if (sk0.figImg && sk0.figImg.url && spec.vista !== "trasera") {
+      const fiK2 = ++FIGIMG_SEQ;
+      const fx2 = (sk0.figImg.x != null) ? sk0.figImg.x : 0, fy2 = (sk0.figImg.y != null) ? sk0.figImg.y : 0;
+      const fw2 = (sk0.figImg.w > 0) ? sk0.figImg.w : A, fh2 = (sk0.figImg.h > 0) ? sk0.figImg.h : L;
+      s += `<clipPath id="figclip${fiK2}"><rect x="${f1(X(hz))}" y="${f1(Y(hs))}" width="${f1(A * scB)}" height="${f1(L * scB)}"/></clipPath>`;
+      s += `<image class="figimg" clip-path="url(#figclip${fiK2})" href="${sk0.figImg.url}" x="${f1(X(hz + fx2))}" y="${f1(Y(hs + fy2))}" width="${f1(fw2 * scB)}" height="${f1(fh2 * scB)}" preserveAspectRatio="none" opacity="0.85"/>`;
+    }
     s += `<text class="ins-lbl" x="${f1(X(hz) + 3)}" y="${f1(Y(hs) + 8)}">TAPA ${fmt(L)}×${fmt(A)}m</text>`;
     if (conCotas) {
       s += hCota(X(0), X(Wd), pby - 10, Wd); // ancho total de la hoja
@@ -1938,6 +1946,18 @@
     // Contorno del paño: rectángulo, o el polígono recortado si hay cortes "Eliminar" (la parte se va).
     if (sk.panoPoly && sk.panoPoly.length >= 3) {
       s += `<polygon class="edge" points="${sk.panoPoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
+      // F7.1: plano/foto del CLIENTE — calcomanía DEFORMABLE {x,y,w,h en metros} recortada al
+      // contorno REAL del paño (panoPoly: respeta recortes/diagonales). Lo que sobresale no se ve.
+      if (sk.figImg && sk.figImg.url && !sk.espejo) {
+        const fiK = ++FIGIMG_SEQ;
+        const fx = (sk.figImg.x != null) ? sk.figImg.x : 0, fy = (sk.figImg.y != null) ? sk.figImg.y : 0;
+        const fw = (sk.figImg.w > 0) ? sk.figImg.w : sk.ancho, fh = (sk.figImg.h > 0) ? sk.figImg.h : sk.largo;
+        const clipInner = (sk.panoPoly && sk.panoPoly.length >= 3)
+          ? `<polygon points="${sk.panoPoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`
+          : `<rect x="${f1(px(0))}" y="${f1(py(0))}" width="${f1(sk.ancho * scale)}" height="${f1(sk.largo * scale)}"/>`;
+        s += `<clipPath id="figclip${fiK}">${clipInner}</clipPath>`;
+        s += `<image class="figimg" clip-path="url(#figclip${fiK})" href="${sk.figImg.url}" x="${f1(px(fx))}" y="${f1(py(fy))}" width="${f1(fw * scale)}" height="${f1(fh * scale)}" preserveAspectRatio="none" opacity="0.85"/>`;
+      }
     } else {
       s += `<rect class="edge" x="${f1(ox)}" y="${f1(oy)}" width="${f1(w)}" height="${f1(h)}"/>`;
     }

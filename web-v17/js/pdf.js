@@ -638,6 +638,10 @@
     const RED = PDFLib.rgb(0.106, 0.369, 0.125); // verde pino
     const TICK = 3, EXTGAP = 3;
     // Contorno del paño: rectángulo, o el polígono recortado si hay cortes "Eliminar" (la parte se va).
+    // F7.1: calcomanía del cliente ya horneada (deformada + recortada al rect del paño).
+    if (opts.figImgEmb) {
+      try { page.drawImage(opts.figImgEmb, { x: px(0), y: py(sk.largo), width: sk.ancho * scale, height: sk.largo * scale }); } catch (e) {}
+    }
     if (sk.panoPoly && sk.panoPoly.length >= 3) {
       for (let i = 0; i < sk.panoPoly.length; i++) {
         const pa = sk.panoPoly[i], pb = sk.panoPoly[(i + 1) % sk.panoPoly.length];
@@ -1506,7 +1510,9 @@
       if (datos.titulo) { pgSk.drawText(san('"' + datos.titulo + '"'), { x: M, y: ys, size: 12, font: bold, color: BLUE() }); ys -= 18; }
       skTop = ys; skBottom = 52;
     }
-    dibujarSketchPDF(pgSk, datos.sketch, { x: M, top: skTop, w: W - 2 * M, h: skTop - skBottom }, font, { cotas: !limpio });
+    let figEmb = null;
+    if (datos.figImgPano) { try { figEmb = await doc.embedPng(b64ToBytes(String(datos.figImgPano).split(",")[1] || "")); } catch (e) { figEmb = null; } }
+    dibujarSketchPDF(pgSk, datos.sketch, { x: M, top: skTop, w: W - 2 * M, h: skTop - skBottom }, font, { cotas: !limpio, figImgEmb: figEmb });
 
     // Página ADICIONAL con la vista 3D elegida en el visor (complementa el plano, no lo sustituye).
     if (datos.vista3D && datos.sketch && datos.sketch.volumetrico) {
@@ -1522,6 +1528,21 @@
         const iw = img3d.width * esc, ih = img3d.height * esc;
         p3.drawImage(img3d, { x: (W - iw) / 2, y: y3 - ih, width: iw, height: ih });
       } catch (e) { /* si la imagen falla, el plano queda igual que siempre */ }
+    }
+    // F7: página con el PLANO DEL CLIENTE (imagen inscrita en la app) — referencia visual.
+    if (datos.figImg) {
+      try {
+        const imgC = await doc.embedJpg(b64ToBytes(String(datos.figImg).split(",")[1] || ""));
+        const pC = doc.addPage([W, H]);
+        let yC = dibujarEncabezado(pC, cibsa, null, W, M, H - 40);
+        tituloCentrado(pC, "PLANO DEL CLIENTE (referencial)", W, yC, bold, 15, BLUE()); yC -= 15;
+        tituloCentrado(pC, "Figura enviada por el cliente, inscrita en el paño cotizado. La valorización corresponde al paño rectangular + factor de diseño.", W, yC, font, 9, BLUE()); yC -= 18;
+        if (datos.titulo) { pC.drawText(san('"' + datos.titulo + '"'), { x: M, y: yC, size: 12, font: bold, color: BLUE() }); yC -= 20; }
+        const avWC = W - 2 * M, avHC = yC - 60;
+        const escC = Math.min(avWC / imgC.width, avHC / imgC.height);
+        const iwC = imgC.width * escC, ihC = imgC.height * escC;
+        pC.drawImage(imgC, { x: (W - iwC) / 2, y: yC - ihC, width: iwC, height: ihC });
+      } catch (e) { /* mejor esfuerzo */ }
     }
 
     // Página de vista trasera (espejo + diseño trasero $0), si corresponde.
