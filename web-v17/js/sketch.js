@@ -474,7 +474,7 @@
             if (posA.length >= 1) { aristaNum.push(mkN(posA[0], 0)); if (posA.length > 1) aristaNum.push(mkN(posA[posA.length - 1], posA.length - 1)); }
           }
         }
-        return { x: x, y: y, w: w, h: 0, corte: true, guia: esGuia, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, ojNum: aristaNum, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, tapa: tapaDeCorte(c, a, b), fadePoly: fadePoly, fadeZona: fadeZona, fadeKill: !esGuia && !!c.fadeKill, fade: esGuia ? "" : (c.fade || ""), strapAncho: parseFloat(c.strapAncho) || 0, strapPrecioM: parseFloat(c.strapPrecioM) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
+        return { x: x, y: y, w: w, h: 0, corte: true, guia: esGuia, ejeVis: !!c.ejeVis, sides: {}, segments: [{ a: a, b: b }], ojetillos: aristaOje, ojNum: aristaNum, tijeras: null, hatch: [], pivote: { x: Px, y: Py }, rotated: rotated, angulo: parseFloat(c.angulo) || 0, tapa: tapaDeCorte(c, a, b), fadePoly: fadePoly, fadeZona: fadeZona, fadeKill: !esGuia && !!c.fadeKill, fade: esGuia ? "" : (c.fade || ""), strapAncho: parseFloat(c.strapAncho) || 0, strapPrecioM: parseFloat(c.strapPrecioM) || 0, strapLado: c.strapLado || "A", strapD: parseFloat(c.strapD) || 0, strapOffset: parseFloat(c.strapOffset) || 0, strapInset: parseFloat(c.strapInset) || 0, strapSupr: Array.isArray(c.strapSupr) ? c.strapSupr : [], strapNombre: c.strapNombre || "" };
       }
       // --- Corte circular: se recorta al paño base; lo que sale, desaparece. ---
       if (c.circ) {
@@ -1606,7 +1606,7 @@
             const cl = clipSeg(c.segments[0].a, c.segments[0].b, bx0, bx1, by0, by1);
             if (cl) {
               const pq = vol3(cl.a.x, cl.a.y), qq = vol3(cl.b.x, cl.b.y);
-              s += `<line class="arista-hit" data-corte="${i}"${c.guia ? ' data-guia="1"' : ""} data-ax="${cl.a.x}" data-ay="${cl.a.y}" data-bx="${cl.b.x}" data-by="${cl.b.y}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
+              s += `<line class="arista-hit" data-corte="${i}"${c.guia ? ' data-guia="1"' : ""}${c.ejeVis ? ' data-ejevis="1"' : ""} data-ax="${cl.a.x}" data-ay="${cl.a.y}" data-bx="${cl.b.x}" data-by="${cl.b.y}" x1="${f1(pq[0])}" y1="${f1(pq[1])}" x2="${f1(qq[0])}" y2="${f1(qq[1])}"/>`;
             }
           }
         });
@@ -1764,7 +1764,7 @@
         if (!c.corte || !c.segments || !c.segments[0]) return;
         const sg = c.segments[0];
         if (Math.hypot(sg.b.x - sg.a.x, sg.b.y - sg.a.y) < 1e-9) return;
-        hitV(pxT(sg.a.x), pyT(sg.a.y), pxT(sg.b.x), pyT(sg.b.y), 'data-corte="' + i + '"' + (c.guia ? ' data-guia="1"' : "") + ' data-ax="' + sg.a.x + '" data-ay="' + sg.a.y + '" data-bx="' + sg.b.x + '" data-by="' + sg.b.y + '"');
+        hitV(pxT(sg.a.x), pyT(sg.a.y), pxT(sg.b.x), pyT(sg.b.y), 'data-corte="' + i + '"' + (c.guia ? ' data-guia="1"' : "") + (c.ejeVis ? ' data-ejevis="1"' : "") + ' data-ax="' + sg.a.x + '" data-ay="' + sg.a.y + '" data-bx="' + sg.b.x + '" data-by="' + sg.b.y + '"');
       });
       // Bordes PROPIOS de cada ala en el desplegado: rim (externo) y laterales (la altura).
       const hitD = (aM, bM, extra) => {
@@ -2053,7 +2053,7 @@
         if (!c.corte || !c.segments || !c.segments[0]) return;
         const sg = c.segments[0];
         if (Math.hypot(sg.b.x - sg.a.x, sg.b.y - sg.a.y) < 1e-9) return;
-        hitLn(sg.a, sg.b, 'data-corte="' + i + '"' + (c.guia ? ' data-guia="1"' : "") + ' data-ax="' + sg.a.x + '" data-ay="' + sg.a.y + '" data-bx="' + sg.b.x + '" data-by="' + sg.b.y + '"');
+        hitLn(sg.a, sg.b, 'data-corte="' + i + '"' + (c.guia ? ' data-guia="1"' : "") + (c.ejeVis ? ' data-ejevis="1"' : "") + ' data-ax="' + sg.a.x + '" data-ay="' + sg.a.y + '" data-bx="' + sg.b.x + '" data-by="' + sg.b.y + '"');
       });
       // Aristas de la TAPA/SOLAPA de cada corte: también clicables (ojetillos de esa arista,
       // fusión, strap del corte) — heredan el comportamiento sin pasar por la ficha.

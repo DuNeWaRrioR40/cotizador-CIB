@@ -3899,7 +3899,7 @@
       const esGuia = c.tipo === "guia";            // guía = línea de construcción: NO secciona el paño
       const Ln = ev(c.largo); if (Ln == null || Ln <= 0) return null;
       const x = ev(c.padIzq), y = ev(c.padSup);
-      return { tipo: c.tipo, guia: esGuia, x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: Ln, h: 0, circ: false, ojCirc: 0, oj: { sup: 0, inf: 0, izq: 0, der: 0 }, lados: {}, angulo: ev(c.angulo) || 0, pivX: num01(c.pivX, 0), pivY: 0, fade: esGuia ? "" : (c.fade || ""), fadeKill: !esGuia && !!c.fadeKill, ojAristaLado: c.ojAristaLado || "", ojAristaD: ev(c.ojAristaD) || 0, ojAristaInset: ev(c.ojAristaInset) || 0, ojAristaSupr: parseSupr(c.ojAristaSupr), strapAncho: anchoCintaM((c.strapMatId != null && state.materiales[c.strapMatId]) || null), strapPrecioM: ((c.strapMatId != null && state.materiales[c.strapMatId] && state.materiales[c.strapMatId].precio) || 0), strapLado: c.strapLado || "A", strapD: ev(c.strapD) || 0, strapOffset: ev(c.strapOffset) || 0, strapInset: ev(c.strapInset) || 0, strapSupr: parseSupr(c.strapSupr), strapNombre: (c.strapNombre || "").trim(), tapa: tapaSpec(c) };
+      return { tipo: c.tipo, guia: esGuia, ejeVis: !!c.ejeVis, x: (x == null || isNaN(x)) ? 0 : x, y: (y == null || isNaN(y)) ? 0 : y, w: Ln, h: 0, circ: false, ojCirc: 0, oj: { sup: 0, inf: 0, izq: 0, der: 0 }, lados: {}, angulo: ev(c.angulo) || 0, pivX: num01(c.pivX, 0), pivY: 0, fade: esGuia ? "" : (c.fade || ""), fadeKill: !esGuia && !!c.fadeKill, ojAristaLado: c.ojAristaLado || "", ojAristaD: ev(c.ojAristaD) || 0, ojAristaInset: ev(c.ojAristaInset) || 0, ojAristaSupr: parseSupr(c.ojAristaSupr), strapAncho: anchoCintaM((c.strapMatId != null && state.materiales[c.strapMatId]) || null), strapPrecioM: ((c.strapMatId != null && state.materiales[c.strapMatId] && state.materiales[c.strapMatId].precio) || 0), strapLado: c.strapLado || "A", strapD: ev(c.strapD) || 0, strapOffset: ev(c.strapOffset) || 0, strapInset: ev(c.strapInset) || 0, strapSupr: parseSupr(c.strapSupr), strapNombre: (c.strapNombre || "").trim(), tapa: tapaSpec(c) };
     }
     const w = ev(c.ancho), h = ev(c.largo); if (w == null || h == null || w <= 0 || h <= 0) return null;
     const x = ev(c.padIzq), y = ev(c.padSup);
@@ -5639,9 +5639,18 @@
     // eje único ni abanico. Antes: la primera "ganaba" y el resto plegaba a la deriva (origami
     // deforme, en silencio). Ahora se avisa con la receta; se pliega solo con la primera.
     if (!fig && !fanF && ejeF) {
-      let ejesN = 0;
-      try { for (const c9 of visibles(V.cortes())) { if (c9 && c9.tipo === "guia" && c9.ejeVis) { const ln9 = lineaRawCorte(c9); if (ln9 && ln9.w > 0.3) ejesN++; } } } catch (_) {}
-      if (ejesN >= 2) alert("Este diseño tiene " + ejesN + " guías-EJE que NO pasan por un punto común.\n\nEl visor pliega con: UN eje libre, o VARIOS en ABANICO (todos cruzando un punto común, como una pirámide). Con esta topología solo se aplica el PRIMERO; los demás quedan sin plegar.\n\nPara un techo en A con tapas: deja como eje SOLO la cumbrera (el manto pliega en A) y modela las tapas como PIEZAS aparte unidas por conectores (🧩 Ensamble) — la confección digital imita a la real.");
+      const ejesL = [];
+      try {
+        const f9g = window.CalcCIBSA.fmtNum;
+        visibles(V.cortes()).forEach((c9, i9) => {
+          if (!c9 || c9.tipo !== "guia" || !c9.ejeVis) return;
+          const ln9 = lineaRawCorte(c9); if (!ln9 || !(ln9.w > 0.3)) return;
+          const a9 = (((parseFloat(c9.angulo) || 0) % 180) + 180) % 180;
+          const desc9 = (a9 < 45 || a9 > 135) ? ("horizontal en y=" + f9g(ln9.a.y)) : (a9 >= 45 && a9 <= 135 ? ("vertical en x=" + f9g(ln9.a.x)) : ("diagonal " + f9g(a9) + "°"));
+          ejesL.push("· Guía " + (i9 + 1) + (c9.legend ? " «" + c9.legend + "»" : "") + " — " + desc9 + (c9.ejeLado === "A" ? " (lado móvil INVERTIDO)" : ""));
+        });
+      } catch (_) {}
+      if (ejesL.length >= 2) alert("Este diseño tiene " + ejesL.length + " guías-EJE que NO pasan por un punto común:\n" + ejesL.join("\n") + "\n\nEl visor pliega con: UN eje libre, o VARIOS en ABANICO (todos cruzando un punto común, como una pirámide). Con esta topología solo se aplica el PRIMERO de la lista; los demás quedan sin plegar.\n\nPara DESACTIVAR un eje: clic en esa guía en el plano → \"Eje de pliegue del paño (3D) — activar/desactivar\".\n\nTecho en A: deja como eje SOLO la cumbrera (el manto pliega en A); las tapas caladas de la misma hoja viajan con su agua, o modélalas como PIEZAS con ensamble.");
     }
     if (!(A > 0) || !(L > 0)) return alert("Define las dimensiones para ver el 3D.");
     if (!(H > 0)) H = 0;   // modo PLANO: lámina + anexos plegables (y/o eje de pliegue)
@@ -8917,6 +8926,14 @@
           b.textContent = esAncla ? t + "  ⌨A" : (esGuia ? t + "  ⌨G" : t);
           if (esAncla) b.dataset.hotA = "1";
           if (esGuia) b.dataset.hotG = "1";
+          if (a === "guiaEje") {   // estado actual del eje, a la derecha (On verde / Off tenue)
+            const on9 = ln.getAttribute("data-ejevis") != null;
+            b.textContent = "";
+            const sp9 = document.createElement("span"); sp9.textContent = t;
+            const st9 = document.createElement("span"); st9.className = "menu-atajo menu-eje-st" + (on9 ? " on" : ""); st9.textContent = on9 ? "On" : "Off";
+            b.appendChild(sp9); b.appendChild(st9);
+            b.style.display = "flex"; b.style.justifyContent = "space-between"; b.style.alignItems = "center"; b.style.gap = "10px"; b.style.textAlign = "left";
+          }
           b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "anexoCal") acciones.anexoCal(parseInt(idxAnexo, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anexoLibre") acciones[a](seg, pm, ln.getAttribute("data-arista") || null); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
           menu.appendChild(b);
         });

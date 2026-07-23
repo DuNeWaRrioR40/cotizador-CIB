@@ -1003,3 +1003,7 @@ body.drawer-abierto { overflow: hidden; }
 
 /* v17-37: atajos de teclado en los menús del plano — letra chica alineada a la derecha */
 .arista-menu-it .menu-atajo { opacity: 0.5; font-size: 0.82em; font-family: ui-monospace, SFMono-Regular, monospace; }
+
+/* v17-47: estado On/Off del eje en el menú de la guía */
+.arista-menu-it .menu-eje-st { opacity: 0.45; }
+.arista-menu-it .menu-eje-st.on { opacity: 1; color: #15803d; font-weight: 700; }
