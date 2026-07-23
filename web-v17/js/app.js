@@ -5989,7 +5989,9 @@
       plieguesUI.push({ nombre: ejeF.nombre, set: setE, v0: 0, espejo: (on) => { ejeEspejo = !!on; setE(ejeUltimo); },
         alasFijas: { val: () => !!(ejeF.c && ejeF.c.ejeAlasFijas), set: (on) => { if (ejeF.c) ejeF.c.ejeAlasFijas = !!on; cerrarVol3D(); setTimeout(() => { abrirVol3D(fig, pz); }, 30); } },
         ladoInv: { val: () => !!(ejeF.c && ejeF.c.ejeLado === "A"), set: (on) => { if (ejeF.c) ejeF.c.ejeLado = on ? "A" : ""; cerrarVol3D(); setTimeout(() => { abrirVol3D(fig, pz); }, 30); } } });
-      ejeCtl = { inner: innerE, outerE: outerE, bis: innerB };
+      // reaplicar: el panel restaura el ángulo/espejo ANTES de que exista el pivote → la
+      // contra-rotación −θ/2 del lado fijo se perdía y el diseño abría ASIMÉTRICO (un lado plano).
+      ejeCtl = { inner: innerE, outerE: outerE, bis: innerB, reaplicar: () => setE(ejeUltimo) };
     }
     if (!fig) {
       if (fanF) {
@@ -6551,6 +6553,7 @@
         const pivI = new T.Group(); pivO.add(pivI); grp.add(pivO);
         Array.prototype.slice.call(grp.children).forEach((ch) => { if (ch !== pivO && !ch._ejeFijo) pivI.attach(ch); });
         ejeCtl.piv = pivI;
+        if (ejeCtl.reaplicar) ejeCtl.reaplicar();   // el estado restaurado (ángulo+espejo) toma el pivote recién nacido
       } catch (e) {}
     }
     // Órbita propia (sin dependencias): arrastre rota, rueda/pellizco acerca. Autogira hasta el 1er toque.
