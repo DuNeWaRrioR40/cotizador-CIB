@@ -9900,6 +9900,175 @@
       ba.textContent = _figEditOn ? "✔ Listo (fijar imagen)" : "✥ Ajustar imagen";
     }
   }
+  // ---------- F7.2: DXF BÁSICO → calcomanía (interpretación MERAMENTE GRÁFICA) ----------
+  // Subconjunto auditado contra DXF reales de clientes: LINE, ARC, CIRCLE, POLYLINE+VERTEX y
+  // SPLINE (grados 2/3, muestreo De Boor). Unidades por $INSUNITS (mm/cm/m/pulg) → METROS:
+  // la figura aterriza en el paño A TAMAÑO REAL si cabe. Lo no soportado se OMITE y se avisa.
+  function parseDXFBasico(text) {
+    const lineas = String(text).split(/\r?\n/);
+    const pares = [];
+    for (let i2 = 0; i2 + 1 < lineas.length; i2 += 2) pares.push([lineas[i2].trim(), lineas[i2 + 1].trim()]);
+    let unidades = null, sec = null;
+    const tramos = [], omitidas = {};
+    const numD = (v) => { const r = parseFloat(v); return isNaN(r) ? 0 : r; };
+    let i = 0;
+    while (i < pares.length) {
+      const c = pares[i][0], v = pares[i][1];
+      if (c === "0" && v === "SECTION" && pares[i + 1] && pares[i + 1][0] === "2") { sec = pares[i + 1][1]; i += 2; continue; }
+      if (c === "0" && v === "ENDSEC") { sec = null; i++; continue; }
+      if (sec === "HEADER" && c === "9" && v === "$INSUNITS" && pares[i + 1]) { unidades = pares[i + 1][1]; i += 2; continue; }
+      if (sec !== "ENTITIES" || c !== "0") { i++; continue; }
+      const tipo = v; i++;
+      const pr = { xs: [], ys: [], knots: [] };
+      while (i < pares.length && pares[i][0] !== "0") {
+        const cc = pares[i][0], vv = pares[i][1];
+        if (cc === "10") pr.xs.push(numD(vv));
+        else if (cc === "20") pr.ys.push(numD(vv));
+        else if (cc === "11") pr.x1 = numD(vv);
+        else if (cc === "21") pr.y1 = numD(vv);
+        else if (cc === "40") { pr.knots.push(numD(vv)); if (pr.r == null) pr.r = numD(vv); }
+        else if (cc === "50") pr.a0 = numD(vv);
+        else if (cc === "51") pr.a1 = numD(vv);
+        else if (cc === "70") pr.flags = parseInt(vv, 10) || 0;
+        else if (cc === "71") pr.grado = parseInt(vv, 10) || 3;
+        else if (cc === "8") pr.capa = vv;
+        i++;
+      }
+      const pushT = (pts) => { pts.capa = pr.capa || ""; tramos.push(pts); };
+      if (tipo === "LINE") {
+        pushT([{ x: pr.xs[0] || 0, y: pr.ys[0] || 0 }, { x: pr.x1 || 0, y: pr.y1 || 0 }]);
+      } else if (tipo === "ARC" || tipo === "CIRCLE") {
+        const cx = pr.xs[0] || 0, cy = pr.ys[0] || 0, r = pr.r || 0;
+        let a0 = (tipo === "CIRCLE") ? 0 : (pr.a0 || 0) * Math.PI / 180;
+        let a1 = (tipo === "CIRCLE") ? 2 * Math.PI : (pr.a1 || 0) * Math.PI / 180;
+        if (a1 <= a0) a1 += 2 * Math.PI;
+        const N = Math.max(8, Math.ceil((a1 - a0) / (Math.PI / 24)));
+        const pts = []; for (let k = 0; k <= N; k++) { const a = a0 + (a1 - a0) * k / N; pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }); }
+        if (r > 1e-12) pushT(pts);
+      } else if (tipo === "POLYLINE") {
+        const pts = [];
+        while (i < pares.length) {
+          if (pares[i][0] === "0" && pares[i][1] === "VERTEX") {
+            i++; let vx = null, vy = null;
+            while (i < pares.length && pares[i][0] !== "0") { if (pares[i][0] === "10") vx = numD(pares[i][1]); if (pares[i][0] === "20") vy = numD(pares[i][1]); i++; }
+            if (vx != null && vy != null) pts.push({ x: vx, y: vy });
+          } else if (pares[i][0] === "0" && pares[i][1] === "SEQEND") {
+            i++; while (i < pares.length && pares[i][0] !== "0") i++;
+            break;
+          } else break;
+        }
+        if (((pr.flags || 0) & 1) && pts.length > 2) pts.push({ x: pts[0].x, y: pts[0].y });
+        if (pts.length >= 2) pushT(pts);
+      } else if (tipo === "LWPOLYLINE") {
+        const pts = pr.xs.map((x2, k) => ({ x: x2, y: pr.ys[k] != null ? pr.ys[k] : 0 }));
+        if (((pr.flags || 0) & 1) && pts.length > 2) pts.push({ x: pts[0].x, y: pts[0].y });
+        if (pts.length >= 2) pushT(pts);
+      } else if (tipo === "SPLINE") {
+        const ctrl = pr.xs.map((x2, k) => ({ x: x2, y: pr.ys[k] != null ? pr.ys[k] : 0 }));
+        const pts = muestrearSpline(ctrl, pr.grado || 3, pr.knots);
+        if (pts.length >= 2) pushT(pts);
+      } else if (tipo === "POINT" || tipo === "VERTEX" || tipo === "SEQEND") { /* sin dibujo */ }
+      else omitidas[tipo] = (omitidas[tipo] || 0) + 1;
+    }
+    return { tramos: tramos, unidades: unidades, omitidas: omitidas };
+  }
+  // B-spline (De Boor) muestreada a polilínea; sin knots válidos usa uniforme clamped.
+  function muestrearSpline(ctrl, grado, knots) {
+    if (!ctrl || ctrl.length < 2) return [];
+    grado = Math.max(1, Math.min(grado || 3, ctrl.length - 1));
+    if (!knots || knots.length < ctrl.length + grado + 1) {
+      knots = []; const nC = ctrl.length;
+      for (let k = 0; k <= grado; k++) knots.push(0);
+      for (let k = 1; k < nC - grado; k++) knots.push(k);
+      for (let k = 0; k <= grado; k++) knots.push(nC - grado);
+    }
+    const t0 = knots[grado], t1 = knots[knots.length - 1 - grado];
+    if (!(t1 > t0)) return ctrl.slice();
+    const NS = 72, out = [];
+    const evalT = (t) => {
+      let s = knots.length - grado - 2;
+      for (let k = grado; k < knots.length - grado - 1; k++) { if (t >= knots[k] && t <= knots[k + 1] + 1e-12) { s = k; break; } }
+      const d = [];
+      for (let j = 0; j <= grado; j++) { const pc = ctrl[Math.min(ctrl.length - 1, Math.max(0, j + s - grado))]; d.push({ x: pc.x, y: pc.y }); }
+      for (let r2 = 1; r2 <= grado; r2++) {
+        for (let j = grado; j >= r2; j--) {
+          const iK = j + s - grado;
+          const den = knots[iK + grado + 1 - r2] - knots[iK];
+          const al = den > 1e-12 ? (t - knots[iK]) / den : 0;
+          d[j] = { x: (1 - al) * d[j - 1].x + al * d[j].x, y: (1 - al) * d[j - 1].y + al * d[j].y };
+        }
+      }
+      return d[grado];
+    };
+    for (let k = 0; k <= NS; k++) out.push(evalT(t0 + (t1 - t0) * k / NS));
+    return out;
+  }
+  function importarFigDXF(file) {
+    const rd = new FileReader();
+    rd.onload = () => {
+      let res;
+      try { res = parseDXFBasico(rd.result); } catch (e) { return alert("No se pudo interpretar el DXF: " + (e.message || e)); }
+      if (!res.tramos.length) return alert("El DXF no trae geometría soportada (LINE / ARC / CIRCLE / POLYLINE / SPLINE).");
+      let x0 = 1e20, y0 = 1e20, x1 = -1e20, y1 = -1e20, perimU = 0;
+      res.tramos.forEach((tr) => { let pv = null; tr.forEach((p) => {
+        if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x; if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y;
+        if (pv) perimU += Math.hypot(p.x - pv.x, p.y - pv.y); pv = p;
+      }); });
+      const wU = x1 - x0, hU = y1 - y0;
+      if (!(wU > 1e-9) || !(hU > 1e-9)) return alert("La geometría del DXF es degenerada (sin área).");
+      // $INSUNITS → metros; sin unidad: heurística (figuras > 100 unidades ≈ mm)
+      const F = { "1": 0.0254, "2": 0.3048, "4": 0.001, "5": 0.01, "6": 1 }[res.unidades] || (Math.max(wU, hU) > 100 ? 0.001 : 1);
+      const wM = wU * F, hM = hU * F;
+      const K = Math.min(1600 / wU, 1600 / hU), PAD = 6;
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(2, Math.round(wU * K) + PAD * 2); cv.height = Math.max(2, Math.round(hU * K) + PAD * 2);
+      const g2 = cv.getContext("2d");
+      g2.fillStyle = "#ffffff"; g2.fillRect(0, 0, cv.width, cv.height);
+      const wBase = Math.max(1.5, Math.min(3, cv.width / 600));
+      g2.lineJoin = "round"; g2.lineCap = "round";
+      // NORMA DXF CIBSA — capas con semántica: CORTE/CALADO sólido negro · DOBLEZ/PLIEGUE/EJE
+      // punteado · REF atenuada gris. Cualquier otra capa: sólido negro (retrocompatible).
+      const estiloCapa = (capa) => {
+        const c9 = String(capa || "").toUpperCase();
+        if (c9.indexOf("REF") === 0) return { st: "#a2a9b3", w: wBase * 0.55, dash: [] };
+        if (c9.indexOf("DOBLEZ") === 0 || c9.indexOf("PLIEGUE") === 0 || c9.indexOf("EJE") === 0 || c9.indexOf("BEND") === 0) return { st: "#111111", w: wBase * 0.8, dash: [wBase * 5, wBase * 4] };   // BEND: flat patterns de sheet metal
+        return { st: "#111111", w: wBase, dash: [] };
+      };
+      res.tramos.forEach((tr) => {
+        const es = estiloCapa(tr.capa);
+        g2.strokeStyle = es.st; g2.lineWidth = es.w; g2.setLineDash(es.dash);
+        g2.beginPath();
+        tr.forEach((p, k) => { const X2 = PAD + (p.x - x0) * K, Y2 = PAD + (y1 - p.y) * K; if (k) g2.lineTo(X2, Y2); else g2.moveTo(X2, Y2); });
+        g2.stroke();
+      });
+      g2.setLineDash([]);
+      // CUBICAR desde el DXF: si el paño no calza con la figura, ofrecer usar SUS medidas como
+      // paño base — la tela real se corta desde ese rectángulo, así que la valorización de
+      // siempre (rect + factor) pasa a ser la del material REAL. El perímetro se informa aparte.
+      const f9c = window.CalcCIBSA.fmtNum;
+      let A9 = num("f_ancho", 0), L9 = num("f_largo", 0);
+      const difiere = !(A9 > 0 && L9 > 0) || Math.abs(A9 - wM) / wM > 0.01 || Math.abs(L9 - hM) / hM > 0.01;
+      if (difiere && confirm("El DXF mide " + f9c(rd3(wM)) + " × " + f9c(rd3(hM)) + " m (ancho × largo).\n\n¿Usar estas medidas como PAÑO BASE? Así la cotización cubica y valoriza la TELA REAL de esta figura (el material se corta desde ese rectángulo).")) {
+        if ($("f_ancho")) $("f_ancho").value = f9c(rd3(wM));
+        if ($("f_largo")) $("f_largo").value = f9c(rd3(hM));
+        A9 = wM; L9 = hM;
+      }
+      let fx = 0, fy = 0, fw = wM, fh = hM;
+      if (A9 > 0 && L9 > 0) {
+        if (wM <= A9 + 1e-9 && hM <= L9 + 1e-9) { fx = (A9 - wM) / 2; fy = (L9 - hM) / 2; }
+        else { const rI = wM / hM, rP = A9 / L9; if (rI > rP) { fw = A9; fh = A9 / rI; fx = 0; fy = (L9 - fh) / 2; } else { fh = L9; fw = L9 * rI; fy = 0; fx = (A9 - fw) / 2; } }
+      }
+      state.figImgUnif = { url: cv.toDataURL("image/png"), x: rd3(fx), y: rd3(fy), w: rd3(fw), h: rd3(fh) };
+      _figBaked = null; _figEditOn = true;
+      sincBtnFigImg(); recompute();
+      const f9 = window.CalcCIBSA.fmtNum, om = Object.keys(res.omitidas);
+      const perimM = perimU * F, perimRect = 2 * (wM + hM);
+      alert("DXF interpretado: " + res.tramos.length + " trazos · figura de " + f9(rd3(wM)) + " × " + f9(rd3(hM)) + " m" + ((fw === wM && fh === hM) ? " (inscrita a TAMAÑO REAL)" : " (más grande que el paño: encajada — ajústala con ✥)") +
+        "\n\nTrazo total dibujado: " + f9(rd3(perimM)) + " m (rectángulo equivalente: " + f9(rd3(perimRect)) + " m).\nDato REAL para valorar corte/costura/orillado de la terminación — ajusta el factor o los bordes a conciencia." +
+        (om.length ? "\n\nOmitido (no soportado): " + om.map((k2) => k2 + " ×" + res.omitidas[k2]).join(", ") : ""));
+    };
+    rd.readAsText(file);
+  }
   // "Hornea" la calcomanía ya deformada/recortada al rect del paño (PNG con alpha) para el PDF.
   function bakeFigImg(cb) {
     const fi = state.figImgUnif;
@@ -9974,7 +10143,10 @@
         if (state.figImgUnif) { state.figImgUnif = null; sincBtnFigImg(); recompute(); return; }
         fi.value = ""; fi.click();
       });
-      fi.addEventListener("change", () => importarFigImg(fi.files && fi.files[0]));
+      fi.addEventListener("change", () => {
+        const f0 = fi.files && fi.files[0]; if (!f0) return;
+        if (/\.dxf$/i.test(f0.name || "")) importarFigDXF(f0); else importarFigImg(f0);
+      });
       const ba = $("btnFigAdj");
       if (ba) ba.addEventListener("click", () => { _figEditOn = !_figEditOn; sincBtnFigImg(); recompute(); });
       sincBtnFigImg();
