@@ -301,11 +301,12 @@ button:active { transform: scale(0.97); }
 .sketch-svg .ancla-halo { fill: rgba(0, 0, 0, 0.001); stroke: none; }
 .sketch-svg .ancla-dot { fill: var(--brand, #ffdf26); stroke: #16171a; stroke-width: 1.2; }
 .sketch-svg .ancla-dot-in { fill: #16171a; }
-.sketch-svg .ancla-corte .ancla-dot { fill: #fff; stroke: #e8590c; }
-.sketch-svg .ancla-corte .ancla-dot-in { fill: #e8590c; }
-.sketch-svg .ancla-emp .ancla-dot { fill: #e8590c; stroke: #16171a; }
+.sketch-svg .ancla-corte .ancla-dot { fill: #fff; stroke: #ff6b35; stroke-width: 1.6; }
+.sketch-svg .ancla-corte .ancla-dot-in { fill: #ff6b35; }
+.sketch-svg .ancla-emp .ancla-dot { fill: #ff6b35; stroke: #fff; stroke-width: 1.6; }
+.sketch-svg .ancla-emp .ancla-dot-in { fill: #fff; }
 .sketch-svg .ancla.snap .ancla-dot { stroke-width: 2.4; }
-.sketch-svg .ancla-sel .ancla-dot { stroke-width: 2.6; fill: #e8590c; }
+.sketch-svg .ancla-sel .ancla-dot { stroke-width: 2.6; fill: #ff6b35; }
 .sketch-svg .ancla-fija { cursor: default; }
 .sketch-svg .ancla-fija .ancla-dot { fill: #16171a; stroke: #ffdf26; stroke-width: 1.6; }
 .sketch-svg .ancla-fija .ancla-dot-in { fill: #ffdf26; }
@@ -1036,3 +1037,4 @@ body.drawer-abierto { overflow: hidden; }
 .sketch-svg .ancla-ref .ancla-dot, .sketch-svg .ancla-ref circle:not(.ancla-halo) { fill: #fff; stroke: #8a94a0; }
 .sketch-svg .ancla-ref .ancla-halo { fill: rgba(138, 148, 160, 0.10); }
 .sketch-svg .ancla-ref text { fill: #8a94a0; }
+.sketch-svg .med-centro-dot.iman { stroke: #f59e0b; stroke-width: 3; }

@@ -8445,6 +8445,18 @@
       container.querySelectorAll(".med-centro-bar").forEach((e9) => e9.remove());
       svg.querySelectorAll(".med-centro-g").forEach((e9) => e9.remove());
       let c9 = rd3((tLo + tHi) / 2);
+      // v17-78: IMÁN — el punto verde Y los extremos del tramo se acoplan a los demás anchors/
+      // referencias de la arista al pasar cerca (sin obligar: fuera del radio, arrastre libre).
+      // Cada anchor aporta 3 acoples: centro-sobre-él, extremo-izq-sobre-él, extremo-der-sobre-él.
+      const candC9 = [];
+      (ctx.anclas || []).forEach((a9) => {
+        if (a9.seg || a9.ar !== anA.ar || a9 === anLo || a9 === anHi) return;
+        const d9 = Math.max(0, Math.min(len, parseFloat(a9.d) || 0));
+        const tc9 = (a9.esq === "fin") ? len - d9 : d9;
+        [tc9, tc9 - M / 2, tc9 + M / 2].forEach((cc9) => { if (cc9 >= cLim1 - 1e-9 && cc9 <= cLim2 + 1e-9) candC9.push(Math.max(cLim1, Math.min(cLim2, cc9))); });
+      });
+      const UM9 = 10 / mscale;   // radio del imán ≈ 10 px del plano
+      let imantado9 = false;
       const NS9 = "http://www.w3.org/2000/svg";
       const gM = document.createElementNS(NS9, "g"); gM.setAttribute("class", "med-centro-g"); svg.appendChild(gM);
       const mkE9 = (tag, cls) => { const e9 = document.createElementNS(NS9, tag); e9.setAttribute("class", cls); gM.appendChild(e9); return e9; };
@@ -8482,7 +8494,8 @@
         const p9 = pxOf9(c9), pA9 = pxOf9(c9 - M / 2), pB9 = pxOf9(c9 + M / 2);
         [halo9, dot9].forEach((e9) => { e9.setAttribute("cx", p9.X); e9.setAttribute("cy", p9.Y); });
         seg9.setAttribute("x1", pA9.X); seg9.setAttribute("y1", pA9.Y); seg9.setAttribute("x2", pB9.X); seg9.setAttribute("y2", pB9.Y);
-        lbl9.textContent = "centro a " + f(rd3(c9)) + " m · tramo " + f(rd3(c9 - M / 2)) + "–" + f(rd3(c9 + M / 2)) + " m";
+        lbl9.textContent = (imantado9 ? "⌁ " : "") + "centro a " + f(rd3(c9)) + " m · tramo " + f(rd3(c9 - M / 2)) + "–" + f(rd3(c9 + M / 2)) + " m";
+        dot9.setAttribute("class", "med-centro-dot" + (imantado9 ? " iman" : ""));
         lbl9.setAttribute("x", horiz9 ? p9.X : p9.X + 16); lbl9.setAttribute("y", horiz9 ? p9.Y - 16 : p9.Y + 4);
         lbl9.setAttribute("text-anchor", horiz9 ? "middle" : "start");
         prevs9.forEach((pv9, i9) => {
@@ -8511,7 +8524,11 @@
         if (!dragC9) return;
         const pm9 = toModel(ev9.clientX, ev9.clientY); if (!pm9) return;
         const t9 = (pm9.x - segE.a.x) * u.x + (pm9.y - segE.a.y) * u.y;
-        c9 = rd3(Math.max(cLim1, Math.min(cLim2, t9)));
+        const t9c = Math.max(cLim1, Math.min(cLim2, t9));
+        let cBest9 = null, dBest9 = UM9;
+        candC9.forEach((cc9) => { const d9 = Math.abs(t9c - cc9); if (d9 < dBest9) { dBest9 = d9; cBest9 = cc9; } });
+        imantado9 = cBest9 != null;
+        c9 = rd3(imantado9 ? cBest9 : t9c);
         pinta9();
       };
       const onUp9 = () => { if (dragC9) { dragC9 = false; pinta9(); } };

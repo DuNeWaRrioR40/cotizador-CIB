@@ -1813,8 +1813,8 @@
         const conC = an.con ? (an.con === 1 ? "#e67e22" : (an.con === 2 ? "#0284c7" : "#9333ea")) : null;   // F5: conector de ensamble (C1 naranja / C2 celeste)
         s += `<g class="ancla${an.tipo === "corte" ? " ancla-corte" : ""}${an.emp ? " ancla-emp" : ""}${an.fix ? " ancla-fija" : ""}${an.con ? " ancla-con" : ""}${an.ref ? " ancla-ref" : ""}" data-ancla="${esc(String(an.id))}" data-x="${f1(ax)}" data-y="${f1(ay)}">`;
         s += `<circle class="ancla-halo" cx="${f1(ax)}" cy="${f1(ay)}" r="11"/>`;
-        s += `<circle class="ancla-dot" cx="${f1(ax)}" cy="${f1(ay)}" r="${conC ? 5 : 4}"${conC ? ` style="fill:${conC};stroke:${conC}"` : ""}/>`;
-        s += `<circle class="ancla-dot-in" cx="${f1(ax)}" cy="${f1(ay)}" r="1.5"${conC ? ` style="fill:#fff"` : ""}/>`;
+        s += `<circle class="ancla-dot" cx="${f1(ax)}" cy="${f1(ay)}" r="${conC ? 4.5 : 3.2}"${conC ? ` style="fill:${conC};stroke:${conC}"` : ""}/>`;
+        s += `<circle class="ancla-dot-in" cx="${f1(ax)}" cy="${f1(ay)}" r="1.1"${conC ? ` style="fill:#fff"` : ""}/>`;
         s += `<text class="ancla-lbl" x="${f1(ax + tx)}" y="${f1(ay - 6)}" text-anchor="${tanc}"${conC ? ` style="fill:${conC};font-weight:700"` : ""}>${esc(an.lbl || "")}</text>`;
         s += `</g>`;
       });
@@ -2112,8 +2112,8 @@
         const conC = an.con ? (an.con === 1 ? "#e67e22" : (an.con === 2 ? "#0284c7" : "#9333ea")) : null;   // F5: conector de ensamble (C1 naranja / C2 celeste)
         s += `<g class="ancla${an.tipo === "corte" ? " ancla-corte" : ""}${an.emp ? " ancla-emp" : ""}${an.fix ? " ancla-fija" : ""}${an.con ? " ancla-con" : ""}${an.ref ? " ancla-ref" : ""}" data-ancla="${esc(String(an.id))}" data-x="${f1(ax)}" data-y="${f1(ay)}">`;
         s += `<circle class="ancla-halo" cx="${f1(ax)}" cy="${f1(ay)}" r="11"/>`;
-        s += `<circle class="ancla-dot" cx="${f1(ax)}" cy="${f1(ay)}" r="${conC ? 5 : 4}"${conC ? ` style="fill:${conC};stroke:${conC}"` : ""}/>`;
-        s += `<circle class="ancla-dot-in" cx="${f1(ax)}" cy="${f1(ay)}" r="1.5"${conC ? ` style="fill:#fff"` : ""}/>`;
+        s += `<circle class="ancla-dot" cx="${f1(ax)}" cy="${f1(ay)}" r="${conC ? 4.5 : 3.2}"${conC ? ` style="fill:${conC};stroke:${conC}"` : ""}/>`;
+        s += `<circle class="ancla-dot-in" cx="${f1(ax)}" cy="${f1(ay)}" r="1.1"${conC ? ` style="fill:#fff"` : ""}/>`;
         s += `<text class="ancla-lbl" x="${f1(ax + tx)}" y="${f1(ay - 6)}" text-anchor="${tanc}"${conC ? ` style="fill:${conC};font-weight:700"` : ""}>${esc(an.lbl || "")}</text>`;
         s += `</g>`;
       });
