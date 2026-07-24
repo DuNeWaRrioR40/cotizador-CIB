@@ -6548,8 +6548,13 @@
           } else {
             P0 = W3(h0.x, h0.y); P1 = W3(h1.x, h1.y);
             ux = new T.Vector3().subVectors(P1, P0).normalize();
-            uz = new T.Vector3(dirC.x, 0, dirC.y);
-            uy = new T.Vector3().crossVectors(uz, ux);
+            // v17-91 BUG: en paño PLANO se ignoraba "Áng. ensamble 3D" — ahora manda igual que en
+            // paredes: 0° = estirado en el plano (auto) · 90° = colgando perpendicular · negativos = arriba.
+            const evA8 = window.CalcCIBSA.evalExpr;
+            let angA8 = evA8(a.ens3dAng); if (angA8 == null || isNaN(angA8)) angA8 = 0;
+            const thA8 = angA8 * Math.PI / 180;
+            uz = new T.Vector3(dirC.x, 0, dirC.y).multiplyScalar(Math.cos(thA8)).add(new T.Vector3(0, -1, 0).multiplyScalar(Math.sin(thA8))).normalize();
+            uy = new T.Vector3().crossVectors(uz, ux).normalize();
           }
           const outer = new T.Group(); outer.position.copy(P0);
           outer.setRotationFromMatrix(new T.Matrix4().makeBasis(ux, uy, uz));
@@ -6568,31 +6573,56 @@
             inner.add(mesh);
             const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde);
             ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); inner.add(ed);
-            // v17-90: el PATRÓN de la cenefa se compone sobre la TELA (el PNG transparente ya no
-            // llega como caja opaca): tela → mosaico (banda del dobladillo limpia) → textura.
+            // v17-91: el patrón es un CORTE — la tela del anexo llega hasta la línea del patrón
+            // (+ dobladillo) y más allá hay VACÍO real (alphaTest). Escaneo por columna: profundidad
+            // del último trazo; columnas sin trazo heredan del vecino.
             if (a.figImg && a.figImg.url) {
               const imF = new Image();
               imF.onload = () => {
                 try {
                   const KK9 = Math.min(2048 / len, 1024 / caida);
-                  const cvF = document.createElement("canvas");
-                  cvF.width = Math.max(2, Math.round(len * KK9)); cvF.height = Math.max(2, Math.round(caida * KK9));
-                  const gF = cvF.getContext("2d");
-                  gF.fillStyle = "#d9d2c2"; gF.fillRect(0, 0, cvF.width, cvF.height);
+                  const wPx9 = Math.max(2, Math.round(len * KK9)), hPx9 = Math.max(2, Math.round(caida * KK9));
                   const fiF = a.figImg, evF9 = window.CalcCIBSA.evalExpr;
-                  gF.save(); gF.translate(0, cvF.height); gF.scale(1, -1);   // V del plano: fila 0 = borde libre
+                  // 1) trazos en ESPACIO-FUSIÓN (fila 0 = fusión) sobre canvas transparente
+                  const cvS = document.createElement("canvas"); cvS.width = wPx9; cvS.height = hPx9;
+                  const gS = cvS.getContext("2d");
+                  let gPx9 = 0;
                   if (fiF.tile && fiF.w > 0 && fiF.h > 0) {
                     const bv9 = evF9(fiF.bordeLibre);
                     const bor9 = (bv9 != null && !isNaN(bv9) && bv9 >= 0) ? bv9 : 0.045;
-                    const gPx9 = Math.max(0, Math.min(cvF.height * 0.9, bor9 * KK9));
-                    const hEf9 = cvF.height - gPx9;
+                    gPx9 = Math.max(0, Math.min(hPx9 * 0.9, bor9 * KK9));
+                    const hEf9 = hPx9 - gPx9;
                     const tw9 = hEf9 * (fiF.w / fiF.h);
-                    for (let x9 = 0; x9 < cvF.width; x9 += tw9) gF.drawImage(imF, x9, 0, tw9, hEf9);
+                    for (let x9 = 0; x9 < wPx9; x9 += tw9) gS.drawImage(imF, x9, 0, tw9, hEf9);
                   } else {
-                    gF.drawImage(imF, 0, 0, cvF.width, cvF.height);
+                    gS.drawImage(imF, 0, 0, wPx9, hPx9);
                   }
-                  gF.restore();
-                  mesh.material = new T.MeshLambertMaterial({ map: new T.CanvasTexture(cvF), transparent: true, opacity: 0.97, side: T.DoubleSide });
+                  // 2) profundidad del corte por columna
+                  const dat9 = gS.getImageData(0, 0, wPx9, hPx9).data;
+                  const prof9 = new Array(wPx9).fill(-1);
+                  for (let x9 = 0; x9 < wPx9; x9++) {
+                    for (let y9 = hPx9 - 1; y9 >= 0; y9--) {
+                      if (dat9[(y9 * wPx9 + x9) * 4 + 3] > 12) { prof9[x9] = y9; break; }
+                    }
+                  }
+                  let ult9 = -1;
+                  for (let x9 = 0; x9 < wPx9; x9++) { if (prof9[x9] !== -1) ult9 = prof9[x9]; else if (ult9 !== -1) prof9[x9] = ult9; }
+                  ult9 = -1;
+                  for (let x9 = wPx9 - 1; x9 >= 0; x9--) { if (prof9[x9] !== -1) ult9 = prof9[x9]; else if (ult9 !== -1) prof9[x9] = ult9; }
+                  // 3) tela hasta el corte (+ dobladillo) y trazos encima; sin trazo alguno = tela completa
+                  const cvC = document.createElement("canvas"); cvC.width = wPx9; cvC.height = hPx9;
+                  const gC = cvC.getContext("2d");
+                  gC.fillStyle = "#d9d2c2";
+                  for (let x9 = 0; x9 < wPx9; x9++) {
+                    const pf9 = (prof9[x9] === -1) ? hPx9 : Math.min(hPx9, prof9[x9] + Math.max(1, gPx9));
+                    gC.fillRect(x9, 0, 1, pf9);
+                  }
+                  gC.drawImage(cvS, 0, 0);
+                  // 4) volcado con flip (V del plano: fila 0 = borde libre)
+                  const cvF = document.createElement("canvas"); cvF.width = wPx9; cvF.height = hPx9;
+                  const gF = cvF.getContext("2d");
+                  gF.translate(0, hPx9); gF.scale(1, -1); gF.drawImage(cvC, 0, 0);
+                  mesh.material = new T.MeshLambertMaterial({ map: new T.CanvasTexture(cvF), transparent: true, alphaTest: 0.4, side: T.DoubleSide });
                   mesh.material.needsUpdate = true;
                 } catch (_) {}
               };

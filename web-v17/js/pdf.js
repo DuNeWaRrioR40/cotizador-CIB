@@ -1522,14 +1522,14 @@
       skTop = ys; skBottom = 52;
     }
     let figEmb = null;
-    if (datos.figImgPano) { try { figEmb = await doc.embedPng(b64ToBytes(String(datos.figImgPano).split(",")[1] || "")); } catch (e) { figEmb = null; } }
+    if (datos.figImgPano) { try { figEmb = await doc.embedPng(b64ToBytes(String(datos.figImgPano))); } catch (e) { figEmb = null; } }
     // v17-63: imágenes de aletas (dataURL en el spec) → embebidas por id de aleta.
     const aleEmb = {};
     for (const a9 of ((datos.sketch && datos.sketch.aletas) || [])) {
       if (!a9 || !a9.figImg || a9.id == null) continue;
       try {
-        const u9 = String(a9.figImg), b9 = u9.split(",")[1] || "";
-        aleEmb[a9.id] = (u9.indexOf("image/jpeg") >= 0 || u9.indexOf("image/jpg") >= 0) ? await doc.embedJpg(b64ToBytes(b9)) : await doc.embedPng(b64ToBytes(b9));
+        const u9 = String(a9.figImg);
+        aleEmb[a9.id] = (u9.indexOf("image/jpeg") >= 0 || u9.indexOf("image/jpg") >= 0) ? await doc.embedJpg(b64ToBytes(u9)) : await doc.embedPng(b64ToBytes(u9));
       } catch (e) {}
     }
     dibujarSketchPDF(pgSk, datos.sketch, { x: M, top: skTop, w: W - 2 * M, h: skTop - skBottom }, font, { cotas: !limpio, figImgEmb: figEmb, figImgMarco: !!datos.figImgMarco, aletaImgsEmb: aleEmb });
@@ -1552,7 +1552,7 @@
     // v17-84/86: PRODUCTO 3D DEL CLIENTE (STL/OBJ) — una página por captura de la galería.
     for (const cap9 of (Array.isArray(datos.mod3D) ? datos.mod3D : (datos.mod3D ? [datos.mod3D] : []))) {
       try {
-        const imgM = await doc.embedPng(b64ToBytes(String(cap9).split(",")[1] || ""));
+        const imgM = await doc.embedPng(b64ToBytes(String(cap9)));
         const pM = doc.addPage([W, H]);
         let yM = dibujarEncabezado(pM, cibsa, null, W, M, H - 40);
         tituloCentrado(pM, "PRODUCTO 3D DEL CLIENTE", W, yM, bold, 15, BLUE()); yM -= 15;
@@ -1566,7 +1566,9 @@
     // F7: página con el PLANO DEL CLIENTE (imagen inscrita en la app) — referencia visual.
     if (datos.figImg) {
       try {
-        const imgC = await doc.embedJpg(b64ToBytes(String(datos.figImg).split(",")[1] || ""));
+        const imgC = (String(datos.figImg).indexOf("image/png") >= 0)
+          ? await doc.embedPng(b64ToBytes(String(datos.figImg)))
+          : await doc.embedJpg(b64ToBytes(String(datos.figImg)));
         const pC = doc.addPage([W, H]);
         let yC = dibujarEncabezado(pC, cibsa, null, W, M, H - 40);
         tituloCentrado(pC, "PLANO DEL CLIENTE (referencial)", W, yC, bold, 15, BLUE()); yC -= 15;
