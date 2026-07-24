@@ -3432,6 +3432,86 @@
     actions.appendChild(add); actions.appendChild(perim); container.appendChild(actions);
   }
   // Editor de aletas. ctx: { aletas, cantidad(), valorOj(), onChange }
+  // ---------- BIBLIOTECA DE PATRONES compartida (v17-93) ----------
+  // Los patrones viven en la hoja "PATRONES" del MISMO Sheet (sin Drive, sin permisos nuevos):
+  // cualquier usuario guarda, todos usan. El PNG orientado va en la celda (guardia 45k).
+  const PATR_HOJA = "PATRONES";
+  const PATR_ENC = ["Timestamp", "Nombre", "AnchoModulo(m)", "AltoModulo(m)", "BordeLibre", "PNG(dataURL)"];
+  let _patrones = null;
+  async function cargarPatrones(forzar) {
+    if (_patrones && !forzar) return _patrones;
+    const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+    if (!tok) throw new Error("Sin sesión de Google — los patrones viven en el Sheet compartido.");
+    const info = await window.SheetsCIBSA.leerHistorialRaw(tok, PATR_HOJA);
+    const filas = (info && info.existe) ? (info.filas || []) : [];
+    _patrones = filas.filter((f9) => f9 && String(f9[5] || "").indexOf("data:image") === 0)
+      .map((f9) => ({ ts: f9[0], nombre: String(f9[1] || "patrón"), w: parseFloat(String(f9[2]).replace(",", ".")) || 0, h: parseFloat(String(f9[3]).replace(",", ".")) || 0, borde: String(f9[4] || "0.045"), url: String(f9[5]) }));
+    return _patrones;
+  }
+  async function guardarPatronCompartido(nombre, fi) {
+    const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+    if (!tok) throw new Error("Sin sesión de Google — inicia sesión para compartir patrones.");
+    if (String(fi.url || "").length > 45000) throw new Error("El patrón pesa demasiado para la celda del Sheet (>45k). Simplifica el DXF (menos trazos) y reimpórtalo.");
+    await window.SheetsCIBSA.escribirHistorial(tok, PATR_HOJA, [[Date.now(), nombre, fi.w || 0, fi.h || 0, (fi.bordeLibre != null ? fi.bordeLibre : "0.045"), fi.url]], PATR_ENC);
+    _patrones = null;   // se relee en la próxima apertura
+  }
+  function abrirPatronesDlg(a, alAplicar) {
+    const overlay = document.createElement("div"); overlay.className = "plano-zoom";
+    const x = document.createElement("button"); x.className = "plano-zoom-x"; x.type = "button"; x.textContent = "✕";
+    const body = document.createElement("div"); body.className = "plano-zoom-body patrones-body";
+    const tit = document.createElement("p"); tit.className = "patrones-tit"; tit.textContent = "📚 Patrones compartidos (todos los usuarios · hoja PATRONES del Sheet)";
+    const acc = document.createElement("div"); acc.className = "vol3d-acciones";
+    const lista = document.createElement("div"); lista.className = "patrones-lista";
+    body.appendChild(tit); body.appendChild(acc); body.appendChild(lista);
+    overlay.appendChild(x); overlay.appendChild(body); document.body.appendChild(overlay);
+    const cerrar = () => { overlay.remove(); document.removeEventListener("keydown", onKey9); };
+    const onKey9 = (e9) => { if (e9.key === "Escape") cerrar(); };
+    x.addEventListener("click", cerrar);
+    overlay.addEventListener("click", (e9) => { if (e9.target === overlay) cerrar(); });
+    document.addEventListener("keydown", onKey9);
+    const pinta = async (forzar) => {
+      lista.innerHTML = "<p class=\"muted small\">Cargando patrones del Sheet…</p>";
+      let ps;
+      try { ps = await cargarPatrones(forzar); } catch (e9) {
+        lista.innerHTML = ""; const pe = document.createElement("p"); pe.className = "muted small";
+        pe.textContent = "⚠ " + (e9.message || e9); lista.appendChild(pe); return;
+      }
+      lista.innerHTML = "";
+      if (!ps.length) {
+        const pv = document.createElement("p"); pv.className = "muted small";
+        pv.textContent = "Aún no hay patrones. Importa un DXF a una cenefa, oriéntalo 🧭, y compártelo con 💾.";
+        lista.appendChild(pv); return;
+      }
+      const f9m = window.CalcCIBSA.fmtNum;
+      ps.slice().reverse().forEach((p9) => {
+        const card = document.createElement("div"); card.className = "patron-card";
+        const im = document.createElement("img"); im.src = p9.url; im.alt = p9.nombre;
+        const lb = document.createElement("div"); lb.className = "patron-card-lbl";
+        lb.textContent = p9.nombre + ((p9.w > 0 && p9.h > 0) ? " · " + f9m(rd3(p9.w)) + "×" + f9m(rd3(p9.h)) + " m" : "");
+        const bu = document.createElement("button"); bu.type = "button"; bu.className = "btn-outline"; bu.textContent = "Usar en esta aleta";
+        bu.addEventListener("click", () => {
+          a.figImg = { url: p9.url, w: p9.w, h: p9.h, tile: true, bordeLibre: p9.borde };
+          if (alAplicar) alAplicar();
+          cerrar();
+        });
+        card.appendChild(im); card.appendChild(lb); card.appendChild(bu); lista.appendChild(card);
+      });
+    };
+    if (a && a.figImg && a.figImg.url) {
+      const bG = document.createElement("button"); bG.type = "button"; bG.className = "vol3d-btn";
+      bG.textContent = "💾 Guardar el patrón de ESTA aleta…";
+      bG.addEventListener("click", async () => {
+        const nom = prompt("Nombre del patrón (visible para todos los usuarios):", "");
+        if (!nom || !nom.trim()) return;
+        bG.disabled = true; bG.textContent = "Guardando…";
+        try { await guardarPatronCompartido(nom.trim(), a.figImg); bG.textContent = "✓ Compartido"; pinta(true); }
+        catch (e9) { alert("No se pudo guardar: " + (e9.message || e9)); bG.textContent = "💾 Guardar el patrón de ESTA aleta…"; }
+        bG.disabled = false;
+      });
+      acc.appendChild(bG);
+    }
+    pinta(false);
+  }
   function renderAletas(container, ctx) {
     container.innerHTML = "";
     const onChange = ctx.onChange;
@@ -3654,6 +3734,10 @@
         const bli9 = document.createElement("input"); bli9.type = "text"; bli9.inputMode = "decimal";
         bli9.addEventListener("input", () => { if (a.figImg) { a.figImg.bordeLibre = bli9.value; onChange(); } });
         bl9.appendChild(bli9);
+        const bLib9 = document.createElement("button"); bLib9.type = "button"; bLib9.className = "btn-outline";
+        bLib9.textContent = "📚 Patrones…";
+        bLib9.title = "Biblioteca COMPARTIDA de patrones (hoja PATRONES del Sheet): usa uno guardado o comparte el de esta aleta.";
+        bLib9.addEventListener("click", () => abrirPatronesDlg(a, () => { sincFig(); onChange(); }));
         const bOr9 = document.createElement("button"); bOr9.type = "button"; bOr9.className = "btn-outline";
         bOr9.textContent = "🧭 Orientar patrón…";
         bOr9.title = "Gira el diseño (ángulo libre) hasta verlo de frente; la rotación se hornea en la imagen.";
@@ -3693,7 +3777,7 @@
           if (esDxf) rd.readAsText(file); else rd.readAsDataURL(file);
         });
         sincFig();
-        gfila.appendChild(bImp); gfila.appendChild(bQ); gfila.appendChild(ml); gfila.appendChild(tl9); gfila.appendChild(bl9); gfila.appendChild(bOr9); gfila.appendChild(fin); card.appendChild(gfila);
+        gfila.appendChild(bImp); gfila.appendChild(bLib9); gfila.appendChild(bQ); gfila.appendChild(ml); gfila.appendChild(tl9); gfila.appendChild(bl9); gfila.appendChild(bOr9); gfila.appendChild(fin); card.appendChild(gfila);
         const mcap = document.createElement("p"); mcap.className = "muted small"; mcap.textContent = "Materiales de la aleta:"; card.appendChild(mcap);
         const mdiv = document.createElement("div"); card.appendChild(mdiv); renderComplementos(mdiv, a.complementos, onChange);
         const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
@@ -6037,13 +6121,36 @@
       // El VÍNCULO desempata la ambigüedad anexo/paño: sin lista propia, esta cara solo recibe
       // los calados SIN anexo; la lámina de un anexo pasa su lista con los suyos.
       const caladosCara = listaCal || caladosCerr.filter((cc9) => !cc9.anexoId);
-      const K = Math.max(48, Math.min(160, Math.floor(1024 / Math.max(wS, hS))));
+      const K = Math.max(48, Math.min(decal9 ? 220 : 160, Math.floor((decal9 ? 2048 : 1024) / Math.max(wS, hS))));
       const cv = document.createElement("canvas");
       cv.width = Math.max(2, Math.round(wS * K)); cv.height = Math.max(2, Math.round(hS * K));
       const g2d = cv.getContext("2d");
       // v17-66: pintura RE-EJECUTABLE — la calcomanía del cliente (decal9) carga async y al
       // llegar se repinta todo en orden (tela → decal con su transparencia real → calados → sector).
-      let imDecal9 = null, tex9 = null;
+      let imDecal9 = null, tex9 = null, maskD9 = null;
+      // v17-94: máscara del EXTERIOR de la figura (flood fill desde los 4 bordes a través de la
+      // transparencia): el "fondo" del DXF se recorta de la tela. Solo si la figura cubre la cara
+      // (cubicada); inscrita más chica = calcomanía decorativa, no recorte. Limitación anotada:
+      // agujeros interiores cerrados NO se perforan (para eso están los calados reales).
+      const mascaraExterior9 = (imgD9, wC9, hC9, dx9, dy9, dw9, dh9) => {
+        const cvm9 = document.createElement("canvas"); cvm9.width = wC9; cvm9.height = hC9;
+        const gm9 = cvm9.getContext("2d");
+        gm9.drawImage(imgD9, dx9, dy9, dw9, dh9);
+        const d9 = gm9.getImageData(0, 0, wC9, hC9).data;
+        const vis9 = new Uint8Array(wC9 * hC9), pila9 = [];
+        const push9 = (x9, y9) => { const i9 = y9 * wC9 + x9; if (!vis9[i9] && d9[i9 * 4 + 3] < 40) { vis9[i9] = 1; pila9.push(i9); } };
+        for (let x9 = 0; x9 < wC9; x9++) { push9(x9, 0); push9(x9, hC9 - 1); }
+        for (let y9 = 0; y9 < hC9; y9++) { push9(0, y9); push9(wC9 - 1, y9); }
+        while (pila9.length) {
+          const i9 = pila9.pop(), x9 = i9 % wC9, y9 = (i9 / wC9) | 0;
+          if (x9 > 0) push9(x9 - 1, y9); if (x9 < wC9 - 1) push9(x9 + 1, y9);
+          if (y9 > 0) push9(x9, y9 - 1); if (y9 < hC9 - 1) push9(x9, y9 + 1);
+        }
+        const out9 = gm9.createImageData(wC9, hC9);
+        for (let i9 = 0; i9 < vis9.length; i9++) if (vis9[i9]) out9.data[i9 * 4 + 3] = 255;
+        gm9.clearRect(0, 0, wC9, hC9); gm9.putImageData(out9, 0, 0);
+        return cvm9;
+      };
       const pinta9 = () => {
         g2d.globalCompositeOperation = "source-over";
         g2d.clearRect(0, 0, cv.width, cv.height);
@@ -6056,6 +6163,7 @@
           else cc.poly.forEach((pp, i) => { const qx = (pp.x - x0c) * K, qy = (pp.y - y0c) * K; if (i) g2d.lineTo(qx, qy); else g2d.moveTo(qx, qy); });
           g2d.closePath(); g2d.fill();
         });
+        if (maskD9) { g2d.globalCompositeOperation = "destination-out"; g2d.drawImage(maskD9, 0, 0); }   // v17-94: fuera el FONDO
         if (soloPoly && soloPoly.length >= 3) {
           // Recorte al SECTOR (abanico de ejes): conserva solo la tela dentro del polígono.
           g2d.globalCompositeOperation = "destination-in";
@@ -6066,7 +6174,19 @@
         if (tex9) tex9.needsUpdate = true;
       };
       pinta9();
-      if (decal9 && decal9.url) { const im9 = new Image(); im9.onload = () => { imDecal9 = im9; pinta9(); }; im9.src = decal9.url; }
+      if (decal9 && decal9.url) {
+        const im9 = new Image();
+        im9.onload = () => {
+          imDecal9 = im9;
+          try {
+            const dW9 = (decal9.w > 0 ? decal9.w : wS), dH9 = (decal9.h > 0 ? decal9.h : hS);
+            const cubre9 = Math.abs(decal9.x || 0) < wS * 0.02 && Math.abs(decal9.y || 0) < hS * 0.02 && Math.abs(dW9 - wS) < wS * 0.02 && Math.abs(dH9 - hS) < hS * 0.02;
+            if (cubre9) maskD9 = mascaraExterior9(im9, cv.width, cv.height, ((decal9.x || 0) - x0c) * K, ((decal9.y || 0) - y0c) * K, dW9 * K, dH9 * K);
+          } catch (_) { maskD9 = null; }
+          pinta9();
+        };
+        im9.src = decal9.url;
+      }
       const tex = tex9 = new T.CanvasTexture(cv);
       const mat2 = new T.MeshLambertMaterial({ map: tex, transparent: true, opacity: 0.94, side: T.DoubleSide, alphaTest: 0.35 });
       const c00 = W4(x0c, y0c), c10 = W4(x0c + wS, y0c), c11 = W4(x0c + wS, y0c + hS), c01 = W4(x0c, y0c + hS);
@@ -10850,7 +10970,7 @@
       const md = e3.target.getAttribute && e3.target.getAttribute("data-h"); if (!md) return;
       e3.preventDefault(); e3.stopPropagation();
       const p2 = toVB(e3.clientX, e3.clientY); if (!p2) return;
-      dragF = { md: md, x: p2.x, y: p2.y };
+      dragF = { md: md, x: p2.x, y: p2.y, r0: (fi.h > 0) ? fi.w / fi.h : 1 };   // proporción al INICIO del arrastre
       try { g.setPointerCapture(e3.pointerId); } catch (_) {}
     });
     g.addEventListener("pointermove", (e3) => {
@@ -10865,6 +10985,19 @@
       if (md === "nw" || md === "sw") { const nw2 = Math.max(MINF, fi.w - dx); fi.x = rd3(fi.x + (fi.w - nw2)); fi.w = rd3(nw2); }
       if (md.indexOf("s") !== -1) fi.h = rd3(Math.max(MINF, fi.h + dy));
       if (md === "n" || md === "ne" || md === "nw") { const nh2 = Math.max(MINF, fi.h - dy); fi.y = rd3(fi.y + (fi.h - nh2)); fi.h = rd3(nh2); }
+      // v17-95: SHIFT = proporciones BLOQUEADAS (no se descuadra). Bordes: el otro eje sigue
+      // centrado; esquinas: ancla en el lado opuesto (mismo contrato que el arrastre normal).
+      if (e3.shiftKey && md !== "mv" && dragF.r0 > 0) {
+        if (md === "n" || md === "s") {
+          const w2 = Math.max(MINF, fi.h * dragF.r0);
+          fi.x = rd3(fi.x + (fi.w - w2) / 2); fi.w = rd3(w2);
+        } else {
+          const h2 = Math.max(MINF / dragF.r0, fi.w / dragF.r0);
+          if (md === "e" || md === "w") { fi.y = rd3(fi.y + (fi.h - h2) / 2); fi.h = rd3(h2); }
+          else if (md.indexOf("n") !== -1) { const bot2 = fi.y + fi.h; fi.h = rd3(h2); fi.y = rd3(bot2 - h2); }
+          else { fi.h = rd3(h2); }
+        }
+      }
       draw();
     });
     g.addEventListener("pointerup", () => { if (dragF) { dragF = null; _figBaked = null; } });

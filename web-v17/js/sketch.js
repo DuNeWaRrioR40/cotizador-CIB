@@ -1895,7 +1895,7 @@
         if (cpo && cpo.d < 0 && extraM[c.side] != null) extraM[c.side] = Math.max(extraM[c.side], -cpo.d);
       });
     }
-    let mLeft = ML.left + 24, mTop = ML.top + 32, mRight = ML.right + 30, mBot = ML.bottom + 26; // + espacio para rótulos de orientación
+    let mLeft = ML.left + 32, mTop = ML.top + 42, mRight = ML.right + 38, mBot = ML.bottom + 34; // v17-94: banda MÁS ancha — las cotas apiladas ya no se molestan con SUPERIOR/INFERIOR/LADOS
     // Bounds del paño (base + aletas) — las cotas se anclan AQUÍ (los straps NO afectan las cotas).
     let pMinX = 0, pMaxX = sk.ancho, pMinY = 0, pMaxY = sk.largo;
     (sk.aletas || []).forEach((a) => { pMinX = Math.min(pMinX, a.x); pMaxX = Math.max(pMaxX, a.x + a.w); pMinY = Math.min(pMinY, a.y); pMaxY = Math.max(pMaxY, a.y + a.h); });
