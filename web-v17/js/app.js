@@ -2926,7 +2926,7 @@
   function rotId(o) { if (o._rid == null) o._rid = ++ROTSEQ; return o._rid; }
   function aletasSpec(list) {
     const ev = window.CalcCIBSA.evalExpr;
-    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), ojMode: a.ojMode || "simple", ojParejo: !!a.ojParejo, ojEdges: (a.ojMode === "arista" && a.ojEdges) ? aletaOjEdgesSpec(a.ojEdges) : null, legend: a.legend || "", rotulo: !!a.rotulo, id: rotId(a), figImg: (a.figImg && a.figImg.url) ? a.figImg.url : null, marco: !!a.marco })).filter((a) => a.largo > 0 && a.ancho > 0);
+    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), ojMode: a.ojMode || "simple", ojParejo: !!a.ojParejo, ojEdges: (a.ojMode === "arista" && a.ojEdges) ? aletaOjEdgesSpec(a.ojEdges) : null, legend: a.legend || "", rotulo: !!a.rotulo, id: rotId(a), figImg: (a.figImg && a.figImg.url) ? a.figImg.url : null, figW: (a.figImg && a.figImg.w) || 0, figH: (a.figImg && a.figImg.h) || 0, figTile: !!(a.figImg && a.figImg.tile), marco: !!a.marco })).filter((a) => a.largo > 0 && a.ancho > 0);
   }
   function aletasLineasPDF(list, cantidad, valorOj, factor) {
     return visibles(list).map((a) => {
@@ -3642,7 +3642,17 @@
         mcb.addEventListener("change", () => { a.marco = mcb.checked; onChange(); });
         const msp = document.createElement("span"); msp.textContent = "Mostrar marco del rectángulo";
         ml.appendChild(mcb); ml.appendChild(msp);
-        const sincFig = () => { bImp.textContent = a.figImg ? "🖼 Cambiar plano/foto" : "🖼 Plano/foto en esta aleta"; bQ.textContent = "✕ Quitar imagen"; bQ.classList.toggle("hidden", !a.figImg); ml.classList.toggle("hidden", !a.figImg); };
+        const tl9 = document.createElement("label"); tl9.className = "chk";
+        tl9.title = "El diseño se repite como patrón CONTINUO al crecer la aleta (no se estira); el módulo escala con la salida. Ideal para cenefas con patrón de corte.";
+        const tcb9 = document.createElement("input"); tcb9.type = "checkbox";
+        tcb9.addEventListener("change", () => { if (a.figImg) { a.figImg.tile = tcb9.checked; onChange(); if (tcb9.checked) abrirOrientadorPatron(a, onChange); } });
+        const tsp9 = document.createElement("span"); tsp9.textContent = "🔁 Patrón repetible";
+        tl9.appendChild(tcb9); tl9.appendChild(tsp9);
+        const bOr9 = document.createElement("button"); bOr9.type = "button"; bOr9.className = "btn-outline";
+        bOr9.textContent = "🧭 Orientar patrón…";
+        bOr9.title = "Gira el diseño (ángulo libre) hasta verlo de frente; la rotación se hornea en la imagen.";
+        bOr9.addEventListener("click", () => abrirOrientadorPatron(a, onChange));
+        const sincFig = () => { bImp.textContent = a.figImg ? "🖼 Cambiar plano/foto" : "🖼 Plano/foto en esta aleta"; bQ.textContent = "✕ Quitar imagen"; bQ.classList.toggle("hidden", !a.figImg); ml.classList.toggle("hidden", !a.figImg); tl9.classList.toggle("hidden", !a.figImg); tcb9.checked = !!(a.figImg && a.figImg.tile); bOr9.classList.toggle("hidden", !a.figImg); };
         bImp.title = "Inscribe una foto o DXF básico que llena el rectángulo de la aleta (solo visualización; se deforma cambiando las medidas de la aleta). Un DXF además ofrece dictar largo y ancho.";
         bImp.addEventListener("click", () => fin.click());
         bQ.addEventListener("click", () => { a.figImg = null; sincFig(); onChange(); });
@@ -3659,19 +3669,22 @@
               if (confirm("El DXF mide " + f(rd3(img.wM)) + " × " + f(rd3(img.hM)) + " m.\n\n¿Usar estas medidas para la ALETA? (ancho " + f(rd3(img.wM)) + " a lo largo de la arista · salida " + f(rd3(img.hM)) + ")")) {
                 a.ancho = f(rd3(img.wM)); a.largo = f(rd3(img.hM));
               }
-              a.figImg = { url: img.url };
+              a.figImg = { url: img.url, w: img.wM, h: img.hM, tile: true };   // v17-87: patrón REPETIBLE por defecto
               const om = Object.keys(img.omitidas || {});
-              alert("DXF inscrito en la aleta: " + img.trazos + " trazos · " + f(rd3(img.wM)) + " × " + f(rd3(img.hM)) + " m · trazo dibujado " + f(rd3(img.perimM)) + " m." + (om.length ? "\n\nOmitido (no soportado): " + om.map((k2) => k2 + " ×" + img.omitidas[k2]).join(", ") : ""));
+              alert("DXF inscrito en la aleta: " + img.trazos + " trazos · " + f(rd3(img.wM)) + " × " + f(rd3(img.hM)) + " m · trazo dibujado " + f(rd3(img.perimM)) + " m.\n\n🔁 Quedó como PATRÓN REPETIBLE: al crecer la aleta el diseño se repite (no se estira). Ahora ACOMÓDALO de frente en el visor." + (om.length ? "\n\nOmitido (no soportado): " + om.map((k2) => k2 + " ×" + img.omitidas[k2]).join(", ") : ""));
               pintar(); onChange();
+              setTimeout(() => abrirOrientadorPatron(a, onChange), 60);   // v17-88: emerge el orientador
             } else {
-              a.figImg = { url: rd.result };
-              sincFig(); refresh(); onChange();
+              const im0 = new Image();
+              im0.onload = () => { a.figImg = { url: rd.result, w: im0.naturalWidth || 0, h: im0.naturalHeight || 0, tile: false }; sincFig(); refresh(); onChange(); };
+              im0.onerror = () => { a.figImg = { url: rd.result }; sincFig(); refresh(); onChange(); };
+              im0.src = rd.result;
             }
           };
           if (esDxf) rd.readAsText(file); else rd.readAsDataURL(file);
         });
         sincFig();
-        gfila.appendChild(bImp); gfila.appendChild(bQ); gfila.appendChild(ml); gfila.appendChild(fin); card.appendChild(gfila);
+        gfila.appendChild(bImp); gfila.appendChild(bQ); gfila.appendChild(ml); gfila.appendChild(tl9); gfila.appendChild(bOr9); gfila.appendChild(fin); card.appendChild(gfila);
         const mcap = document.createElement("p"); mcap.className = "muted small"; mcap.textContent = "Materiales de la aleta:"; card.appendChild(mcap);
         const mdiv = document.createElement("div"); card.appendChild(mdiv); renderComplementos(mdiv, a.complementos, onChange);
         const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
@@ -10092,9 +10105,35 @@
   }
   // Checkbox global: plano/cotización "de aprobación" (sin cotas ni datos de taller).
   function suprimeCotas() { const a = $("f_suprimirCotas"), b = $("f_suprimirCotas2"); return !!((a && a.checked) || (b && b.checked)); }
+  // v17-87: aletas con patrón repetible → se hornea el MOSAICO al tamaño real de la aleta
+  // (el PDF estira la imagen al rect, así que el horneado con el aspecto correcto = sin deformar).
+  async function hornearAletasTilePDF(aletas9) {
+    for (const a9 of (aletas9 || [])) {
+      if (!a9 || !a9.figImg || !a9.figTile || !(a9.figW > 0) || !(a9.figH > 0)) continue;
+      const span9 = a9.ancho, sal9 = a9.largo; if (!(span9 > 0) || !(sal9 > 0)) continue;
+      await new Promise((res9) => {
+        const im9 = new Image();
+        im9.onload = () => {
+          try {
+            const K9 = Math.min(2000 / span9, 800 / sal9);
+            const cv9 = document.createElement("canvas");
+            cv9.width = Math.max(2, Math.round(span9 * K9)); cv9.height = Math.max(2, Math.round(sal9 * K9));
+            const g9 = cv9.getContext("2d");
+            const tw9 = cv9.height * (a9.figW / a9.figH);
+            for (let x9 = 0; x9 < cv9.width; x9 += tw9) im9.width && g9.drawImage(im9, x9, 0, tw9, cv9.height);
+            a9.figImg = cv9.toDataURL("image/png");
+          } catch (_) {}
+          res9();
+        };
+        im9.onerror = () => res9();
+        im9.src = a9.figImg;
+      });
+    }
+  }
   async function descargarSketch(datos) {
     try {
       datos.suprimirCotas = suprimeCotas();
+      if (datos.sketch && datos.sketch.aletas) await hornearAletasTilePDF(datos.sketch.aletas);
       // El correlativo se estampa en el plano SOLO si esta cotización ya fue generada (existe en el historial).
       if (datos.correlativo == null) datos.correlativo = correlativoExistente($("f_nombre").value.trim(), $("f_apellido").value.trim(), $("f_version").value.trim() || "01");
       const { bytes, filename } = await window.PDFCotizacion.generarSketchPDF(datos);
@@ -10429,6 +10468,73 @@
         (om.length ? "\n\nOmitido (no soportado): " + om.map((k2) => k2 + " ×" + img.omitidas[k2]).join(", ") : ""));
     };
     rd.readAsText(file);
+  }
+  // v17-88: ORIENTADOR DE PATRÓN — el usuario acomoda el diseño "DE FRENTE" (contra una franja
+  // de muestra) con ángulo LIBRE; al aplicar, la rotación se HORNEA en el raster (url + proporciones
+  // nuevas del bounding rotado). Aguas abajo nada cambia: el mosaico y el PDF usan la imagen ya recta,
+  // y la App la gira sola al ángulo de la arista que corresponda (0/90 hoy; el que sea mañana).
+  function abrirOrientadorPatron(a, onChange) {
+    const fi = a && a.figImg; if (!fi || !fi.url) return;
+    const im = new Image();
+    im.onload = () => {
+      const overlay = document.createElement("div"); overlay.className = "plano-zoom";
+      const x = document.createElement("button"); x.className = "plano-zoom-x"; x.type = "button"; x.textContent = "✕";
+      const body = document.createElement("div"); body.className = "plano-zoom-body";
+      const cv = document.createElement("canvas"); cv.width = 680; cv.height = 340; cv.className = "patron-cv";
+      const hint = document.createElement("p"); hint.className = "muted small vol3d-hint";
+      hint.textContent = "Gira el diseño hasta verlo DE FRENTE (como cuelga la cenefa, horizontal). La App lo rotará sola al ángulo de la arista donde viva.";
+      const ctr = document.createElement("div"); ctr.className = "vol3d-acciones patron-ctr";
+      const sl = document.createElement("input"); sl.type = "range"; sl.min = "-180"; sl.max = "180"; sl.step = "0.5"; sl.value = "0";
+      const num9 = document.createElement("input"); num9.type = "number"; num9.step = "0.5"; num9.value = "0"; num9.className = "patron-num";
+      const mkP = (t9, fn9) => { const b9 = document.createElement("button"); b9.type = "button"; b9.className = "vol3d-btn"; b9.textContent = t9; b9.addEventListener("click", fn9); return b9; };
+      let ang = 0;
+      const setAng = (v9) => { ang = Math.max(-180, Math.min(180, v9 || 0)); sl.value = String(ang); num9.value = String(ang); pinta(); };
+      const g2 = cv.getContext("2d");
+      const pinta = () => {
+        g2.clearRect(0, 0, cv.width, cv.height);
+        g2.fillStyle = "#faf9f6"; g2.fillRect(0, 0, cv.width, cv.height);
+        // franja guía: la "cenefa de muestra" horizontal contra la que se acomoda el diseño
+        const fh = 150, fy = (cv.height - fh) / 2;
+        g2.fillStyle = "#fff"; g2.fillRect(20, fy, cv.width - 40, fh);
+        g2.strokeStyle = "#c9a86a"; g2.setLineDash([7, 5]); g2.strokeRect(20, fy, cv.width - 40, fh); g2.setLineDash([]);
+        const rad = ang * Math.PI / 180, c9 = Math.abs(Math.cos(rad)), s9 = Math.abs(Math.sin(rad));
+        const bw = im.width * c9 + im.height * s9, bh = im.width * s9 + im.height * c9;
+        const k9 = Math.min((cv.width - 60) / bw, (fh - 16) / bh);
+        g2.save();
+        g2.translate(cv.width / 2, cv.height / 2); g2.rotate(rad); g2.globalAlpha = 0.92;
+        g2.drawImage(im, -im.width * k9 / 2, -im.height * k9 / 2, im.width * k9, im.height * k9);
+        g2.restore();
+        g2.fillStyle = "#8a6d3b"; g2.font = "600 12px sans-serif"; g2.textAlign = "center";
+        g2.fillText(ang.toFixed(1) + "°", cv.width / 2, fy + fh + 24);
+      };
+      sl.addEventListener("input", () => setAng(parseFloat(sl.value)));
+      num9.addEventListener("input", () => setAng(parseFloat(num9.value)));
+      const bOK = mkP("✔ Aplicar orientación", () => {
+        if (Math.abs(ang) > 0.01) {
+          const rad = ang * Math.PI / 180, c9 = Math.abs(Math.cos(rad)), s9 = Math.abs(Math.sin(rad));
+          const bw = Math.max(2, Math.round(im.width * c9 + im.height * s9));
+          const bh = Math.max(2, Math.round(im.width * s9 + im.height * c9));
+          const cb = document.createElement("canvas"); cb.width = bw; cb.height = bh;
+          const gb = cb.getContext("2d");
+          gb.translate(bw / 2, bh / 2); gb.rotate(rad); gb.drawImage(im, -im.width / 2, -im.height / 2);
+          fi.url = cb.toDataURL("image/png");
+          fi.w = bw; fi.h = bh;   // solo importa la PROPORCIÓN aguas abajo (módulo del mosaico)
+        }
+        cerrar(); if (onChange) onChange();
+      });
+      ctr.appendChild(mkP("⟲ 90", () => setAng(ang - 90))); ctr.appendChild(sl); ctr.appendChild(num9);
+      ctr.appendChild(mkP("⟳ 90", () => setAng(ang + 90))); ctr.appendChild(mkP("180", () => setAng(ang === 180 ? 0 : 180)));
+      ctr.appendChild(bOK);
+      const cerrar = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+      const onKey = (e9) => { if (e9.key === "Escape") cerrar(); };
+      x.addEventListener("click", cerrar);
+      overlay.addEventListener("click", (e9) => { if (e9.target === overlay || e9.target === body) cerrar(); });
+      document.addEventListener("keydown", onKey);
+      body.appendChild(cv); overlay.appendChild(x); overlay.appendChild(body); overlay.appendChild(hint); overlay.appendChild(ctr);
+      document.body.appendChild(overlay);
+      pinta();
+    };
+    im.src = fi.url;
   }
   function rotarFigImg() {
     const fi = state.figImgUnif; if (!fi || !fi.url) return;

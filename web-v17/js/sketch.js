@@ -646,7 +646,7 @@
       const g = aletaGeomRect(a, ancho, largo);
       const pts = aletaOjPuntos(a, ancho, largo);
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (NOMARI[a.tipo] || "Aleta");
-      return { x: g.x, y: g.y, w: g.w, h: g.h, fused: g.fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null), largo: parseFloat(a.largo) || 0, ancho: parseFloat(a.ancho) || 0, offset: parseFloat(a.offset) || 0, dBorde: parseFloat(a.dBorde) || 0, figImg: a.figImg || null, marco: !!a.marco };
+      return { x: g.x, y: g.y, w: g.w, h: g.h, fused: g.fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null), largo: parseFloat(a.largo) || 0, ancho: parseFloat(a.ancho) || 0, offset: parseFloat(a.offset) || 0, dBorde: parseFloat(a.dBorde) || 0, figImg: a.figImg || null, figW: a.figW || 0, figH: a.figH || 0, figTile: !!a.figTile, marco: !!a.marco };
     });
     // Straps (cintas/webbing): banda RECTA de ancho fijo (del material) y largo del usuario, en cualquier
     // ángulo/posición. Puede iniciar fuera, cruzar y salir del paño. Remates = costuras perpendiculares en
@@ -1036,9 +1036,21 @@
       if (a.figImg && !sk.espejo) {
         const fiA = ++FIGIMG_SEQ;
         s += `<clipPath id="figclip${fiA}"><rect x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}"/></clipPath>`;
-        s += (a.fused === "l" || a.fused === "r")
-          ? `<image class="figimg" clip-path="url(#figclip${fiA})" href="${a.figImg}" transform="translate(${f1(X + Wp)},${f1(Y)}) rotate(90)" x="0" y="0" width="${f1(Hp)}" height="${f1(Wp)}" preserveAspectRatio="none" opacity="0.85"/>`
-          : `<image class="figimg" clip-path="url(#figclip${fiA})" href="${a.figImg}" x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}" preserveAspectRatio="none" opacity="0.85"/>`;
+        const lateral9 = (a.fused === "l" || a.fused === "r");
+        if (a.figTile && a.figW > 0 && a.figH > 0) {
+          // v17-87: PATRÓN REPETIBLE — el módulo escala a la SALIDA y se repite a lo largo:
+          // crecer la aleta agrega repeticiones, jamás estira el diseño.
+          const S9 = lateral9 ? Wp : Hp, L9 = lateral9 ? Hp : Wp;
+          const tw9 = S9 * (a.figW / a.figH);
+          s += `<pattern id="figpat${fiA}" patternUnits="userSpaceOnUse" width="${f1(tw9)}" height="${f1(S9)}"${lateral9 ? "" : ` patternTransform="translate(${f1(X)},${f1(Y)})"`}><image href="${a.figImg}" x="0" y="0" width="${f1(tw9)}" height="${f1(S9)}" preserveAspectRatio="none"/></pattern>`;
+          s += lateral9
+            ? `<g clip-path="url(#figclip${fiA})" transform="translate(${f1(X + Wp)},${f1(Y)}) rotate(90)" opacity="0.85"><rect x="0" y="0" width="${f1(L9)}" height="${f1(S9)}" fill="url(#figpat${fiA})"/></g>`
+            : `<g clip-path="url(#figclip${fiA})" opacity="0.85"><rect x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}" fill="url(#figpat${fiA})"/></g>`;
+        } else {
+          s += lateral9
+            ? `<image class="figimg" clip-path="url(#figclip${fiA})" href="${a.figImg}" transform="translate(${f1(X + Wp)},${f1(Y)}) rotate(90)" x="0" y="0" width="${f1(Hp)}" height="${f1(Wp)}" preserveAspectRatio="none" opacity="0.85"/>`
+            : `<image class="figimg" clip-path="url(#figclip${fiA})" href="${a.figImg}" x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}" preserveAspectRatio="none" opacity="0.85"/>`;
+        }
       }
       let fa, fb;
       if (a.fused === "t") { fa = { x: X, y: Y }; fb = { x: X + Wp, y: Y }; }

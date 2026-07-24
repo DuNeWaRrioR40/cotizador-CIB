@@ -1055,3 +1055,8 @@ body.drawer-abierto { overflow: hidden; }
 .mod3d-cap-x { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; border: 1px solid #e3b7b0; background: rgba(255,255,255,0.92); color: #d8443a; font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; padding: 0; }
 .mod3d-cap-x:hover { background: #d8443a; color: #fff; }
 .mod3d-cap-lbl { position: absolute; left: 8px; bottom: 6px; font-size: 10px; color: #6b7280; background: rgba(255,255,255,0.85); padding: 1px 6px; border-radius: 6px; }
+
+/* v17-88: orientador de patrón */
+.patron-cv { max-width: 100%; border-radius: 10px; }
+.patron-ctr input[type="range"] { flex: 1; min-width: 160px; }
+.patron-num { width: 74px; padding: 4px 6px; border: 1px solid #c8cdd4; border-radius: 6px; }
