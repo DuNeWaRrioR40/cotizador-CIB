@@ -1017,10 +1017,17 @@ body.drawer-abierto { overflow: hidden; }
 .aleta-figimg { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
 
 /* v17-72: punto verde de la macro "medida entre anchors" (centro arrastrable) */
-.sketch-svg .med-centro-dot { fill: #2e7d32; stroke: #fff; stroke-width: 2; cursor: grab; }
-.sketch-svg .med-centro-halo { fill: rgba(46, 125, 50, 0.16); cursor: grab; }
+.sketch-svg .med-centro-dot { fill: #34c759; stroke: #fff; stroke-width: 2; cursor: grab; }
+.sketch-svg .med-centro-halo { fill: rgba(52, 199, 89, 0.18); cursor: grab; }
 .sketch-svg .med-centro-seg { stroke: #2e7d32; stroke-width: 3; stroke-dasharray: 6 4; opacity: 0.8; pointer-events: none; }
 .sketch-svg .med-centro-lbl { font-size: 11px; font-weight: 600; fill: #1b5e20; paint-order: stroke; stroke: #fff; stroke-width: 3px; pointer-events: none; }
 .med-centro-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 10px; margin-bottom: 6px; background: #eef7ee; border: 1px solid #bfdcbf; border-radius: 8px; }
 .sketch-svg .med-centro-prev { stroke: #2e7d32; stroke-width: 1.7; stroke-dasharray: 5 4; opacity: 0.9; pointer-events: none; }
 .sketch-svg .med-centro-prevlbl { font-size: 10px; font-weight: 600; fill: #1b5e20; paint-order: stroke; stroke: #fff; stroke-width: 3px; pointer-events: none; }
+
+/* v17-74: botones circulares del punto verde */
+.sketch-svg .med-centro-btn { cursor: pointer; }
+.sketch-svg .med-centro-btn.ok circle { fill: #34c759; stroke: #fff; stroke-width: 2; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25)); }
+.sketch-svg .med-centro-btn.ok text { fill: #fff; font-size: 13px; font-weight: 700; pointer-events: none; }
+.sketch-svg .med-centro-btn.no circle { fill: #fff; stroke: #c8cdd4; stroke-width: 1.5; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.18)); }
+.sketch-svg .med-centro-btn.no text { fill: #6b7280; font-size: 13px; font-weight: 700; pointer-events: none; }

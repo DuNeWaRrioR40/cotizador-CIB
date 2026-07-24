@@ -8448,7 +8448,7 @@
       const gM = document.createElementNS(NS9, "g"); gM.setAttribute("class", "med-centro-g"); svg.appendChild(gM);
       const mkE9 = (tag, cls) => { const e9 = document.createElementNS(NS9, tag); e9.setAttribute("class", cls); gM.appendChild(e9); return e9; };
       const seg9 = mkE9("line", "med-centro-seg"), halo9 = mkE9("circle", "med-centro-halo"), dot9 = mkE9("circle", "med-centro-dot"), lbl9 = mkE9("text", "med-centro-lbl");
-      halo9.setAttribute("r", "13"); dot9.setAttribute("r", "7");
+      halo9.setAttribute("r", "10"); dot9.setAttribute("r", "5");
       const pxOf9 = (t9) => ({ X: ox + mscale * (segE.a.x + u.x * t9), Y: oy + mscale * (segE.a.y + u.y * t9) });
       const horiz9 = (anA.ar === "sup" || anA.ar === "inf");
       // v17-73: al PRESIONAR el punto aparecen las líneas de corte que se desprenderán, con su
@@ -8467,6 +8467,16 @@
         ln9.style.display = "none"; tx9.style.display = "none";
         return { ln9, tx9, F9 };
       });
+      // v17-74: confirmación como 2 botones CIRCULARES bajo el punto (adiós barra "feíta")
+      const mkBtn9 = (cls9, glifo9) => {
+        const g9 = document.createElementNS(NS9, "g"); g9.setAttribute("class", "med-centro-btn " + cls9);
+        const c99 = document.createElementNS(NS9, "circle"); c99.setAttribute("r", "13");
+        const t99 = document.createElementNS(NS9, "text"); t99.textContent = glifo9;
+        t99.setAttribute("text-anchor", "middle"); t99.setAttribute("dy", "4.5");
+        g9.appendChild(c99); g9.appendChild(t99); gM.appendChild(g9);
+        return g9;
+      };
+      const bOK9 = mkBtn9("ok", "✔"), bNo9 = mkBtn9("no", "✕");
       const pinta9 = () => {
         const p9 = pxOf9(c9), pA9 = pxOf9(c9 - M / 2), pB9 = pxOf9(c9 + M / 2);
         [halo9, dot9].forEach((e9) => { e9.setAttribute("cx", p9.X); e9.setAttribute("cy", p9.Y); });
@@ -8489,6 +8499,9 @@
           pv9.tx9.setAttribute("y", (Fp9.Y + Qp9.Y) / 2 + (dx9 / dl9) * 13);
           pv9.tx9.setAttribute("text-anchor", "middle");
         });
+        const by9 = p9.Y + 32;
+        bOK9.setAttribute("transform", "translate(" + (p9.X - 24) + "," + by9 + ")");
+        bNo9.setAttribute("transform", "translate(" + (p9.X + 24) + "," + by9 + ")");
       };
       let dragC9 = false;
       pinta9();
@@ -8504,20 +8517,19 @@
       svg.addEventListener("pointerdown", onDown9, true);   // fase captura: el punto gana antes que el drag de anclas
       svg.addEventListener("pointermove", onMove9);
       svg.addEventListener("pointerup", onUp9);
-      const bar9 = document.createElement("div"); bar9.className = "med-centro-bar";
-      const hint9 = document.createElement("span"); hint9.className = "muted small"; hint9.textContent = "Arrastra el punto verde: ahí quedará el tramo de " + f(M) + " m.";
-      const bOK9 = document.createElement("button"); bOK9.type = "button"; bOK9.className = "btn-outline"; bOK9.textContent = "✔ Aplicar aquí";
-      const bNo9 = document.createElement("button"); bNo9.type = "button"; bNo9.className = "btn-outline"; bNo9.textContent = "✕ Cancelar";
-      bar9.appendChild(hint9); bar9.appendChild(bOK9); bar9.appendChild(bNo9);
-      container.insertBefore(bar9, container.firstChild);
+      const onKey9 = (ev9) => { if (ev9.key === "Escape") { ev9.stopPropagation(); ev9.preventDefault(); limpiar9(); } };
       const limpiar9 = () => {
-        try { gM.remove(); bar9.remove(); } catch (_) {}
+        try { gM.remove(); } catch (_) {}
         svg.removeEventListener("pointerdown", onDown9, true);
         svg.removeEventListener("pointermove", onMove9);
         svg.removeEventListener("pointerup", onUp9);
+        document.removeEventListener("keydown", onKey9, true);
       };
-      bOK9.addEventListener("click", () => { limpiar9(); aplicarCon(c9); });
-      bNo9.addEventListener("click", limpiar9);
+      document.addEventListener("keydown", onKey9, true);   // Esc = salir sin aplicar (PC)
+      bOK9.addEventListener("pointerdown", (ev9) => ev9.stopPropagation(), true);
+      bNo9.addEventListener("pointerdown", (ev9) => ev9.stopPropagation(), true);
+      bOK9.addEventListener("click", (ev9) => { ev9.stopPropagation(); limpiar9(); aplicarCon(c9); });
+      bNo9.addEventListener("click", (ev9) => { ev9.stopPropagation(); limpiar9(); });
     }
     function modificarMedidaEntreCorte(cH, anA, anB) {
       // GUARDARRAÍL (v17): en un VOLUMÉTRICO las paredes nacen del rectángulo base — pellizcar
