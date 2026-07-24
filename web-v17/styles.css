@@ -1031,3 +1031,8 @@ body.drawer-abierto { overflow: hidden; }
 .sketch-svg .med-centro-btn.ok text { fill: #fff; font-size: 13px; font-weight: 700; pointer-events: none; }
 .sketch-svg .med-centro-btn.no circle { fill: #fff; stroke: #c8cdd4; stroke-width: 1.5; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.18)); }
 .sketch-svg .med-centro-btn.no text { fill: #6b7280; font-size: 13px; font-weight: 700; pointer-events: none; }
+
+/* v17-76: anchor de REFERENCIA visual (📍) — hueco y gris, no participa en nada */
+.sketch-svg .ancla-ref .ancla-dot, .sketch-svg .ancla-ref circle:not(.ancla-halo) { fill: #fff; stroke: #8a94a0; }
+.sketch-svg .ancla-ref .ancla-halo { fill: rgba(138, 148, 160, 0.10); }
+.sketch-svg .ancla-ref text { fill: #8a94a0; }

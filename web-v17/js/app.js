@@ -7874,7 +7874,7 @@
     const f = window.CalcCIBSA.fmtNum, out = [];
     (anclas || []).forEach((an) => {
       const pq = posAnclaArista(an, A, L);
-      if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: (an.con && an.con.s ? "E" + ensIdxById(an.con.e) + "·C" + an.con.s + " · " : "") + f(rd3(parseFloat(an.d) || 0)) + " m", tipo: "arista", fix: !!an.fix, con: (an.con && an.con.s) || 0 });
+      if (pq) out.push({ id: an.id, x: pq.x, y: pq.y, lbl: (an.con && an.con.s ? "E" + ensIdxById(an.con.e) + "·C" + an.con.s + " · " : "") + f(rd3(parseFloat(an.d) || 0)) + " m", tipo: "arista", fix: !!an.fix, con: (an.con && an.con.s) || 0, ref: !!an.ref });
     });
     visibles(cortesRaw || []).forEach((c) => {
       (c.anclas || []).forEach((an) => {
@@ -8320,6 +8320,7 @@
       return null;
     }
     function crearEntreAnchors(pend, reg2) {
+      if ((pend && pend.an && pend.an.ref) || (reg2 && reg2.an && reg2.an.ref)) return;   // 📍 referencia: no conecta
       const an1 = pend.an, an2 = reg2.an;
       if (an1 === an2) return;
       const p1 = posAnclaAny(an1), p2 = posAnclaAny(an2);
@@ -8707,6 +8708,7 @@
     }
     function clickCircuito(reg) {
       const cc = _circuitoCal; if (!cc) return;
+      if (reg.an && reg.an.ref) return;   // 📍 referencia: no es vértice de calado
       const idN = reg.an.id, pN = posAnchorId(idN);
       const idLast = cc.ids[cc.ids.length - 1], pLast = posAnchorId(idLast);
       const p0 = posAnchorId(cc.ids[0]);
@@ -8802,23 +8804,24 @@
       cerrarMenuAristas();
       const menu = document.createElement("div"); menu.className = "help-pop arista-menu";
       const cap = document.createElement("p"); cap.className = "arista-menu-cap";
-      cap.textContent = (reg.tipo === "arista") ? "Anchor de arista" : "Anchor del corte/línea";
+      const esRef = reg.tipo === "arista" && !!reg.an.ref;
+      cap.textContent = esRef ? "📍 Anchor de REFERENCIA (solo visual)" : ((reg.tipo === "arista") ? "Anchor de arista" : "Anchor del corte/línea");
       menu.appendChild(cap);
       const item = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); menu.appendChild(b); return b; };
       // Grupo "Más opciones": acciones secundarias plegadas (menú corto = usable). Se despliegan con un toggle.
       const masBox = document.createElement("div"); masBox.className = "arista-menu-mas hidden";
       const itemMas = (t, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it"; b.textContent = t; b.addEventListener("click", (ev2) => { ev2.stopPropagation(); cerrarMenuAristas(); fn(); }); masBox.appendChild(b); return b; };
-      { const regC = comoArista(reg) || reg;   // el empatado "representa" al de arista; el resto conecta como es
+      if (!esRef) { const regC = comoArista(reg) || reg;   // el empatado "representa" al de arista; el resto conecta como es
         const nTot = (ctx.anclas || []).length + (ctx.cortes || []).reduce((acc, c2) => acc + ((c2.anclas || []).length), 0);
         if (nTot >= 2) {
           item("Corte hasta otro anchor…", () => iniciarConexion(regC, "corte"));
           { const bG = item("Guía hasta otro anchor…  ⌨G", () => iniciarConexion(regC, "guia")); if (bG) bG.dataset.hotG = "1"; }
-          if (regC.tipo === "arista" && !regC.an.seg && (ctx.anclas || []).some((a2) => a2 !== regC.an && !a2.seg && a2.ar === regC.an.ar)) {
+          if (regC.tipo === "arista" && !regC.an.seg && (ctx.anclas || []).some((a2) => a2 !== regC.an && !a2.seg && !a2.ref && a2.ar === regC.an.ar)) {
             const bT = item("Cinta hasta otro anchor (tramo)…  ⌨T", () => iniciarConexion(regC, "cinta")); if (bT) bT.dataset.hotT = "1";
           }
         }
         if (regC.tipo === "arista" && !regC.an.seg) {
-          const otros = (ctx.anclas || []).filter((a2) => a2 !== regC.an && !a2.seg && a2.ar === regC.an.ar);
+          const otros = (ctx.anclas || []).filter((a2) => a2 !== regC.an && !a2.seg && !a2.ref && a2.ar === regC.an.ar);
           if (otros.length === 1) itemMas("Modificar medida entre anchors…", () => modificarMedidaEntre(regC.an, otros[0]));
         }
         // POLÍGONO CERRADO: si este anchor forma un ciclo con otros, convertirlo en CALADO real.
@@ -8842,7 +8845,7 @@
       // ⚓→STRAP: instala un strap ÚNICO (manual) exactamente en el punto del anchor — colocar
       // anchors es cómodo (⌨A, % y empates); el strap discreto hereda esa comodidad. El anchor
       // se conserva como referencia (bórralo aparte si no lo quieres).
-      { const posS = (reg.tipo === "arista") ? posAnclaArista(reg.an, A, L) : posAnclaCorte(reg.c, reg.an);
+      if (!esRef) { const posS = (reg.tipo === "arista") ? posAnclaArista(reg.an, A, L) : posAnclaCorte(reg.c, reg.an);
         const pzS = (state.prodMode === "compuesto") ? (state.piezas || []).find((p9) => p9.anclas === ctx.anclas || p9.cortes === ctx.cortes) : null;
         const strapsDest = pzS ? (pzS.straps || (pzS.straps = [])) : ((state.prodMode !== "compuesto") ? state.strapsUnif : null);
         if (posS && strapsDest) {
@@ -8876,7 +8879,7 @@
         } }
       // F5: CONECTOR DE ENSAMBLE por VÍNCULO — cada vínculo declarado (🧩 en la ficha de la pieza)
       // pide sus propios C1/C2; sin vínculo, instalar un conector CREA el vínculo de una vez.
-      { const pzC = (state.prodMode === "compuesto") ? (state.piezas || []).find((p9) => p9.anclas === ctx.anclas || p9.cortes === ctx.cortes) : null;
+      if (!esRef) { const pzC = (state.prodMode === "compuesto") ? (state.piezas || []).find((p9) => p9.anclas === ctx.anclas || p9.cortes === ctx.cortes) : null;
         if (pzC) {
           let hotC = null;   // ⌨C: la acción de conector más natural del menú
           if (reg.an.con && typeof reg.an.con === "object") {
@@ -8908,6 +8911,15 @@
           }
           if (hotC) hotC.dataset.hotC = "1";
         } }
+      // 📍 REFERENCIA VISUAL (v17-76): marca de posición pura — pierde conexiones, macros,
+      // calados, straps y conectores; conserva arrastre, distancia exacta, bloqueo y eliminación.
+      if (reg.tipo === "arista" && !esRef && !reg.an.seg) { const bP9 = itemMas("📍 Usar como referencia visual  ⌨P", () => {
+        if ((ctx.cortes || []).some((c9) => (c9.anclas || []).some((r9) => r9 && r9.emp === reg.an.id)))
+          return alert("Este anchor GOBIERNA un corte por empate — desempátalo o elimina el corte antes de volverlo referencia.");
+        if (reg.an.con) return alert("Este anchor es un conector de ensamble (E·C) — quítale el conector antes de volverlo referencia.");
+        reg.an.ref = true; if (ctx.onChange) ctx.onChange();
+      }); if (bP9) bP9.dataset.hotP = "1"; }
+      if (esRef) { const bP8 = item("⚓ Volver a anchor normal  ⌨P", () => { delete reg.an.ref; if (ctx.onChange) ctx.onChange(); }); if (bP8) bP8.dataset.hotP = "1"; }
       { const bB = reg.an.fix
           ? itemMas("Desbloquear anchor  ⌨B", () => { reg.an.fix = false; if (ctx.onChange) ctx.onChange(); })
           : itemMas("Bloquear anchor (fijar su posición)  ⌨B", () => { reg.an.fix = true; if (ctx.onChange) ctx.onChange(); });
@@ -8947,7 +8959,7 @@
       menu._onKey = (ev3) => {
         if (ev3.target && /input|textarea|select/i.test(ev3.target.tagName || "")) return;
         const k3 = (ev3.key || "").toLowerCase();
-        if (k3 !== "b" && k3 !== "c" && k3 !== "g" && k3 !== "s" && k3 !== "e" && k3 !== "t") return;
+        if (k3 !== "b" && k3 !== "c" && k3 !== "g" && k3 !== "s" && k3 !== "e" && k3 !== "t" && k3 !== "p") return;
         const btn = menu.querySelector('button[data-hot-' + k3 + '="1"]');
         if (btn) { ev3.preventDefault(); btn.click(); }
       };
@@ -9201,16 +9213,18 @@
         } else {
           items = [["Ojetillos", "oj"], ["Straps", "strap"], ["Cintas / cierres", "cinta"], ["Anexo (aleta/solapa/faldón/cenefa)…", "anexoArista"], ["Corte / calado", "corte"], ["Línea de construcción", "guia"]];
           if (seg) items.push(["Ojetillos sobre el pliegue (fila)", "ojLibre"], ["Strap sobre el pliegue", "strapLibre"]);
-          if (pm) items.push(["Anchor (punto de anclaje)", "ancla"], ["Nota (texto libre)…", "nota"]);
+          if (pm) items.push(["Anchor (punto de anclaje)", "ancla"], ["📍 Referencia visual (marca)", "anclaRef"], ["Nota (texto libre)…", "nota"]);
         }
         items.forEach(([t, a]) => {
-          if (!acciones[a]) return;
+          if (!acciones[a] && !(a === "anclaRef" && acciones.ancla)) return;
           const b = document.createElement("button"); b.type = "button"; b.className = "arista-menu-it";
           const esAncla = (a === "ancla" || a === "anclaLibre" || a === "corteAncla");
           const esGuia = (a === "guia" || a === "guiaLibre");
-          b.textContent = esAncla ? t + "  ⌨A" : (esGuia ? t + "  ⌨G" : t);
+          const esRefA = (a === "anclaRef");
+          b.textContent = esAncla ? t + "  ⌨A" : (esGuia ? t + "  ⌨G" : (esRefA ? t + "  ⌨P" : t));
           if (esAncla) b.dataset.hotA = "1";
           if (esGuia) b.dataset.hotG = "1";
+          if (esRefA) b.dataset.hotP = "1";
           if (a === "guiaEje") {   // estado actual del eje, a la derecha (On verde / Off tenue)
             const on9 = ln.getAttribute("data-ejevis") != null;
             b.textContent = "";
@@ -9219,7 +9233,7 @@
             b.appendChild(sp9); b.appendChild(st9);
             b.style.display = "flex"; b.style.justifyContent = "space-between"; b.style.alignItems = "center"; b.style.gap = "10px"; b.style.textAlign = "left";
           }
-          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "anexoCal") acciones.anexoCal(parseInt(idxAnexo, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anexoLibre") acciones[a](seg, pm, ln.getAttribute("data-arista") || null); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else acciones[a](k, pm); });
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); cerrarMenuAristas(); if (a === "nota") acciones.nota(pm); else if (a === "anexoOj") acciones.anexoOj(parseInt(idxAnexo, 10), bordeAnexo, esFusAnexo); else if (a === "guiaAnexoUI") acciones.guiaAnexoUI(parseInt(idxCorte, 10)); else if (a === "anexoCal") acciones.anexoCal(parseInt(idxAnexo, 10)); else if (a === "tapaOj" || a === "tapaFus") acciones[a](parseInt(idxCorte, 10), kTapa); else if (a === "guiaEje") acciones[a](parseInt(idxCorte, 10)); else if (idxCorte != null && (a === "corteOj" || a === "corteStrap" || a === "corteAncla")) acciones[a](parseInt(idxCorte, 10), pm); else if (a === "anexoLibre") acciones[a](seg, pm, ln.getAttribute("data-arista") || null); else if (a === "anclaLibre" || a === "corteLibre" || a === "guiaLibre" || a === "ojLibre" || a === "strapLibre") acciones[a](seg, pm); else if (a === "anclaRef") acciones.ancla(k, pm, true); else acciones[a](k, pm); });
           menu.appendChild(b);
         });
         aplicarAtajosMenu(menu);
@@ -9228,8 +9242,8 @@
         // (y el diálogo de fijar distancia se abre solo).
         menu._onKey = (ev3) => {
           const k3 = (ev3.key || "").toLowerCase();
-          if (k3 !== "a" && k3 !== "g") return;
-          const btnH = menu.querySelector(k3 === "a" ? 'button[data-hot-a="1"]' : 'button[data-hot-g="1"]');
+          if (k3 !== "a" && k3 !== "g" && k3 !== "p") return;
+          const btnH = menu.querySelector('button[data-hot-' + k3 + '="1"]');
           if (btnH) { ev3.preventDefault(); btnH.click(); }
         };
         document.addEventListener("keydown", menu._onKey);
@@ -9450,7 +9464,7 @@
       if (!c.tapa.ar) c.tapa.ar = {}; if (!c.tapa.ar[k]) c.tapa.ar[k] = { fus: true, ojD: "" };
       c.tapa.ar[k].fus = c.tapa.ar[k].fus === false;
       renderCortesUnif(); recompute(); },
-    ancla: (k, pm) => {
+    ancla: (k, pm, ref9) => {
       const A = num("f_ancho", null), L = num("f_largo", null); if (!(A > 0 && L > 0)) return;
       const sgm = aristaSegAncla(k, A, L); if (!sgm) return;
       const len = Math.hypot(sgm.b.x - sgm.a.x, sgm.b.y - sgm.a.y);
@@ -9459,6 +9473,7 @@
       if (pm) tA = Math.max(0, Math.min(len, (pm.x - sgm.a.x) * u.x + (pm.y - sgm.a.y) * u.y));
       const esq = (tA <= len / 2) ? "ini" : "fin";
       const anN = { id: nuevoIdAncla(state.anclasUnif, state.cortesUnif), ar: k, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) };
+      if (ref9) anN.ref = true;   // 📍 nace como referencia visual (⌨P)
       state.anclasUnif.push(anN);
       recompute();
       fijarAnchorRecien(anN, false, { cortes: state.cortesUnif, anclas: state.anclasUnif, A: A, L: L, onChange: recompute });
@@ -9661,7 +9676,7 @@
         if (!c.tapa.ar) c.tapa.ar = {}; if (!c.tapa.ar[k]) c.tapa.ar[k] = { fus: true, ojD: "" };
         c.tapa.ar[k].fus = c.tapa.ar[k].fus === false;
         renderPiezas(); recomputeCompuesto(); },
-      ancla: (k, pm) => {
+      ancla: (k, pm, ref9) => {
         const A = ev(pz.ancho), L = ev(pz.largo); if (!(A > 0 && L > 0)) return;
         const sgm = aristaSegAncla(k, A, L); if (!sgm) return;
         const len = Math.hypot(sgm.b.x - sgm.a.x, sgm.b.y - sgm.a.y);
@@ -9670,6 +9685,7 @@
         if (pm) tA = Math.max(0, Math.min(len, (pm.x - sgm.a.x) * u.x + (pm.y - sgm.a.y) * u.y));
         const esq = (tA <= len / 2) ? "ini" : "fin";
         const anN = { id: nuevoIdAncla(pz.anclas || [], pz.cortes), ar: k, esq: esq, d: rd3(esq === "ini" ? tA : len - tA) };
+        if (ref9) anN.ref = true;   // 📍 nace como referencia visual (⌨P)
         (pz.anclas || (pz.anclas = [])).push(anN);
         recomputeCompuesto();
         fijarAnchorRecien(anN, false, { cortes: pz.cortes, anclas: pz.anclas, A: A, L: L, onChange: recomputeCompuesto });
