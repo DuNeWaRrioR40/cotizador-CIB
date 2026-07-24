@@ -1015,3 +1015,10 @@ body.drawer-abierto { overflow: hidden; }
 
 /* v17-63: fila de imagen/DXF en la ficha de la aleta */
 .aleta-figimg { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+
+/* v17-72: punto verde de la macro "medida entre anchors" (centro arrastrable) */
+.sketch-svg .med-centro-dot { fill: #2e7d32; stroke: #fff; stroke-width: 2; cursor: grab; }
+.sketch-svg .med-centro-halo { fill: rgba(46, 125, 50, 0.16); cursor: grab; }
+.sketch-svg .med-centro-seg { stroke: #2e7d32; stroke-width: 3; stroke-dasharray: 6 4; opacity: 0.8; pointer-events: none; }
+.sketch-svg .med-centro-lbl { font-size: 11px; font-weight: 600; fill: #1b5e20; paint-order: stroke; stroke: #fff; stroke-width: 3px; pointer-events: none; }
+.med-centro-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 10px; margin-bottom: 6px; background: #eef7ee; border: 1px solid #bfdcbf; border-radius: 8px; }

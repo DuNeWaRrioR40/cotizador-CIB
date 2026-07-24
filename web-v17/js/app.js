@@ -8369,13 +8369,14 @@
       const tLo = Math.min(tA, tB), tHi = Math.max(tA, tB);
       const span = tHi - tLo;
       if (!(span > 0.01)) return alert("Los 2 anchors están en el mismo punto; sepáralos primero.");
-      const txt = prompt("Nueva medida entre los 2 anchors (m) — actual: " + f(span) + " m.\nSe reduce simétricamente hacia el centro; los vértices opuestos quedan fijos como ejes. Acepta aritmética (ej. " + f(span) + "/2):", f(span));
+      const txt = prompt("Nueva medida entre los 2 anchors (m) — actual: " + f(span) + " m.\nTras aceptar, ARRASTRA el punto verde para elegir dónde queda el tramo (parte al centro). Acepta aritmética (ej. " + f(span) + "/2):", f(span));
       if (txt == null) return;
       const M = window.CalcCIBSA.evalExpr(String(txt).replace(",", "."));
       if (M == null || isNaN(M) || M < 0) return alert("Medida no válida.");   // 0 = degenerar la arista en un VÉRTICE
       if (M > span + 1e-9) return alert("La medida nueva (" + f(M) + " m) no puede superar la actual (" + f(span) + " m): la tela no se puede agregar, solo recortar.");
-      const c0 = (tLo + tHi) / 2, q1 = c0 - M / 2, q2 = c0 + M / 2;
-      // mover los anchors simétricamente
+      const aplicarCon = (c0) => {
+      const q1 = c0 - M / 2, q2 = c0 + M / 2;
+      // mover los anchors simétricamente respecto del centro elegido
       const setD = (an2, t) => { an2.d = rd3(an2.esq === "fin" ? (len - t) : t); };
       setD(anLo, q1); setD(anHi, q2);
       // v17-69 BUG (triángulo → pentágono): la macro fabricaba SIEMPRE los 2 cortes-trapecio desde
@@ -8439,6 +8440,56 @@
       if (!gobHi) mkCorte(V2, Q2, mkFx(V2, Q2, "fin"), anHi, { x: PHi.x, y: PHi.y });
       aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
       if (ctx.onChange) ctx.onChange();
+      };
+      // v17-72: PUNTO VERDE — el centro del tramo nuevo se elige arrastrando antes de aplicar.
+      const cLim1 = tLo + M / 2, cLim2 = tHi - M / 2;   // el tramo nuevo debe caber dentro del viejo
+      if (cLim2 < cLim1 + 1e-9) return aplicarCon((tLo + tHi) / 2);   // sin holgura (M = span): directo
+      container.querySelectorAll(".med-centro-bar").forEach((e9) => e9.remove());
+      svg.querySelectorAll(".med-centro-g").forEach((e9) => e9.remove());
+      let c9 = rd3((tLo + tHi) / 2);
+      const NS9 = "http://www.w3.org/2000/svg";
+      const gM = document.createElementNS(NS9, "g"); gM.setAttribute("class", "med-centro-g"); svg.appendChild(gM);
+      const mkE9 = (tag, cls) => { const e9 = document.createElementNS(NS9, tag); e9.setAttribute("class", cls); gM.appendChild(e9); return e9; };
+      const seg9 = mkE9("line", "med-centro-seg"), halo9 = mkE9("circle", "med-centro-halo"), dot9 = mkE9("circle", "med-centro-dot"), lbl9 = mkE9("text", "med-centro-lbl");
+      halo9.setAttribute("r", "13"); dot9.setAttribute("r", "7");
+      const pxOf9 = (t9) => ({ X: ox + mscale * (segE.a.x + u.x * t9), Y: oy + mscale * (segE.a.y + u.y * t9) });
+      const horiz9 = (anA.ar === "sup" || anA.ar === "inf");
+      const pinta9 = () => {
+        const p9 = pxOf9(c9), pA9 = pxOf9(c9 - M / 2), pB9 = pxOf9(c9 + M / 2);
+        [halo9, dot9].forEach((e9) => { e9.setAttribute("cx", p9.X); e9.setAttribute("cy", p9.Y); });
+        seg9.setAttribute("x1", pA9.X); seg9.setAttribute("y1", pA9.Y); seg9.setAttribute("x2", pB9.X); seg9.setAttribute("y2", pB9.Y);
+        lbl9.textContent = "centro a " + f(rd3(c9)) + " m · tramo " + f(rd3(c9 - M / 2)) + "–" + f(rd3(c9 + M / 2)) + " m";
+        lbl9.setAttribute("x", horiz9 ? p9.X : p9.X + 16); lbl9.setAttribute("y", horiz9 ? p9.Y - 16 : p9.Y + 4);
+        lbl9.setAttribute("text-anchor", horiz9 ? "middle" : "start");
+      };
+      pinta9();
+      let dragC9 = false;
+      const onDown9 = (ev9) => { if (ev9.target === dot9 || ev9.target === halo9) { dragC9 = true; ev9.stopPropagation(); ev9.preventDefault(); try { svg.setPointerCapture(ev9.pointerId); } catch (_) {} } };
+      const onMove9 = (ev9) => {
+        if (!dragC9) return;
+        const pm9 = toModel(ev9.clientX, ev9.clientY); if (!pm9) return;
+        const t9 = (pm9.x - segE.a.x) * u.x + (pm9.y - segE.a.y) * u.y;
+        c9 = rd3(Math.max(cLim1, Math.min(cLim2, t9)));
+        pinta9();
+      };
+      const onUp9 = () => { dragC9 = false; };
+      svg.addEventListener("pointerdown", onDown9, true);   // fase captura: el punto gana antes que el drag de anclas
+      svg.addEventListener("pointermove", onMove9);
+      svg.addEventListener("pointerup", onUp9);
+      const bar9 = document.createElement("div"); bar9.className = "med-centro-bar";
+      const hint9 = document.createElement("span"); hint9.className = "muted small"; hint9.textContent = "Arrastra el punto verde: ahí quedará el tramo de " + f(M) + " m.";
+      const bOK9 = document.createElement("button"); bOK9.type = "button"; bOK9.className = "btn-outline"; bOK9.textContent = "✔ Aplicar aquí";
+      const bNo9 = document.createElement("button"); bNo9.type = "button"; bNo9.className = "btn-outline"; bNo9.textContent = "✕ Cancelar";
+      bar9.appendChild(hint9); bar9.appendChild(bOK9); bar9.appendChild(bNo9);
+      container.insertBefore(bar9, container.firstChild);
+      const limpiar9 = () => {
+        try { gM.remove(); bar9.remove(); } catch (_) {}
+        svg.removeEventListener("pointerdown", onDown9, true);
+        svg.removeEventListener("pointermove", onMove9);
+        svg.removeEventListener("pointerup", onUp9);
+      };
+      bOK9.addEventListener("click", () => { limpiar9(); aplicarCon(c9); });
+      bNo9.addEventListener("click", limpiar9);
     }
     function modificarMedidaEntreCorte(cH, anA, anB) {
       // GUARDARRAÍL (v17): en un VOLUMÉTRICO las paredes nacen del rectángulo base — pellizcar
