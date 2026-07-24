@@ -10162,7 +10162,7 @@
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, [], { cortes: ojEnCortesN(state.cortesUnif, ancho, largo, state.aletasUnif), anexos: ojEnAletasN(state.aletasUnif) }).concat(materialesCortes(state.cortesUnif)),
       sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag, notas: state.notasUnif }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: volUnifSpec() } : {}),
       vista3D: (_vista3D && _vista3D.firma === firmaVol()) ? _vista3D.png : null,
-      mod3D: _mod3DPng,
+      mod3D: _mod3DCaps.length ? _mod3DCaps.slice() : null,
       odt: _odtActual,
       figImg: state.figImgUnif ? state.figImgUnif.url : null,
       figImgPano: (state.figImgUnif && state.figImgUnif.url) ? _figBaked : null,
@@ -10448,7 +10448,7 @@
   // El modelo vive EN LA SESIÓN (no se persiste: un STL pesa MB y reventaría respaldos y Sheet).
   // La captura 📸 sí viaja al plano PDF como página "PRODUCTO 3D DEL CLIENTE (referencial)".
   let _mod3D = null;      // { nombre, pos: Float32Array }
-  let _mod3DPng = null;   // captura elegida (dataURL)
+  let _mod3DCaps = [];    // v17-86: GALERÍA de capturas (dataURL) — visibles bajo el plano y en el PDF
   function parseSTL(buf) {
     const dv = new DataView(buf);
     if (buf.byteLength >= 84) {
@@ -10494,14 +10494,34 @@
     rd.onload = () => {
       let pos = null;
       try { pos = esObj ? parseOBJ(rd.result) : parseSTL(rd.result); } catch (e) { pos = null; }
-      if (!pos || !pos.length) return alert("No se pudo interpretar el " + (esObj ? "OBJ" : "STL") + ". Exporta desde Fusion/Inventor como STL (binario o ASCII) u OBJ de malla.");
+      if (!pos || !pos.length) {
+        // v17-85: diagnóstico específico — OBJ de CURVAS (Rhino exporta líneas/B-splines sin caras)
+        if (esObj && /cstype|\bcurv\b|bspline/i.test(String(rd.result))) {
+          return alert("Este OBJ trae CURVAS B-spline (líneas — típico de Rhino al exportar un dibujo), no una MALLA con caras: el visor 3D no tiene superficies que mostrar.\n\nReceta:\n· En Rhino: aplica _Mesh a las superficies y exporta el OBJ como malla poligonal (o exporta STL).\n· En Fusion/Inventor: exporta STL directamente.\n· Si es un dibujo 2D de líneas, el camino es el DXF de siempre (botón 🖼 del plano).");
+        }
+        return alert("No se pudo interpretar el " + (esObj ? "OBJ" : "STL") + ". Exporta desde Fusion/Inventor como STL (binario o ASCII) u OBJ de malla (con caras).");
+      }
       _mod3D = { nombre: file.name || "modelo", pos: pos };
-      _mod3DPng = null;
       sincBtnMod3D();
       alert("Modelo 3D cargado: " + _mod3D.nombre + " · " + Math.round(pos.length / 9) + " triángulos.\n\nOJO: el modelo vive SOLO en esta sesión (no se guarda en respaldos — pesa demasiado). La vista que captures con 📸 sí viaja al plano PDF.");
       abrirMod3D();
     };
     if (esObj) rd.readAsText(file); else rd.readAsArrayBuffer(file);
+  }
+  // v17-86: galería de capturas del modelo 3D BAJO el plano del paño; cada una se elimina con ✕.
+  function renderMod3DCaps() {
+    const cont = $("mod3DCaps"); if (!cont) return;
+    cont.innerHTML = "";
+    cont.classList.toggle("hidden", !_mod3DCaps.length);
+    _mod3DCaps.forEach((png9, i9) => {
+      const card9 = document.createElement("div"); card9.className = "mod3d-cap";
+      const im9 = document.createElement("img"); im9.src = png9; im9.alt = "Vista 3D " + (i9 + 1);
+      const bx9 = document.createElement("button"); bx9.type = "button"; bx9.className = "mod3d-cap-x"; bx9.textContent = "✕";
+      bx9.title = "Eliminar esta captura (del plano y del PDF)";
+      bx9.addEventListener("click", () => { _mod3DCaps.splice(i9, 1); renderMod3DCaps(); });
+      const lb9 = document.createElement("span"); lb9.className = "mod3d-cap-lbl"; lb9.textContent = "Vista 3D · " + (i9 + 1);
+      card9.appendChild(im9); card9.appendChild(bx9); card9.appendChild(lb9); cont.appendChild(card9);
+    });
   }
   function sincBtnMod3D() {
     const b = $("btnMod3D"); if (b) b.textContent = _mod3D ? "🧊 Ver modelo 3D (" + _mod3D.nombre + ")" : "🧊 Modelo 3D (STL/OBJ)…";
@@ -10541,6 +10561,9 @@
     scene.add(new T.AmbientLight(0xffffff, 0.72));
     const luz = new T.DirectionalLight(0xffffff, 0.55); luz.position.set(diag, diag * 1.4, diag * 0.7); scene.add(luz);
     const grp = new T.Group(); scene.add(grp);
+    // v17-86: fondo de coordenadas como el visor nativo — grilla piso + ejes discretos (van en la captura)
+    const grid9 = new T.GridHelper(diag * 1.6, 12, 0xd8d8d2, 0xecece6); grid9.position.y = -tam.y / 2 - diag * 0.002; grp.add(grid9);
+    const ejes9 = new T.AxesHelper(diag * 0.55); ejes9.position.set(-tam.x / 2, -tam.y / 2, -tam.z / 2); grp.add(ejes9);
     const mesh = new T.Mesh(geo, new T.MeshLambertMaterial({ color: 0xd9d2c2, side: T.DoubleSide }));
     mesh.position.set(-ctr.x, -ctr.y, -ctr.z);
     grp.add(mesh);
@@ -10585,8 +10608,9 @@
     cap.addEventListener("click", (e9) => {
       e9.stopPropagation();
       renderer.render(scene, cam);
-      _mod3DPng = canvas.toDataURL("image/png");
-      cap.textContent = "✓ Se agregará como página del plano";
+      _mod3DCaps.push(canvas.toDataURL("image/png"));
+      renderMod3DCaps();
+      cap.textContent = "✓ Captura " + _mod3DCaps.length + " agregada (plano + PDF)";
       setTimeout(() => { if (cap.isConnected) cap.textContent = "📸 Incluir esta vista en el plano"; }, 2400);
     });
     dl.addEventListener("click", (e9) => {
@@ -10682,7 +10706,7 @@
       const bm = $("figMarcoChk"); if (bm) bm.addEventListener("change", () => { if (state.figImgUnif) { state.figImgUnif.marco = bm.checked; recompute(); } });
       const bm3 = $("btnMod3D"); if (bm3) bm3.addEventListener("click", abrirMod3D);
       const fm3 = $("mod3DFile"); if (fm3) fm3.addEventListener("change", () => { const f0 = fm3.files && fm3.files[0]; fm3.value = ""; if (f0) importarMod3D(f0); });
-      const qm3 = $("btnMod3DQuitar"); if (qm3) qm3.addEventListener("click", () => { _mod3D = null; _mod3DPng = null; sincBtnMod3D(); });
+      const qm3 = $("btnMod3DQuitar"); if (qm3) qm3.addEventListener("click", () => { _mod3D = null; sincBtnMod3D(); });   // las capturas ya tomadas sobreviven (cada una tiene su ✕)
       sincBtnMod3D();
       sincBtnFigImg();
     } }
@@ -11366,7 +11390,7 @@
     // Plano del cliente (calcomanía): fuera imagen, fuera modo ajuste
     state.figImgUnif = null; _figBaked = null; _figEditOn = false;
     // Modelo 3D del cliente (sesión): también se despide
-    _mod3D = null; _mod3DPng = null; if (typeof sincBtnMod3D === "function") sincBtnMod3D();
+    _mod3D = null; _mod3DCaps = []; if (typeof sincBtnMod3D === "function") sincBtnMod3D(); if (typeof renderMod3DCaps === "function") renderMod3DCaps();
     if (typeof sincBtnFigImg === "function") sincBtnFigImg();
     // Reset producto compuesto → vuelve a uniforme (incluye vínculos de ensamble)
     state.prodMode = "uniforme"; state.piezas = []; state.compuesto = null; state.ensambles = [];

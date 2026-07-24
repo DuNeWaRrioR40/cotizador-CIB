@@ -1047,3 +1047,11 @@ body.drawer-abierto { overflow: hidden; }
 /* v17-81: ✕ eliminar en la lista de elementos del plano (visible solo con el elemento oculto) */
 .plano-menu-del { border: 1px solid #e3b7b0; background: #fff; color: #d8443a; border-radius: 50%; width: 22px; height: 22px; line-height: 1; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; }
 .plano-menu-del:hover { background: #d8443a; color: #fff; }
+
+/* v17-86: galería de capturas del modelo 3D del cliente (bajo el plano) */
+.mod3d-caps { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0 4px; }
+.mod3d-cap { position: relative; border: 1px solid #d8d8d2; border-radius: 10px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.mod3d-cap img { display: block; width: 220px; height: auto; }
+.mod3d-cap-x { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; border: 1px solid #e3b7b0; background: rgba(255,255,255,0.92); color: #d8443a; font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; padding: 0; }
+.mod3d-cap-x:hover { background: #d8443a; color: #fff; }
+.mod3d-cap-lbl { position: absolute; left: 8px; bottom: 6px; font-size: 10px; color: #6b7280; background: rgba(255,255,255,0.85); padding: 1px 6px; border-radius: 6px; }

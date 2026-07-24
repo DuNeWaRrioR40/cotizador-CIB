@@ -1549,10 +1549,10 @@
         p3.drawImage(img3d, { x: (W - iw) / 2, y: y3 - ih, width: iw, height: ih });
       } catch (e) { /* si la imagen falla, el plano queda igual que siempre */ }
     }
-    // v17-84: PRODUCTO 3D DEL CLIENTE (STL/OBJ importado) — captura elegida en su visor 🧊.
-    if (datos.mod3D) {
+    // v17-84/86: PRODUCTO 3D DEL CLIENTE (STL/OBJ) — una página por captura de la galería.
+    for (const cap9 of (Array.isArray(datos.mod3D) ? datos.mod3D : (datos.mod3D ? [datos.mod3D] : []))) {
       try {
-        const imgM = await doc.embedPng(b64ToBytes(String(datos.mod3D).split(",")[1] || ""));
+        const imgM = await doc.embedPng(b64ToBytes(String(cap9).split(",")[1] || ""));
         const pM = doc.addPage([W, H]);
         let yM = dibujarEncabezado(pM, cibsa, null, W, M, H - 40);
         tituloCentrado(pM, "PRODUCTO 3D DEL CLIENTE", W, yM, bold, 15, BLUE()); yM -= 15;
