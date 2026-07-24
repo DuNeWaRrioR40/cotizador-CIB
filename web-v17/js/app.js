@@ -8858,13 +8858,34 @@
         const eps = 1e-6, existentes = (ctx.anclas || []).map((a2) => posAnclaArista(a2, A, L)).filter(Boolean);
         const yaHay = (pq) => existentes.some((q2) => Math.abs(q2.x - pq.x) < eps && Math.abs(q2.y - pq.y) < eps);
         let creados = 0;
+        // v17-68 BUG: se poblaban SIEMPRE las 4 esquinas del rect — aunque cortes "Eliminar"
+        // las hubieran devorado (triángulo → anchors flotando en esquinas fantasma).
+        // Fuente de verdad: el polígono recortado (panoPoly) del sketch normalizado.
+        let poly9 = null;
+        try {
+          const skP = window.SketchCIBSA.construirSketch({ ancho: A, largo: L, ventanas: [], cortes: cortesSpec(ctx.cortes || []), bolsillos: [] });
+          if (skP && skP.panoPoly && skP.panoPoly.length >= 3) poly9 = skP.panoPoly;
+        } catch (_) { poly9 = null; }
+        const esVert9 = (pq) => !poly9 || poly9.some((v9) => Math.abs(v9.x - pq.x) < eps && Math.abs(v9.y - pq.y) < eps);
         [["sup", "ini"], ["sup", "fin"], ["inf", "ini"], ["inf", "fin"]].forEach(([ar2, esq2]) => {
           const seg2 = aristaSegAncla(ar2, A, L);
           const pq = (esq2 === "ini") ? seg2.a : seg2.b;
+          if (!esVert9(pq)) return;   // esquina devorada por un corte: ya no es vértice real
           if (yaHay(pq)) return;
           ctx.anclas.push({ id: nuevoIdAncla(ctx.anclas, ctx.cortes), ar: ar2, esq: esq2, d: 0, fix: true });
           existentes.push(pq); creados += 1;
         });
+        // Vértices NUEVOS del polígono (puntas creadas por los cortes): anchor de borde libre
+        // sobre la arista saliente del polígono, bloqueado en el vértice.
+        if (poly9) {
+          poly9.forEach((v9, i9) => {
+            const pq = { x: v9.x, y: v9.y };
+            if (yaHay(pq)) return;
+            const nx9 = poly9[(i9 + 1) % poly9.length];
+            ctx.anclas.push({ id: nuevoIdAncla(ctx.anclas, ctx.cortes), seg: { a: { x: v9.x, y: v9.y }, b: { x: nx9.x, y: nx9.y } }, esq: "ini", d: 0, fix: true });
+            existentes.push(pq); creados += 1;
+          });
+        }
         // Volumétrico: también los vértices EXTERIORES de cada aleta (esquinas del rim, coords de hoja).
         const v3 = ctx.vol ? ctx.vol() : null;
         if (v3) {
