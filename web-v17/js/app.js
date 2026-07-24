@@ -8385,15 +8385,46 @@
       // empates re-derivan la geometría); el corte-trapecio solo se fabrica en lados vírgenes.
       const yaGobernado = (an2) => (ctx.cortes || []).some((c9) => (c9.anclas || []).some((r9) => r9 && r9.emp === an2.id));
       const gobLo = yaGobernado(anLo), gobHi = yaGobernado(anHi);
-      // vértices opuestos (fijos): anchors bloqueados en la arista opuesta — solo si se necesitan
+      // v17-71: los "vértices opuestos fijos" son los del POLÍGONO REAL, no las esquinas del rect.
+      // En un triángulo la recta nueva nace del ÁPICE hacia el anchor movido (lo que pediste);
+      // en un rect intacto los vecinos del polígono SON las esquinas opuestas → igual que siempre.
       const opuesta = { sup: "inf", inf: "sup", izq: "der", der: "izq" }[anA.ar];
-      const mkFx = (esq9) => { const fx9 = { id: nuevoIdAncla(ctx.anclas, ctx.cortes), ar: opuesta, esq: esq9, d: 0, fix: true }; ctx.anclas.push(fx9); return fx9; };
+      let poly9 = null;
+      try {
+        const skP = window.SketchCIBSA.construirSketch({ ancho: A, largo: L, ventanas: [], cortes: cortesSpec(ctx.cortes || []), bolsillos: [] });
+        if (skP && skP.panoPoly && skP.panoPoly.length >= 3) poly9 = skP.panoPoly;
+      } catch (_) { poly9 = null; }
+      const vecinoPoly = (pt) => {   // vecino del vértice que se ALEJA de la arista modificada
+        if (!poly9) return null;
+        const n9 = poly9.length, horiz9 = (anA.ar === "sup" || anA.ar === "inf");
+        for (let i9 = 0; i9 < n9; i9++) {
+          const v9 = poly9[i9];
+          if (Math.abs(v9.x - pt.x) > 0.005 || Math.abs(v9.y - pt.y) > 0.005) continue;
+          const prev9 = poly9[(i9 + n9 - 1) % n9], next9 = poly9[(i9 + 1) % n9];
+          const enArista9 = (w9) => horiz9 ? Math.abs(w9.y - pt.y) < 0.005 : Math.abs(w9.x - pt.x) < 0.005;
+          return enArista9(next9) ? prev9 : next9;
+        }
+        return null;
+      };
       const nIn = { sup: { x: 0, y: 1 }, inf: { x: 0, y: -1 }, izq: { x: 1, y: 0 }, der: { x: -1, y: 0 } }[anA.ar];
       const depth = (anA.ar === "sup" || anA.ar === "inf") ? L : A;
-      const V1 = { x: segE.a.x + nIn.x * depth, y: segE.a.y + nIn.y * depth };
-      const V2 = { x: segE.b.x + nIn.x * depth, y: segE.b.y + nIn.y * depth };
+      const PLo = { x: segE.a.x + u.x * tLo, y: segE.a.y + u.y * tLo };   // posición ANTES de mover
+      const PHi = { x: segE.a.x + u.x * tHi, y: segE.a.y + u.y * tHi };
+      const vLo = vecinoPoly(PLo), vHi = vecinoPoly(PHi);
+      const V1 = vLo ? { x: vLo.x, y: vLo.y } : { x: segE.a.x + nIn.x * depth, y: segE.a.y + nIn.y * depth, _rect: true };
+      const V2 = vHi ? { x: vHi.x, y: vHi.y } : { x: segE.b.x + nIn.x * depth, y: segE.b.y + nIn.y * depth, _rect: true };
       const Q1 = { x: segE.a.x + u.x * q1, y: segE.a.y + u.y * q1 };
       const Q2 = { x: segE.a.x + u.x * q2, y: segE.a.y + u.y * q2 };
+      // anchor fijo del pivote: reusar el que ya viva en ese punto (p. ej. el del ápice);
+      // si no hay, crear uno — de arista (esquinas del rect) o de borde libre (vértice de corte).
+      const mkFx = (V9, Q9, esq9) => {
+        const ya9 = (ctx.anclas || []).find((an9) => { const pq9 = posAnclaArista(an9, A, L); return pq9 && Math.abs(pq9.x - V9.x) < 0.005 && Math.abs(pq9.y - V9.y) < 0.005; });
+        if (ya9) return ya9;
+        const fx9 = V9._rect
+          ? { id: nuevoIdAncla(ctx.anclas, ctx.cortes), ar: opuesta, esq: esq9, d: 0, fix: true }
+          : { id: nuevoIdAncla(ctx.anclas, ctx.cortes), seg: { a: { x: V9.x, y: V9.y }, b: { x: Q9.x, y: Q9.y } }, esq: "ini", d: 0, fix: true };
+        ctx.anclas.push(fx9); return fx9;
+      };
       const mkCorte = (V, Q, fxAn, movAn, esquina) => {
         const cN = crearLineaEnSeg(ctx.cortes, { a: V, b: Q }, "corte"); if (!cN) return;
         cN.fadeKill = true;
@@ -8404,8 +8435,8 @@
         const idA = nuevoIdAncla(ctx.anclas, ctx.cortes);
         cN.anclas = [{ id: idA, t: 0, emp: fxAn.id }, { id: idA + 1, t: rd3(lenC), emp: movAn.id }];
       };
-      if (!gobLo) mkCorte(V1, Q1, mkFx("ini"), anLo, { x: segE.a.x, y: segE.a.y });
-      if (!gobHi) mkCorte(V2, Q2, mkFx("fin"), anHi, { x: segE.b.x, y: segE.b.y });
+      if (!gobLo) mkCorte(V1, Q1, mkFx(V1, Q1, "ini"), anLo, { x: PLo.x, y: PLo.y });
+      if (!gobHi) mkCorte(V2, Q2, mkFx(V2, Q2, "fin"), anHi, { x: PHi.x, y: PHi.y });
       aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
       if (ctx.onChange) ctx.onChange();
     }
