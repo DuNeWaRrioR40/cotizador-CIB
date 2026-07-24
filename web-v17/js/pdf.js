@@ -337,7 +337,7 @@
         if (a.fused === "l" || a.fused === "r") page.drawImage(embA, { x: X, y: Ybot + Hp, width: Hp, height: Wp, rotate: PDFLib.degrees(-90), opacity: 0.85 });
         else page.drawImage(embA, { x: X, y: Ybot, width: Wp, height: Hp, opacity: 0.85 });
       } catch (e) {} }
-      page.drawRectangle({ x: X, y: Ybot, width: Wp, height: Hp, borderColor: AMBER, borderWidth: 1, color: AMBER, opacity: 0.1, borderOpacity: 1 });
+      if (!(embA && !a.marco)) page.drawRectangle({ x: X, y: Ybot, width: Wp, height: Hp, borderColor: AMBER, borderWidth: 1, color: AMBER, opacity: 0.1, borderOpacity: 1 });
       let fa, fb;
       if (a.fused === "t") { fa = { x: X, y: Ytop }; fb = { x: X + Wp, y: Ytop }; }
       else if (a.fused === "b") { fa = { x: X, y: Ybot }; fb = { x: X + Wp, y: Ybot }; }

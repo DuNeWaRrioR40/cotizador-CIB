@@ -2913,7 +2913,7 @@
   function rotId(o) { if (o._rid == null) o._rid = ++ROTSEQ; return o._rid; }
   function aletasSpec(list) {
     const ev = window.CalcCIBSA.evalExpr;
-    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), ojMode: a.ojMode || "simple", ojParejo: !!a.ojParejo, ojEdges: (a.ojMode === "arista" && a.ojEdges) ? aletaOjEdgesSpec(a.ojEdges) : null, legend: a.legend || "", rotulo: !!a.rotulo, id: rotId(a), figImg: (a.figImg && a.figImg.url) ? a.figImg.url : null })).filter((a) => a.largo > 0 && a.ancho > 0);
+    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), ojMode: a.ojMode || "simple", ojParejo: !!a.ojParejo, ojEdges: (a.ojMode === "arista" && a.ojEdges) ? aletaOjEdgesSpec(a.ojEdges) : null, legend: a.legend || "", rotulo: !!a.rotulo, id: rotId(a), figImg: (a.figImg && a.figImg.url) ? a.figImg.url : null, marco: !!a.marco })).filter((a) => a.largo > 0 && a.ancho > 0);
   }
   function aletasLineasPDF(list, cantidad, valorOj, factor) {
     return visibles(list).map((a) => {
@@ -3623,7 +3623,13 @@
         const fin = document.createElement("input"); fin.type = "file"; fin.accept = "image/*,.dxf"; fin.style.display = "none";
         const bImp = document.createElement("button"); bImp.type = "button"; bImp.className = "btn-outline";
         const bQ = document.createElement("button"); bQ.type = "button"; bQ.className = "btn-outline";
-        const sincFig = () => { bImp.textContent = a.figImg ? "🖼 Cambiar plano/foto" : "🖼 Plano/foto en esta aleta"; bQ.textContent = "✕ Quitar imagen"; bQ.classList.toggle("hidden", !a.figImg); };
+        const ml = document.createElement("label"); ml.className = "chk";
+        ml.title = "Con imagen inscrita, el marco del rectángulo se oculta por defecto (el diseño manda). Marca para volver a dibujarlo.";
+        const mcb = document.createElement("input"); mcb.type = "checkbox"; mcb.checked = !!a.marco;
+        mcb.addEventListener("change", () => { a.marco = mcb.checked; onChange(); });
+        const msp = document.createElement("span"); msp.textContent = "Mostrar marco del rectángulo";
+        ml.appendChild(mcb); ml.appendChild(msp);
+        const sincFig = () => { bImp.textContent = a.figImg ? "🖼 Cambiar plano/foto" : "🖼 Plano/foto en esta aleta"; bQ.textContent = "✕ Quitar imagen"; bQ.classList.toggle("hidden", !a.figImg); ml.classList.toggle("hidden", !a.figImg); };
         bImp.title = "Inscribe una foto o DXF básico que llena el rectángulo de la aleta (solo visualización; se deforma cambiando las medidas de la aleta). Un DXF además ofrece dictar largo y ancho.";
         bImp.addEventListener("click", () => fin.click());
         bQ.addEventListener("click", () => { a.figImg = null; sincFig(); onChange(); });
@@ -3652,7 +3658,7 @@
           if (esDxf) rd.readAsText(file); else rd.readAsDataURL(file);
         });
         sincFig();
-        gfila.appendChild(bImp); gfila.appendChild(bQ); gfila.appendChild(fin); card.appendChild(gfila);
+        gfila.appendChild(bImp); gfila.appendChild(bQ); gfila.appendChild(ml); gfila.appendChild(fin); card.appendChild(gfila);
         const mcap = document.createElement("p"); mcap.className = "muted small"; mcap.textContent = "Materiales de la aleta:"; card.appendChild(mcap);
         const mdiv = document.createElement("div"); card.appendChild(mdiv); renderComplementos(mdiv, a.complementos, onChange);
         const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);

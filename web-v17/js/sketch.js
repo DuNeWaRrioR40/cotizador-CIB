@@ -646,7 +646,7 @@
       const g = aletaGeomRect(a, ancho, largo);
       const pts = aletaOjPuntos(a, ancho, largo);
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (NOMARI[a.tipo] || "Aleta");
-      return { x: g.x, y: g.y, w: g.w, h: g.h, fused: g.fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null), largo: parseFloat(a.largo) || 0, ancho: parseFloat(a.ancho) || 0, offset: parseFloat(a.offset) || 0, dBorde: parseFloat(a.dBorde) || 0, figImg: a.figImg || null };
+      return { x: g.x, y: g.y, w: g.w, h: g.h, fused: g.fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null), largo: parseFloat(a.largo) || 0, ancho: parseFloat(a.ancho) || 0, offset: parseFloat(a.offset) || 0, dBorde: parseFloat(a.dBorde) || 0, figImg: a.figImg || null, marco: !!a.marco };
     });
     // Straps (cintas/webbing): banda RECTA de ancho fijo (del material) y largo del usuario, en cualquier
     // ángulo/posición. Puede iniciar fuera, cruzar y salir del paño. Remates = costuras perpendiculares en
@@ -1028,7 +1028,9 @@
     // Aletas / solapas / faldón / cenefa (paños anexos) — con su arista fusionada.
     (sk.aletas || []).forEach((a) => {
       const X = px(a.x), Y = py(a.y), Wp = a.w * scale, Hp = a.h * scale;
-      s += `<rect class="aleta" x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}"/>`;
+      // v17-65: con imagen inscrita el diseño manda — el marco del rect se oculta por defecto
+      // (a.marco lo devuelve). En espejo no hay imagen, así que el marco siempre se dibuja.
+      if (!(a.figImg && !sk.espejo && !a.marco)) s += `<rect class="aleta" x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}"/>`;
       // v17-63: "la aleta es el marco" — imagen/DXF llenando su rect (solo visualización).
       // En aletas laterales (izq/der) la imagen apaisada se gira 90° para correr con la arista.
       if (a.figImg && !sk.espejo) {
