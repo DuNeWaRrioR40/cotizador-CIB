@@ -8374,16 +8374,8 @@
       const M = window.CalcCIBSA.evalExpr(String(txt).replace(",", "."));
       if (M == null || isNaN(M) || M < 0) return alert("Medida no válida.");   // 0 = degenerar la arista en un VÉRTICE
       if (M > span + 1e-9) return alert("La medida nueva (" + f(M) + " m) no puede superar la actual (" + f(span) + " m): la tela no se puede agregar, solo recortar.");
-      const aplicarCon = (c0) => {
-      const q1 = c0 - M / 2, q2 = c0 + M / 2;
-      // mover los anchors simétricamente respecto del centro elegido
-      const setD = (an2, t) => { an2.d = rd3(an2.esq === "fin" ? (len - t) : t); };
-      setD(anLo, q1); setD(anHi, q2);
-      // v17-69 BUG (triángulo → pentágono): la macro fabricaba SIEMPRE los 2 cortes-trapecio desde
-      // las esquinas del RECT ("vértices opuestos"), aunque el vértice ya no existiera y aunque el
-      // anchor YA gobernara un corte por empate (lado inclinado del triángulo). Doble gobierno del
-      // vértice = pellizco. Regla: anchor ya empatado a un corte → mover el anchor basta (los
-      // empates re-derivan la geometría); el corte-trapecio solo se fabrica en lados vírgenes.
+      // v17-69: anchor ya empatado a un corte → mover el anchor basta (los empates re-derivan);
+      // el corte-trapecio solo se fabrica en lados vírgenes (evita el doble gobierno = pentágono).
       const yaGobernado = (an2) => (ctx.cortes || []).some((c9) => (c9.anclas || []).some((r9) => r9 && r9.emp === an2.id));
       const gobLo = yaGobernado(anLo), gobHi = yaGobernado(anHi);
       // v17-71: los "vértices opuestos fijos" son los del POLÍGONO REAL, no las esquinas del rect.
@@ -8414,6 +8406,11 @@
       const vLo = vecinoPoly(PLo), vHi = vecinoPoly(PHi);
       const V1 = vLo ? { x: vLo.x, y: vLo.y } : { x: segE.a.x + nIn.x * depth, y: segE.a.y + nIn.y * depth, _rect: true };
       const V2 = vHi ? { x: vHi.x, y: vHi.y } : { x: segE.b.x + nIn.x * depth, y: segE.b.y + nIn.y * depth, _rect: true };
+      const aplicarCon = (c0) => {
+      const q1 = c0 - M / 2, q2 = c0 + M / 2;
+      // mover los anchors simétricamente respecto del centro elegido
+      const setD = (an2, t) => { an2.d = rd3(an2.esq === "fin" ? (len - t) : t); };
+      setD(anLo, q1); setD(anHi, q2);
       const Q1 = { x: segE.a.x + u.x * q1, y: segE.a.y + u.y * q1 };
       const Q2 = { x: segE.a.x + u.x * q2, y: segE.a.y + u.y * q2 };
       // anchor fijo del pivote: reusar el que ya viva en ese punto (p. ej. el del ápice);
@@ -8454,6 +8451,22 @@
       halo9.setAttribute("r", "13"); dot9.setAttribute("r", "7");
       const pxOf9 = (t9) => ({ X: ox + mscale * (segE.a.x + u.x * t9), Y: oy + mscale * (segE.a.y + u.y * t9) });
       const horiz9 = (anA.ar === "sup" || anA.ar === "inf");
+      // v17-73: al PRESIONAR el punto aparecen las líneas de corte que se desprenderán, con su
+      // cota viva; al soltar, desaparecen. Extremo fijo: pivote del polígono (lado virgen) o el
+      // otro empate del corte existente (lado gobernado).
+      const fijoDe9 = (an9, V9) => {
+        const c99 = (ctx.cortes || []).find((cc9) => (cc9.anclas || []).some((r9) => r9 && r9.emp === an9.id));
+        if (!c99) return V9;
+        const r29 = (c99.anclas || []).find((r9) => r9 && r9.emp != null && r9.emp !== an9.id);
+        if (!r29) return null;
+        const reg9 = buscar(r29.emp); if (!reg9) return null;
+        const P99 = posAnclaAny(reg9.an); return P99 ? { x: P99.x, y: P99.y } : null;
+      };
+      const prevs9 = [gobLo ? fijoDe9(anLo, V1) : V1, gobHi ? fijoDe9(anHi, V2) : V2].map((F9) => {
+        const ln9 = mkE9("line", "med-centro-prev"), tx9 = mkE9("text", "med-centro-prevlbl");
+        ln9.style.display = "none"; tx9.style.display = "none";
+        return { ln9, tx9, F9 };
+      });
       const pinta9 = () => {
         const p9 = pxOf9(c9), pA9 = pxOf9(c9 - M / 2), pB9 = pxOf9(c9 + M / 2);
         [halo9, dot9].forEach((e9) => { e9.setAttribute("cx", p9.X); e9.setAttribute("cy", p9.Y); });
@@ -8461,10 +8474,25 @@
         lbl9.textContent = "centro a " + f(rd3(c9)) + " m · tramo " + f(rd3(c9 - M / 2)) + "–" + f(rd3(c9 + M / 2)) + " m";
         lbl9.setAttribute("x", horiz9 ? p9.X : p9.X + 16); lbl9.setAttribute("y", horiz9 ? p9.Y - 16 : p9.Y + 4);
         lbl9.setAttribute("text-anchor", horiz9 ? "middle" : "start");
+        prevs9.forEach((pv9, i9) => {
+          const on9 = dragC9 && pv9.F9;
+          pv9.ln9.style.display = on9 ? "" : "none"; pv9.tx9.style.display = on9 ? "" : "none";
+          if (!on9) return;
+          const tQ9 = (i9 === 0) ? c9 - M / 2 : c9 + M / 2;
+          const Qm9 = { x: segE.a.x + u.x * tQ9, y: segE.a.y + u.y * tQ9 };
+          const Fp9 = { X: ox + mscale * pv9.F9.x, Y: oy + mscale * pv9.F9.y }, Qp9 = pxOf9(tQ9);
+          pv9.ln9.setAttribute("x1", Fp9.X); pv9.ln9.setAttribute("y1", Fp9.Y);
+          pv9.ln9.setAttribute("x2", Qp9.X); pv9.ln9.setAttribute("y2", Qp9.Y);
+          pv9.tx9.textContent = "corte " + f(rd3(Math.hypot(Qm9.x - pv9.F9.x, Qm9.y - pv9.F9.y))) + " m";
+          const dx9 = Qp9.X - Fp9.X, dy9 = Qp9.Y - Fp9.Y, dl9 = Math.hypot(dx9, dy9) || 1;
+          pv9.tx9.setAttribute("x", (Fp9.X + Qp9.X) / 2 + (-dy9 / dl9) * 13);
+          pv9.tx9.setAttribute("y", (Fp9.Y + Qp9.Y) / 2 + (dx9 / dl9) * 13);
+          pv9.tx9.setAttribute("text-anchor", "middle");
+        });
       };
-      pinta9();
       let dragC9 = false;
-      const onDown9 = (ev9) => { if (ev9.target === dot9 || ev9.target === halo9) { dragC9 = true; ev9.stopPropagation(); ev9.preventDefault(); try { svg.setPointerCapture(ev9.pointerId); } catch (_) {} } };
+      pinta9();
+      const onDown9 = (ev9) => { if (ev9.target === dot9 || ev9.target === halo9) { dragC9 = true; ev9.stopPropagation(); ev9.preventDefault(); try { svg.setPointerCapture(ev9.pointerId); } catch (_) {} pinta9(); } };
       const onMove9 = (ev9) => {
         if (!dragC9) return;
         const pm9 = toModel(ev9.clientX, ev9.clientY); if (!pm9) return;
@@ -8472,7 +8500,7 @@
         c9 = rd3(Math.max(cLim1, Math.min(cLim2, t9)));
         pinta9();
       };
-      const onUp9 = () => { dragC9 = false; };
+      const onUp9 = () => { if (dragC9) { dragC9 = false; pinta9(); } };
       svg.addEventListener("pointerdown", onDown9, true);   // fase captura: el punto gana antes que el drag de anclas
       svg.addEventListener("pointermove", onMove9);
       svg.addEventListener("pointerup", onUp9);
