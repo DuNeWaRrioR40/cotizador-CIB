@@ -7739,6 +7739,13 @@
   function aplicarEmpates(cortesRaw, anclas, A, L) {
     if (!(A > 0 && L > 0)) return;
     const ev = window.CalcCIBSA.evalExpr;
+    // v17-70 HIGIENE: empates a anchors BORRADOS quedaban colgando (corte "congelado")… y como
+    // los ids se reciclan, un anchor futuro podía heredar el id y TELETRANSPORTAR el corte.
+    // Se anulan aquí (auto-sanado en cada pasada; el corte conserva su geometría vigente).
+    const idsVivos9 = {};
+    (anclas || []).forEach((an) => { if (an) idsVivos9[an.id] = 1; });
+    (cortesRaw || []).forEach((c) => ((c && c.anclas) || []).forEach((a) => { if (a) idsVivos9[a.id] = 1; }));
+    (cortesRaw || []).forEach((c) => ((c && c.anclas) || []).forEach((a) => { if (a && a.emp != null && !idsVivos9[a.emp]) a.emp = null; }));
     const pos = {}; (anclas || []).forEach((an) => { const pq = posAnclaArista(an, A, L); if (pq) pos[an.id] = pq; });
     // Los anchors de CORTES también sirven de destino de empate (cortes que cuelgan de otros cortes,
     // p.ej. al ITERAR "modificar medida" sobre una arista ya recortada). Su posición sale de la
@@ -8371,12 +8378,16 @@
       // mover los anchors simétricamente
       const setD = (an2, t) => { an2.d = rd3(an2.esq === "fin" ? (len - t) : t); };
       setD(anLo, q1); setD(anHi, q2);
-      // vértices opuestos (fijos): anchors bloqueados en la arista opuesta
+      // v17-69 BUG (triángulo → pentágono): la macro fabricaba SIEMPRE los 2 cortes-trapecio desde
+      // las esquinas del RECT ("vértices opuestos"), aunque el vértice ya no existiera y aunque el
+      // anchor YA gobernara un corte por empate (lado inclinado del triángulo). Doble gobierno del
+      // vértice = pellizco. Regla: anchor ya empatado a un corte → mover el anchor basta (los
+      // empates re-derivan la geometría); el corte-trapecio solo se fabrica en lados vírgenes.
+      const yaGobernado = (an2) => (ctx.cortes || []).some((c9) => (c9.anclas || []).some((r9) => r9 && r9.emp === an2.id));
+      const gobLo = yaGobernado(anLo), gobHi = yaGobernado(anHi);
+      // vértices opuestos (fijos): anchors bloqueados en la arista opuesta — solo si se necesitan
       const opuesta = { sup: "inf", inf: "sup", izq: "der", der: "izq" }[anA.ar];
-      const fx1 = { id: nuevoIdAncla(ctx.anclas, ctx.cortes), ar: opuesta, esq: "ini", d: 0, fix: true };
-      ctx.anclas.push(fx1);
-      const fx2 = { id: nuevoIdAncla(ctx.anclas, ctx.cortes), ar: opuesta, esq: "fin", d: 0, fix: true };
-      ctx.anclas.push(fx2);
+      const mkFx = (esq9) => { const fx9 = { id: nuevoIdAncla(ctx.anclas, ctx.cortes), ar: opuesta, esq: esq9, d: 0, fix: true }; ctx.anclas.push(fx9); return fx9; };
       const nIn = { sup: { x: 0, y: 1 }, inf: { x: 0, y: -1 }, izq: { x: 1, y: 0 }, der: { x: -1, y: 0 } }[anA.ar];
       const depth = (anA.ar === "sup" || anA.ar === "inf") ? L : A;
       const V1 = { x: segE.a.x + nIn.x * depth, y: segE.a.y + nIn.y * depth };
@@ -8393,8 +8404,8 @@
         const idA = nuevoIdAncla(ctx.anclas, ctx.cortes);
         cN.anclas = [{ id: idA, t: 0, emp: fxAn.id }, { id: idA + 1, t: rd3(lenC), emp: movAn.id }];
       };
-      mkCorte(V1, Q1, fx1, anLo, { x: segE.a.x, y: segE.a.y });
-      mkCorte(V2, Q2, fx2, anHi, { x: segE.b.x, y: segE.b.y });
+      if (!gobLo) mkCorte(V1, Q1, mkFx("ini"), anLo, { x: segE.a.x, y: segE.a.y });
+      if (!gobHi) mkCorte(V2, Q2, mkFx("fin"), anHi, { x: segE.b.x, y: segE.b.y });
       aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
       if (ctx.onChange) ctx.onChange();
     }
