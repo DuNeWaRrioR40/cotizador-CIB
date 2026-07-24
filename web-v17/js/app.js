@@ -6618,11 +6618,10 @@
                     gC.fillRect(x9, 0, 1, pf9);
                   }
                   gC.drawImage(cvS, 0, 0);
-                  // 4) volcado con flip (V del plano: fila 0 = borde libre)
-                  const cvF = document.createElement("canvas"); cvF.width = wPx9; cvF.height = hPx9;
-                  const gF = cvF.getContext("2d");
-                  gF.translate(0, hPx9); gF.scale(1, -1); gF.drawImage(cvC, 0, 0);
-                  mesh.material = new T.MeshLambertMaterial({ map: new T.CanvasTexture(cvF), transparent: true, alphaTest: 0.4, side: T.DoubleSide });
+                  // 4) v17-92: SIN flip — el visor 3D (ya sin fondo sólido) reveló que la V del
+                  // plano nace con la fila 0 en la FUSIÓN (la deducción de v17-90 estaba invertida):
+                  // el canvas espacio-fusión va DIRECTO a textura y la onda cuelga al borde libre.
+                  mesh.material = new T.MeshLambertMaterial({ map: new T.CanvasTexture(cvC), transparent: true, alphaTest: 0.4, side: T.DoubleSide });
                   mesh.material.needsUpdate = true;
                 } catch (_) {}
               };
