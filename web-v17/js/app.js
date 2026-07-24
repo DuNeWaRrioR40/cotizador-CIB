@@ -8420,6 +8420,28 @@
       const vLo = vecinoPoly(PLo), vHi = vecinoPoly(PHi);
       const V1 = vLo ? { x: vLo.x, y: vLo.y } : { x: segE.a.x + nIn.x * depth, y: segE.a.y + nIn.y * depth, _rect: true };
       const V2 = vHi ? { x: vHi.x, y: vHi.y } : { x: segE.b.x + nIn.x * depth, y: segE.b.y + nIn.y * depth, _rect: true };
+      // v17-82: con el 🧲 ENCENDIDO el corte prefiere el anchor más cercano de la ARISTA
+      // PERPENDICULAR de su lado (extremo izq → perpendicular izq; der → der). Sin imán o sin
+      // anchors ahí: el vértice del polígono de siempre. Como mkFx REUSA el anchor existente en
+      // ese punto, el corte queda empatado al anchor del usuario — gobierno declarado.
+      const PERP9 = { inf: ["izq", "der"], sup: ["izq", "der"], izq: ["sup", "inf"], der: ["sup", "inf"] }[anA.ar] || null;
+      const pivPerp9 = (lado9, Vdef9) => {
+        if (!PERP9) return null;
+        let best9 = null, dB9 = Infinity;
+        (ctx.anclas || []).forEach((a9) => {
+          if (a9.seg || a9.ar !== PERP9[lado9] || a9 === anLo || a9 === anHi) return;
+          const pq9 = posAnclaArista(a9, A, L); if (!pq9) return;
+          // v17-83: un anchor parado SOBRE la arista modificada (esquina compartida, vértice de la
+          // misma línea) NO es blanco válido — el corte se refiere a los anchors del tramo, no a
+          // puntos de su propia recta (corte degenerado).
+          const dl9 = Math.abs((pq9.x - segE.a.x) * (-u.y) + (pq9.y - segE.a.y) * u.x);
+          if (dl9 < 0.01) return;
+          const d9 = Math.hypot(pq9.x - Vdef9.x, pq9.y - Vdef9.y);
+          if (d9 < dB9) { dB9 = d9; best9 = { x: pq9.x, y: pq9.y }; }
+        });
+        return best9;
+      };
+      let pivotes9 = null;   // lo asigna el modo interactivo (lee el estado del 🧲)
       const aplicarCon = (c0) => {
       const q1 = c0 - M / 2, q2 = c0 + M / 2;
       // mover los anchors simétricamente respecto del centro elegido
@@ -8447,8 +8469,9 @@
         const idA = nuevoIdAncla(ctx.anclas, ctx.cortes);
         cN.anclas = [{ id: idA, t: 0, emp: fxAn.id }, { id: idA + 1, t: rd3(lenC), emp: movAn.id }];
       };
-      if (!gobLo) mkCorte(V1, Q1, mkFx(V1, Q1, "ini"), anLo, { x: PLo.x, y: PLo.y });
-      if (!gobHi) mkCorte(V2, Q2, mkFx(V2, Q2, "fin"), anHi, { x: PHi.x, y: PHi.y });
+      const pvA9 = pivotes9 ? pivotes9() : { V1: V1, V2: V2 };
+      if (!gobLo) mkCorte(pvA9.V1, Q1, mkFx(pvA9.V1, Q1, "ini"), anLo, { x: PLo.x, y: PLo.y });
+      if (!gobHi) mkCorte(pvA9.V2, Q2, mkFx(pvA9.V2, Q2, "fin"), anHi, { x: PHi.x, y: PHi.y });
       aplicarEmpates(ctx.cortes, ctx.anclas, A, L);
       if (ctx.onChange) ctx.onChange();
       };
@@ -8488,10 +8511,10 @@
         const reg9 = buscar(r29.emp); if (!reg9) return null;
         const P99 = posAnclaAny(reg9.an); return P99 ? { x: P99.x, y: P99.y } : null;
       };
-      const prevs9 = [gobLo ? fijoDe9(anLo, V1) : V1, gobHi ? fijoDe9(anHi, V2) : V2].map((F9) => {
+      const prevs9 = [gobLo ? fijoDe9(anLo, V1) : null, gobHi ? fijoDe9(anHi, V2) : null].map((Fg9) => {
         const ln9 = mkE9("line", "med-centro-prev"), tx9 = mkE9("text", "med-centro-prevlbl");
         ln9.style.display = "none"; tx9.style.display = "none";
-        return { ln9, tx9, F9 };
+        return { ln9, tx9, Fg9 };
       });
       // v17-74: confirmación como 2 botones CIRCULARES bajo el punto (adiós barra "feíta")
       const mkBtn9 = (cls9, glifo9) => {
@@ -8506,6 +8529,7 @@
       // v17-80: el imán era un hoyo negro — ahora es OPCIONAL: 🧲 a color = activo, B/N = apagado (defecto).
       let imanOn9 = false;
       const bIm9 = mkBtn9("iman off", "🧲");
+      pivotes9 = () => (imanOn9 ? { V1: pivPerp9(0, V1) || V1, V2: pivPerp9(1, V2) || V2 } : { V1: V1, V2: V2 });
       const pinta9 = () => {
         const p9 = pxOf9(c9), pA9 = pxOf9(c9 - M / 2), pB9 = pxOf9(c9 + M / 2);
         [halo9, dot9].forEach((e9) => { e9.setAttribute("cx", p9.X); e9.setAttribute("cy", p9.Y); });
@@ -8514,16 +8538,18 @@
         dot9.setAttribute("class", "med-centro-dot" + (imantado9 ? " iman" : ""));
         lbl9.setAttribute("x", horiz9 ? p9.X : p9.X + 16); lbl9.setAttribute("y", horiz9 ? p9.Y - 16 : p9.Y + 4);
         lbl9.setAttribute("text-anchor", horiz9 ? "middle" : "start");
+        const pvv9 = pivotes9 ? pivotes9() : { V1: V1, V2: V2 };
         prevs9.forEach((pv9, i9) => {
-          const on9 = dragC9 && pv9.F9;
+          const F9 = pv9.Fg9 || (i9 === 0 ? pvv9.V1 : pvv9.V2);
+          const on9 = dragC9 && F9;
           pv9.ln9.style.display = on9 ? "" : "none"; pv9.tx9.style.display = on9 ? "" : "none";
           if (!on9) return;
           const tQ9 = (i9 === 0) ? c9 - M / 2 : c9 + M / 2;
           const Qm9 = { x: segE.a.x + u.x * tQ9, y: segE.a.y + u.y * tQ9 };
-          const Fp9 = { X: ox + mscale * pv9.F9.x, Y: oy + mscale * pv9.F9.y }, Qp9 = pxOf9(tQ9);
+          const Fp9 = { X: ox + mscale * F9.x, Y: oy + mscale * F9.y }, Qp9 = pxOf9(tQ9);
           pv9.ln9.setAttribute("x1", Fp9.X); pv9.ln9.setAttribute("y1", Fp9.Y);
           pv9.ln9.setAttribute("x2", Qp9.X); pv9.ln9.setAttribute("y2", Qp9.Y);
-          pv9.tx9.textContent = "corte " + f(rd3(Math.hypot(Qm9.x - pv9.F9.x, Qm9.y - pv9.F9.y))) + " m";
+          pv9.tx9.textContent = "corte " + f(rd3(Math.hypot(Qm9.x - F9.x, Qm9.y - F9.y))) + " m";
           const dx9 = Qp9.X - Fp9.X, dy9 = Qp9.Y - Fp9.Y, dl9 = Math.hypot(dx9, dy9) || 1;
           pv9.tx9.setAttribute("x", (Fp9.X + Qp9.X) / 2 + (-dy9 / dl9) * 13);
           pv9.tx9.setAttribute("y", (Fp9.Y + Qp9.Y) / 2 + (dx9 / dl9) * 13);
