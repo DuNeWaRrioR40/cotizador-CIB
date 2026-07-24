@@ -5777,6 +5777,9 @@
     } catch (e) { return alert("No se pudo cargar el visor 3D (revisa la conexión; tras la primera carga queda disponible sin internet)."); }
     cerrarVol3D();
     const T = window.THREE, diag = Math.hypot(A, L, H || 1);
+    // v17-66: calcomanía del cliente (solo paño UNIFORME): la TAPA se pinta con ella,
+    // respetando la transparencia real del PNG (fondo transparente desde v17-64).
+    const decalBase = (!pz && state.figImgUnif && state.figImgUnif.url) ? state.figImgUnif : null;
     // Ojetillos del visor: mismo lenguaje del plano — 2 círculos concéntricos, color bronce
     // suave, tamaño discreto. Sprite (siempre de cara a la cámara), textura compartida.
     const texOje3D = (() => {
@@ -5994,7 +5997,7 @@
     }
     // Cara con calados: geometría propia (UV en coords de la HOJA) + canvas donde los calados se
     // BORRAN (alfa 0 → se ve a través). W4(mx,my) mapea hoja→mundo; región [x0c..+wS]×[y0c..+hS].
-    const caraCalada = (x0c, y0c, wS, hS, W4, grupoDest, soloPoly, listaCal) => {
+    const caraCalada = (x0c, y0c, wS, hS, W4, grupoDest, soloPoly, listaCal, decal9) => {
       const gDest = grupoDest || grp;
       // El VÍNCULO desempata la ambigüedad anexo/paño: sin lista propia, esta cara solo recibe
       // los calados SIN anexo; la lámina de un anexo pasa su lista con los suyos.
@@ -6003,22 +6006,33 @@
       const cv = document.createElement("canvas");
       cv.width = Math.max(2, Math.round(wS * K)); cv.height = Math.max(2, Math.round(hS * K));
       const g2d = cv.getContext("2d");
-      g2d.fillStyle = "#d9d2c2"; g2d.fillRect(0, 0, cv.width, cv.height);
-      g2d.globalCompositeOperation = "destination-out";
-      caladosCara.forEach((cc) => {
-        g2d.beginPath();
-        if (cc.circ) g2d.arc((cc.cx - x0c) * K, (cc.cy - y0c) * K, cc.r * K, 0, 2 * Math.PI);
-        else cc.poly.forEach((pp, i) => { const qx = (pp.x - x0c) * K, qy = (pp.y - y0c) * K; if (i) g2d.lineTo(qx, qy); else g2d.moveTo(qx, qy); });
-        g2d.closePath(); g2d.fill();
-      });
-      if (soloPoly && soloPoly.length >= 3) {
-        // Recorte al SECTOR (abanico de ejes): conserva solo la tela dentro del polígono.
-        g2d.globalCompositeOperation = "destination-in";
-        g2d.beginPath();
-        soloPoly.forEach((pp, i) => { const qx = (pp.x - x0c) * K, qy = (pp.y - y0c) * K; if (i) g2d.lineTo(qx, qy); else g2d.moveTo(qx, qy); });
-        g2d.closePath(); g2d.fill();
-      }
-      const tex = new T.CanvasTexture(cv);
+      // v17-66: pintura RE-EJECUTABLE — la calcomanía del cliente (decal9) carga async y al
+      // llegar se repinta todo en orden (tela → decal con su transparencia real → calados → sector).
+      let imDecal9 = null, tex9 = null;
+      const pinta9 = () => {
+        g2d.globalCompositeOperation = "source-over";
+        g2d.clearRect(0, 0, cv.width, cv.height);
+        g2d.fillStyle = "#d9d2c2"; g2d.fillRect(0, 0, cv.width, cv.height);
+        if (imDecal9 && decal9) { try { g2d.globalAlpha = 0.9; g2d.drawImage(imDecal9, ((decal9.x || 0) - x0c) * K, ((decal9.y || 0) - y0c) * K, (decal9.w > 0 ? decal9.w : wS) * K, (decal9.h > 0 ? decal9.h : hS) * K); } catch (_) {} g2d.globalAlpha = 1; }
+        g2d.globalCompositeOperation = "destination-out";
+        caladosCara.forEach((cc) => {
+          g2d.beginPath();
+          if (cc.circ) g2d.arc((cc.cx - x0c) * K, (cc.cy - y0c) * K, cc.r * K, 0, 2 * Math.PI);
+          else cc.poly.forEach((pp, i) => { const qx = (pp.x - x0c) * K, qy = (pp.y - y0c) * K; if (i) g2d.lineTo(qx, qy); else g2d.moveTo(qx, qy); });
+          g2d.closePath(); g2d.fill();
+        });
+        if (soloPoly && soloPoly.length >= 3) {
+          // Recorte al SECTOR (abanico de ejes): conserva solo la tela dentro del polígono.
+          g2d.globalCompositeOperation = "destination-in";
+          g2d.beginPath();
+          soloPoly.forEach((pp, i) => { const qx = (pp.x - x0c) * K, qy = (pp.y - y0c) * K; if (i) g2d.lineTo(qx, qy); else g2d.moveTo(qx, qy); });
+          g2d.closePath(); g2d.fill();
+        }
+        if (tex9) tex9.needsUpdate = true;
+      };
+      pinta9();
+      if (decal9 && decal9.url) { const im9 = new Image(); im9.onload = () => { imDecal9 = im9; pinta9(); }; im9.src = decal9.url; }
+      const tex = tex9 = new T.CanvasTexture(cv);
       const mat2 = new T.MeshLambertMaterial({ map: tex, transparent: true, opacity: 0.94, side: T.DoubleSide, alphaTest: 0.35 });
       const c00 = W4(x0c, y0c), c10 = W4(x0c + wS, y0c), c11 = W4(x0c + wS, y0c + hS), c01 = W4(x0c, y0c + hS);
       const gG = new T.BufferGeometry();
@@ -6141,7 +6155,7 @@
           slide.add(outerH);
           const innerH = new T.Group(); outerH.add(innerH);
           const fGrp = new T.Group(); grp.add(fGrp);
-          caraCalada(0, 0, A, L, mapT, fGrp, sector(i2));
+          caraCalada(0, 0, A, L, mapT, fGrp, sector(i2), undefined, decalBase);
           innerH.attach(fGrp);
           const sgnH = uyH.y > 0 ? 1 : -1;
           setsFan.push((v) => {
@@ -6167,11 +6181,11 @@
           { x: P9.x + u9.x * R9 + sgn * n9.x * R9, y: P9.y + u9.y * R9 + sgn * n9.y * R9 },
           { x: P9.x - u9.x * R9 + sgn * n9.x * R9, y: P9.y - u9.y * R9 + sgn * n9.y * R9 },
         ];
-        caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2), grp, quad9(-1));
+        caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2), grp, quad9(-1), undefined, decalBase);
         const W4E = (mx, my) => new T.Vector3((mx - P9.x) * u9.x + (my - P9.y) * u9.y, 0, (mx - P9.x) * n9.x + (my - P9.y) * n9.y);
-        caraCalada(0, 0, A, L, W4E, ejeCtl.inner, quad9(1));
+        caraCalada(0, 0, A, L, W4E, ejeCtl.inner, quad9(1), undefined, decalBase);
       }
-      else if (hayCal) caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2)); else panel(A, L, 0, H, 0, -Math.PI / 2, 0);
+      else if (hayCal || decalBase) caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2), undefined, undefined, undefined, decalBase); else panel(A, L, 0, H, 0, -Math.PI / 2, 0);
     } // tapa (arriba)
     // Paredes: sin eje, como siempre. Con eje: la pared PARALELA del lado lejano se ANIDA completa
     // en la bisagra del eje (viaja con la media tapa); las PERPENDICULARES se PARTEN en el eje —
@@ -9890,6 +9904,9 @@
   async function descargarSketchUnif() {
     const largo = num("f_largo", null), ancho = num("f_ancho", null);
     if (largo == null || ancho == null || largo <= 0 || ancho <= 0) return alert("Ingresa largo y ancho para descargar el plano.");
+    // v17-66: BUG — los datos se construían con _figBaked = null (solo descargarCorte horneaba):
+    // la calcomanía del cliente desaparecía del PDF del plano. Hornear SIEMPRE antes.
+    if (state.figImgUnif && state.figImgUnif.url && !_figBaked) await new Promise((res) => bakeFigImg(res));
     const telasC = telasParaCotizar();
     const tela = telaActual();
     const telaPlano = telasC.length > 1 ? telasConsideradasTxt(telasC) : (tela ? telaCli(tela) : "N/A");
