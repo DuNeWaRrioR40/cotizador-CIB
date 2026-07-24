@@ -646,7 +646,7 @@
       const g = aletaGeomRect(a, ancho, largo);
       const pts = aletaOjPuntos(a, ancho, largo);
       const nom = (a.legend && a.legend.trim()) ? a.legend.trim() : (NOMARI[a.tipo] || "Aleta");
-      return { x: g.x, y: g.y, w: g.w, h: g.h, fused: g.fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null), largo: parseFloat(a.largo) || 0, ancho: parseFloat(a.ancho) || 0, offset: parseFloat(a.offset) || 0, dBorde: parseFloat(a.dBorde) || 0, figImg: a.figImg || null, figW: a.figW || 0, figH: a.figH || 0, figTile: !!a.figTile, marco: !!a.marco };
+      return { x: g.x, y: g.y, w: g.w, h: g.h, fused: g.fused, tipo: a.tipo || "aleta", nombre: nom, ojetillos: pts, rotulo: !!a.rotulo, id: (a.id != null ? a.id : null), largo: parseFloat(a.largo) || 0, ancho: parseFloat(a.ancho) || 0, offset: parseFloat(a.offset) || 0, dBorde: parseFloat(a.dBorde) || 0, figImg: a.figImg || null, figW: a.figW || 0, figH: a.figH || 0, figTile: !!a.figTile, figBorde: a.figBorde || 0, marco: !!a.marco };
     });
     // Straps (cintas/webbing): banda RECTA de ancho fijo (del material) y largo del usuario, en cualquier
     // ángulo/posición. Puede iniciar fuera, cruzar y salir del paño. Remates = costuras perpendiculares en
@@ -1037,19 +1037,24 @@
         const fiA = ++FIGIMG_SEQ;
         s += `<clipPath id="figclip${fiA}"><rect x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}"/></clipPath>`;
         const lateral9 = (a.fused === "l" || a.fused === "r");
+        // v17-90: ORIENTACIÓN FÍSICA por lado — el módulo CUELGA desde la fusión (local y=0 = fusión):
+        // inf 0° · sup 180° · cenefa izquierda 90° HORARIO · derecha 90° ANTIHORARIO. Rotaciones
+        // puras (sin espejo). El clip vive en un g EXTERIOR sin transform (coords globales).
+        const S9 = lateral9 ? Wp : Hp, L9 = lateral9 ? Hp : Wp;
+        const TR9 = { t: `translate(${f1(X)},${f1(Y)})`, b: `translate(${f1(X + Wp)},${f1(Y + Hp)}) rotate(180)`, r: `translate(${f1(X + Wp)},${f1(Y)}) rotate(90)`, l: `translate(${f1(X)},${f1(Y + Hp)}) rotate(-90)` }[a.fused] || `translate(${f1(X)},${f1(Y)})`;
         if (a.figTile && a.figW > 0 && a.figH > 0) {
-          // v17-87: PATRÓN REPETIBLE — el módulo escala a la SALIDA y se repite a lo largo:
-          // crecer la aleta agrega repeticiones, jamás estira el diseño.
-          const S9 = lateral9 ? Wp : Hp, L9 = lateral9 ? Hp : Wp;
-          const tw9 = S9 * (a.figW / a.figH);
-          s += `<pattern id="figpat${fiA}" patternUnits="userSpaceOnUse" width="${f1(tw9)}" height="${f1(S9)}"${lateral9 ? "" : ` patternTransform="translate(${f1(X)},${f1(Y)})"`}><image href="${a.figImg}" x="0" y="0" width="${f1(tw9)}" height="${f1(S9)}" preserveAspectRatio="none"/></pattern>`;
-          s += lateral9
-            ? `<g clip-path="url(#figclip${fiA})" transform="translate(${f1(X + Wp)},${f1(Y)}) rotate(90)" opacity="0.85"><rect x="0" y="0" width="${f1(L9)}" height="${f1(S9)}" fill="url(#figpat${fiA})"/></g>`
-            : `<g clip-path="url(#figclip${fiA})" opacity="0.85"><rect x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}" fill="url(#figpat${fiA})"/></g>`;
+          // Patrón repetible: módulo al ALTO ÚTIL (salida − borde libre); banda del dobladillo al lado LIBRE.
+          const g9 = Math.max(0, Math.min(S9 * 0.9, (a.figBorde || 0) * scale));
+          const hEf9 = S9 - g9;
+          const tw9 = hEf9 * (a.figW / a.figH);
+          s += `<pattern id="figpat${fiA}" patternUnits="userSpaceOnUse" width="${f1(tw9)}" height="${f1(hEf9)}"><image href="${a.figImg}" x="0" y="0" width="${f1(tw9)}" height="${f1(hEf9)}" preserveAspectRatio="none"/></pattern>`;
+          s += `<g clip-path="url(#figclip${fiA})"><g transform="${TR9}" opacity="0.85">` +
+            `<rect x="0" y="0" width="${f1(L9)}" height="${f1(hEf9)}" fill="url(#figpat${fiA})"/>` +
+            `<line x1="0" y1="0" x2="0" y2="${f1(hEf9)}" stroke="#111111" stroke-width="1.3"/>` +
+            `<line x1="${f1(L9)}" y1="0" x2="${f1(L9)}" y2="${f1(hEf9)}" stroke="#111111" stroke-width="1.3"/>` +
+            `</g></g>`;   // cierres: perpendicular desde el paño base hasta la profundidad del patrón
         } else {
-          s += lateral9
-            ? `<image class="figimg" clip-path="url(#figclip${fiA})" href="${a.figImg}" transform="translate(${f1(X + Wp)},${f1(Y)}) rotate(90)" x="0" y="0" width="${f1(Hp)}" height="${f1(Wp)}" preserveAspectRatio="none" opacity="0.85"/>`
-            : `<image class="figimg" clip-path="url(#figclip${fiA})" href="${a.figImg}" x="${f1(X)}" y="${f1(Y)}" width="${f1(Wp)}" height="${f1(Hp)}" preserveAspectRatio="none" opacity="0.85"/>`;
+          s += `<g clip-path="url(#figclip${fiA})"><g transform="${TR9}" opacity="0.85"><image class="figimg" href="${a.figImg}" x="0" y="0" width="${f1(L9)}" height="${f1(S9)}" preserveAspectRatio="none"/></g></g>`;
         }
       }
       let fa, fb;

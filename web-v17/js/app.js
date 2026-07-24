@@ -2926,7 +2926,7 @@
   function rotId(o) { if (o._rid == null) o._rid = ++ROTSEQ; return o._rid; }
   function aletasSpec(list) {
     const ev = window.CalcCIBSA.evalExpr;
-    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), ojMode: a.ojMode || "simple", ojParejo: !!a.ojParejo, ojEdges: (a.ojMode === "arista" && a.ojEdges) ? aletaOjEdgesSpec(a.ojEdges) : null, legend: a.legend || "", rotulo: !!a.rotulo, id: rotId(a), figImg: (a.figImg && a.figImg.url) ? a.figImg.url : null, figW: (a.figImg && a.figImg.w) || 0, figH: (a.figImg && a.figImg.h) || 0, figTile: !!(a.figImg && a.figImg.tile), marco: !!a.marco })).filter((a) => a.largo > 0 && a.ancho > 0);
+    return visibles(list).map((a) => ({ tipo: a.tipo, baseEdge: a.baseEdge || "inf", dBorde: ev(a.dBorde) || 0, largo: ev(a.largo) || 0, ancho: ev(a.ancho) || 0, offset: ev(a.offset) || 0, ojetillos: ojIntPz(a.ojetillos), ojMode: a.ojMode || "simple", ojParejo: !!a.ojParejo, ojEdges: (a.ojMode === "arista" && a.ojEdges) ? aletaOjEdgesSpec(a.ojEdges) : null, legend: a.legend || "", rotulo: !!a.rotulo, id: rotId(a), figImg: (a.figImg && a.figImg.url) ? a.figImg.url : null, figW: (a.figImg && a.figImg.w) || 0, figH: (a.figImg && a.figImg.h) || 0, figTile: !!(a.figImg && a.figImg.tile), figBorde: (a.figImg && a.figImg.tile) ? ((ev(a.figImg.bordeLibre) != null && !isNaN(ev(a.figImg.bordeLibre)) && ev(a.figImg.bordeLibre) >= 0) ? ev(a.figImg.bordeLibre) : 0.045) : 0, marco: !!a.marco })).filter((a) => a.largo > 0 && a.ancho > 0);
   }
   function aletasLineasPDF(list, cantidad, valorOj, factor) {
     return visibles(list).map((a) => {
@@ -3648,11 +3648,17 @@
         tcb9.addEventListener("change", () => { if (a.figImg) { a.figImg.tile = tcb9.checked; onChange(); if (tcb9.checked) abrirOrientadorPatron(a, onChange); } });
         const tsp9 = document.createElement("span"); tsp9.textContent = "🔁 Patrón repetible";
         tl9.appendChild(tcb9); tl9.appendChild(tsp9);
+        const bl9 = document.createElement("label"); bl9.className = "field patron-borde";
+        bl9.title = "Franja LIMPIA en la arista libre de la cenefa (el dobladillo): el patrón no la invade y escala al alto útil (salida − borde).";
+        bl9.innerHTML = "<span>Borde libre del patrón (m)</span>";
+        const bli9 = document.createElement("input"); bli9.type = "text"; bli9.inputMode = "decimal";
+        bli9.addEventListener("input", () => { if (a.figImg) { a.figImg.bordeLibre = bli9.value; onChange(); } });
+        bl9.appendChild(bli9);
         const bOr9 = document.createElement("button"); bOr9.type = "button"; bOr9.className = "btn-outline";
         bOr9.textContent = "🧭 Orientar patrón…";
         bOr9.title = "Gira el diseño (ángulo libre) hasta verlo de frente; la rotación se hornea en la imagen.";
         bOr9.addEventListener("click", () => abrirOrientadorPatron(a, onChange));
-        const sincFig = () => { bImp.textContent = a.figImg ? "🖼 Cambiar plano/foto" : "🖼 Plano/foto en esta aleta"; bQ.textContent = "✕ Quitar imagen"; bQ.classList.toggle("hidden", !a.figImg); ml.classList.toggle("hidden", !a.figImg); tl9.classList.toggle("hidden", !a.figImg); tcb9.checked = !!(a.figImg && a.figImg.tile); bOr9.classList.toggle("hidden", !a.figImg); };
+        const sincFig = () => { bImp.textContent = a.figImg ? "🖼 Cambiar plano/foto" : "🖼 Plano/foto en esta aleta"; bQ.textContent = "✕ Quitar imagen"; bQ.classList.toggle("hidden", !a.figImg); ml.classList.toggle("hidden", !a.figImg); tl9.classList.toggle("hidden", !a.figImg); tcb9.checked = !!(a.figImg && a.figImg.tile); bOr9.classList.toggle("hidden", !a.figImg); bl9.classList.toggle("hidden", !(a.figImg && a.figImg.tile)); bli9.value = (a.figImg && a.figImg.bordeLibre != null) ? a.figImg.bordeLibre : "0.045"; };
         bImp.title = "Inscribe una foto o DXF básico que llena el rectángulo de la aleta (solo visualización; se deforma cambiando las medidas de la aleta). Un DXF además ofrece dictar largo y ancho.";
         bImp.addEventListener("click", () => fin.click());
         bQ.addEventListener("click", () => { a.figImg = null; sincFig(); onChange(); });
@@ -3666,10 +3672,13 @@
               try { img = dxfAImagen(rd.result); } catch (e) { return alert("No se pudo interpretar el DXF: " + (e.message || e)); }
               if (img.err) return alert(img.err);
               const f = window.CalcCIBSA.fmtNum;
-              if (confirm("El DXF mide " + f(rd3(img.wM)) + " × " + f(rd3(img.hM)) + " m.\n\n¿Usar estas medidas para la ALETA? (ancho " + f(rd3(img.wM)) + " a lo largo de la arista · salida " + f(rd3(img.hM)) + ")")) {
+              // v17-90: si la aleta YA tiene medidas, el patrón se ADAPTA a ellas (no al revés);
+              // solo se ofrece cubicar cuando la aleta está en blanco.
+              const alY = window.CalcCIBSA.evalExpr(a.largo), aaY = window.CalcCIBSA.evalExpr(a.ancho);
+              if (!(alY > 0 && aaY > 0) && confirm("El DXF mide " + f(rd3(img.wM)) + " × " + f(rd3(img.hM)) + " m y la aleta no tiene medidas.\n\n¿Usarlas para la ALETA? (ancho " + f(rd3(img.wM)) + " a lo largo de la arista · salida " + f(rd3(img.hM)) + ")")) {
                 a.ancho = f(rd3(img.wM)); a.largo = f(rd3(img.hM));
               }
-              a.figImg = { url: img.url, w: img.wM, h: img.hM, tile: true };   // v17-87: patrón REPETIBLE por defecto
+              a.figImg = { url: img.url, w: img.wM, h: img.hM, tile: true, bordeLibre: "0.045" };   // v17-87/89: patrón repetible + borde libre
               const om = Object.keys(img.omitidas || {});
               alert("DXF inscrito en la aleta: " + img.trazos + " trazos · " + f(rd3(img.wM)) + " × " + f(rd3(img.hM)) + " m · trazo dibujado " + f(rd3(img.perimM)) + " m.\n\n🔁 Quedó como PATRÓN REPETIBLE: al crecer la aleta el diseño se repite (no se estira). Ahora ACOMÓDALO de frente en el visor." + (om.length ? "\n\nOmitido (no soportado): " + om.map((k2) => k2 + " ×" + img.omitidas[k2]).join(", ") : ""));
               pintar(); onChange();
@@ -3684,7 +3693,7 @@
           if (esDxf) rd.readAsText(file); else rd.readAsDataURL(file);
         });
         sincFig();
-        gfila.appendChild(bImp); gfila.appendChild(bQ); gfila.appendChild(ml); gfila.appendChild(tl9); gfila.appendChild(bOr9); gfila.appendChild(fin); card.appendChild(gfila);
+        gfila.appendChild(bImp); gfila.appendChild(bQ); gfila.appendChild(ml); gfila.appendChild(tl9); gfila.appendChild(bl9); gfila.appendChild(bOr9); gfila.appendChild(fin); card.appendChild(gfila);
         const mcap = document.createElement("p"); mcap.className = "muted small"; mcap.textContent = "Materiales de la aleta:"; card.appendChild(mcap);
         const mdiv = document.createElement("div"); card.appendChild(mdiv); renderComplementos(mdiv, a.complementos, onChange);
         const dims = document.createElement("div"); dims.className = "muted small ins-dims"; card.appendChild(dims);
@@ -6559,6 +6568,36 @@
             inner.add(mesh);
             const ed = new T.LineSegments(new T.EdgesGeometry(gP), matBorde);
             ed.rotation.copy(mesh.rotation); ed.position.copy(mesh.position); inner.add(ed);
+            // v17-90: el PATRÓN de la cenefa se compone sobre la TELA (el PNG transparente ya no
+            // llega como caja opaca): tela → mosaico (banda del dobladillo limpia) → textura.
+            if (a.figImg && a.figImg.url) {
+              const imF = new Image();
+              imF.onload = () => {
+                try {
+                  const KK9 = Math.min(2048 / len, 1024 / caida);
+                  const cvF = document.createElement("canvas");
+                  cvF.width = Math.max(2, Math.round(len * KK9)); cvF.height = Math.max(2, Math.round(caida * KK9));
+                  const gF = cvF.getContext("2d");
+                  gF.fillStyle = "#d9d2c2"; gF.fillRect(0, 0, cvF.width, cvF.height);
+                  const fiF = a.figImg, evF9 = window.CalcCIBSA.evalExpr;
+                  gF.save(); gF.translate(0, cvF.height); gF.scale(1, -1);   // V del plano: fila 0 = borde libre
+                  if (fiF.tile && fiF.w > 0 && fiF.h > 0) {
+                    const bv9 = evF9(fiF.bordeLibre);
+                    const bor9 = (bv9 != null && !isNaN(bv9) && bv9 >= 0) ? bv9 : 0.045;
+                    const gPx9 = Math.max(0, Math.min(cvF.height * 0.9, bor9 * KK9));
+                    const hEf9 = cvF.height - gPx9;
+                    const tw9 = hEf9 * (fiF.w / fiF.h);
+                    for (let x9 = 0; x9 < cvF.width; x9 += tw9) gF.drawImage(imF, x9, 0, tw9, hEf9);
+                  } else {
+                    gF.drawImage(imF, 0, 0, cvF.width, cvF.height);
+                  }
+                  gF.restore();
+                  mesh.material = new T.MeshLambertMaterial({ map: new T.CanvasTexture(cvF), transparent: true, opacity: 0.97, side: T.DoubleSide });
+                  mesh.material.needsUpdate = true;
+                } catch (_) {}
+              };
+              imF.src = a.figImg.url;
+            }
           }
           try {
             const pts = SK2.aletaOjPuntos(aSpec, A, L);
@@ -10111,6 +10150,7 @@
     for (const a9 of (aletas9 || [])) {
       if (!a9 || !a9.figImg || !a9.figTile || !(a9.figW > 0) || !(a9.figH > 0)) continue;
       const span9 = a9.ancho, sal9 = a9.largo; if (!(span9 > 0) || !(sal9 > 0)) continue;
+      const borde9 = a9.figBorde || 0;
       await new Promise((res9) => {
         const im9 = new Image();
         im9.onload = () => {
@@ -10119,8 +10159,13 @@
             const cv9 = document.createElement("canvas");
             cv9.width = Math.max(2, Math.round(span9 * K9)); cv9.height = Math.max(2, Math.round(sal9 * K9));
             const g9 = cv9.getContext("2d");
-            const tw9 = cv9.height * (a9.figW / a9.figH);
-            for (let x9 = 0; x9 < cv9.width; x9 += tw9) im9.width && g9.drawImage(im9, x9, 0, tw9, cv9.height);
+            // v17-89/90: franja limpia del dobladillo + ORIENTACIÓN FÍSICA — el módulo cuelga
+            // desde la fusión: sup y der llegan al PDF girados 180° (rotación pura, sin espejo).
+            const gPx9 = Math.max(0, Math.min(cv9.height * 0.9, borde9 * K9));
+            const hEf9 = cv9.height - gPx9;
+            const tw9 = hEf9 * (a9.figW / a9.figH);
+            if (a9.baseEdge === "sup" || a9.baseEdge === "der") { g9.translate(cv9.width, cv9.height); g9.rotate(Math.PI); }
+            for (let x9 = 0; x9 < cv9.width; x9 += tw9) im9.width && g9.drawImage(im9, x9, 0, tw9, hEf9);
             a9.figImg = cv9.toDataURL("image/png");
           } catch (_) {}
           res9();
