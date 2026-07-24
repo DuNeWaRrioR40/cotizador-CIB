@@ -9928,6 +9928,7 @@
       odt: _odtActual,
       figImg: state.figImgUnif ? state.figImgUnif.url : null,
       figImgPano: (state.figImgUnif && state.figImgUnif.url) ? _figBaked : null,
+      figImgMarco: !!(state.figImgUnif && state.figImgUnif.marco),
       trasera: state.trasUnif,
       backExtra: { cortes: cortesSpec(state.backCortesUnif), aletas: aletasSpec(state.backAletasUnif) },
       materialesTrasera: materialesTraseras(state.backCortesUnif, state.backComplementosUnif),
@@ -10005,6 +10006,8 @@
       ba.textContent = _figEditOn ? "✔ Listo (fijar imagen)" : "✥ Ajustar imagen";
     }
     const br = $("btnFigRot"); if (br) br.classList.toggle("hidden", !state.figImgUnif);
+    const bw = $("figMarcoWrap"); if (bw) bw.classList.toggle("hidden", !state.figImgUnif);
+    const bm = $("figMarcoChk"); if (bm) bm.checked = !!(state.figImgUnif && state.figImgUnif.marco);
   }
   // ---------- F7.2: DXF BÁSICO → calcomanía (interpretación MERAMENTE GRÁFICA) ----------
   // Subconjunto auditado contra DXF reales de clientes: LINE, ARC, CIRCLE, POLYLINE+VERTEX y
@@ -10284,6 +10287,7 @@
       const ba = $("btnFigAdj");
       if (ba) ba.addEventListener("click", () => { _figEditOn = !_figEditOn; sincBtnFigImg(); recompute(); });
       const br = $("btnFigRot"); if (br) br.addEventListener("click", rotarFigImg);
+      const bm = $("figMarcoChk"); if (bm) bm.addEventListener("change", () => { if (state.figImgUnif) { state.figImgUnif.marco = bm.checked; recompute(); } });
       sincBtnFigImg();
     } }
   async function descargarCorte() {

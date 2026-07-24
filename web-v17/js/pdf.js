@@ -648,13 +648,15 @@
     if (opts.figImgEmb) {
       try { page.drawImage(opts.figImgEmb, { x: px(0), y: py(sk.largo), width: sk.ancho * scale, height: sk.largo * scale }); } catch (e) {}
     }
-    if (sk.panoPoly && sk.panoPoly.length >= 3) {
-      for (let i = 0; i < sk.panoPoly.length; i++) {
-        const pa = sk.panoPoly[i], pb = sk.panoPoly[(i + 1) % sk.panoPoly.length];
-        page.drawLine({ start: { x: px(pa.x), y: py(pa.y) }, end: { x: px(pb.x), y: py(pb.y) }, thickness: 1.3, color: GRAY });
+    if (!(opts.figImgEmb && !opts.figImgMarco)) {
+      if (sk.panoPoly && sk.panoPoly.length >= 3) {
+        for (let i = 0; i < sk.panoPoly.length; i++) {
+          const pa = sk.panoPoly[i], pb = sk.panoPoly[(i + 1) % sk.panoPoly.length];
+          page.drawLine({ start: { x: px(pa.x), y: py(pa.y) }, end: { x: px(pb.x), y: py(pb.y) }, thickness: 1.3, color: GRAY });
+        }
+      } else {
+        page.drawRectangle({ x: x0, y: topRect - hpx, width: wpx, height: hpx, borderColor: GRAY, borderWidth: 1.3 });
       }
-    } else {
-      page.drawRectangle({ x: x0, y: topRect - hpx, width: wpx, height: hpx, borderColor: GRAY, borderWidth: 1.3 });
     }
     // Elementos del paño (ventanas, bolsillos, ojetillos, aletas, cortes)
     const r = Math.max(0.8, Math.max(1.4, Math.min(2.6, scale * 0.022)) - 0.9); // ojetillos del plano: ~2 puntos más chicos (la leyenda usa su propio radio fijo)
@@ -1530,7 +1532,7 @@
         aleEmb[a9.id] = (u9.indexOf("image/jpeg") >= 0 || u9.indexOf("image/jpg") >= 0) ? await doc.embedJpg(b64ToBytes(b9)) : await doc.embedPng(b64ToBytes(b9));
       } catch (e) {}
     }
-    dibujarSketchPDF(pgSk, datos.sketch, { x: M, top: skTop, w: W - 2 * M, h: skTop - skBottom }, font, { cotas: !limpio, figImgEmb: figEmb, aletaImgsEmb: aleEmb });
+    dibujarSketchPDF(pgSk, datos.sketch, { x: M, top: skTop, w: W - 2 * M, h: skTop - skBottom }, font, { cotas: !limpio, figImgEmb: figEmb, figImgMarco: !!datos.figImgMarco, aletaImgsEmb: aleEmb });
 
     // Página ADICIONAL con la vista 3D elegida en el visor (complementa el plano, no lo sustituye).
     if (datos.vista3D && datos.sketch && datos.sketch.volumetrico) {

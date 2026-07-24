@@ -718,7 +718,7 @@
     // cortes/guías (1er/último de sus ojetillos) a los del perímetro base.
     let ojNumeros = spec.ojNumeros || null;
     if (ojNumeros != null) cortes.forEach((c) => { if (c.ojNum && c.ojNum.length) ojNumeros = ojNumeros.concat(c.ojNum); });
-    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, anclas: spec.espejo ? [] : (spec.anclas || []), notas: spec.espejo ? [] : (spec.notas || []), bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, cotasPos: spec.cotasPos || null, panoPoly: panoPoly, figImg: spec.figImg || null, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar, cintas: (spec.cintas || []) };
+    return { ancho: ancho, largo: largo, ojetillos: ojetillos, ventanas: ventanas, cortes: cortes, bolsillos: bolsillos, aletas: aletas, straps: straps, anclas: spec.espejo ? [] : (spec.anclas || []), notas: spec.espejo ? [] : (spec.notas || []), bordesRot: spec.bordesRot || null, unionesRot: spec.unionesRot || null, setsRot: (spec.setsRot || []).filter((r) => r && isFinite(r.x) && isFinite(r.y)), ojNumeros: ojNumeros, cotasOcultas: spec.cotasOcultas || null, cotasPos: spec.cotasPos || null, panoPoly: panoPoly, espejo: !!spec.espejo, figImg: spec.figImg || null, rotDrag: spec.rotDrag || null, rotColapsar: !!spec.rotColapsar, cintas: (spec.cintas || []) };
   }
 
   // Descriptores de cota (coordenadas del producto). axis "h" = arriba, "v" = izquierda.
@@ -1955,10 +1955,15 @@
     let s = `<svg class="sketch-svg" viewBox="0 0 ${f1(totalW)} ${f1(totalH)}" data-mscale="${scale.toFixed(3)}" data-ox="${f1(ox)}" data-oy="${f1(oy)}" xmlns="http://www.w3.org/2000/svg">`;
     s += `<defs><pattern id="cinta-hatch" width="5" height="5" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="0" y2="5" stroke="#8a94a0" stroke-width="0.8"/></pattern></defs>`;
     // Contorno del paño: rectángulo, o el polígono recortado si hay cortes "Eliminar" (la parte se va).
-    if (sk.panoPoly && sk.panoPoly.length >= 3) {
-      s += `<polygon class="edge" points="${sk.panoPoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
-    } else {
-      s += `<rect class="edge" x="${f1(ox)}" y="${f1(oy)}" width="${f1(w)}" height="${f1(h)}"/>`;
+    // v17-67: con calcomanía inscrita el usuario puede difuminar el contorno del paño
+    // (igual que en aletas): por defecto se oculta; figImg.marco lo devuelve. Espejo siempre lo dibuja.
+    const ocultaEdge9 = sk.figImg && sk.figImg.url && !sk.figImg.marco && !sk.espejo;
+    if (!ocultaEdge9) {
+      if (sk.panoPoly && sk.panoPoly.length >= 3) {
+        s += `<polygon class="edge" points="${sk.panoPoly.map((p) => f1(px(p.x)) + "," + f1(py(p.y))).join(" ")}"/>`;
+      } else {
+        s += `<rect class="edge" x="${f1(ox)}" y="${f1(oy)}" width="${f1(w)}" height="${f1(h)}"/>`;
+      }
     }
     // F7.1: plano/foto del CLIENTE — calcomanía DEFORMABLE {x,y,w,h en metros} recortada al
     // contorno REAL del paño (panoPoly con recortes/diagonales, o el rectángulo simple).
