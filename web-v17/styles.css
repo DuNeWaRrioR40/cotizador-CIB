@@ -1038,3 +1038,12 @@ body.drawer-abierto { overflow: hidden; }
 .sketch-svg .ancla-ref .ancla-halo { fill: rgba(138, 148, 160, 0.10); }
 .sketch-svg .ancla-ref text { fill: #8a94a0; }
 .sketch-svg .med-centro-dot.iman { stroke: #f59e0b; stroke-width: 3; }
+/* v17-80: 🧲 opcional del punto verde — color = activo, B/N = apagado (defecto) */
+.sketch-svg .med-centro-btn.iman circle { fill: #fff; stroke: #f59e0b; stroke-width: 1.6; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.18)); }
+.sketch-svg .med-centro-btn.iman text { font-size: 12px; pointer-events: none; }
+.sketch-svg .med-centro-btn.iman.off { filter: grayscale(1); opacity: 0.75; }
+.sketch-svg .med-centro-btn.iman.on circle { fill: #fff7e6; }
+
+/* v17-81: ✕ eliminar en la lista de elementos del plano (visible solo con el elemento oculto) */
+.plano-menu-del { border: 1px solid #e3b7b0; background: #fff; color: #d8443a; border-radius: 50%; width: 22px; height: 22px; line-height: 1; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; }
+.plano-menu-del:hover { background: #d8443a; color: #fff; }

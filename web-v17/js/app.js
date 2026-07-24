@@ -1715,7 +1715,7 @@
   let cotasPanelOpen = false; // estado (colapsado/expandido) del submenú "Cotas", compartido entre planos
   function menuPlano(container, grupos, onToggle, cotasCtl, numOjCtl) {
     if (!container) return;
-    const filas = grupos.map((g) => ({ label: g.label, rotulo: !!g.rotulo, items: (g.items || []).filter((it) => it && it.obj) })).filter((g) => g.items.length);
+    const filas = grupos.map((g) => ({ label: g.label, rotulo: !!g.rotulo, lista: g.lista || null, items: (g.items || []).filter((it) => it && it.obj) })).filter((g) => g.items.length);
     const tieneCotas = !!(cotasCtl && cotasCtl.cotas && cotasCtl.cotas.length);
     if (!filas.length && !tieneCotas && !numOjCtl) return;
     const box = document.createElement("div"); box.className = "plano-menu";
@@ -1741,6 +1741,19 @@
         cb.addEventListener("change", () => { it.obj._oculto = cb.checked; if (onToggle) onToggle(); });
         lab.appendChild(cb); lab.appendChild(document.createTextNode("ocultar"));
         ctrls.appendChild(lab);
+        // v17-81: ocultar y eliminar son parientes — con el elemento OCULTO aparece la ✕ para
+        // eliminarlo aquí mismo, sin peregrinar a la ficha. Con confirm: borrar es borrar.
+        if (g.lista && it.obj._oculto) {
+          const bX = document.createElement("button"); bX.type = "button"; bX.className = "plano-menu-del"; bX.textContent = "✕";
+          bX.title = "Eliminar este elemento definitivamente";
+          bX.addEventListener("click", (e9) => {
+            e9.preventDefault(); e9.stopPropagation();
+            if (!confirm("¿Eliminar \"" + ((g.tag ? g.tag + " " : "") + it.titulo) + "\" definitivamente?")) return;
+            const i9 = g.lista.indexOf(it.obj); if (i9 !== -1) g.lista.splice(i9, 1);
+            if (onToggle) onToggle();
+          });
+          ctrls.appendChild(bX);
+        }
         // Checkbox "rótulo" (solo aletas / paños inscritos): fuerza el rótulo-guía aunque el título quepa.
         // Inactivo y marcado cuando el auto ya lo está generando (el título no cabe).
         if (g.rotulo) {
@@ -5571,10 +5584,10 @@
       activarAnclas(sk, { anclas: state.anclasUnif, cortes: state.cortesUnif, ancho: ancho || 0, largo: largo || 0, vol: () => (alturaUnif() > 0 ? { altos: altosUnif(), alas: alasUnif() } : null), onChange: () => { renderCortesUnif(); recompute(); } });
       activarNotas(sk, state.notasUnif, recompute);
       menuPlano(sk, [
-        { label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
-        { label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
-        { label: "Straps / cintas", items: (state.strapsUnif || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
-        { label: "Cintas / cierres", rotulo: true, items: (state.cintasUnif || []).map((c, i) => ({ obj: c, titulo: "Cinta " + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
+        { lista: state.cortesUnif, label: "Cortes / Calados", items: (state.cortesUnif || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
+        { lista: state.aletasUnif, label: "Aletas / Anexos", rotulo: true, items: (state.aletasUnif || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
+        { lista: state.strapsUnif, label: "Straps / cintas", items: (state.strapsUnif || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
+        { lista: state.cintasUnif, label: "Cintas / cierres", rotulo: true, items: (state.cintasUnif || []).map((c, i) => ({ obj: c, titulo: "Cinta " + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
       ], refrescarOcUnif, { cotas: cotasDeSpec(especUnif), ocultas: state.cotasOcultas, onChange: refrescarOcUnif },
         (state.ojMode === "arista" || hayOjEnCortes(state.cortesUnif)) ? { on: !!state.ojNumerar, toggle: () => { state.ojNumerar = !state.ojNumerar; refrescarOcUnif(); } } : null);
       menuBordesRot(sk, state, () => { renderBordes(); recompute(); }, () => $("bordeDyn"), () => irANodo($("wOjetillos")));
@@ -8490,6 +8503,9 @@
         return g9;
       };
       const bOK9 = mkBtn9("ok", "✔"), bNo9 = mkBtn9("no", "✕");
+      // v17-80: el imán era un hoyo negro — ahora es OPCIONAL: 🧲 a color = activo, B/N = apagado (defecto).
+      let imanOn9 = false;
+      const bIm9 = mkBtn9("iman off", "🧲");
       const pinta9 = () => {
         const p9 = pxOf9(c9), pA9 = pxOf9(c9 - M / 2), pB9 = pxOf9(c9 + M / 2);
         [halo9, dot9].forEach((e9) => { e9.setAttribute("cx", p9.X); e9.setAttribute("cy", p9.Y); });
@@ -8514,8 +8530,9 @@
           pv9.tx9.setAttribute("text-anchor", "middle");
         });
         const by9 = p9.Y + 32;
-        bOK9.setAttribute("transform", "translate(" + (p9.X - 24) + "," + by9 + ")");
-        bNo9.setAttribute("transform", "translate(" + (p9.X + 24) + "," + by9 + ")");
+        bOK9.setAttribute("transform", "translate(" + (p9.X - 34) + "," + by9 + ")");
+        bIm9.setAttribute("transform", "translate(" + p9.X + "," + by9 + ")");
+        bNo9.setAttribute("transform", "translate(" + (p9.X + 34) + "," + by9 + ")");
       };
       let dragC9 = false;
       pinta9();
@@ -8526,7 +8543,7 @@
         const t9 = (pm9.x - segE.a.x) * u.x + (pm9.y - segE.a.y) * u.y;
         const t9c = Math.max(cLim1, Math.min(cLim2, t9));
         let cBest9 = null, dBest9 = UM9;
-        candC9.forEach((cc9) => { const d9 = Math.abs(t9c - cc9); if (d9 < dBest9) { dBest9 = d9; cBest9 = cc9; } });
+        if (imanOn9) candC9.forEach((cc9) => { const d9 = Math.abs(t9c - cc9); if (d9 < dBest9) { dBest9 = d9; cBest9 = cc9; } });
         imantado9 = cBest9 != null;
         c9 = rd3(imantado9 ? cBest9 : t9c);
         pinta9();
@@ -8544,6 +8561,13 @@
         document.removeEventListener("keydown", onKey9, true);
       };
       document.addEventListener("keydown", onKey9, true);   // Esc = salir sin aplicar (PC)
+      bIm9.addEventListener("pointerdown", (ev9) => ev9.stopPropagation(), true);
+      bIm9.addEventListener("click", (ev9) => {
+        ev9.stopPropagation();
+        imanOn9 = !imanOn9;
+        bIm9.setAttribute("class", "med-centro-btn iman" + (imanOn9 ? " on" : " off"));
+        if (!imanOn9) { imantado9 = false; pinta9(); }
+      });
       bOK9.addEventListener("pointerdown", (ev9) => ev9.stopPropagation(), true);
       bNo9.addEventListener("pointerdown", (ev9) => ev9.stopPropagation(), true);
       bOK9.addEventListener("click", (ev9) => { ev9.stopPropagation(); limpiar9(); aplicarCon(c9); });
@@ -10989,11 +11013,11 @@
         activarNotas(sketchBox, (pz.notas || (pz.notas = [])), recomputeCompuesto);
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
         menuPlano(sketchBox, [
-          { label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
-          { label: "Paños inscritos", rotulo: true, items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
-          { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
-          { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
-          { label: "Cintas / cierres", rotulo: true, items: (pz.cintas || []).map((c, i) => ({ obj: c, titulo: "Cinta " + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
+          { lista: pz.cortes, label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
+          { lista: pz.inscritos, label: "Paños inscritos", rotulo: true, items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
+          { lista: pz.aletas, label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
+          { lista: pz.straps, label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
+          { lista: pz.cintas, label: "Cintas / cierres", rotulo: true, items: (pz.cintas || []).map((c, i) => ({ obj: c, titulo: "Cinta " + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
         ], refrescarOcPz, { cotas: cotasDeSpec(sketchPieza(pz)), ocultas: pz.cotasOcultas, onChange: refrescarOcPz },
           (pz.ojMode === "arista" || hayOjEnCortes(pz.cortes)) ? { on: !!pz.ojNumerar, toggle: () => { pz.ojNumerar = !pz.ojNumerar; refrescarOcPz(); } } : null);
         menuBordesRot(sketchBox, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'), () => { const w = document.querySelector('[data-id="' + pz.id + '"] .pz-oj-wrap'); if (!w) return; if (w._subHead && w.style.display === "none") w._subHead.click(); irAElemento(w._subHead || w, w._subHead || w); });
@@ -11096,11 +11120,11 @@
         body.appendChild(dl);
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
         menuPlano(body, [
-          { label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
-          { label: "Paños inscritos", rotulo: true, items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
-          { label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
-          { label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
-          { label: "Cintas / cierres", rotulo: true, items: (pz.cintas || []).map((c, i) => ({ obj: c, titulo: "Cinta " + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
+          { lista: pz.cortes, label: "Cortes / Calados", items: (pz.cortes || []).map((c, i) => ({ obj: c, titulo: ((c.tipo === "guia") ? "Guía " : (c.tipo === "corte") ? "Corte " : "Calado ") + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
+          { lista: pz.inscritos, label: "Paños inscritos", rotulo: true, items: (pz.inscritos || []).map((ins, i) => ({ obj: ins, titulo: "Paño " + (i + 1) + (ins.legend && ins.legend.trim() ? " — " + ins.legend.trim() : "") })) },
+          { lista: pz.aletas, label: "Aletas / Anexos", rotulo: true, items: (pz.aletas || []).map((a, i) => ({ obj: a, titulo: "Anexo " + (i + 1) + (a.legend && a.legend.trim() ? " — " + a.legend.trim() : "") })) },
+          { lista: pz.straps, label: "Straps / cintas", items: (pz.straps || []).map((s, i) => ({ obj: s, titulo: "Strap " + (i + 1) + (s.legend && s.legend.trim() ? " — " + s.legend.trim() : "") })) },
+          { lista: pz.cintas, label: "Cintas / cierres", rotulo: true, items: (pz.cintas || []).map((c, i) => ({ obj: c, titulo: "Cinta " + (i + 1) + (c.legend && c.legend.trim() ? " — " + c.legend.trim() : "") })) },
         ], refrescarOcPz, { cotas: cotasDeSpec(sketchPieza(pz)), ocultas: pz.cotasOcultas, onChange: refrescarOcPz },
           (pz.ojMode === "arista" || hayOjEnCortes(pz.cortes)) ? { on: !!pz.ojNumerar, toggle: () => { pz.ojNumerar = !pz.ojNumerar; refrescarOcPz(); } } : null);
         menuBordesRot(body, pz, () => { const bc = document.querySelector('[data-id="' + pz.id + '"] .pz-borde'); if (bc) renderPiezaBordes(bc, pz); recomputeCompuesto(); }, () => document.querySelector('[data-id="' + pz.id + '"] .pz-borde'), () => { const w = document.querySelector('[data-id="' + pz.id + '"] .pz-oj-wrap'); if (!w) return; if (w._subHead && w.style.display === "none") w._subHead.click(); irAElemento(w._subHead || w, w._subHead || w); });
