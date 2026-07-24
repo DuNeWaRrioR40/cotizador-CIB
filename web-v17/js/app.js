@@ -10162,6 +10162,7 @@
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, [], { cortes: ojEnCortesN(state.cortesUnif, ancho, largo, state.aletasUnif), anexos: ojEnAletasN(state.aletasUnif) }).concat(materialesCortes(state.cortesUnif)),
       sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag, notas: state.notasUnif }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: volUnifSpec() } : {}),
       vista3D: (_vista3D && _vista3D.firma === firmaVol()) ? _vista3D.png : null,
+      mod3D: _mod3DPng,
       odt: _odtActual,
       figImg: state.figImgUnif ? state.figImgUnif.url : null,
       figImgPano: (state.figImgUnif && state.figImgUnif.url) ? _figBaked : null,
@@ -10443,6 +10444,160 @@
     };
     img.src = fi.url;
   }
+  // ---------- PRODUCTO 3D DEL CLIENTE (STL/OBJ) — solo visualización (v17-84) ----------
+  // El modelo vive EN LA SESIÓN (no se persiste: un STL pesa MB y reventaría respaldos y Sheet).
+  // La captura 📸 sí viaja al plano PDF como página "PRODUCTO 3D DEL CLIENTE (referencial)".
+  let _mod3D = null;      // { nombre, pos: Float32Array }
+  let _mod3DPng = null;   // captura elegida (dataURL)
+  function parseSTL(buf) {
+    const dv = new DataView(buf);
+    if (buf.byteLength >= 84) {
+      const nTri = dv.getUint32(80, true);
+      if (84 + nTri * 50 === buf.byteLength && nTri > 0) {   // BINARIO: el tamaño calza exacto
+        const pos = new Float32Array(nTri * 9);
+        for (let i9 = 0; i9 < nTri; i9++) {
+          const o9 = 84 + i9 * 50;   // 12 bytes de normal + 3 vértices × 12 bytes
+          for (let v9 = 0; v9 < 9; v9++) pos[i9 * 9 + v9] = dv.getFloat32(o9 + 12 + v9 * 4, true);
+        }
+        return pos;
+      }
+    }
+    const txt = new TextDecoder().decode(buf);   // ASCII: vertex x y z
+    if (!/facet/i.test(txt)) return null;
+    const out = [];
+    const re9 = /vertex\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)/g;
+    let m9; while ((m9 = re9.exec(txt))) out.push(+m9[1], +m9[2], +m9[3]);
+    return out.length >= 9 ? new Float32Array(out.slice(0, out.length - (out.length % 9))) : null;
+  }
+  function parseOBJ(txt) {
+    const vs = [], out = [];
+    String(txt).split(/\r?\n/).forEach((ln9) => {
+      const t9 = ln9.trim();
+      if (t9.indexOf("v ") === 0) {
+        const p9 = t9.split(/\s+/); vs.push([+p9[1], +p9[2], +p9[3]]);
+      } else if (t9.indexOf("f ") === 0) {
+        const idx9 = t9.split(/\s+/).slice(1).map((w9) => {
+          let k9 = parseInt(w9.split("/")[0], 10);
+          if (k9 < 0) k9 = vs.length + 1 + k9;   // índices negativos del OBJ
+          return k9 - 1;
+        }).filter((k9) => k9 >= 0 && k9 < vs.length);
+        for (let i9 = 1; i9 + 1 < idx9.length; i9++)   // abanico: caras n-gon → triángulos
+          [idx9[0], idx9[i9], idx9[i9 + 1]].forEach((k9) => out.push(vs[k9][0], vs[k9][1], vs[k9][2]));
+      }
+    });
+    return out.length >= 9 ? new Float32Array(out) : null;
+  }
+  function importarMod3D(file) {
+    if (!file) return;
+    const esObj = /\.obj$/i.test(file.name || "");
+    const rd = new FileReader();
+    rd.onload = () => {
+      let pos = null;
+      try { pos = esObj ? parseOBJ(rd.result) : parseSTL(rd.result); } catch (e) { pos = null; }
+      if (!pos || !pos.length) return alert("No se pudo interpretar el " + (esObj ? "OBJ" : "STL") + ". Exporta desde Fusion/Inventor como STL (binario o ASCII) u OBJ de malla.");
+      _mod3D = { nombre: file.name || "modelo", pos: pos };
+      _mod3DPng = null;
+      sincBtnMod3D();
+      alert("Modelo 3D cargado: " + _mod3D.nombre + " · " + Math.round(pos.length / 9) + " triángulos.\n\nOJO: el modelo vive SOLO en esta sesión (no se guarda en respaldos — pesa demasiado). La vista que captures con 📸 sí viaja al plano PDF.");
+      abrirMod3D();
+    };
+    if (esObj) rd.readAsText(file); else rd.readAsArrayBuffer(file);
+  }
+  function sincBtnMod3D() {
+    const b = $("btnMod3D"); if (b) b.textContent = _mod3D ? "🧊 Ver modelo 3D (" + _mod3D.nombre + ")" : "🧊 Modelo 3D (STL/OBJ)…";
+    const q = $("btnMod3DQuitar"); if (q) q.classList.toggle("hidden", !_mod3D);
+  }
+  async function abrirMod3D() {
+    if (!_mod3D) { const fi9 = $("mod3DFile"); if (fi9) fi9.click(); return; }
+    try {
+      await ensureLib("THREE", [
+        "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
+        "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js",
+        "https://unpkg.com/three@0.128.0/build/three.min.js",
+      ]);
+    } catch (e) { return alert("No se pudo cargar el visor 3D (revisa la conexión)."); }
+    const T = window.THREE;
+    const geo = new T.BufferGeometry();
+    geo.setAttribute("position", new T.BufferAttribute(_mod3D.pos, 3));
+    geo.computeVertexNormals();
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox, ctr = bb.getCenter(new T.Vector3()), tam = bb.getSize(new T.Vector3());
+    const diag = tam.length() || 1;
+    const overlay = document.createElement("div"); overlay.className = "plano-zoom";
+    const x = document.createElement("button"); x.className = "plano-zoom-x"; x.type = "button"; x.textContent = "✕";
+    const body = document.createElement("div"); body.className = "plano-zoom-body";
+    const canvas = document.createElement("canvas"); canvas.className = "vol3d-canvas";
+    const hint = document.createElement("p"); hint.className = "muted small vol3d-hint"; hint.textContent = _mod3D.nombre + " — arrastra para girar · rueda o pellizco para acercar (referencial, sin valor dimensional).";
+    const acciones = document.createElement("div"); acciones.className = "vol3d-acciones";
+    const cap = document.createElement("button"); cap.type = "button"; cap.className = "vol3d-btn"; cap.textContent = "📸 Incluir esta vista en el plano";
+    const dl = document.createElement("button"); dl.type = "button"; dl.className = "vol3d-btn"; dl.textContent = "⬇ Descargar imagen";
+    acciones.appendChild(cap); acciones.appendChild(dl);
+    body.appendChild(canvas); overlay.appendChild(x); overlay.appendChild(body); overlay.appendChild(hint); overlay.appendChild(acciones);
+    document.body.appendChild(overlay);
+    const renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setClearColor(0xffffff, 1);
+    const scene = new T.Scene();
+    scene.add(new T.AmbientLight(0xffffff, 0.72));
+    const luz = new T.DirectionalLight(0xffffff, 0.55); luz.position.set(diag, diag * 1.4, diag * 0.7); scene.add(luz);
+    const grp = new T.Group(); scene.add(grp);
+    const mesh = new T.Mesh(geo, new T.MeshLambertMaterial({ color: 0xd9d2c2, side: T.DoubleSide }));
+    mesh.position.set(-ctr.x, -ctr.y, -ctr.z);
+    grp.add(mesh);
+    const cam = new T.PerspectiveCamera(42, 1, diag / 100, diag * 30);
+    let dist = diag * 1.7, rotY = 0.6, rotX = 0.45;
+    const coloca = () => {
+      grp.rotation.y = rotY; grp.rotation.x = rotX;
+      cam.position.set(0, 0, dist); cam.lookAt(0, 0, 0);
+      renderer.render(scene, cam);
+    };
+    const onResize = () => {
+      const w9 = Math.min(window.innerWidth - 24, 980), h9 = Math.min(window.innerHeight - 150, 640);
+      canvas.style.width = w9 + "px"; canvas.style.height = h9 + "px";
+      renderer.setSize(w9, h9, false); cam.aspect = w9 / h9; cam.updateProjectionMatrix(); coloca();
+    };
+    let drag9 = null, pinza9 = null;
+    canvas.addEventListener("pointerdown", (e9) => { canvas.setPointerCapture(e9.pointerId); if (drag9 && drag9.id !== e9.pointerId) pinza9 = { id: e9.pointerId, x: e9.clientX, y: e9.clientY }; else drag9 = { id: e9.pointerId, x: e9.clientX, y: e9.clientY }; });
+    canvas.addEventListener("pointermove", (e9) => {
+      if (pinza9 && drag9) {   // pellizco: zoom por variación de distancia entre 2 dedos
+        const dAnt = Math.hypot(pinza9.x - drag9.x, pinza9.y - drag9.y);
+        if (e9.pointerId === pinza9.id) { pinza9.x = e9.clientX; pinza9.y = e9.clientY; }
+        else if (e9.pointerId === drag9.id) { drag9.x = e9.clientX; drag9.y = e9.clientY; }
+        const dNue = Math.hypot(pinza9.x - drag9.x, pinza9.y - drag9.y);
+        if (dAnt > 0 && dNue > 0) { dist = Math.max(diag * 0.3, Math.min(diag * 8, dist * dAnt / dNue)); coloca(); }
+        return;
+      }
+      if (!drag9 || e9.pointerId !== drag9.id) return;
+      rotY += (e9.clientX - drag9.x) * 0.008; rotX += (e9.clientY - drag9.y) * 0.008;
+      rotX = Math.max(-1.5, Math.min(1.5, rotX));
+      drag9.x = e9.clientX; drag9.y = e9.clientY; coloca();
+    });
+    const sueltaP = (e9) => { if (pinza9 && e9.pointerId === pinza9.id) pinza9 = null; else if (drag9 && e9.pointerId === drag9.id) { drag9 = pinza9; pinza9 = null; } };
+    canvas.addEventListener("pointerup", sueltaP); canvas.addEventListener("pointercancel", sueltaP);
+    canvas.addEventListener("wheel", (e9) => { e9.preventDefault(); dist = Math.max(diag * 0.3, Math.min(diag * 8, dist * (e9.deltaY > 0 ? 1.1 : 0.9))); coloca(); }, { passive: false });
+    const onKey9 = (e9) => { if (e9.key === "Escape") cerrar(); };
+    const cerrar = () => { try { renderer.dispose(); } catch (_) {} overlay.remove(); document.removeEventListener("keydown", onKey9); window.removeEventListener("resize", onResize); };
+    x.addEventListener("click", cerrar);
+    overlay.addEventListener("click", (e9) => { if (e9.target === overlay || e9.target === body) cerrar(); });
+    document.addEventListener("keydown", onKey9);
+    window.addEventListener("resize", onResize);
+    onResize();
+    cap.addEventListener("click", (e9) => {
+      e9.stopPropagation();
+      renderer.render(scene, cam);
+      _mod3DPng = canvas.toDataURL("image/png");
+      cap.textContent = "✓ Se agregará como página del plano";
+      setTimeout(() => { if (cap.isConnected) cap.textContent = "📸 Incluir esta vista en el plano"; }, 2400);
+    });
+    dl.addEventListener("click", (e9) => {
+      e9.stopPropagation();
+      renderer.render(scene, cam);
+      const a9 = document.createElement("a");
+      a9.href = canvas.toDataURL("image/png");
+      a9.download = "CIBSA_3D_cliente.png";
+      a9.click();
+    });
+  }
   // "Hornea" la calcomanía ya deformada/recortada al rect del paño (PNG con alpha) para el PDF.
   function bakeFigImg(cb) {
     const fi = state.figImgUnif;
@@ -10525,6 +10680,10 @@
       if (ba) ba.addEventListener("click", () => { _figEditOn = !_figEditOn; sincBtnFigImg(); recompute(); });
       const br = $("btnFigRot"); if (br) br.addEventListener("click", rotarFigImg);
       const bm = $("figMarcoChk"); if (bm) bm.addEventListener("change", () => { if (state.figImgUnif) { state.figImgUnif.marco = bm.checked; recompute(); } });
+      const bm3 = $("btnMod3D"); if (bm3) bm3.addEventListener("click", abrirMod3D);
+      const fm3 = $("mod3DFile"); if (fm3) fm3.addEventListener("change", () => { const f0 = fm3.files && fm3.files[0]; fm3.value = ""; if (f0) importarMod3D(f0); });
+      const qm3 = $("btnMod3DQuitar"); if (qm3) qm3.addEventListener("click", () => { _mod3D = null; _mod3DPng = null; sincBtnMod3D(); });
+      sincBtnMod3D();
       sincBtnFigImg();
     } }
   async function descargarCorte() {
@@ -11206,6 +11365,8 @@
     const rb = document.querySelector('input[name="bordemodo"][value="uniforme"]'); if (rb) rb.checked = true;
     // Plano del cliente (calcomanía): fuera imagen, fuera modo ajuste
     state.figImgUnif = null; _figBaked = null; _figEditOn = false;
+    // Modelo 3D del cliente (sesión): también se despide
+    _mod3D = null; _mod3DPng = null; if (typeof sincBtnMod3D === "function") sincBtnMod3D();
     if (typeof sincBtnFigImg === "function") sincBtnFigImg();
     // Reset producto compuesto → vuelve a uniforme (incluye vínculos de ensamble)
     state.prodMode = "uniforme"; state.piezas = []; state.compuesto = null; state.ensambles = [];

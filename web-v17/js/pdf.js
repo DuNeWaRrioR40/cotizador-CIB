@@ -1549,6 +1549,20 @@
         p3.drawImage(img3d, { x: (W - iw) / 2, y: y3 - ih, width: iw, height: ih });
       } catch (e) { /* si la imagen falla, el plano queda igual que siempre */ }
     }
+    // v17-84: PRODUCTO 3D DEL CLIENTE (STL/OBJ importado) — captura elegida en su visor 🧊.
+    if (datos.mod3D) {
+      try {
+        const imgM = await doc.embedPng(b64ToBytes(String(datos.mod3D).split(",")[1] || ""));
+        const pM = doc.addPage([W, H]);
+        let yM = dibujarEncabezado(pM, cibsa, null, W, M, H - 40);
+        tituloCentrado(pM, "PRODUCTO 3D DEL CLIENTE", W, yM, bold, 15, BLUE()); yM -= 15;
+        tituloCentrado(pM, "Modelo 3D enviado por el cliente (STL/OBJ) — representación referencial, sin valor dimensional.", W, yM, font, 9, BLUE()); yM -= 18;
+        if (datos.titulo) { pM.drawText(san('"' + datos.titulo + '"'), { x: M, y: yM, size: 12, font: bold, color: BLUE() }); yM -= 20; }
+        const availWM = W - 2 * M, availHM = yM - 60;
+        const escM = Math.min(availWM / imgM.width, availHM / imgM.height);
+        pM.drawImage(imgM, { x: (W - imgM.width * escM) / 2, y: yM - imgM.height * escM, width: imgM.width * escM, height: imgM.height * escM });
+      } catch (e) { /* si la imagen falla, el plano queda igual que siempre */ }
+    }
     // F7: página con el PLANO DEL CLIENTE (imagen inscrita en la app) — referencia visual.
     if (datos.figImg) {
       try {
