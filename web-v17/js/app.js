@@ -3329,6 +3329,10 @@
     const ordena = () => secs.sort((p2, q2) => p2.a - q2.a);
     const nice9 = (span) => { const pw = Math.pow(10, Math.floor(Math.log10(Math.max(1e-6, span / 6)))); const c2 = span / 6 / pw; return (c2 >= 5 ? 5 : c2 >= 2 ? 2 : 1) * pw; };
     const xD = (t) => (t - v0) / (v1 - v0) * W9;
+    const vecinos9 = (s) => ({
+      prevB: secs.reduce((m, o) => (o !== s && o.b <= s.a + 1e-9 ? Math.max(m, o.b) : m), 0),
+      nextA: secs.reduce((m, o) => (o !== s && o.a >= s.b - 1e-9 ? Math.min(m, o.a) : m), Lc),
+    });
     const pinta = () => {
       ordena();
       while (svgD.firstChild) svgD.removeChild(svgD.firstChild);
@@ -3344,6 +3348,12 @@
         const nx = []; segsM.forEach((m) => { if (g.b <= m.a || g.a >= m.b) { nx.push(m); return; } if (g.a > m.a) nx.push({ a: m.a, b: g.a }); if (g.b < m.b) nx.push({ a: g.b, b: m.b }); }); segsM = nx;
       });
       segsM.forEach((m) => { const a = Math.max(m.a, v0), b = Math.min(m.b, v1); if (b <= a) return; el9(svgD, "rect", { x: xD(a), y: yB, width: xD(b) - xD(a), height: hB, rx: 3, class: "ced-base" }); });
+      // v17-103: numerito de POSICIÓN siguiendo los extremos de la ventana (esquinas de la pantalla)
+      el9(svgD, "text", { x: 8, y: HD - 10, class: "ced-poslbl" }, f9(v0) + " m");
+      el9(svgD, "text", { x: W9 - 8, y: HD - 10, class: "ced-poslbl", "text-anchor": "end" }, f9(v1) + " m");
+      // v17-102: los EXTREMOS del recorrido siempre se reflejan en la pantalla (línea amarilla fina)
+      if (v0 <= 1e-9) { el9(svgD, "line", { x1: xD(0), y1: 30, x2: xD(0), y2: yB + hB + 10, class: "ced-ext" }); el9(svgD, "text", { x: xD(0) + 4, y: 40, class: "ced-extlbl" }, "extremo 1"); }
+      if (v1 >= Lc - 1e-9) { el9(svgD, "line", { x1: xD(Lc), y1: 30, x2: xD(Lc), y2: yB + hB + 10, class: "ced-ext" }); el9(svgD, "text", { x: xD(Lc) - 4, y: 40, class: "ced-extlbl", "text-anchor": "end" }, "extremo 2"); }
       secs.forEach((s, i) => {
         const a = Math.max(s.a, v0), b = Math.min(s.b, v1); if (b <= a) return;
         const X = xD(a), Wd = Math.max(2, xD(b) - xD(a));
@@ -3356,8 +3366,12 @@
         if (i === sel) {
           el9(svgD, "circle", { cx: xD(s.a), cy: yB + hB / 2, r: 9, class: "ced-hd", "data-h": "a" });
           el9(svgD, "circle", { cx: xD(s.b), cy: yB + hB / 2, r: 9, class: "ced-hd", "data-h": "b" });
-          el9(svgD, "text", { x: Math.min(Math.max(X + Wd / 2, 70), W9 - 70), y: yB + hB + 26, class: "ced-cota", "text-anchor": "middle" }, f9(s.a) + " – " + f9(s.b) + " m · largo " + f9(s.b - s.a) + " m");
-          el9(svgD, "text", { x: Math.min(Math.max(X + Wd / 2, 60), W9 - 60), y: yB - 12, class: "ced-del", "text-anchor": "middle", "data-del": "1" }, "🗑 eliminar");
+          el9(svgD, "text", { x: Math.min(Math.max(X + Wd / 2, 70), W9 - 70), y: yB + hB + 26, class: "ced-cota", "text-anchor": "middle", "data-cota": "1" }, f9(s.a) + " – " + f9(s.b) + " m · largo " + f9(s.b - s.a) + " m ✎");
+          const cxB = Math.min(Math.max(X + Wd / 2, 60), W9 - 60);
+          el9(svgD, "circle", { cx: cxB - 20, cy: yB - 17, r: 11, class: "ced-okc", "data-ok": "1" });
+          el9(svgD, "text", { x: cxB - 20, y: yB - 13, class: "ced-oktx", "text-anchor": "middle", "data-ok": "1" }, "✓");
+          el9(svgD, "circle", { cx: cxB + 20, cy: yB - 17, r: 11, class: "ced-noc", "data-del": "1" });
+          el9(svgD, "text", { x: cxB + 20, y: yB - 13, class: "ced-notx", "text-anchor": "middle", "data-del": "1" }, "✕");
         }
       });
       while (svgO.firstChild) svgO.removeChild(svgO.firstChild);
@@ -3397,9 +3411,26 @@
       ptrs9.set(e.pointerId, e.clientX);
       if (ptrs9.size === 2) { const xs = Array.from(ptrs9.values()); pinch9 = { d: Math.abs(xs[0] - xs[1]) || 1, tc: ptT(e) }; dragT = null; return; }
       const tgt = e.target;
+      if (tgt.getAttribute && tgt.getAttribute("data-ok")) { sel = -1; pinta(); return; }   // ✓ = feature aplicado
       if (tgt.getAttribute && tgt.getAttribute("data-del")) { if (sel >= 0) { secs.splice(sel, 1); sel = -1; pinta(); } return; }
+      if (tgt.getAttribute && tgt.getAttribute("data-cota") && sel >= 0) {
+        // v17-102: edición NUMÉRICA directa del tramo completo (desde-hasta)
+        const s = secs[sel];
+        const d = prompt("Tramo desde-hasta (m):", f9(s.a) + "-" + f9(s.b));
+        if (d != null) {
+          const m9 = String(d).replace(",", ".").match(/([0-9]*\.?[0-9]+)\s*[-\u2013]\s*([0-9]*\.?[0-9]+)/);
+          if (m9) {
+            let a2 = parseFloat(m9[1]), b2 = parseFloat(m9[2]); if (b2 < a2) { const t9 = a2; a2 = b2; b2 = t9; }
+            const vv = vecinos9(s);
+            s.a = rd3(Math.max(vv.prevB, Math.max(0, a2)));
+            s.b = rd3(Math.min(vv.nextA, Math.min(Lc, Math.max(s.a + 0.01, b2))));
+            pinta();
+          } else alert("Formato: desde-hasta (ej. 1.2-1.85)");
+        }
+        return;
+      }
       const h = tgt.getAttribute && tgt.getAttribute("data-h");
-      if (h && sel >= 0) { dragT = { m: "h", h: h }; return; }
+      if (h && sel >= 0) { dragT = { m: "h", h: h, x0: e.clientX, moved: false }; return; }
       const di = tgt.getAttribute && tgt.getAttribute("data-i");
       if (di != null) { sel = parseInt(di, 10); dragT = { m: "mv", off: ptT(e) - secs[sel].a, len: secs[sel].b - secs[sel].a }; pinta(); return; }
       const r = svgD.getBoundingClientRect(), yRel = (e.clientY - r.top) / r.height * HD;
@@ -3429,6 +3460,8 @@
         zoomEn(pinch9.tc, pinch9.d / d2); pinch9.d = d2; return;
       }
       if (!dragT || sel < 0) return;
+      if (dragT.x0 != null && Math.abs(e.clientX - dragT.x0) > 4) dragT.moved = true;
+      if (dragT.m === "h" && !dragT.moved) return;   // aún es un posible TAP: no mover
       const s = secs[sel], t = ptT(e);
       const prevB = secs.reduce((m, o, i) => (i !== sel && o.b <= s.a + 1e-9 ? Math.max(m, o.b) : m), 0);
       const nextA = secs.reduce((m, o, i) => (i !== sel && o.a >= s.b - 1e-9 ? Math.min(m, o.a) : m), Lc);
@@ -3441,7 +3474,24 @@
       }
       pinta();
     });
-    const upD = (e) => { ptrs9.delete(e.pointerId); if (ptrs9.size < 2) pinch9 = null; dragT = null; };
+    const upD = (e) => {
+      ptrs9.delete(e.pointerId); if (ptrs9.size < 2) pinch9 = null;
+      // v17-102: TAP en la manija (sin arrastre) = editar el número de ESE extremo
+      if (dragT && dragT.m === "h" && !dragT.moved && sel >= 0) {
+        const s = secs[sel], esA = dragT.h === "a";
+        const d = prompt("Posición " + (esA ? "INICIAL" : "FINAL") + " del tramo (m):", f9(esA ? s.a : s.b));
+        if (d != null) {
+          const v = window.CalcCIBSA.evalExpr(String(d).replace(",", "."));
+          if (v != null && !isNaN(v)) {
+            const vv = vecinos9(s);
+            if (esA) s.a = rd3(Math.max(vv.prevB, Math.max(0, Math.min(s.b - 0.01, v))));
+            else s.b = rd3(Math.min(vv.nextA, Math.min(Lc, Math.max(s.a + 0.01, v))));
+            pinta();
+          } else alert("Valor no válido.");
+        }
+      }
+      dragT = null;
+    };
     svgD.addEventListener("pointerup", upD); svgD.addEventListener("pointercancel", upD);
     svgD.addEventListener("wheel", (e) => { e.preventDefault(); zoomEn(ptT(e), e.deltaY > 0 ? 1.25 : 0.8); }, { passive: false });
     // ---- CONTROLES: ⏮ ◀ [timeline maestro] ▶ ⏭ · ➖ ➕ ⤢ ----

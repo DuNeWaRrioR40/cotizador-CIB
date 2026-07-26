@@ -1156,3 +1156,13 @@ body.drawer-abierto { overflow: hidden; }
   .ced-ov { backdrop-filter: none; background: rgba(20, 20, 24, 0.6); }
   .ced-card { backdrop-filter: none; background: #fcfbf8; }
 }
+
+/* v17-102: extremos reflejados + ✓/✕ de sección + cota editable */
+.ced-ext { stroke: #e6b800; stroke-width: 2.5; }
+.ced-extlbl { font-size: 9.5px; font-weight: 700; fill: #b38f00; letter-spacing: 0.04em; }
+.ced-okc { fill: #34c759; stroke: #fff; stroke-width: 2; cursor: pointer; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2)); }
+.ced-oktx { fill: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
+.ced-noc { fill: #ff3b30; stroke: #fff; stroke-width: 2; cursor: pointer; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2)); }
+.ced-notx { fill: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
+.ced-cota { pointer-events: auto; cursor: pointer; }
+.ced-poslbl { font-size: 11px; font-weight: 700; fill: #34c759; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
