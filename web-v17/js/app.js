@@ -4848,7 +4848,7 @@
   // ---------- Bordes y unión (uniforme) ----------
   function bordesActuales() {
     if (state.bordeModo === "uniforme") {
-      const b = { tipo: "borde", valor: state.bordeValor };
+      const b = { tipo: state.bordeTipoUnif || "borde", valor: state.bordeValor, diam: state.bordeDiamUnif || "" };
       return { sup: b, inf: b, izq: b, der: b };
     }
     return state.bordes;
@@ -4861,13 +4861,39 @@
       chk.appendChild(cb); chk.appendChild(document.createTextNode("Rotular las uniones entre paños en el plano"));
       c.appendChild(chk); }
     if (state.bordeModo === "uniforme") {
-      const lab = document.createElement("label"); lab.className = "field";
-      const sp = document.createElement("span"); sp.textContent = "Borde por arista (m)"; lab.appendChild(sp);
-      const inp = document.createElement("input"); inp.type = "text"; inp.value = state.bordeValor;
-      inp.addEventListener("input", (e) => { state.bordeValor = e.target.value; recompute(); });
-      inp.addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { state.bordeValor = window.CalcCIBSA.fmtNum(r); e.target.value = state.bordeValor; recompute(); } });
-      lab.appendChild(inp); c.appendChild(lab);
-      const p = document.createElement("p"); p.className = "muted small"; p.textContent = "Se aplica a las 4 aristas (por defecto 0,045 m).";
+      // v17-96: el modo "mismo borde" también elige TIPO (mismo selector que por-arista).
+      // Defaults de taller: Borde 0.045 · Borde+cuerda = contorno 0.05 con Ø 0.006 (6 mm PP/nylon).
+      const tipoU = state.bordeTipoUnif || "borde";
+      { const labS = document.createElement("label"); labS.className = "field";
+        const spS = document.createElement("span"); spS.textContent = "Tipo de borde (las 4 aristas)"; labS.appendChild(spS);
+        const selU = document.createElement("select");
+        [["bruto", "Bruto (0)"], ["borde", "Borde (m)"], ["borde_cuerda", "Borde + cuerda Ø (m)"], ["bolsillo", "Bolsillo Ø (m)"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; selU.appendChild(o); });
+        selU.value = tipoU;
+        selU.addEventListener("change", (e) => {
+          state.bordeTipoUnif = e.target.value;
+          if (state.bordeTipoUnif === "borde_cuerda") {
+            if (!state.bordeDiamUnif || !(window.CalcCIBSA.evalExpr(state.bordeDiamUnif) > 0)) state.bordeDiamUnif = "0.006";
+            if (!state.bordeValor || state.bordeValor === "0.045") state.bordeValor = "0.05";
+          } else if (state.bordeTipoUnif === "borde" && state.bordeValor === "0.05") state.bordeValor = "0.045";
+          renderBordes(); recompute();
+        });
+        labS.appendChild(selU); c.appendChild(labS); }
+      const mkInU = (txt9, get9, set9, ph9) => {
+        const lab = document.createElement("label"); lab.className = "field";
+        const sp = document.createElement("span"); sp.textContent = txt9; lab.appendChild(sp);
+        const inp = document.createElement("input"); inp.type = "text"; inp.value = get9(); if (ph9) inp.placeholder = ph9;
+        inp.addEventListener("input", (e) => { set9(e.target.value); recompute(); });
+        inp.addEventListener("blur", (e) => { const r = window.CalcCIBSA.evalExpr(e.target.value); if (r != null && !isNaN(r)) { const v9 = window.CalcCIBSA.fmtNum(r); set9(v9); e.target.value = v9; recompute(); } });
+        lab.appendChild(inp); c.appendChild(lab);
+      };
+      if (tipoU === "borde" || tipoU === "borde_cuerda") mkInU("Borde por arista (m)", () => state.bordeValor, (v) => { state.bordeValor = v; });
+      if (tipoU === "borde_cuerda") mkInU("Ø de la cuerda (m)", () => state.bordeDiamUnif || "0.006", (v) => { state.bordeDiamUnif = v; }, "0.006");
+      if (tipoU === "bolsillo") mkInU("Ø del bolsillo (m)", () => state.bordeDiamUnif || "", (v) => { state.bordeDiamUnif = v; }, "Ø en m (ej. 0.10)");
+      const p = document.createElement("p"); p.className = "muted small";
+      p.textContent = (tipoU === "bruto") ? "Sin dobladillo: corte parejo en las 4 aristas."
+        : (tipoU === "borde_cuerda") ? "Contorno + cuerda perimetral en las 4 aristas (taller: 0.05 m con cuerda Ø 0.006 — 6 mm PP/nylon trenzada)."
+        : (tipoU === "bolsillo") ? "Bolsillo pasante en las 4 aristas (Ø del tubo o cuerda que aloja)."
+        : "Se aplica a las 4 aristas (por defecto 0,045 m).";
       c.appendChild(p);
       const chk = document.createElement("label"); chk.className = "chk borde-rot-chk";
       const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!state.bordeRotUnif;
@@ -4887,19 +4913,33 @@
       sel.value = b.tipo || "borde";
       const val = document.createElement("input"); val.type = "text";
       const esBorde = (b.tipo || "borde") === "borde";
-      const esDiam = b.tipo === "borde_cuerda" || b.tipo === "bolsillo";
-      val.value = b.tipo === "bruto" ? "" : (esBorde ? (b.valor || "0.045") : (b.diam || ""));
-      val.placeholder = esBorde ? "m de borde" : (esDiam ? "Ø en m (ej. 0.10)" : "");
+      const esCuerda = b.tipo === "borde_cuerda";
+      val.value = b.tipo === "bruto" ? "" : ((esBorde || esCuerda) ? (b.valor || (esCuerda ? "0.05" : "0.045")) : (b.diam || ""));
+      val.placeholder = (esBorde || esCuerda) ? "m de borde" : (b.tipo === "bolsillo" ? "Ø en m (ej. 0.10)" : "");
       val.disabled = b.tipo === "bruto";
+      let val2 = null;   // v17-96: la cuerda muestra AMBOS: contorno + Ø
+      if (esCuerda) {
+        val2 = document.createElement("input"); val2.type = "text";
+        val2.value = b.diam || "0.006"; val2.placeholder = "Ø cuerda (m)";
+      }
       const warn = document.createElement("div"); warn.className = "oj-err"; warn.style.fontSize = "12px";
       const refWarn = () => { const t = (b.tipo === "borde_cuerda" || b.tipo === "bolsillo") ? avisoDiamGrande(b.diam) : ""; warn.textContent = t; warn.style.display = t ? "" : "none"; };
-      sel.addEventListener("change", (e) => { state.bordes[key].tipo = e.target.value; renderBordes(); recompute(); });
+      sel.addEventListener("change", (e) => {
+        const b9 = state.bordes[key]; b9.tipo = e.target.value;
+        if (b9.tipo === "borde_cuerda") {   // v17-96: defaults de taller al elegir cuerda
+          if (!b9.diam || !(window.CalcCIBSA.evalExpr(b9.diam) > 0)) b9.diam = "0.006";
+          if (!b9.valor || b9.valor === "0.045") b9.valor = "0.05";
+        }
+        renderBordes(); recompute();
+      });
       val.addEventListener("input", (e) => {
-        if (state.bordes[key].tipo === "borde") state.bordes[key].valor = e.target.value;
+        const t9 = state.bordes[key].tipo;
+        if (t9 === "borde" || t9 === "borde_cuerda") state.bordes[key].valor = e.target.value;
         else state.bordes[key].diam = e.target.value;
         refWarn(); recompute();
       });
-      ctr.appendChild(sel); ctr.appendChild(val); row.appendChild(ctr); row.appendChild(warn);
+      if (val2) val2.addEventListener("input", (e) => { state.bordes[key].diam = e.target.value; refWarn(); recompute(); });
+      ctr.appendChild(sel); ctr.appendChild(val); if (val2) ctr.appendChild(val2); row.appendChild(ctr); row.appendChild(warn);
       const chk = document.createElement("label"); chk.className = "chk borde-rot-chk";
       const cbR = document.createElement("input"); cbR.type = "checkbox"; cbR.checked = !!b.mostrarRot;
       cbR.addEventListener("change", () => { state.bordes[key].mostrarRot = cbR.checked; recompute(); });
@@ -5677,7 +5717,7 @@
     aplicarAnexosDeGuia(state.aletasUnif, state.cortesUnif, ancho || 0, largo || 0, alturaUnif(), alasUnif());
     const sk = $("sketchUnif");
     if (sk && window.SketchCIBSA && !document.body.classList.contains("no-plano")) {
-      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar, anclas: anclasSpecDe(state.anclasUnif, state.cortesUnif, ancho || 0, largo || 0), notas: state.notasUnif, figImg: state.figImgUnif || null }, ojSpecUnif());
+      const especUnif = Object.assign({ ancho: ancho || 0, largo: largo || 0, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes, { tipo: state.bordeTipoUnif, diam: state.bordeDiamUnif, rot: state.bordeRotUnif }), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif, state.bordeTipoUnif, state.bordeDiamUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag, rotColapsar: state.rotColapsar, anclas: anclasSpecDe(state.anclasUnif, state.cortesUnif, ancho || 0, largo || 0), notas: state.notasUnif, figImg: state.figImgUnif || null }, ojSpecUnif());
       if (alturaUnif() > 0) especUnif.volumetrico = volUnifSpec();
       _vcEspecUnif = especUnif;
       sk.innerHTML = sketchDualSVG(especUnif, state.trasUnif, cortesSpec(state.backCortesUnif), aletasSpec(state.backAletasUnif));
@@ -5747,7 +5787,7 @@
     const compTotal = compTotalUnit(state.complementosUnif) * N;
     const aleTotal = aletasTotal(state.aletasUnif, N, lote.valorOjetillo, facUnif()) + aletasTotal(state.backAletasUnif, N, lote.valorOjetillo, facUnif());
     const strapTotal = strapsTotal(state.strapsUnif, N, { ancho: ancho || 0, largo: largo || 0 });
-    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag };
+    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes, { tipo: state.bordeTipoUnif, diam: state.bordeDiamUnif, rot: state.bordeRotUnif }), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif, state.bordeTipoUnif, state.bordeDiamUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag };
     const corteTotal = costoCortesUnit(skSpec, lote.valorOjetillo) * N;
     const cintaTotal = cintasTotal(state.cintasUnif, N, { ancho: ancho || 0, largo: largo || 0 });
     return o.materialLote + ojeTotal + compTotal + aleTotal + strapTotal + corteTotal + cintaTotal;
@@ -6410,7 +6450,7 @@
     if (!fig && H > 0 && !V.bordesPliegue()) {
       try {
         const NOM_ALA3 = { sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" };
-        (bolsillosDe(state.bordeModo, state.bordes) || []).forEach((bo) => {
+        (bolsillosDe(state.bordeModo, state.bordes, { tipo: state.bordeTipoUnif, diam: state.bordeDiamUnif, rot: state.bordeRotUnif }) || []).forEach((bo) => {
           const rB = Math.max(0.03, ((parseFloat(bo.diam) || 0.1) / 2));
           (alasParts3D[NOM_ALA3[bo.arista]] || []).forEach((pt3) => {
             const lenP = pt3.t1 - pt3.t0; if (!(lenP > 0.05)) return;
@@ -6426,7 +6466,7 @@
     // Bolsillos en modo PLANO (lámina sin alto): manga ovalada estática en el borde del paño.
     if (!fig && !(H > 0)) {
       try {
-        (bolsillosDe(state.bordeModo, state.bordes) || []).forEach((bo) => {
+        (bolsillosDe(state.bordeModo, state.bordes, { tipo: state.bordeTipoUnif, diam: state.bordeDiamUnif, rot: state.bordeRotUnif }) || []).forEach((bo) => {
           const rB = Math.max(0.03, ((parseFloat(bo.diam) || 0.1) / 2));
           const largo3 = (bo.arista === "sup" || bo.arista === "inf") ? A : L;
           const tubo = new T.Mesh(new T.CylinderGeometry(rB, rB, Math.max(0.05, largo3 * 0.985), 20),
@@ -10220,18 +10260,20 @@
   // Bolsillos por arista (para el dibujo): solo en modo "por arista" y tipo bolsillo.
   // Etiqueta de terminación por arista para rotular en el plano: { sup, inf, izq, der }.
   // Solo se incluye la arista cuyo rótulo el usuario activó (mostrarRot por arista, o rotUnif en modo uniforme).
-  function bordesRotuloDe(bordeModo, bordes, bordeValor, rotUnif) {
+  function bordesRotuloDe(bordeModo, bordes, bordeValor, rotUnif, tipoUnif, diamUnif) {
     const ev = window.CalcCIBSA.evalExpr, f = window.CalcCIBSA.fmtNum;
     const lbl = (b) => {
       if (!b) return "";
       if (b.tipo === "bruto") return "Bruto";
-      if (b.tipo === "borde_cuerda") { const d = ev(b.diam); return "Borde + cuerda Ø " + (d > 0 ? f(d) + " m" : "?"); }
+      if (b.tipo === "borde_cuerda") { const d = ev(b.diam), v = ev(b.valor); return "Borde " + ((v != null && !isNaN(v)) ? f(v) : "0,05") + " + cuerda Ø " + (d > 0 ? f(d) : "0,006") + " m"; }
       if (b.tipo === "bolsillo") { const d = ev(b.diam); return "Bolsillo Ø " + (d > 0 ? f(d) + " m" : "?"); }
       const v = ev(b.valor); return "Borde " + (v != null && !isNaN(v) ? f(v) : "0,045") + " m";
     };
     if (bordeModo !== "arista" || !bordes) {
       if (!rotUnif) return { sup: "", inf: "", izq: "", der: "" };
-      const v = ev(bordeValor); const s = "Borde " + (v != null && !isNaN(v) ? f(v) : "0,045") + " m";
+      const tU9 = tipoUnif || "borde";
+      if (tU9 === "bolsillo") return { sup: "", inf: "", izq: "", der: "" };   // el bolsillo lleva callout propio
+      const s = lbl({ tipo: tU9, valor: bordeValor, diam: diamUnif });
       return { sup: s, inf: s, izq: s, der: s };
     }
     // Los BOLSILLOS no van al rótulo de orientación del lado (se amontonaba en el extremo, rotado);
@@ -10245,8 +10287,15 @@
     const v = ev(valor), R = parseFloat(anchoRollo);
     return { mostrar: !!mostrar, valor: (v != null && !isNaN(v)) ? v : 0.045, orient: orient === "ancho" ? "ancho" : "largo", anchoRollo: (R > 0) ? R : 0 };
   }
-  function bolsillosDe(bordeModo, bordes) {
-    if (bordeModo !== "arista" || !bordes) return [];
+  function bolsillosDe(bordeModo, bordes, unifCfg) {
+    if (bordeModo !== "arista" || !bordes) {
+      if (!unifCfg || (unifCfg.tipo || "borde") !== "bolsillo") return [];
+      const d9 = window.CalcCIBSA.evalExpr(unifCfg.diam);
+      const dd9 = (d9 != null && !isNaN(d9)) ? d9 : 0;
+      if (!(dd9 > 0)) return [];
+      return ["sup", "inf", "izq", "der"].map((k9) => ({ arista: k9, diam: dd9, rotulo: !!unifCfg.rot }));
+    }
+    if (!bordes) return [];
     const out = [];
     ["sup", "inf", "izq", "der"].forEach((k) => {
       const b = bordes[k];
@@ -10393,7 +10442,7 @@
       strapsAristas: strapsDetalleAristas(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }),
       observaciones: (alturaUnif() > 0 ? pasosConfeccionVol(num("f_ancho", 0), num("f_largo", 0), alturaUnif()) : []).concat(terminacionesTexto(state.orientUnif)).concat(obsComplementos(state.complementosUnif)).concat(obsCortes(state.cortesUnif)),
       materiales: materialesResumen(nOjetillos(), state.complementosUnif, [], { cortes: ojEnCortesN(state.cortesUnif, ancho, largo, state.aletasUnif), anexos: ojEnAletasN(state.aletasUnif) }).concat(materialesCortes(state.cortesUnif)),
-      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag, notas: state.notasUnif }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: volUnifSpec() } : {}),
+      sketch: Object.assign({ ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes, { tipo: state.bordeTipoUnif, diam: state.bordeDiamUnif, rot: state.bordeRotUnif }), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif, state.bordeTipoUnif, state.bordeDiamUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), setsRot: setsRotuloDe(ancho || 0, largo || 0, state.ojMode === "arista" ? state.ojEdges : null, state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag, notas: state.notasUnif }, ojSpecUnif(), alturaUnif() > 0 ? { volumetrico: volUnifSpec() } : {}),
       vista3D: (_vista3D && _vista3D.firma === firmaVol()) ? _vista3D.png : null,
       mod3D: _mod3DCaps.length ? _mod3DCaps.slice() : null,
       odt: _odtActual,
@@ -11697,7 +11746,7 @@
     state.telasFrozen = null;   // sin telas congeladas: se cotiza con la BD viva
     $("telaMultiErr").classList.add("hidden"); state.prelim = [];
     // Reset bordes/unión → mismo borde 0.045
-    state.bordeModo = "uniforme"; state.bordeValor = "0.045";
+    state.bordeModo = "uniforme"; state.bordeValor = "0.045"; state.bordeTipoUnif = "borde"; state.bordeDiamUnif = "";
     state.bordes = { sup: { tipo: "borde", valor: "0.045", diam: "" }, inf: { tipo: "borde", valor: "0.045", diam: "" }, izq: { tipo: "borde", valor: "0.045", diam: "" }, der: { tipo: "borde", valor: "0.045", diam: "" } };
     const rb = document.querySelector('input[name="bordemodo"][value="uniforme"]'); if (rb) rb.checked = true;
     // Plano del cliente (calcomanía): fuera imagen, fuera modo ajuste
@@ -11892,7 +11941,7 @@
     const o = orientKey === "ancho" ? lote.oAncho : lote.oLargo;
     const N = lote.N;
     const aletasEf = aletasEfectivas(state.aletasUnif, tela && tela.nombre), backAletasEf = aletasEfectivas(state.backAletasUnif, tela && tela.nombre);
-    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(aletasEf), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag };
+    const skSpec = { ancho: ancho, largo: largo, ojTotal: lote.nOjetillos, ventanas: [], cortes: cortesSpec(state.cortesUnif), bolsillos: bolsillosDe(state.bordeModo, state.bordes, { tipo: state.bordeTipoUnif, diam: state.bordeDiamUnif, rot: state.bordeRotUnif }), bordesRot: bordesRotuloDe(state.bordeModo, state.bordes, state.bordeValor, state.bordeRotUnif, state.bordeTipoUnif, state.bordeDiamUnif), unionesRot: unionesRotObj(state.unionRot, num("f_union", 0.045), state.orientUnif, (telaActual() || {}).anchoRollo), aletas: aletasSpec(aletasEf), straps: strapsSpec(state.strapsUnif, { ancho: ancho || 0, largo: largo || 0 }), cintas: cintasSpec(state.cintasUnif, { ancho: ancho || 0, largo: largo || 0 }), cotasOcultas: state.cotasOcultas, cotasPos: state.cotasPos, rotDrag: state.rotDrag };
     const ojeTotal = lote.nOjetillos * lote.valorOjetillo * N;
     const compTotal = compTotalUnit(state.complementosUnif) * N;
     const aleTotal = aletasTotal(aletasEf, N, lote.valorOjetillo, facUnif()) + aletasTotal(backAletasEf, N, lote.valorOjetillo, facUnif());
@@ -11962,7 +12011,11 @@
     out.push(orientKey === "ancho" ? "Uniones a lo ancho." : "Uniones a lo largo.");
     out.push("Unión entre paños: " + $("f_union").value + " m.");
     if (state.bordeModo === "uniforme") {
-      out.push("Borde perimetral: " + state.bordeValor + " m en las 4 aristas.");
+      { const tU9 = state.bordeTipoUnif || "borde";
+        if (tU9 === "bruto") out.push("Borde: BRUTO (sin dobladillo) en las 4 aristas.");
+        else if (tU9 === "borde_cuerda") out.push("Borde " + (state.bordeValor || "0.05") + " m + cuerda perimetral Ø " + (state.bordeDiamUnif || "0.006") + " m (PP/nylon trenzada) en las 4 aristas.");
+        else if (tU9 === "bolsillo") out.push("Bolsillo pasante Ø " + (state.bordeDiamUnif || "?") + " m en las 4 aristas.");
+        else out.push("Borde perimetral: " + state.bordeValor + " m en las 4 aristas."); }
     } else {
       const nm = { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha" };
       ["sup", "inf", "izq", "der"].forEach((k) => out.push(nm[k] + ": " + descBorde(state.bordes[k]) + "."));
