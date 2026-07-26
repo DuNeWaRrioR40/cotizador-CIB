@@ -3277,6 +3277,213 @@
     container.appendChild(add);
   }
   // ---------- Cintas / cierres ----------
+  // ---------- 🎬 EDITOR DE TRAMOS de cinta (timeline estilo video) — v17-100 ----------
+  // Piel visual sobre el código existente (c.edicion): el CÓDIGO sigue siendo la fuente de verdad
+  // (respaldos/Sheet intactos). Arriba el DETALLE (ventana ampliada donde se edita: tocar crea,
+  // arrastrar mueve, manijas redimensionan con cota viva). Abajo el TIMELINE MAESTRO (recorrido
+  // completo): arrastrar la ventana = navegación rápida · ◀ ▶ = precisión · ➕ ➖ / rueda / pellizco = zoom.
+  function abrirCintaEditor(c, Lc, alAplicar) {
+    const SK9 = window.SketchCIBSA, NSs = "http://www.w3.org/2000/svg";
+    const f9 = (v) => String(rd3(v));
+    let secs = (SK9.parseCintaTramos(c.edicion, Lc) || []).map((t) => ({ a: t.a, b: t.b, tipo: t.tipo, dia: t.dia || 0 }));
+    let sel = -1, v0 = 0, v1 = Lc;
+    const W9 = 940, HD = 132, HO = 48;
+    const overlay = document.createElement("div"); overlay.className = "plano-zoom";
+    const xBtn = document.createElement("button"); xBtn.className = "plano-zoom-x"; xBtn.type = "button"; xBtn.textContent = "✕";
+    const body = document.createElement("div"); body.className = "plano-zoom-body cinta-ed";
+    const tit = document.createElement("p"); tit.className = "cinta-ed-tit";
+    tit.textContent = "🎬 " + (c.legend || "Cinta") + " — recorrido 0…" + f9(Lc) + " m · lo NO listado va con costura continua";
+    const svgD = document.createElementNS(NSs, "svg"); svgD.setAttribute("viewBox", "0 0 " + W9 + " " + HD); svgD.setAttribute("class", "cinta-ed-det");
+    const nav = document.createElement("div"); nav.className = "cinta-ed-nav";
+    const svgO = document.createElementNS(NSs, "svg"); svgO.setAttribute("viewBox", "0 0 " + W9 + " " + HO); svgO.setAttribute("class", "cinta-ed-ovr");
+    const pal = document.createElement("div"); pal.className = "cinta-ed-pal";
+    const palHint = document.createElement("span"); palHint.className = "muted small cinta-ed-palhint"; palHint.textContent = "Toca el timeline para crear una sección; luego elige aquí qué es.";
+    const cod = document.createElement("div"); cod.className = "cinta-ed-cod";
+    const raw = document.createElement("input"); raw.type = "text"; raw.className = "cinta-ed-raw hidden"; raw.placeholder = "código a mano (ej. 2-4l0.05, 5.5s7, 7x9)";
+    const acc = document.createElement("div"); acc.className = "vol3d-acciones";
+    const el9 = (pE, tag, at, txt) => { const e = document.createElementNS(NSs, tag); for (const k in at) e.setAttribute(k, at[k]); if (txt != null) e.textContent = txt; pE.appendChild(e); return e; };
+    const CL9 = { open: "ced-open", safety: "ced-saf", gap: "ced-gapr" };
+    const tok9 = (s) => f9(s.a) + (s.tipo === "gap" ? "x" : s.tipo === "safety" ? "s" : "-") + f9(s.b) + ((s.tipo === "open" && s.dia > 0) ? "l" + f9(s.dia) : "");
+    const serial9 = () => secs.map(tok9).join(", ");
+    const ordena = () => secs.sort((p2, q2) => p2.a - q2.a);
+    const nice9 = (span) => { const pw = Math.pow(10, Math.floor(Math.log10(Math.max(1e-6, span / 6)))); const c2 = span / 6 / pw; return (c2 >= 5 ? 5 : c2 >= 2 ? 2 : 1) * pw; };
+    const xD = (t) => (t - v0) / (v1 - v0) * W9;
+    const pinta = () => {
+      ordena();
+      while (svgD.firstChild) svgD.removeChild(svgD.firstChild);
+      const yB = 46, hB = 40;
+      const step = nice9(v1 - v0);
+      for (let t = Math.ceil(v0 / step - 1e-9) * step; t <= v1 + 1e-9; t += step) {
+        const X = xD(t);
+        el9(svgD, "line", { x1: X, y1: 30, x2: X, y2: yB + hB + 6, class: "ced-tick" });
+        el9(svgD, "text", { x: X, y: 22, class: "ced-ticklbl", "text-anchor": "middle" }, String(rd3(t)));
+      }
+      // banda base = MATERIAL (todo menos huecos), recortada a la ventana
+      let segsM = [{ a: 0, b: Lc }];
+      secs.filter((s) => s.tipo === "gap").forEach((g) => {
+        const nx = []; segsM.forEach((m) => { if (g.b <= m.a || g.a >= m.b) { nx.push(m); return; } if (g.a > m.a) nx.push({ a: m.a, b: g.a }); if (g.b < m.b) nx.push({ a: g.b, b: m.b }); }); segsM = nx;
+      });
+      segsM.forEach((m) => { const a = Math.max(m.a, v0), b = Math.min(m.b, v1); if (b <= a) return; el9(svgD, "rect", { x: xD(a), y: yB, width: xD(b) - xD(a), height: hB, class: "ced-base" }); });
+      secs.forEach((s, i) => {
+        const a = Math.max(s.a, v0), b = Math.min(s.b, v1); if (b <= a) return;
+        const X = xD(a), Wd = Math.max(1.5, xD(b) - xD(a));
+        el9(svgD, "rect", (s.tipo === "gap")
+          ? { x: X, y: yB + 8, width: Wd, height: hB - 16, class: "ced-gapr" + (i === sel ? " sel" : ""), "data-i": i }
+          : { x: X, y: yB, width: Wd, height: hB, class: CL9[s.tipo] + (i === sel ? " sel" : ""), "data-i": i });
+        const sym = (s.tipo === "gap") ? "✂" : (s.tipo === "safety") ? "‼" : (s.dia > 0 ? "◯ Ø" + rd3(s.dia) : "Ω");
+        el9(svgD, "text", { x: X + Wd / 2, y: yB + hB / 2 + 5, class: "ced-sym", "text-anchor": "middle", "data-i": i }, sym);
+        if (i === sel) {
+          el9(svgD, "circle", { cx: xD(s.a), cy: yB + hB / 2, r: 8, class: "ced-hd", "data-h": "a" });
+          el9(svgD, "circle", { cx: xD(s.b), cy: yB + hB / 2, r: 8, class: "ced-hd", "data-h": "b" });
+          el9(svgD, "text", { x: X + Wd / 2, y: yB + hB + 24, class: "ced-cota", "text-anchor": "middle" }, f9(s.a) + " – " + f9(s.b) + " m · largo " + f9(s.b - s.a) + " m");
+          el9(svgD, "text", { x: Math.min(Math.max(X + Wd / 2, 14), W9 - 14), y: yB - 10, class: "ced-del", "text-anchor": "middle", "data-del": "1" }, "🗑 eliminar sección");
+        }
+      });
+      while (svgO.firstChild) svgO.removeChild(svgO.firstChild);
+      const xO = (t) => t / Lc * W9;
+      el9(svgO, "rect", { x: 0, y: 18, width: W9, height: 14, class: "ced-obase" });
+      secs.forEach((s, i) => el9(svgO, "rect", { x: xO(s.a), y: 18, width: Math.max(1.5, xO(s.b) - xO(s.a)), height: 14, class: (CL9[s.tipo] || "ced-gapr") + (i === sel ? " sel" : "") }));
+      el9(svgO, "rect", { x: xO(v0), y: 6, width: Math.max(8, xO(v1) - xO(v0)), height: 36, class: "ced-win", "data-w": "mv" });
+      el9(svgO, "rect", { x: Math.max(0, xO(v0) - 5), y: 6, width: 10, height: 36, class: "ced-winh", "data-w": "a" });
+      el9(svgO, "rect", { x: Math.min(W9 - 5, xO(v1) - 5), y: 6, width: 10, height: 36, class: "ced-winh", "data-w": "b" });
+      cod.innerHTML = "";
+      const cap = document.createElement("span"); cap.className = "muted small"; cap.textContent = "código: "; cod.appendChild(cap);
+      if (!secs.length) { const sp = document.createElement("span"); sp.className = "muted small"; sp.textContent = "— (costura continua en todo el recorrido) —"; cod.appendChild(sp); }
+      secs.forEach((s, i) => {
+        const ch = document.createElement("button"); ch.type = "button"; ch.className = "ced-tok" + (i === sel ? " sel" : "");
+        ch.textContent = tok9(s);
+        ch.addEventListener("click", () => {
+          sel = i;
+          if (s.b < v0 || s.a > v1) { const span = v1 - v0, m9 = (s.a + s.b) / 2; v0 = Math.max(0, m9 - span / 2); v1 = Math.min(Lc, v0 + span); v0 = Math.max(0, v1 - span); }
+          pinta();
+        });
+        cod.appendChild(ch);
+      });
+      if (!raw.classList.contains("hidden") && document.activeElement !== raw) raw.value = serial9();
+    };
+    const zoomEn = (tc, k) => {
+      const span = Math.min(Lc, Math.max(0.04, (v1 - v0) * k));
+      v0 = Math.max(0, tc - (tc - v0) / (v1 - v0) * span);
+      v1 = Math.min(Lc, v0 + span); v0 = Math.max(0, v1 - span);
+      pinta();
+    };
+    const ptT = (e) => { const r = svgD.getBoundingClientRect(); return v0 + (e.clientX - r.left) / r.width * (v1 - v0); };
+    // --- interacción del DETALLE: crear / seleccionar / mover / redimensionar / pellizco ---
+    let dragT = null, pinch9 = null; const ptrs9 = new Map();
+    svgD.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); try { svgD.setPointerCapture(e.pointerId); } catch (_) {}
+      ptrs9.set(e.pointerId, e.clientX);
+      if (ptrs9.size === 2) { const xs = Array.from(ptrs9.values()); pinch9 = { d: Math.abs(xs[0] - xs[1]) || 1, tc: ptT(e) }; dragT = null; return; }
+      const tgt = e.target;
+      if (tgt.getAttribute && tgt.getAttribute("data-del")) { if (sel >= 0) { secs.splice(sel, 1); sel = -1; pinta(); } return; }
+      const h = tgt.getAttribute && tgt.getAttribute("data-h");
+      if (h && sel >= 0) { dragT = { m: "h", h: h }; return; }
+      const di = tgt.getAttribute && tgt.getAttribute("data-i");
+      if (di != null) { sel = parseInt(di, 10); dragT = { m: "mv", off: ptT(e) - secs[sel].a, len: secs[sel].b - secs[sel].a }; pinta(); return; }
+      const r = svgD.getBoundingClientRect(), yRel = (e.clientY - r.top) / r.height * HD;
+      const t = ptT(e);
+      if (t >= 0 && t <= Lc && yRel > 36 && yRel < 96) {
+        const dentro = secs.some((s) => t >= s.a && t < s.b);
+        if (!dentro) {
+          let b = Math.min(Lc, t + Math.max(0.1, Math.min(rd3(Lc * 0.05), 0.5)));
+          secs.forEach((s) => { if (s.a > t) b = Math.min(b, s.a); });
+          if (b > t + 0.01) { secs.push({ a: rd3(t), b: rd3(b), tipo: "open", dia: 0 }); ordena(); sel = secs.findIndex((s) => s.a === rd3(t)); pinta(); return; }
+        }
+      }
+      sel = -1; pinta();
+    });
+    svgD.addEventListener("pointermove", (e) => {
+      if (ptrs9.has(e.pointerId)) ptrs9.set(e.pointerId, e.clientX);
+      if (pinch9 && ptrs9.size === 2) {
+        const xs = Array.from(ptrs9.values()); const d2 = Math.abs(xs[0] - xs[1]) || 1;
+        zoomEn(pinch9.tc, pinch9.d / d2); pinch9.d = d2; return;
+      }
+      if (!dragT || sel < 0) return;
+      const s = secs[sel], t = ptT(e);
+      const prevB = secs.reduce((m, o, i) => (i !== sel && o.b <= s.a + 1e-9 ? Math.max(m, o.b) : m), 0);
+      const nextA = secs.reduce((m, o, i) => (i !== sel && o.a >= s.b - 1e-9 ? Math.min(m, o.a) : m), Lc);
+      if (dragT.m === "h") {
+        if (dragT.h === "a") s.a = rd3(Math.max(prevB, Math.min(s.b - 0.01, t)));
+        else s.b = rd3(Math.min(nextA, Math.max(s.a + 0.01, t)));
+      } else {
+        let a = Math.max(prevB, Math.min(nextA - dragT.len, t - dragT.off));
+        s.a = rd3(a); s.b = rd3(a + dragT.len);
+      }
+      pinta();
+    });
+    const upD = (e) => { ptrs9.delete(e.pointerId); if (ptrs9.size < 2) pinch9 = null; dragT = null; };
+    svgD.addEventListener("pointerup", upD); svgD.addEventListener("pointercancel", upD);
+    svgD.addEventListener("wheel", (e) => { e.preventDefault(); zoomEn(ptT(e), e.deltaY > 0 ? 1.25 : 0.8); }, { passive: false });
+    // --- TIMELINE MAESTRO: ventana rápida + bordes de la ventana ---
+    let dragO = null;
+    const tO = (e) => { const r = svgO.getBoundingClientRect(); return (e.clientX - r.left) / r.width * Lc; };
+    svgO.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); try { svgO.setPointerCapture(e.pointerId); } catch (_) {}
+      const w = e.target.getAttribute && e.target.getAttribute("data-w"), t = tO(e);
+      if (w === "a" || w === "b") { dragO = { m: w }; return; }
+      const span = v1 - v0;
+      if (w !== "mv") { v0 = Math.max(0, Math.min(Lc - span, t - span / 2)); v1 = v0 + span; pinta(); }
+      dragO = { m: "mv", off: t - v0 };
+    });
+    svgO.addEventListener("pointermove", (e) => {
+      if (!dragO) return;
+      const t = tO(e), span = v1 - v0;
+      if (dragO.m === "a") { v0 = Math.max(0, Math.min(v1 - 0.04, t)); }
+      else if (dragO.m === "b") { v1 = Math.min(Lc, Math.max(v0 + 0.04, t)); }
+      else { v0 = Math.max(0, Math.min(Lc - span, t - dragO.off)); v1 = v0 + span; }
+      pinta();
+    });
+    const upO = () => { dragO = null; };
+    svgO.addEventListener("pointerup", upO); svgO.addEventListener("pointercancel", upO);
+    // --- navegación precisa + zoom por botones ---
+    const mkB9 = (t2, fn, tip) => { const b = document.createElement("button"); b.type = "button"; b.className = "vol3d-btn"; b.textContent = t2; if (tip) b.title = tip; b.addEventListener("click", fn); return b; };
+    const mueve9 = (k) => { const span = v1 - v0, d = span * 0.15 * k; v0 = Math.max(0, Math.min(Lc - span, v0 + d)); v1 = v0 + span; pinta(); };
+    nav.appendChild(mkB9("⏮", () => { const span = v1 - v0; v0 = 0; v1 = span; pinta(); }, "Inicio del recorrido"));
+    nav.appendChild(mkB9("◀", () => mueve9(-1), "Mover fino a la izquierda"));
+    nav.appendChild(svgO);
+    nav.appendChild(mkB9("▶", () => mueve9(1), "Mover fino a la derecha"));
+    nav.appendChild(mkB9("⏭", () => { const span = v1 - v0; v1 = Lc; v0 = Math.max(0, Lc - span); pinta(); }, "Final del recorrido"));
+    nav.appendChild(mkB9("➖", () => zoomEn((v0 + v1) / 2, 1.4), "Alejar"));
+    nav.appendChild(mkB9("➕", () => zoomEn((v0 + v1) / 2, 0.7), "Acercar"));
+    nav.appendChild(mkB9("⤢", () => { v0 = 0; v1 = Lc; pinta(); }, "Ver el recorrido completo"));
+    // --- paleta (tap sobre la sección seleccionada) ---
+    [["cont", "─", "Costura continua", "El tramo vuelve a costura normal (se quita del código)"],
+     ["open", "Ω", "Sin costura (bolsillo)", "La cinta pasa SIN coser en el tramo (bolsillo/túnel)"],
+     ["loop", "◯", "Loop Ø", "Bolsillo con diámetro declarado (aloja tubo/cuerda de Ø)"],
+     ["safety", "‼", "C. de seguridad", "Refuerzo de costura en el tramo"],
+     ["gap", "✂", "Hueco sin cinta", "En este tramo NO hay cinta"]].forEach(([tp, ic, lb, tip]) => {
+      const ch = document.createElement("button"); ch.type = "button"; ch.className = "ced-chip ced-chip-" + tp; ch.title = tip;
+      ch.innerHTML = "<b>" + ic + "</b> " + lb;
+      ch.addEventListener("click", () => {
+        if (sel < 0) { palHint.classList.add("flash"); setTimeout(() => palHint.classList.remove("flash"), 900); return; }
+        const s = secs[sel];
+        if (tp === "cont") { secs.splice(sel, 1); sel = -1; }
+        else if (tp === "loop") {
+          const d = prompt("Ø del loop (m):", s.dia > 0 ? String(s.dia) : "0.05"); if (d == null) return;
+          const v = window.CalcCIBSA.evalExpr(String(d).replace(",", "."));
+          if (!(v > 0)) return alert("Ø no válido.");
+          s.tipo = "open"; s.dia = rd3(v);
+        } else { s.tipo = (tp === "open") ? "open" : tp; if (tp !== "open") s.dia = 0; else s.dia = 0; }
+        pinta();
+      });
+      pal.appendChild(ch);
+    });
+    pal.appendChild(palHint);
+    // --- código a mano (bidireccional) + acciones ---
+    raw.addEventListener("input", () => { secs = (SK9.parseCintaTramos(raw.value, Lc) || []).map((t) => ({ a: t.a, b: t.b, tipo: t.tipo, dia: t.dia || 0 })); sel = -1; pinta(); });
+    const bRaw = mkB9("✎ Código a mano", () => { raw.classList.toggle("hidden"); if (!raw.classList.contains("hidden")) { raw.value = serial9(); raw.focus(); } });
+    const bOK = mkB9("✔ Aplicar", () => { c.edicion = serial9(); cerrar(); if (alAplicar) alAplicar(); });
+    const bNo = mkB9("✕ Cancelar", () => cerrar());
+    acc.appendChild(bRaw); acc.appendChild(bOK); acc.appendChild(bNo);
+    const onKey9 = (e) => { if (e.target && /input|textarea/i.test(e.target.tagName || "")) return; if (e.key === "Escape") cerrar(); };
+    const cerrar = () => { overlay.remove(); document.removeEventListener("keydown", onKey9); };
+    xBtn.addEventListener("click", cerrar);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) cerrar(); });
+    document.addEventListener("keydown", onKey9);
+    body.appendChild(tit); body.appendChild(svgD); body.appendChild(nav); body.appendChild(pal); body.appendChild(cod); body.appendChild(raw);
+    overlay.appendChild(xBtn); overlay.appendChild(body); overlay.appendChild(acc); document.body.appendChild(overlay);
+    pinta();
+  }
   function nuevaCinta(base) {
     base = base || {};
     return { matId: base.matId != null ? base.matId : null, tipo: base.tipo || "cinta", modo: base.modo || "arista", arista: base.arista || "sup",
@@ -3380,6 +3587,16 @@
         const ied = document.createElement("input"); ied.type = "text"; ied.value = c.edicion || ""; ied.placeholder = "ej. 2-4l0.05, 5.5s7, 7x9";
         ied.addEventListener("input", (e) => { c.edicion = e.target.value; refresh(); onChange(); });
         led.appendChild(ied); addHelpTo(led, CINTA_GLOBO, "CINTA-EDICION"); card.appendChild(led);
+        { const bEd9 = document.createElement("button"); bEd9.type = "button"; bEd9.className = "btn-outline";
+          bEd9.textContent = "🎬 Editor de tramos…";
+          bEd9.title = "Timeline visual de la cinta: crea secciones tocando, muévelas/redimensiona con manijas, y elige en la paleta qué es cada una. Compone el código de Edición por ti (y es editable a mano).";
+          bEd9.addEventListener("click", () => {
+            const runs9 = cintaRuns(c, { ancho: A, largo: L });
+            const Lc9 = (runs9 && runs9.length) ? runs9[0].L : 0;
+            if (!(Lc9 > 0)) return alert("Define primero el recorrido de la cinta (arista y medidas del paño, o el patrón).");
+            abrirCintaEditor(c, Lc9, () => { ied.value = c.edicion || ""; refresh(); onChange(); });
+          });
+          card.appendChild(bEd9); }
         const lz = document.createElement("label"); lz.className = "field full"; lz.innerHTML = "<span>Zoom detalle (secciones a ampliar)</span>";
         const iz = document.createElement("input"); iz.type = "text"; iz.value = c.zoomDetalle || ""; iz.placeholder = "ej. 0.51-1, 9.9-9.95";
         iz.addEventListener("input", (e) => { c.zoomDetalle = e.target.value; refresh(); onChange(); });

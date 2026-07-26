@@ -1071,3 +1071,35 @@ body.drawer-abierto { overflow: hidden; }
 
 /* v17-98: campo de ojetillos "apagado" cuando el paño está seccionado */
 #oj_total_in:disabled { background: #d4d6d9; color: #7a7f86; border-color: #b8bcc2; cursor: not-allowed; opacity: 1; -webkit-text-fill-color: #7a7f86; }
+
+/* v17-100: 🎬 editor de tramos de cinta (timeline) */
+.cinta-ed { max-width: 980px; width: 96vw; padding: 12px 14px; }
+.cinta-ed-tit { font-weight: 700; margin: 0 0 8px; }
+.cinta-ed-det { width: 100%; height: auto; background: #faf9f6; border: 1px solid #d8d8d2; border-radius: 10px; touch-action: none; }
+.cinta-ed-nav { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
+.cinta-ed-ovr { flex: 1; height: 48px; background: #f2f0ea; border: 1px solid #d8d8d2; border-radius: 8px; touch-action: none; }
+.cinta-ed-pal { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+.ced-chip { border: 1px solid #c8cdd4; background: #fff; border-radius: 16px; padding: 5px 12px; cursor: pointer; font-size: 13px; }
+.ced-chip b { margin-right: 4px; }
+.ced-chip-open b, .ced-chip-loop b { color: #7c3aed; }
+.ced-chip-safety b { color: #d8443a; }
+.ced-chip-gap b { color: #6b7280; }
+.cinta-ed-palhint.flash { color: #d8443a; font-weight: 700; }
+.cinta-ed-cod { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+.ced-tok { border: 1px solid #d8d8d2; background: #fff; border-radius: 6px; padding: 3px 8px; font-family: ui-monospace, monospace; font-size: 12.5px; cursor: pointer; }
+.ced-tok.sel { background: #fff7e6; border-color: #f59e0b; color: #92400e; font-weight: 700; }
+.cinta-ed-raw { width: 100%; font-family: ui-monospace, monospace; font-size: 13px; padding: 6px 8px; border: 1px solid #c8cdd4; border-radius: 8px; }
+.cinta-ed-det .ced-tick { stroke: #e3e0d6; }
+.cinta-ed-det .ced-ticklbl { font-size: 10px; fill: #8a94a0; }
+.ced-base { fill: #e8e2d2; stroke: #b8b09a; stroke-width: 1; }
+.ced-open { fill: #f6f1ff; stroke: #7c3aed; stroke-width: 1.4; stroke-dasharray: 5 3; }
+.ced-saf { fill: rgba(216, 68, 58, 0.18); stroke: #d8443a; stroke-width: 1.4; }
+.ced-gapr { fill: #fff; stroke: #9aa1a9; stroke-width: 1.2; stroke-dasharray: 3 3; }
+.ced-open.sel, .ced-saf.sel, .ced-gapr.sel { stroke-width: 2.6; filter: drop-shadow(0 0 3px rgba(245, 158, 11, 0.8)); }
+.ced-sym { font-size: 13px; font-weight: 700; fill: #3a3f45; pointer-events: none; }
+.ced-hd { fill: #34c759; stroke: #fff; stroke-width: 2; cursor: ew-resize; }
+.ced-cota { font-size: 12px; font-weight: 600; fill: #1b5e20; paint-order: stroke; stroke: #fff; stroke-width: 3px; pointer-events: none; }
+.ced-del { font-size: 11px; font-weight: 700; fill: #d8443a; cursor: pointer; }
+.ced-obase { fill: #e8e2d2; }
+.ced-win { fill: rgba(52, 199, 89, 0.14); stroke: #34c759; stroke-width: 1.6; cursor: grab; }
+.ced-winh { fill: #34c759; stroke: #fff; stroke-width: 1; cursor: ew-resize; rx: 3; }

@@ -218,10 +218,7 @@
     (sk.straps || []).forEach((st) => {
       drawPolyPDF(page, st.corners.map((p) => ({ x: px(p.x), y: py(p.y) })), { color: STRAP, opacity: 0.10, borderColor: STRAP, borderWidth: 0.5, borderOpacity: 1 });
       page.drawLine({ start: { x: px(st.a.x), y: py(st.a.y) }, end: { x: px(st.b.x), y: py(st.b.y) }, thickness: 0.4, color: STRAPF, dashArray: [4, 3], opacity: 0.45 });
-      [st.rem0, st.rem1].forEach((rm) => {
-        const zz = SK.zigzagPts(px(rm.a.x), py(rm.a.y), px(rm.b.x), py(rm.b.y), 2.2, 4);
-        for (let i = 0; i < zz.length - 1; i++) page.drawLine({ start: { x: zz[i].x, y: zz[i].y }, end: { x: zz[i + 1].x, y: zz[i + 1].y }, thickness: 0.6, color: STRAP });
-      });
+      // v17-99: extremos limpios (sin zigzag) — paridad con el plano en vivo.
       if (!st.set) { // las cintas de SET no rotulan inline (se enciman); su rótulo va por el callout del set
         const offpx = st.hw * scale + 8;
         const lx = px((st.a.x + st.b.x) / 2) + st.perp.x * offpx, ly = py((st.a.y + st.b.y) / 2) - st.perp.y * offpx; // py invertido en PDF

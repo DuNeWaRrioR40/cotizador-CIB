@@ -961,10 +961,8 @@
       const poly = st.corners.map((c) => f1(px(c.x)) + "," + f1(py(c.y))).join(" ");
       s += `<polygon class="strap" points="${poly}"/>`;
       s += `<line class="strap-mid" x1="${f1(px(st.a.x))}" y1="${f1(py(st.a.y))}" x2="${f1(px(st.b.x))}" y2="${f1(py(st.b.y))}"/>`;
-      [st.rem0, st.rem1].forEach((rm) => {
-        const zz = zigzagPts(px(rm.a.x), py(rm.a.y), px(rm.b.x), py(rm.b.y), 2.2, 4);
-        s += `<polyline class="strap-rem" points="${zz.map((p) => f1(p.x) + "," + f1(p.y)).join(" ")}"/>`;
-      });
+      // v17-99: extremos LIMPIOS — el remate zigzag ("mella") molestaba más de lo que informaba.
+      // Banda + línea media + rótulo bastan; mismo color, mismo ancho.
       // Las cintas de un SET no rotulan inline (se enciman); su rótulo va por el callout opt-in del set.
       // v17: el rótulo inline adopta el COMPORTAMIENTO DE LOS CALLOUTS — arrastrable (offset en
       // rotDrag, clave "st:i" estable) y colapsable con ☰ (eran los rótulos más molestos del plano).
