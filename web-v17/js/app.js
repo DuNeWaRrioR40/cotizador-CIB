@@ -3315,9 +3315,11 @@
     codBox.appendChild(codCap); codBox.appendChild(codLine); codBox.appendChild(bCopy); codBox.appendChild(bRaw);
     const raw = document.createElement("input"); raw.type = "text"; raw.className = "ced-raw hidden"; raw.placeholder = "código a mano (ej. 2-4l0.05, 5.5s7, 7x9)";
     const foot = document.createElement("div"); foot.className = "ced-foot";
+    const bPin = document.createElement("button"); bPin.type = "button"; bPin.className = "ced-btn izq"; bPin.textContent = "📌 Vista al plano";
+    bPin.title = "Inyecta la VENTANA actual como barra de detalle ampliada del plano (se suma al campo Zoom detalle, bajo el detalle de la cinta), con la posición real de cada feature.";
     const bNo = document.createElement("button"); bNo.type = "button"; bNo.className = "ced-btn"; bNo.textContent = "Cancelar";
     const bOK = document.createElement("button"); bOK.type = "button"; bOK.className = "ced-btn primario"; bOK.textContent = "✔ Aplicar";
-    foot.appendChild(bNo); foot.appendChild(bOK);
+    foot.appendChild(bPin); foot.appendChild(bNo); foot.appendChild(bOK);
     card.appendChild(head); card.appendChild(svgD); card.appendChild(ctr); card.appendChild(pal);
     card.appendChild(codBox); card.appendChild(raw); card.appendChild(foot);
     ov.appendChild(card); document.body.appendChild(ov);
@@ -3563,6 +3565,14 @@
     xB.addEventListener("click", cerrar);
     bNo.addEventListener("click", cerrar);
     bOK.addEventListener("click", () => { c.edicion = serial9(); cerrar(); if (alAplicar) alAplicar(); });
+    bPin.addEventListener("click", () => {
+      const rango = f9(v0) + "-" + f9(v1);
+      c.zoomDetalle = ((c.zoomDetalle || "").trim() ? (c.zoomDetalle || "").trim().replace(/,\s*$/, "") + ", " : "") + rango;
+      c.edicion = serial9();   // la vista inyectada refleja lo que se está viendo AHORA
+      bPin.textContent = "✓ " + rango + " inyectada";
+      setTimeout(() => { if (bPin.isConnected) bPin.textContent = "📌 Vista al plano"; }, 1600);
+      if (alAplicar) alAplicar();
+    });
     ov.addEventListener("pointerdown", (e) => { if (e.target === ov) cerrar(); });
     document.addEventListener("keydown", onKey9);
     pinta();
@@ -3670,20 +3680,21 @@
         const ied = document.createElement("input"); ied.type = "text"; ied.value = c.edicion || ""; ied.placeholder = "ej. 2-4l0.05, 5.5s7, 7x9";
         ied.addEventListener("input", (e) => { c.edicion = e.target.value; refresh(); onChange(); });
         led.appendChild(ied); addHelpTo(led, CINTA_GLOBO, "CINTA-EDICION"); card.appendChild(led);
-        { const bEd9 = document.createElement("button"); bEd9.type = "button"; bEd9.className = "btn-outline";
-          bEd9.textContent = "🎬 Editor de tramos…";
-          bEd9.title = "Timeline visual de la cinta: crea secciones tocando, muévelas/redimensiona con manijas, y elige en la paleta qué es cada una. Compone el código de Edición por ti (y es editable a mano).";
-          bEd9.addEventListener("click", () => {
-            const runs9 = cintaRuns(c, { ancho: A, largo: L });
-            const Lc9 = (runs9 && runs9.length) ? runs9[0].L : 0;
-            if (!(Lc9 > 0)) return alert("Define primero el recorrido de la cinta (arista y medidas del paño, o el patrón).");
-            abrirCintaEditor(c, Lc9, () => { ied.value = c.edicion || ""; refresh(); onChange(); });
-          });
-          card.appendChild(bEd9); }
+
         const lz = document.createElement("label"); lz.className = "field full"; lz.innerHTML = "<span>Zoom detalle (secciones a ampliar)</span>";
         const iz = document.createElement("input"); iz.type = "text"; iz.value = c.zoomDetalle || ""; iz.placeholder = "ej. 0.51-1, 9.9-9.95";
         iz.addEventListener("input", (e) => { c.zoomDetalle = e.target.value; refresh(); onChange(); });
         lz.appendChild(iz); addHelpTo(lz, "Rangos «desde-hasta» separados por coma (sobre el recorrido de la cinta). Cada rango genera una barra de detalle AMPLIADA numerada, debajo del detalle general, para que el taller vea el tramo en grande. Ej.: 0.51-1, 9.9-9.95.", "CINTA-ZOOM"); card.appendChild(lz);
+        { const bEd9 = document.createElement("button"); bEd9.type = "button"; bEd9.className = "btn-outline";
+          bEd9.textContent = "🎬 Editor de tramos…";
+          bEd9.title = "Timeline visual de la cinta: crea secciones tocando, muévelas o edítalas por número, y elige en la paleta qué es cada una. Compone el código de Edición y puede inyectar vistas al Zoom detalle.";
+          bEd9.addEventListener("click", () => {
+            const runs9 = cintaRuns(c, { ancho: A, largo: L });
+            const Lc9 = (runs9 && runs9.length) ? runs9[0].L : 0;
+            if (!(Lc9 > 0)) return alert("Define primero el recorrido de la cinta (arista y medidas del paño, o el patrón).");
+            abrirCintaEditor(c, Lc9, () => { ied.value = c.edicion || ""; iz.value = c.zoomDetalle || ""; refresh(); onChange(); });
+          });
+          card.appendChild(bEd9); }
         }
         const ayuda = document.createElement("p"); ayuda.className = "muted small"; card.appendChild(ayuda);
         const ln = document.createElement("label"); ln.className = "field full"; ln.innerHTML = "<span>Nombre / leyenda (plano)</span>";

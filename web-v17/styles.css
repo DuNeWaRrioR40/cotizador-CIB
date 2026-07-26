@@ -1166,3 +1166,4 @@ body.drawer-abierto { overflow: hidden; }
 .ced-notx { fill: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
 .ced-cota { pointer-events: auto; cursor: pointer; }
 .ced-poslbl { font-size: 11px; font-weight: 700; fill: #34c759; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.ced-foot .izq { margin-right: auto; }
