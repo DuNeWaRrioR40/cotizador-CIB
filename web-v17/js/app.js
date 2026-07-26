@@ -4750,8 +4750,14 @@
     if (!(a > 0) || !(l > 0)) return { pos: [], total: 0, numeros: [] };
     return ojetillosPosiciones(a, l, state.ojEdges, state.ojParejo, cortesSpec(state.cortesUnif), !!state.ojNumerar, volExtUnif());
   }
+  // v17-97: paño SECCIONADO (cortes Eliminar) → los ojetillos "total" del perímetro ORIGINAL
+  // ya no existen: contador a 0 y campo bloqueado. Geometría nueva = población nueva, a mano
+  // (menú de cada arista resultante / ojetillos del borde libre del corte). Quitar el corte revive todo.
+  function panoSeccionadoUnif() {
+    return (visibles(state.cortesUnif) || []).some((c9) => c9 && c9.tipo === "corte" && c9.fadeKill && (c9.fade === "A" || c9.fade === "B"));
+  }
   function nOjetillos() {
-    if (state.ojMode === "total") return ojInt(state.ojTotal);
+    if (state.ojMode === "total") return panoSeccionadoUnif() ? 0 : ojInt(state.ojTotal);
     return ojetillosPosUnif().total;
   }
   // Campos de ojetillos para el spec del sketch del uniforme (posiciones explícitas si es por arista).
@@ -4811,9 +4817,11 @@
     if (state.ojMode === "total") {
       const bL = num("f_largo", null), bA = num("f_ancho", null), fN = window.CalcCIBSA.fmtNum;
       const nota = (bL > 0 && bA > 0) ? ("Paño base: " + fN(bL) + " × " + fN(bA) + " m (largo × ancho).") : "Define el largo y ancho del paño base.";
+      const sec9 = panoSeccionadoUnif();
       c.innerHTML = `<label class="field"><span>Cantidad total</span>
-        <input id="oj_total_in" type="text" inputmode="numeric" step="1" value="${state.ojTotal}" />
-        <span class="muted small" style="display:block;margin-top:2px">${nota}</span></label>`;
+        <input id="oj_total_in" type="text" inputmode="numeric" step="1" value="${sec9 ? "0" : state.ojTotal}" ${sec9 ? "disabled" : ""}/>
+        <span class="muted small" style="display:block;margin-top:2px">${nota}</span>
+        <span id="oj_total_sec_hint" class="oj-err" style="display:${sec9 ? "block" : "none"};margin-top:4px;font-size:12px">⛔ Paño SECCIONADO por cortes: el total perimetral quedó en 0 y bloqueado — pobla cada arista resultante con su menú (o los ojetillos del borde libre de cada corte). Quitar los cortes lo desbloquea.</span></label>`;
       $("oj_total_in").addEventListener("input", (e) => { state.ojTotal = e.target.value; recompute(); });
       $("oj_total_in").addEventListener("blur", (e) => {
         const r = window.CalcCIBSA.evalExpr(e.target.value);
@@ -4824,6 +4832,14 @@
     }
     if (!state.ojEdges) state.ojEdges = ojEdgesDefault();
     renderOjetillosArista(c, state.ojEdges, state, () => num("f_ancho", null), () => num("f_largo", null), () => nOjetillos(), recompute, () => cortesSpec(state.cortesUnif));
+  }
+  function sincOjTotalLock() {
+    const inp = $("oj_total_in"); if (!inp) return;
+    const sec = state.ojMode === "total" && panoSeccionadoUnif();
+    inp.disabled = sec;
+    const h = $("oj_total_sec_hint"); if (h) h.style.display = sec ? "block" : "none";
+    if (sec) inp.value = "0";
+    else if (document.activeElement !== inp && inp.value === "0" && state.ojTotal !== "0") inp.value = state.ojTotal;
   }
   function actualizarTotalOj() {
     const l = $("oj_total_lbl"); if (l) l.textContent = "Total ojetillos: " + nOjetillos();
@@ -5696,6 +5712,7 @@
   }
   function recompute() {
     if (typeof sincBotonFigura3D === "function") sincBotonFigura3D();
+    if (typeof sincOjTotalLock === "function") sincOjTotalLock();
     if (state.docMode === "preliminar") recomputePrelim();
     else if (state.docMode === "formal" && state.prodMode === "compuesto") recomputeCompuesto();
     else recomputeUniforme();
@@ -7848,6 +7865,8 @@
       if (!(a > 0) || !(l > 0)) return 0;
       return ojetillosPosiciones(a, l, pz.ojEdges, pz.ojParejo, cortesSpec(pz.cortes), false, volExtPz(pz)).total;
     }
+    // v17-97: pieza seccionada por cortes Eliminar → el total perimetral original vale 0
+    if ((visibles(pz.cortes) || []).some((c9) => c9 && c9.tipo === "corte" && c9.fadeKill && (c9.fade === "A" || c9.fade === "B"))) return 0;
     return ojIntPz(pz.ojetillos);
   }
   function ojetillosTxtPieza(pz) {
