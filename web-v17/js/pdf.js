@@ -242,7 +242,7 @@
       (seg.material || []).forEach((m) => drawPolyPDF(page, [{ x: PXx(m.a, halfW), y: PYy(m.a, halfW) }, { x: PXx(m.b, halfW), y: PYy(m.b, halfW) }, { x: PXx(m.b, -halfW), y: PYy(m.b, -halfW) }, { x: PXx(m.a, -halfW), y: PYy(m.a, -halfW) }], { color: PDFLib.rgb(0.72, 0.6, 0.28), opacity: 0.14 }));
       const ctr = (lbl, X, Y, size, col) => page.drawText(lbl, { x: X - font.widthOfTextAtSize(lbl, size) / 2, y: Y - size * 0.35, size: size, font: font, color: col });
       (seg.material || []).forEach((m) => { ln(m.a, halfW, m.b, halfW, ACC, 0.7); ln(m.a, -halfW, m.b, -halfW, ACC, 0.7); ln(m.a, halfW, m.a, -halfW, ACC, 0.6); ln(m.b, halfW, m.b, -halfW, ACC, 0.6); });
-      (seg.stitch || []).forEach((m) => page.drawLine({ start: { x: PXx(m.a, 0), y: PYy(m.a, 0) }, end: { x: PXx(m.b, 0), y: PYy(m.b, 0) }, thickness: 0.5, color: ACC, dashArray: [2.5, 1.8], opacity: 0.7 }));
+      // v17-106: sin línea central de costura sobre la banda (ruido); la costura vive en la barra de detalle.
       (seg.safety || []).forEach((m) => { ln(m.a, halfW, m.b, halfW, CRED, 0.7); ln(m.a, -halfW, m.b, -halfW, CRED, 0.7); ln(m.a, halfW, m.a, -halfW, CRED, 0.7); ln(m.b, halfW, m.b, -halfW, CRED, 0.7); ln(m.a, halfW, m.b, -halfW, CRED, 0.7); ln(m.a, -halfW, m.b, halfW, CRED, 0.7); });
       (seg.opens || []).forEach((m) => { const tm = (m.a + m.b) / 2; page.drawCircle({ x: PXx(tm, 0), y: PYy(tm, 0), size: halfW * scale * 0.7, borderColor: ACC, borderWidth: 0.7 }); if (m.dia > 0) ctr(OD + SK.fmt(m.dia), LXx(tm, halfW + 0.05), LYy(tm, halfW + 0.05), 5.5, ACC); });
       (seg.gaps || []).forEach((m) => {
@@ -1431,6 +1431,86 @@
   // ---------- Dibujo del producto (PDF descargable de 1 hoja) ----------
   // datos: { filenameBase, etiquetaArchivo, titulo, tela, color, largo, ancho, ojetillos,
   //          unidades, observaciones:[], materiales:[{nombre,cant}], sketch }
+  // v17-107: barras de detalle del patrón de cintas en el PDF (espejo del plano vivo):
+  // banda + costura + seguridad + bolsillos/loops + huecos, con POSICIONES reales, NOMBRE del
+  // feature bajo los numerales, y barras de zoom (vistas inyectadas) con offset real.
+  function detalleCintasPDF(doc, datos, cibsa, font, bold, W, H, M) {
+    if (!datos.sketch || !(datos.sketch.cintas || []).length) return;
+    let skC; try { skC = SK.construirSketch(datos.sketch); } catch (e) { return; }
+    const seen = new Map(); (skC.cintas || []).forEach((c) => { if (!seen.has(c.id)) seen.set(c.id, c); });
+    const list = Array.from(seen.values()).filter((c) => c.L > 0);
+    if (!list.length) return;
+    const GOLD = PDFLib.rgb(0.72, 0.6, 0.28), EDGE = PDFLib.rgb(0.45, 0.36, 0.12), REDE = PDFLib.rgb(0.85, 0.27, 0.23), GRIS = PDFLib.rgb(0.42, 0.42, 0.45), NEG = PDFLib.rgb(0.12, 0.12, 0.12);
+    const nm = { sup: "Superior", inf: "Inferior", izq: "Izquierda", der: "Derecha", "patrón": "Patrón" };
+    const availW = W - 2 * M;
+    let page = null, yCur = 0;
+    const nuevaPag = () => {
+      page = doc.addPage([W, H]);
+      let y2 = dibujarEncabezado(page, cibsa, null, W, M, H - 40);
+      tituloCentrado(page, "DETALLE DE CINTAS (patrón de tramos)", W, y2, bold, 14, BLUE()); y2 -= 14;
+      tituloCentrado(page, "Recorrido de cada cinta con sus tramos: costura, bolsillos/loops (O), seguridad (!) y huecos. Posiciones en metros sobre el recorrido.", W, y2, font, 8.5, BLUE());
+      yCur = y2 - 26;
+    };
+    const clip9 = (arr, za, zb) => (arr || []).map((m) => { const a = Math.max(m.a, za), b = Math.min(m.b, zb); return (b > a) ? { a: a - za, b: b - za, dia: m.dia } : null; }).filter(Boolean);
+    const ctr9 = (pg, lbl, X, Y, size, col, negrita) => { const ff = negrita ? bold : font; pg.drawText(san(lbl), { x: X - ff.widthOfTextAtSize(san(lbl), size) / 2, y: Y, size: size, font: ff, color: col }); };
+    const strip9 = (L9, seg9, tit9, off9, marks9) => {
+      const altura = 62;
+      if (!page || yCur - altura < M + 30) nuevaPag();
+      const sx = availW / (L9 > 0 ? L9 : 1), bx = (t) => M + t * sx;
+      page.drawText(san(tit9), { x: M, y: yCur, size: 8, font: bold, color: NEG });
+      const bTop = yCur - 6, bBot = bTop - 15;
+      (seg9.material || []).forEach((m) => {
+        drawPolyPDF(page, [{ x: bx(m.a), y: bTop }, { x: bx(m.b), y: bTop }, { x: bx(m.b), y: bBot }, { x: bx(m.a), y: bBot }], { color: GOLD, opacity: 0.14 });
+        page.drawLine({ start: { x: bx(m.a), y: bTop }, end: { x: bx(m.b), y: bTop }, thickness: 0.8, color: EDGE });
+        page.drawLine({ start: { x: bx(m.a), y: bBot }, end: { x: bx(m.b), y: bBot }, thickness: 0.8, color: EDGE });
+        page.drawLine({ start: { x: bx(m.a), y: bTop }, end: { x: bx(m.a), y: bBot }, thickness: 0.7, color: EDGE });
+        page.drawLine({ start: { x: bx(m.b), y: bTop }, end: { x: bx(m.b), y: bBot }, thickness: 0.7, color: EDGE });
+      });
+      (seg9.stitch || []).forEach((m) => page.drawLine({ start: { x: bx(m.a), y: (bTop + bBot) / 2 }, end: { x: bx(m.b), y: (bTop + bBot) / 2 }, thickness: 0.5, color: EDGE, dashArray: [2.5, 1.8], opacity: 0.7 }));
+      (seg9.safety || []).forEach((m) => {
+        [[m.a, bTop, m.b, bTop], [m.a, bBot, m.b, bBot], [m.a, bTop, m.a, bBot], [m.b, bTop, m.b, bBot], [m.a, bTop, m.b, bBot], [m.a, bBot, m.b, bTop]].forEach((q9) =>
+          page.drawLine({ start: { x: bx(q9[0]), y: q9[1] }, end: { x: bx(q9[2]), y: q9[3] }, thickness: 0.7, color: REDE }));
+        const tsf = (m.a + m.b) / 2;
+        ctr9(page, SK.fmt(off9 + m.a) + "-" + SK.fmt(off9 + m.b), bx(tsf), bBot - 8, 5.5, REDE);
+        ctr9(page, "c. seguridad", bx(tsf), bBot - 14.5, 5.5, REDE);
+      });
+      (seg9.opens || []).forEach((m) => {
+        const tm = (m.a + m.b) / 2;
+        page.drawCircle({ x: bx(tm), y: (bTop + bBot) / 2, size: 4.5, borderColor: EDGE, borderWidth: 0.8 });
+        ctr9(page, (m.dia > 0 ? "O" + SK.fmt(m.dia) + " · " : "") + SK.fmt(off9 + m.a) + "-" + SK.fmt(off9 + m.b), bx(tm), bBot - 8, 5.5, NEG);
+        ctr9(page, m.dia > 0 ? "loop" : "bolsillo", bx(tm), bBot - 14.5, 5.5, GRIS);
+      });
+      (seg9.gaps || []).forEach((m) => {
+        page.drawRectangle({ x: bx(m.a), y: bBot, width: (m.b - m.a) * sx, height: bTop - bBot, color: PDFLib.rgb(1, 1, 1) });
+        page.drawLine({ start: { x: bx(m.a), y: bBot }, end: { x: bx(m.b), y: bTop }, thickness: 0.6, color: REDE });
+        page.drawLine({ start: { x: bx(m.a), y: bTop }, end: { x: bx(m.b), y: bBot }, thickness: 0.6, color: REDE });
+        page.drawLine({ start: { x: bx(m.a), y: bTop + 2 }, end: { x: bx(m.a), y: bBot - 2 }, thickness: 0.8, color: EDGE });
+        page.drawLine({ start: { x: bx(m.b), y: bTop + 2 }, end: { x: bx(m.b), y: bBot - 2 }, thickness: 0.8, color: EDGE });
+        const tm = (m.a + m.b) / 2;
+        ctr9(page, "x" + SK.fmt(m.b - m.a) + " · " + SK.fmt(off9 + m.a) + "-" + SK.fmt(off9 + m.b), bx(tm), bBot - 8, 5.5, REDE);
+        ctr9(page, "hueco", bx(tm), bBot - 14.5, 5.5, GRIS);
+      });
+      page.drawText(san(SK.fmt(off9)), { x: M, y: bBot - 22, size: 6, font: font, color: GRIS });
+      { const lblF = san(SK.fmt(off9 + L9) + "m"); page.drawText(lblF, { x: M + availW - font.widthOfTextAtSize(lblF, 6), y: bBot - 22, size: 6, font: font, color: GRIS }); }
+      (marks9 || []).forEach((mk) => {
+        const mx = bx((mk.a + mk.b) / 2);
+        page.drawLine({ start: { x: bx(mk.a), y: bBot - 2.5 }, end: { x: bx(mk.b), y: bBot - 2.5 }, thickness: 1.4, color: GOLD });
+        page.drawCircle({ x: mx, y: bTop + 5, size: 4, borderColor: GOLD, borderWidth: 0.8 });
+        ctr9(page, String(mk.n), mx - 0.2, bTop + 2.8, 5.5, NEG, true);
+      });
+      yCur -= altura;
+    };
+    list.forEach((c) => {
+      const seg = c.seg || {}, zt = c.zoomTramos || [];
+      const marks = zt.map((z, i) => ({ a: z.a, b: z.b, n: i + 1 }));
+      const tit = (nm[c.arista] || c.arista || "") + (c.tipo === "cierre" ? " · cierre" : "") + (c.legend && c.legend.trim() ? " · " + c.legend.trim() : "") + " — detalle del patron (L=" + SK.fmt(c.L) + "m)";
+      strip9(c.L, seg, tit, 0, marks);
+      zt.forEach((z, i) => {
+        const segZ = { material: clip9(seg.material, z.a, z.b), stitch: clip9(seg.stitch, z.a, z.b), safety: clip9(seg.safety, z.a, z.b), opens: clip9(seg.opens, z.a, z.b), gaps: clip9(seg.gaps, z.a, z.b) };
+        strip9(z.b - z.a, segZ, "Zoom " + (i + 1) + " · " + SK.fmt(z.a) + "-" + SK.fmt(z.b) + " m", z.a, null);
+      });
+    });
+  }
   async function generarSketchPDF(datos) {
     const { PDFDocument, StandardFonts } = PDFLib;
     const doc = await PDFDocument.create();
@@ -1532,6 +1612,7 @@
       } catch (e) {}
     }
     dibujarSketchPDF(pgSk, datos.sketch, { x: M, top: skTop, w: W - 2 * M, h: skTop - skBottom }, font, { cotas: !limpio, figImgEmb: figEmb, figImgMarco: !!datos.figImgMarco, aletaImgsEmb: aleEmb });
+    try { detalleCintasPDF(doc, datos, cibsa, font, bold, W, H, M); } catch (e) { /* sin detalle de cintas si algo falla */ }
 
     // Página ADICIONAL con la vista 3D elegida en el visor (complementa el plano, no lo sustituye).
     if (datos.vista3D && datos.sketch && datos.sketch.volumetrico) {
