@@ -3282,25 +3282,46 @@
   // (respaldos/Sheet intactos). Arriba el DETALLE (ventana ampliada donde se edita: tocar crea,
   // arrastrar mueve, manijas redimensionan con cota viva). Abajo el TIMELINE MAESTRO (recorrido
   // completo): arrastrar la ventana = navegación rápida · ◀ ▶ = precisión · ➕ ➖ / rueda / pellizco = zoom.
+  // ---------- 🎬 EDITOR DE TRAMOS de cinta (timeline) — v17-101, diseño /apple-design ----------
+  // Jerarquía vertical estricta: PANTALLA (detalle donde se edita) → CONTROLES (timeline maestro
+  // + navegación) → PALETA (features) → CÓDIGO (línea concatenada, copiable) → ACCIONES.
+  // c.edicion sigue siendo LA fuente de verdad. La sección nueva nace CENTRADA bajo el dedo con pop.
   function abrirCintaEditor(c, Lc, alAplicar) {
     const SK9 = window.SketchCIBSA, NSs = "http://www.w3.org/2000/svg";
     const f9 = (v) => String(rd3(v));
     let secs = (SK9.parseCintaTramos(c.edicion, Lc) || []).map((t) => ({ a: t.a, b: t.b, tipo: t.tipo, dia: t.dia || 0 }));
-    let sel = -1, v0 = 0, v1 = Lc;
-    const W9 = 940, HD = 132, HO = 48;
-    const overlay = document.createElement("div"); overlay.className = "plano-zoom";
-    const xBtn = document.createElement("button"); xBtn.className = "plano-zoom-x"; xBtn.type = "button"; xBtn.textContent = "✕";
-    const body = document.createElement("div"); body.className = "plano-zoom-body cinta-ed";
-    const tit = document.createElement("p"); tit.className = "cinta-ed-tit";
-    tit.textContent = "🎬 " + (c.legend || "Cinta") + " — recorrido 0…" + f9(Lc) + " m · lo NO listado va con costura continua";
-    const svgD = document.createElementNS(NSs, "svg"); svgD.setAttribute("viewBox", "0 0 " + W9 + " " + HD); svgD.setAttribute("class", "cinta-ed-det");
-    const nav = document.createElement("div"); nav.className = "cinta-ed-nav";
-    const svgO = document.createElementNS(NSs, "svg"); svgO.setAttribute("viewBox", "0 0 " + W9 + " " + HO); svgO.setAttribute("class", "cinta-ed-ovr");
-    const pal = document.createElement("div"); pal.className = "cinta-ed-pal";
-    const palHint = document.createElement("span"); palHint.className = "muted small cinta-ed-palhint"; palHint.textContent = "Toca el timeline para crear una sección; luego elige aquí qué es.";
-    const cod = document.createElement("div"); cod.className = "cinta-ed-cod";
-    const raw = document.createElement("input"); raw.type = "text"; raw.className = "cinta-ed-raw hidden"; raw.placeholder = "código a mano (ej. 2-4l0.05, 5.5s7, 7x9)";
-    const acc = document.createElement("div"); acc.className = "vol3d-acciones";
+    let sel = -1, v0 = 0, v1 = Lc, nuevoIdx = -1;
+    const W9 = 960, HD = 150, HO = 44;
+    // ---- armazón ----
+    const ov = document.createElement("div"); ov.className = "ced-ov";
+    const card = document.createElement("div"); card.className = "ced-card";
+    const head = document.createElement("div"); head.className = "ced-head";
+    const hTxt = document.createElement("div");
+    const tit = document.createElement("div"); tit.className = "ced-tit"; tit.textContent = "🎬 " + (c.legend || "Cinta");
+    const sub = document.createElement("div"); sub.className = "ced-sub"; sub.textContent = "Recorrido 0 – " + f9(Lc) + " m · lo no listado va con costura continua · toca la pantalla para crear una sección";
+    hTxt.appendChild(tit); hTxt.appendChild(sub);
+    const xB = document.createElement("button"); xB.type = "button"; xB.className = "ced-x"; xB.textContent = "✕";
+    head.appendChild(hTxt); head.appendChild(xB);
+    const svgD = document.createElementNS(NSs, "svg"); svgD.setAttribute("viewBox", "0 0 " + W9 + " " + HD); svgD.setAttribute("class", "ced-scr");
+    const ctr = document.createElement("div"); ctr.className = "ced-ctr";
+    const svgO = document.createElementNS(NSs, "svg"); svgO.setAttribute("viewBox", "0 0 " + W9 + " " + HO); svgO.setAttribute("class", "ced-ovr");
+    const pal = document.createElement("div"); pal.className = "ced-pal";
+    const palHint = document.createElement("span"); palHint.className = "ced-palhint"; palHint.textContent = "Selecciona una sección para asignarle un elemento.";
+    const codBox = document.createElement("div"); codBox.className = "ced-codbox";
+    const codCap = document.createElement("span"); codCap.className = "ced-codcap"; codCap.textContent = "código";
+    const codLine = document.createElement("code"); codLine.className = "ced-codline";
+    const bCopy = document.createElement("button"); bCopy.type = "button"; bCopy.className = "ced-btn ico"; bCopy.textContent = "📋"; bCopy.title = "Copiar el código";
+    const bRaw = document.createElement("button"); bRaw.type = "button"; bRaw.className = "ced-btn ico"; bRaw.textContent = "✎"; bRaw.title = "Editar el código a mano";
+    codBox.appendChild(codCap); codBox.appendChild(codLine); codBox.appendChild(bCopy); codBox.appendChild(bRaw);
+    const raw = document.createElement("input"); raw.type = "text"; raw.className = "ced-raw hidden"; raw.placeholder = "código a mano (ej. 2-4l0.05, 5.5s7, 7x9)";
+    const foot = document.createElement("div"); foot.className = "ced-foot";
+    const bNo = document.createElement("button"); bNo.type = "button"; bNo.className = "ced-btn"; bNo.textContent = "Cancelar";
+    const bOK = document.createElement("button"); bOK.type = "button"; bOK.className = "ced-btn primario"; bOK.textContent = "✔ Aplicar";
+    foot.appendChild(bNo); foot.appendChild(bOK);
+    card.appendChild(head); card.appendChild(svgD); card.appendChild(ctr); card.appendChild(pal);
+    card.appendChild(codBox); card.appendChild(raw); card.appendChild(foot);
+    ov.appendChild(card); document.body.appendChild(ov);
+    // ---- helpers ----
     const el9 = (pE, tag, at, txt) => { const e = document.createElementNS(NSs, tag); for (const k in at) e.setAttribute(k, at[k]); if (txt != null) e.textContent = txt; pE.appendChild(e); return e; };
     const CL9 = { open: "ced-open", safety: "ced-saf", gap: "ced-gapr" };
     const tok9 = (s) => f9(s.a) + (s.tipo === "gap" ? "x" : s.tipo === "safety" ? "s" : "-") + f9(s.b) + ((s.tipo === "open" && s.dia > 0) ? "l" + f9(s.dia) : "");
@@ -3311,53 +3332,54 @@
     const pinta = () => {
       ordena();
       while (svgD.firstChild) svgD.removeChild(svgD.firstChild);
-      const yB = 46, hB = 40;
+      const yB = 52, hB = 46;
       const step = nice9(v1 - v0);
       for (let t = Math.ceil(v0 / step - 1e-9) * step; t <= v1 + 1e-9; t += step) {
         const X = xD(t);
-        el9(svgD, "line", { x1: X, y1: 30, x2: X, y2: yB + hB + 6, class: "ced-tick" });
-        el9(svgD, "text", { x: X, y: 22, class: "ced-ticklbl", "text-anchor": "middle" }, String(rd3(t)));
+        el9(svgD, "line", { x1: X, y1: 32, x2: X, y2: yB + hB + 8, class: "ced-tick" });
+        el9(svgD, "text", { x: X, y: 24, class: "ced-ticklbl", "text-anchor": "middle" }, String(rd3(t)));
       }
-      // banda base = MATERIAL (todo menos huecos), recortada a la ventana
       let segsM = [{ a: 0, b: Lc }];
       secs.filter((s) => s.tipo === "gap").forEach((g) => {
         const nx = []; segsM.forEach((m) => { if (g.b <= m.a || g.a >= m.b) { nx.push(m); return; } if (g.a > m.a) nx.push({ a: m.a, b: g.a }); if (g.b < m.b) nx.push({ a: g.b, b: m.b }); }); segsM = nx;
       });
-      segsM.forEach((m) => { const a = Math.max(m.a, v0), b = Math.min(m.b, v1); if (b <= a) return; el9(svgD, "rect", { x: xD(a), y: yB, width: xD(b) - xD(a), height: hB, class: "ced-base" }); });
+      segsM.forEach((m) => { const a = Math.max(m.a, v0), b = Math.min(m.b, v1); if (b <= a) return; el9(svgD, "rect", { x: xD(a), y: yB, width: xD(b) - xD(a), height: hB, rx: 3, class: "ced-base" }); });
       secs.forEach((s, i) => {
         const a = Math.max(s.a, v0), b = Math.min(s.b, v1); if (b <= a) return;
-        const X = xD(a), Wd = Math.max(1.5, xD(b) - xD(a));
+        const X = xD(a), Wd = Math.max(2, xD(b) - xD(a));
+        const extra = (i === sel ? " sel" : "") + (i === nuevoIdx ? " nueva" : "");
         el9(svgD, "rect", (s.tipo === "gap")
-          ? { x: X, y: yB + 8, width: Wd, height: hB - 16, class: "ced-gapr" + (i === sel ? " sel" : ""), "data-i": i }
-          : { x: X, y: yB, width: Wd, height: hB, class: CL9[s.tipo] + (i === sel ? " sel" : ""), "data-i": i });
+          ? { x: X, y: yB + 9, width: Wd, height: hB - 18, rx: 3, class: "ced-gapr" + extra, "data-i": i }
+          : { x: X, y: yB, width: Wd, height: hB, rx: 3, class: CL9[s.tipo] + extra, "data-i": i });
         const sym = (s.tipo === "gap") ? "✂" : (s.tipo === "safety") ? "‼" : (s.dia > 0 ? "◯ Ø" + rd3(s.dia) : "Ω");
         el9(svgD, "text", { x: X + Wd / 2, y: yB + hB / 2 + 5, class: "ced-sym", "text-anchor": "middle", "data-i": i }, sym);
         if (i === sel) {
-          el9(svgD, "circle", { cx: xD(s.a), cy: yB + hB / 2, r: 8, class: "ced-hd", "data-h": "a" });
-          el9(svgD, "circle", { cx: xD(s.b), cy: yB + hB / 2, r: 8, class: "ced-hd", "data-h": "b" });
-          el9(svgD, "text", { x: X + Wd / 2, y: yB + hB + 24, class: "ced-cota", "text-anchor": "middle" }, f9(s.a) + " – " + f9(s.b) + " m · largo " + f9(s.b - s.a) + " m");
-          el9(svgD, "text", { x: Math.min(Math.max(X + Wd / 2, 14), W9 - 14), y: yB - 10, class: "ced-del", "text-anchor": "middle", "data-del": "1" }, "🗑 eliminar sección");
+          el9(svgD, "circle", { cx: xD(s.a), cy: yB + hB / 2, r: 9, class: "ced-hd", "data-h": "a" });
+          el9(svgD, "circle", { cx: xD(s.b), cy: yB + hB / 2, r: 9, class: "ced-hd", "data-h": "b" });
+          el9(svgD, "text", { x: Math.min(Math.max(X + Wd / 2, 70), W9 - 70), y: yB + hB + 26, class: "ced-cota", "text-anchor": "middle" }, f9(s.a) + " – " + f9(s.b) + " m · largo " + f9(s.b - s.a) + " m");
+          el9(svgD, "text", { x: Math.min(Math.max(X + Wd / 2, 60), W9 - 60), y: yB - 12, class: "ced-del", "text-anchor": "middle", "data-del": "1" }, "🗑 eliminar");
         }
       });
       while (svgO.firstChild) svgO.removeChild(svgO.firstChild);
       const xO = (t) => t / Lc * W9;
-      el9(svgO, "rect", { x: 0, y: 18, width: W9, height: 14, class: "ced-obase" });
-      secs.forEach((s, i) => el9(svgO, "rect", { x: xO(s.a), y: 18, width: Math.max(1.5, xO(s.b) - xO(s.a)), height: 14, class: (CL9[s.tipo] || "ced-gapr") + (i === sel ? " sel" : "") }));
-      el9(svgO, "rect", { x: xO(v0), y: 6, width: Math.max(8, xO(v1) - xO(v0)), height: 36, class: "ced-win", "data-w": "mv" });
-      el9(svgO, "rect", { x: Math.max(0, xO(v0) - 5), y: 6, width: 10, height: 36, class: "ced-winh", "data-w": "a" });
-      el9(svgO, "rect", { x: Math.min(W9 - 5, xO(v1) - 5), y: 6, width: 10, height: 36, class: "ced-winh", "data-w": "b" });
-      cod.innerHTML = "";
-      const cap = document.createElement("span"); cap.className = "muted small"; cap.textContent = "código: "; cod.appendChild(cap);
-      if (!secs.length) { const sp = document.createElement("span"); sp.className = "muted small"; sp.textContent = "— (costura continua en todo el recorrido) —"; cod.appendChild(sp); }
+      el9(svgO, "rect", { x: 0, y: 16, width: W9, height: 14, rx: 3, class: "ced-obase" });
+      secs.forEach((s, i) => el9(svgO, "rect", { x: xO(s.a), y: 16, width: Math.max(1.5, xO(s.b) - xO(s.a)), height: 14, class: (CL9[s.tipo] || "ced-gapr") + (i === sel ? " sel" : "") }));
+      el9(svgO, "rect", { x: xO(v0), y: 4, width: Math.max(8, xO(v1) - xO(v0)), height: 36, rx: 6, class: "ced-win", "data-w": "mv" });
+      el9(svgO, "rect", { x: Math.max(0, xO(v0) - 5), y: 4, width: 10, height: 36, rx: 4, class: "ced-winh", "data-w": "a" });
+      el9(svgO, "rect", { x: Math.min(W9 - 5, xO(v1) - 5), y: 4, width: 10, height: 36, rx: 4, class: "ced-winh", "data-w": "b" });
+      // código: línea CONCATENADA (seleccionable para copy/paste), tokens coloreados y clicables
+      codLine.innerHTML = "";
+      if (!secs.length) { const sp = document.createElement("span"); sp.className = "ced-tk vacio"; sp.textContent = "(costura continua en todo el recorrido)"; codLine.appendChild(sp); }
       secs.forEach((s, i) => {
-        const ch = document.createElement("button"); ch.type = "button"; ch.className = "ced-tok" + (i === sel ? " sel" : "");
-        ch.textContent = tok9(s);
-        ch.addEventListener("click", () => {
+        if (i) codLine.appendChild(document.createTextNode(", "));
+        const sp = document.createElement("span"); sp.className = "ced-tk ced-tk-" + s.tipo + (i === sel ? " sel" : "");
+        sp.textContent = tok9(s);
+        sp.addEventListener("click", () => {
           sel = i;
           if (s.b < v0 || s.a > v1) { const span = v1 - v0, m9 = (s.a + s.b) / 2; v0 = Math.max(0, m9 - span / 2); v1 = Math.min(Lc, v0 + span); v0 = Math.max(0, v1 - span); }
           pinta();
         });
-        cod.appendChild(ch);
+        codLine.appendChild(sp);
       });
       if (!raw.classList.contains("hidden") && document.activeElement !== raw) raw.value = serial9();
     };
@@ -3368,7 +3390,7 @@
       pinta();
     };
     const ptT = (e) => { const r = svgD.getBoundingClientRect(); return v0 + (e.clientX - r.left) / r.width * (v1 - v0); };
-    // --- interacción del DETALLE: crear / seleccionar / mover / redimensionar / pellizco ---
+    // ---- PANTALLA: crear / seleccionar / mover (1:1, pointer capture) / redimensionar / pellizco ----
     let dragT = null, pinch9 = null; const ptrs9 = new Map();
     svgD.addEventListener("pointerdown", (e) => {
       e.preventDefault(); try { svgD.setPointerCapture(e.pointerId); } catch (_) {}
@@ -3382,12 +3404,20 @@
       if (di != null) { sel = parseInt(di, 10); dragT = { m: "mv", off: ptT(e) - secs[sel].a, len: secs[sel].b - secs[sel].a }; pinta(); return; }
       const r = svgD.getBoundingClientRect(), yRel = (e.clientY - r.top) / r.height * HD;
       const t = ptT(e);
-      if (t >= 0 && t <= Lc && yRel > 36 && yRel < 96) {
+      if (t >= 0 && t <= Lc && yRel > 40 && yRel < 110) {
         const dentro = secs.some((s) => t >= s.a && t < s.b);
         if (!dentro) {
-          let b = Math.min(Lc, t + Math.max(0.1, Math.min(rd3(Lc * 0.05), 0.5)));
-          secs.forEach((s) => { if (s.a > t) b = Math.min(b, s.a); });
-          if (b > t + 0.01) { secs.push({ a: rd3(t), b: rd3(b), tipo: "open", dia: 0 }); ordena(); sel = secs.findIndex((s) => s.a === rd3(t)); pinta(); return; }
+          // la sección nace CENTRADA bajo el dedo (se ve exactamente dónde cayó) + pop
+          const defL = Math.max(0.1, Math.min(rd3(Lc * 0.05), 0.5));
+          let a = t - defL / 2, b = t + defL / 2;
+          secs.forEach((s) => { if (s.b <= t) a = Math.max(a, s.b); if (s.a >= t) b = Math.min(b, s.a); });
+          a = Math.max(0, a); b = Math.min(Lc, b);
+          if (b - a > 0.01) {
+            secs.push({ a: rd3(a), b: rd3(b), tipo: "open", dia: 0 });
+            ordena(); sel = secs.findIndex((s) => s.a === rd3(a)); nuevoIdx = sel;
+            pinta(); setTimeout(() => { nuevoIdx = -1; }, 520);
+            return;
+          }
         }
       }
       sel = -1; pinta();
@@ -3414,7 +3444,7 @@
     const upD = (e) => { ptrs9.delete(e.pointerId); if (ptrs9.size < 2) pinch9 = null; dragT = null; };
     svgD.addEventListener("pointerup", upD); svgD.addEventListener("pointercancel", upD);
     svgD.addEventListener("wheel", (e) => { e.preventDefault(); zoomEn(ptT(e), e.deltaY > 0 ? 1.25 : 0.8); }, { passive: false });
-    // --- TIMELINE MAESTRO: ventana rápida + bordes de la ventana ---
+    // ---- CONTROLES: ⏮ ◀ [timeline maestro] ▶ ⏭ · ➖ ➕ ⤢ ----
     let dragO = null;
     const tO = (e) => { const r = svgO.getBoundingClientRect(); return (e.clientX - r.left) / r.width * Lc; };
     svgO.addEventListener("pointerdown", (e) => {
@@ -3428,34 +3458,33 @@
     svgO.addEventListener("pointermove", (e) => {
       if (!dragO) return;
       const t = tO(e), span = v1 - v0;
-      if (dragO.m === "a") { v0 = Math.max(0, Math.min(v1 - 0.04, t)); }
-      else if (dragO.m === "b") { v1 = Math.min(Lc, Math.max(v0 + 0.04, t)); }
+      if (dragO.m === "a") v0 = Math.max(0, Math.min(v1 - 0.04, t));
+      else if (dragO.m === "b") v1 = Math.min(Lc, Math.max(v0 + 0.04, t));
       else { v0 = Math.max(0, Math.min(Lc - span, t - dragO.off)); v1 = v0 + span; }
       pinta();
     });
     const upO = () => { dragO = null; };
     svgO.addEventListener("pointerup", upO); svgO.addEventListener("pointercancel", upO);
-    // --- navegación precisa + zoom por botones ---
-    const mkB9 = (t2, fn, tip) => { const b = document.createElement("button"); b.type = "button"; b.className = "vol3d-btn"; b.textContent = t2; if (tip) b.title = tip; b.addEventListener("click", fn); return b; };
+    const mkB9 = (t2, fn, tip) => { const b = document.createElement("button"); b.type = "button"; b.className = "ced-btn ico"; b.textContent = t2; if (tip) b.title = tip; b.addEventListener("click", fn); return b; };
     const mueve9 = (k) => { const span = v1 - v0, d = span * 0.15 * k; v0 = Math.max(0, Math.min(Lc - span, v0 + d)); v1 = v0 + span; pinta(); };
-    nav.appendChild(mkB9("⏮", () => { const span = v1 - v0; v0 = 0; v1 = span; pinta(); }, "Inicio del recorrido"));
-    nav.appendChild(mkB9("◀", () => mueve9(-1), "Mover fino a la izquierda"));
-    nav.appendChild(svgO);
-    nav.appendChild(mkB9("▶", () => mueve9(1), "Mover fino a la derecha"));
-    nav.appendChild(mkB9("⏭", () => { const span = v1 - v0; v1 = Lc; v0 = Math.max(0, Lc - span); pinta(); }, "Final del recorrido"));
-    nav.appendChild(mkB9("➖", () => zoomEn((v0 + v1) / 2, 1.4), "Alejar"));
-    nav.appendChild(mkB9("➕", () => zoomEn((v0 + v1) / 2, 0.7), "Acercar"));
-    nav.appendChild(mkB9("⤢", () => { v0 = 0; v1 = Lc; pinta(); }, "Ver el recorrido completo"));
-    // --- paleta (tap sobre la sección seleccionada) ---
+    ctr.appendChild(mkB9("⏮", () => { const span = v1 - v0; v0 = 0; v1 = span; pinta(); }, "Inicio"));
+    ctr.appendChild(mkB9("◀", () => mueve9(-1), "Fino a la izquierda"));
+    ctr.appendChild(svgO);
+    ctr.appendChild(mkB9("▶", () => mueve9(1), "Fino a la derecha"));
+    ctr.appendChild(mkB9("⏭", () => { const span = v1 - v0; v1 = Lc; v0 = Math.max(0, Lc - span); pinta(); }, "Final"));
+    ctr.appendChild(mkB9("➖", () => zoomEn((v0 + v1) / 2, 1.4), "Alejar"));
+    ctr.appendChild(mkB9("➕", () => zoomEn((v0 + v1) / 2, 0.7), "Acercar"));
+    ctr.appendChild(mkB9("⤢", () => { v0 = 0; v1 = Lc; pinta(); }, "Recorrido completo"));
+    // ---- PALETA (features, por tap) ----
     [["cont", "─", "Costura continua", "El tramo vuelve a costura normal (se quita del código)"],
-     ["open", "Ω", "Sin costura (bolsillo)", "La cinta pasa SIN coser en el tramo (bolsillo/túnel)"],
-     ["loop", "◯", "Loop Ø", "Bolsillo con diámetro declarado (aloja tubo/cuerda de Ø)"],
-     ["safety", "‼", "C. de seguridad", "Refuerzo de costura en el tramo"],
+     ["open", "Ω", "Sin costura (bolsillo)", "La cinta pasa SIN coser en el tramo"],
+     ["loop", "◯", "Loop Ø", "Bolsillo con diámetro declarado"],
+     ["safety", "‼", "C. de seguridad", "Refuerzo de costura"],
      ["gap", "✂", "Hueco sin cinta", "En este tramo NO hay cinta"]].forEach(([tp, ic, lb, tip]) => {
       const ch = document.createElement("button"); ch.type = "button"; ch.className = "ced-chip ced-chip-" + tp; ch.title = tip;
-      ch.innerHTML = "<b>" + ic + "</b> " + lb;
+      const bi = document.createElement("b"); bi.textContent = ic; ch.appendChild(bi); ch.appendChild(document.createTextNode(" " + lb));
       ch.addEventListener("click", () => {
-        if (sel < 0) { palHint.classList.add("flash"); setTimeout(() => palHint.classList.remove("flash"), 900); return; }
+        if (sel < 0) { palHint.classList.remove("flash"); void palHint.offsetWidth; palHint.classList.add("flash"); return; }
         const s = secs[sel];
         if (tp === "cont") { secs.splice(sel, 1); sel = -1; }
         else if (tp === "loop") {
@@ -3463,25 +3492,29 @@
           const v = window.CalcCIBSA.evalExpr(String(d).replace(",", "."));
           if (!(v > 0)) return alert("Ø no válido.");
           s.tipo = "open"; s.dia = rd3(v);
-        } else { s.tipo = (tp === "open") ? "open" : tp; if (tp !== "open") s.dia = 0; else s.dia = 0; }
+        } else { s.tipo = tp; s.dia = 0; }
         pinta();
       });
       pal.appendChild(ch);
     });
     pal.appendChild(palHint);
-    // --- código a mano (bidireccional) + acciones ---
+    // ---- CÓDIGO: copiar + edición a mano (bidireccional) ----
+    bCopy.addEventListener("click", () => {
+      const txt = serial9();
+      const listo = () => { bCopy.textContent = "✓"; setTimeout(() => { bCopy.textContent = "📋"; }, 1200); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(listo).catch(listo);
+      else { const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (_) {} ta.remove(); listo(); }
+    });
+    bRaw.addEventListener("click", () => { raw.classList.toggle("hidden"); if (!raw.classList.contains("hidden")) { raw.value = serial9(); raw.focus(); } });
     raw.addEventListener("input", () => { secs = (SK9.parseCintaTramos(raw.value, Lc) || []).map((t) => ({ a: t.a, b: t.b, tipo: t.tipo, dia: t.dia || 0 })); sel = -1; pinta(); });
-    const bRaw = mkB9("✎ Código a mano", () => { raw.classList.toggle("hidden"); if (!raw.classList.contains("hidden")) { raw.value = serial9(); raw.focus(); } });
-    const bOK = mkB9("✔ Aplicar", () => { c.edicion = serial9(); cerrar(); if (alAplicar) alAplicar(); });
-    const bNo = mkB9("✕ Cancelar", () => cerrar());
-    acc.appendChild(bRaw); acc.appendChild(bOK); acc.appendChild(bNo);
+    // ---- acciones / cierre ----
     const onKey9 = (e) => { if (e.target && /input|textarea/i.test(e.target.tagName || "")) return; if (e.key === "Escape") cerrar(); };
-    const cerrar = () => { overlay.remove(); document.removeEventListener("keydown", onKey9); };
-    xBtn.addEventListener("click", cerrar);
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) cerrar(); });
+    const cerrar = () => { ov.classList.add("saliendo"); setTimeout(() => ov.remove(), 180); document.removeEventListener("keydown", onKey9); };
+    xB.addEventListener("click", cerrar);
+    bNo.addEventListener("click", cerrar);
+    bOK.addEventListener("click", () => { c.edicion = serial9(); cerrar(); if (alAplicar) alAplicar(); });
+    ov.addEventListener("pointerdown", (e) => { if (e.target === ov) cerrar(); });
     document.addEventListener("keydown", onKey9);
-    body.appendChild(tit); body.appendChild(svgD); body.appendChild(nav); body.appendChild(pal); body.appendChild(cod); body.appendChild(raw);
-    overlay.appendChild(xBtn); overlay.appendChild(body); overlay.appendChild(acc); document.body.appendChild(overlay);
     pinta();
   }
   function nuevaCinta(base) {
