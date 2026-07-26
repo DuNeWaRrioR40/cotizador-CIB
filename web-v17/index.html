@@ -160,6 +160,7 @@
         <label class="hist-f-fecha">Desde <input id="histFDesde" type="date" /></label>
         <label class="hist-f-fecha">Hasta <input id="histFHasta" type="date" /></label>
         <select id="histFTipo" class="hist-f">
+          <option value="Modificacion">Modificación</option>
           <option value="">Todos los tipos</option>
           <option value="Uniforme">Uniforme</option>
           <option value="Compuesto">Compuesto</option>
@@ -379,6 +380,10 @@
           <label class="chk desc-monto-chk"><input id="f_despachoOn" type="checkbox" /> incluir</label>
           <div class="desc-wrap"><input id="f_despacho" type="text" inputmode="numeric" autocomplete="off" value="0" disabled /><span class="desc-suffix">$</span></div>
         </div>
+      </div>
+      <div id="wTallerHoras" class="field hidden"><span>Cobro por mínimo de taller (horas ×)</span>
+        <input id="f_tallerHoras" type="text" inputmode="decimal" value="1" title="Horas de trabajo estimadas para la MODIFICACIÓN: se cobra mínimo de taller (0,6 UF) × horas. Solo aparece en modo modificación." />
+        <p id="tallerHint" class="muted small"></p>
       </div>
       <input id="f_version" type="hidden" value="01" />
     </div>

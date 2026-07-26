@@ -8,7 +8,7 @@
     telas: [], telasOpcSel: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
     ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, ensambles: [], figImgUnif: null, figura3D: null, anclasUnif: [], notasUnif: [], subVC: false, vis3D: null, cotasOcultas: {}, cotasPos: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
-    docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1",
+    docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1", modOrigen: null,
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [], cintasUnif: [],
     // v4: bordes y unión (uniforme)
@@ -209,12 +209,12 @@
   function tombRemove(ent) { const k = tombClave(ent); tombStore(tombLoad().filter((t) => t.k !== k)); }
   function tombEntierra(e) { const k = tombClave(e), ts = e.ts || 0; return tombLoad().some((t) => t.k === k && (t.ts || 0) > ts); }
   function histPrune(arr) { const lim = Date.now() - HIST_DIAS * 86400000; return arr.filter((e) => e && e.ts >= lim); }
-  function histTipo() { return state.docMode === "preliminar" ? "Preliminar" : (state.prodMode === "compuesto" ? "Compuesto" : "Uniforme"); }
+  function histTipo() { if (state.modOrigen) return "Modificacion"; return state.docMode === "preliminar" ? "Preliminar" : (state.prodMode === "compuesto" ? "Compuesto" : "Uniforme"); }
   function histFechaCorta(d) { return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2); }
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
-  const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_visita", "f_despacho", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email", "f_fono1_cliente", "f_fono2_cliente", "f_emp_fono1", "f_emp_fono2"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "vis3D", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "ensambles", "figImgUnif", "factorUnif", "granelLineas"];
+  const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_visita", "f_despacho", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email", "f_fono1_cliente", "f_fono2_cliente", "f_emp_fono1", "f_emp_fono2", "f_tallerHoras"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "vis3D", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "ensambles", "figImgUnif", "factorUnif", "granelLineas", "modOrigen"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -762,7 +762,7 @@
     const granelPref = entTieneGranel(ent) ? '<span class="hist-granel">Granel/</span>' : "";
     const editado = (ent.editado || (ent.snap && ent.snap.editado) || "");
     const badge = editado ? ' · <span class="hist-badge editado">editado ' + esc(editado) + '</span>' : (esUltima ? ' · <span class="hist-badge">última versión</span>' : '');
-    const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "") + (editado ? " editado" : "") + (ent.borrador ? " borrador" : "");
+    const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "") + (editado ? " editado" : "") + (ent.borrador ? " borrador" : "") + (ent.tipo === "Modificacion" ? " modificacion" : "");
     const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = ent.borrador ? "Continuar este borrador (restaura el trabajo tal como quedó)" : "Duplicar para editar (como versión siguiente)";
     const vBadge = (function () { const v = ventaDe(ent); return v ? ' · <span class="hist-venta">' + (v.tipo === "boleta" ? "B" : "F") + " " + esc(String(v.numero)) + (v.odt ? " · ODT " + esc(String(v.odt)) : "") + "</span>" : ""; })();
     main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + badge + '</span>' +
@@ -792,6 +792,35 @@
     bFa.title = vnt ? ("Vendido — " + (vnt.tipo === "boleta" ? "Boleta" : "Factura") + " N° " + vnt.numero + (vnt.odt ? " · ODT " + vnt.odt : "") + " (clic para editar; ahí también se ingresa la ODT)") : "Vincular a venta (factura/boleta + ODT)";
     bFa.textContent = "🧾";
     bFa.addEventListener("click", (e) => { e.stopPropagation(); dialogoVenta(ent); });
+    // v17-108: 🔧 NUEVA MODIFICACIÓN sobre un producto VENDIDO — el original queda CONGELADO;
+    // nace un registro tipo "Modificacion" (clave de sync propia) vinculado por snap.origen.
+    // v17-110 REGLA DURA: NUNCA modificar sin FACTURA — boleta o venta sin número no habilitan 🔧.
+    const conFactura = !!(vnt && vnt.numero && (vnt.tipo || "factura") === "factura");
+    if (conFactura && ent.tipo !== "Modificacion") {
+      const bMo = document.createElement("button"); bMo.type = "button"; bMo.className = "hist-act mod";
+      bMo.title = "Nueva MODIFICACIÓN de este producto vendido (el original no se toca; se cobra por mínimo de taller × horas + materiales a granel)";
+      bMo.textContent = "🔧";
+      bMo.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!conFactura) return alert("Solo se pueden modificar productos vendidos CON FACTURA registrada (🧾). Vincula la factura primero.");
+        aplicarHistorial(ent);   // carga el diseño completo del original (editable con todo el arsenal)
+        const fN9 = window.CalcCIBSA.fmtNum;
+        state.modOrigen = {
+          ts: ent.ts, version: ent.version, tipo: ent.tipo,
+          correlativo: (ent.snap && ent.snap.correlativo) || null,
+          titulo: $("f_titulo").value.trim() || "producto",
+          tela: ($("f_tela") && $("f_tela").value) || "",
+          dims: (num("f_largo", 0) > 0 && num("f_ancho", 0) > 0) ? (fN9(num("f_largo", 0)) + " × " + fN9(num("f_ancho", 0)) + " m") : "",
+          factura: (vnt && vnt.numero) || null, facturaTipo: (vnt && vnt.tipo) || null, odt: (vnt && vnt.odt) || null,
+          cliente: ((ent.nombre || "") + " " + (ent.apellido || "")).trim(),
+        };
+        try { state.modOrigen.base = costosPlanoUnif(); } catch (_) { state.modOrigen.base = null; }   // línea base: lo YA pagado
+        const th9 = $("f_tallerHoras"); if (th9 && !(parseFloat(th9.value) > 0)) th9.value = "1";
+        sincModUI(); recompute(); irASeccion($("f_tallerHoras"));
+        alert("MODO MODIFICACIÓN de \"" + state.modOrigen.titulo + "\" (" + (state.modOrigen.factura ? "Fact./Bol. N° " + state.modOrigen.factura : "vendido") + ").\n\n· El registro ORIGINAL queda congelado — esto se guardará como un registro NUEVO tipo Modificación, vinculado a él.\n· Cobro: mínimo de taller (0,6 UF) × HORAS que estimes, en CONDICIONES.\n· Materiales adicionales: agrégalos al carro a granel (se cotizan y cobran).\n· Describe lo pedido en OBSERVACIONES: saldrá en la fila del PDF.");
+      });
+      acts.appendChild(bMo);
+    }
     acts.appendChild(bDl); acts.appendChild(bEd); acts.appendChild(bFa); acts.appendChild(bDel);
     card.appendChild(main); card.appendChild(acts);
     return card;
@@ -3043,7 +3072,7 @@
       if (!(Lc > 0)) return null;
       const tramos = SK.parseCintaTramos(c.edicion, Lc), seg = SK.cintaSegmentos(Lc, tramos);
       return { arista: arista, ax: ax, ay: ay, ux: ux, uy: uy, nx: -uy, ny: ux, inX: inX, inY: inY, L: Lc,
-        tramos: tramos, seg: seg, zoomTramos: SK.parseZoomRanges(c.zoomDetalle, Lc), ancho: ancho, tipo: c.tipo || "cinta", legend: c.legend || "", rotulo: !!c.rotulo, id: rotId(c) };
+        tramos: tramos, seg: seg, zoomTramos: SK.parseZoomRanges(c.zoomDetalle, Lc), ancho: ancho, tipo: c.tipo || "cinta", legend: c.legend || "", rotulo: !!c.rotulo, sinDetalle: !!c.sinDetalle, id: rotId(c) };
     };
     if (c.modo === "perimetro") {
       const off = Math.max(0, ev(c.offset) || 0), runs = [];
@@ -3695,6 +3724,11 @@
             abrirCintaEditor(c, Lc9, () => { ied.value = c.edicion || ""; iz.value = c.zoomDetalle || ""; refresh(); onChange(); });
           });
           card.appendChild(bEd9); }
+        { const ld9 = document.createElement("label"); ld9.className = "chk";
+          const cd9 = document.createElement("input"); cd9.type = "checkbox"; cd9.checked = !c.sinDetalle;
+          cd9.addEventListener("change", () => { c.sinDetalle = !cd9.checked; refresh(); onChange(); });
+          const sd9 = document.createElement("span"); sd9.textContent = "Mostrar barra de detalle del patrón en el plano";
+          ld9.appendChild(cd9); ld9.appendChild(sd9); card.appendChild(ld9); }
         }
         const ayuda = document.createElement("p"); ayuda.className = "muted small"; card.appendChild(ayuda);
         const ln = document.createElement("label"); ln.className = "field full"; ln.innerHTML = "<span>Nombre / leyenda (plano)</span>";
@@ -6024,12 +6058,14 @@
   function recompute() {
     if (typeof sincBotonFigura3D === "function") sincBotonFigura3D();
     if (typeof sincOjTotalLock === "function") sincOjTotalLock();
+    if (typeof sincModUI === "function") sincModUI();
     if (state.docMode === "preliminar") recomputePrelim();
     else if (state.docMode === "formal" && state.prodMode === "compuesto") recomputeCompuesto();
     else recomputeUniforme();
     refreshRotuloChks();
     addZoomBtns();
     actualizarColapsables();
+    if (typeof pintarResumenMod === "function") pintarResumenMod();
     publicarVistaCliente();
   }
 
@@ -6055,6 +6091,7 @@
       activarClicOcultarCotas(sk, state.cotasOcultas, refrescarOcUnif);
       activarArrastreCotas(sk, state.cotasPos, refrescarOcUnif);
       activarMenuAristas(sk, accionesAristaUnif);
+      activarCintaVistas(sk, () => state.cintasUnif, () => { renderCintasUnif(); recompute(); });
       activarAnclas(sk, { anclas: state.anclasUnif, cortes: state.cortesUnif, ancho: ancho || 0, largo: largo || 0, vol: () => (alturaUnif() > 0 ? { altos: altosUnif(), alas: alasUnif() } : null), onChange: () => { renderCortesUnif(); recompute(); } });
       activarNotas(sk, state.notasUnif, recompute);
       menuPlano(sk, [
@@ -8854,6 +8891,25 @@
   // Interacción sobre el plano en vivo: arrastrar anclas (las de corte se IMANTAN a las de
   // arista para empatar) + clic sin arrastre = menú (fijar distancia exacta / desempatar / eliminar).
   // ctx: { anclas, cortes, ancho, largo, onChange }
+  // v17-111: ✕ de las vistas del detalle de cintas — ocultar barra principal / eliminar zooms.
+  function activarCintaVistas(container, getCintas, onChange) {
+    if (!container || !getCintas) return;
+    container.querySelectorAll("[data-cdel]").forEach((el9) => el9.addEventListener("click", (e9) => {
+      e9.stopPropagation();
+      const c9 = (getCintas() || []).find((c) => String(rotId(c)) === el9.getAttribute("data-cdel")); if (!c9) return;
+      if (!confirm("¿Quitar del plano la barra de detalle de esta cinta? (la cinta y sus zooms siguen; reactívala en su ficha)")) return;
+      c9.sinDetalle = true; onChange();
+    }));
+    container.querySelectorAll("[data-czdel]").forEach((el9) => el9.addEventListener("click", (e9) => {
+      e9.stopPropagation();
+      const par9 = el9.getAttribute("data-czdel").split("|");
+      const c9 = (getCintas() || []).find((c) => String(rotId(c)) === par9[0]); if (!c9) return;
+      const rangos9 = String(c9.zoomDetalle || "").split(",").map((s) => s.trim()).filter(Boolean);
+      rangos9.splice(parseInt(par9[1], 10), 1);
+      c9.zoomDetalle = rangos9.join(", ");
+      onChange();
+    }));
+  }
   function activarAnclas(container, ctx) {
     if (!container || !ctx) return;
     if (_anchorPend && _anchorPend.limpiar) _anchorPend.limpiar(); // un re-render cancela la conexión pendiente
@@ -11910,6 +11966,7 @@
         activarClicOcultarCotas(sketchBox, pz.cotasOcultas, recomputeCompuesto);
         activarArrastreCotas(sketchBox, pz.cotasPos || (pz.cotasPos = {}), recomputeCompuesto);
         activarMenuAristas(sketchBox, accionesAristaPieza(pz));
+        activarCintaVistas(sketchBox, () => pz.cintas || [], () => { renderPiezas(); recompute(); });
         activarAnclas(sketchBox, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, vol: () => { const aH = altosPz(pz); return aH ? { altos: aH, alas: alasPz(pz) } : null; }, onChange: () => { renderPiezas(); recompute(); } });
         activarNotas(sketchBox, (pz.notas || (pz.notas = [])), recomputeCompuesto);
         const refrescarOcPz = () => { renderPiezas(); recompute(); };
@@ -12014,7 +12071,7 @@
         body.innerHTML = '<p class="muted small">Completa largo y ancho de esta pieza.</p>';
       } else {
         const sk = document.createElement("div"); sk.className = "sketch"; sk.id = "prevsk_" + pz.id;
-        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); activarArrastreCotas(sk, pz.cotasPos || (pz.cotasPos = {}), recomputeCompuesto); activarMenuAristas(sk, accionesAristaPieza(pz)); activarAnclas(sk, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, vol: () => { const aH = altosPz(pz); return aH ? { altos: aH, alas: alasPz(pz) } : null; }, onChange: () => { renderPiezas(); recompute(); } }); activarNotas(sk, (pz.notas || (pz.notas = [])), recomputeCompuesto); }
+        if (window.SketchCIBSA && !document.body.classList.contains("no-plano")) { sk.innerHTML = sketchDualSVG(sketchPieza(pz), pz.trasera, cortesSpec(pz.backCortes), aletasSpec(pz.backAletas)); activarArrastreCallouts(sk, pz.rotDrag, recomputeCompuesto); activarClicOcultarCotas(sk, pz.cotasOcultas, recomputeCompuesto); activarArrastreCotas(sk, pz.cotasPos || (pz.cotasPos = {}), recomputeCompuesto); activarMenuAristas(sk, accionesAristaPieza(pz)); activarCintaVistas(sk, () => pz.cintas || [], () => { renderPiezas(); recompute(); }); activarAnclas(sk, { anclas: (pz.anclas || (pz.anclas = [])), cortes: pz.cortes, ancho: window.CalcCIBSA.evalExpr(pz.ancho) || 0, largo: window.CalcCIBSA.evalExpr(pz.largo) || 0, vol: () => { const aH = altosPz(pz); return aH ? { altos: aH, alas: alasPz(pz) } : null; }, onChange: () => { renderPiezas(); recompute(); } }); activarNotas(sk, (pz.notas || (pz.notas = [])), recomputeCompuesto); }
         body.appendChild(sk);
         const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn-outline"; dl.textContent = "Descargar plano (PDF)";
         dl.addEventListener("click", () => descargarSketchPieza(pz));
@@ -12083,6 +12140,8 @@
     state.figImgUnif = null; _figBaked = null; _figEditOn = false;
     // Modelo 3D del cliente (sesión): también se despide
     _mod3D = null; _mod3DCaps = []; if (typeof sincBtnMod3D === "function") sincBtnMod3D(); if (typeof renderMod3DCaps === "function") renderMod3DCaps();
+    // Modo modificación: fuera (lección v17-60)
+    state.modOrigen = null; { const th = $("f_tallerHoras"); if (th) th.value = "1"; } if (typeof sincModUI === "function") sincModUI();
     if (typeof sincBtnFigImg === "function") sincBtnFigImg();
     // Reset producto compuesto → vuelve a uniforme (incluye vínculos de ensamble)
     state.prodMode = "uniforme"; state.piezas = []; state.compuesto = null; state.ensambles = [];
@@ -12135,6 +12194,76 @@
 
   // Campos obligatorios para REGISTRAR la cotización en el historial. Devuelve la lista de
   // faltantes (vacía = OK): se acepta contacto completo (nombre + apellido) O razón social de empresa.
+  // v17-108: MODO MODIFICACIÓN — campo de taller en CONDICIONES (solo visible en modo mod) y
+  // resumen de cobro que reemplaza a las tarjetas de precio del producto (el original YA se pagó).
+  // v17-109: costos de los elementos del PLANO (mismos motores de siempre) — para la LÍNEA BASE
+  // de una modificación y su DELTA: lo agregado/agrandado sobre el original SÍ se cobra
+  // (ojetillos, aletas, straps, cintas, ítems de cortes, complementos); quitar no descuenta.
+  function costosPlanoUnif() {
+    const largo = num("f_largo", 0), ancho = num("f_ancho", 0);
+    const N = Math.max(1, parseInt(num("f_cantidad", 1), 10) || 1);
+    const valorOj = num("f_ojvalor", CFG.VALOR_OJETILLO_DEFAULT);
+    const nOj = (nOjetillos() + ojEnCortesN(state.cortesUnif, ancho, largo, state.aletasUnif) + ojEnAletasN(state.aletasUnif)) * N;
+    let cortes = 0;
+    try {
+      const skSpec = { ancho: ancho, largo: largo, ventanas: [], cortes: cortesSpec(state.cortesUnif), aletas: aletasSpec(state.aletasUnif), straps: strapsSpec(state.strapsUnif, { ancho: ancho, largo: largo }) };
+      cortes = costoCortesUnit(skSpec, valorOj) * N;
+    } catch (_) {}
+    return {
+      nOj: nOj, ojMon: nOj * valorOj,
+      aletas: aletasTotal(state.aletasUnif, N, valorOj, facUnif()) + aletasTotal(state.backAletasUnif, N, valorOj, facUnif()),
+      straps: strapsTotal(state.strapsUnif, N, { ancho: ancho, largo: largo }),
+      cintas: cintasTotal(state.cintasUnif, N, { ancho: ancho, largo: largo }),
+      cortes: cortes,
+      comp: compTotalUnit(state.complementosUnif) * N,
+    };
+  }
+  function deltaPlanoMod() {
+    if (!state.modOrigen || !state.modOrigen.base) return { total: 0, lineas: [] };
+    const b = state.modOrigen.base, cNow = costosPlanoUnif();
+    const d = (k) => Math.max(0, Math.round((cNow[k] || 0) - (b[k] || 0)));
+    const dOjN = Math.max(0, (cNow.nOj || 0) - (b.nOj || 0));
+    const lineas = [];
+    if (d("ojMon") > 0) lineas.push({ lbl: "Ojetillos nuevos (" + dOjN + " u)", monto: d("ojMon") });
+    if (d("aletas") > 0) lineas.push({ lbl: "Aletas / anexos (delta)", monto: d("aletas") });
+    if (d("straps") > 0) lineas.push({ lbl: "Straps (delta)", monto: d("straps") });
+    if (d("cintas") > 0) lineas.push({ lbl: "Cintas / cierres (delta)", monto: d("cintas") });
+    if (d("cortes") > 0) lineas.push({ lbl: "Elementos de cortes (delta)", monto: d("cortes") });
+    if (d("comp") > 0) lineas.push({ lbl: "Complementos (delta)", monto: d("comp") });
+    return { total: lineas.reduce((s, l) => s + l.monto, 0), lineas: lineas };
+  }
+  function sincModUI() {
+    const w = $("wTallerHoras"); if (w) w.classList.toggle("hidden", !state.modOrigen);
+    const h = $("tallerHint");
+    if (h && state.modOrigen) {
+      const horas = Math.max(0, num("f_tallerHoras", 0)), min9 = minProduccionPesos();
+      h.textContent = min9 > 0
+        ? ("Mínimo de taller (0,6 UF) = " + money(min9) + " · × " + horas + " h = " + money(Math.round(min9 * horas)))
+        : "Cargando UF del día…";
+    }
+    const bg = $("btnGenerar"); if (bg && state.modOrigen) bg.textContent = "Generar MODIFICACIÓN"; else if (bg) bg.textContent = bg.dataset.txt0 || bg.textContent;
+  }
+  function pintarResumenMod() {
+    if (!state.modOrigen) return;
+    const rh = $("resultHolder"); if (!rh) return;
+    const o = state.modOrigen, horas = Math.max(0, num("f_tallerHoras", 0)), min9 = minProduccionPesos();
+    const taller = Math.round(min9 * horas);
+    const granel = granelLineasPDF().reduce((s, g) => s + g.total, 0);
+    const extras = extrasCondiciones().reduce((s, e) => s + e.neto, 0);
+    const dPl = deltaPlanoMod();
+    const neto = taller + granel + extras + dPl.total, iva = Math.round(neto * CFG.IVA_PCT / 100);
+    rh.innerHTML = '<div class="mod-card"><div class="mod-card-tit">🔧 MODIFICACIÓN de "' +
+      (o.titulo || "producto") + '"' + (o.factura ? " · " + (o.facturaTipo === "boleta" ? "Boleta" : "Factura") + " N° " + o.factura : "") + "</div>" +
+      '<div class="mod-card-row">Taller: ' + money(min9) + " × " + horas + " h = <b>" + money(taller) + "</b></div>" +
+      dPl.lineas.map((l9) => '<div class="mod-card-row">' + l9.lbl + ": <b>" + money(l9.monto) + "</b></div>").join("") +
+      (granel > 0 ? '<div class="mod-card-row">Materiales (granel): <b>' + money(granel) + "</b></div>" : "") +
+      (extras > 0 ? '<div class="mod-card-row">Visita/Despacho: <b>' + money(extras) + "</b></div>" : "") +
+      '<div class="mod-card-row total">Neto ' + money(neto) + " · IVA " + money(iva) + " · <b>Total " + money(neto + iva) + "</b></div>" +
+      '<div class="mod-card-nota">El producto original NO se recotiza (ya fue vendido). Plano y diseño quedan guardados en este registro de modificación.</div>' +
+      '<button type="button" class="btn-outline mod-card-salir">✕ Salir del modo modificación</button></div>';
+    const bS = rh.querySelector(".mod-card-salir");
+    if (bS) bS.addEventListener("click", () => { if (confirm("¿Salir del modo modificación? (El diseño cargado se conserva en pantalla; no se guardará como modificación.)")) { state.modOrigen = null; sincModUI(); recompute(); } });
+  }
   function faltantesRegistro(nombre, apellido) {
     if (empresaDatos()) return [];               // empresa con razón social: suficiente
     const falta = [];
@@ -12148,6 +12277,7 @@
       falta.join("\n• ") + "\n\n(O activa \u201CEmpresa\u201D y completa la razón social.)");
   }
   async function generar() {
+    if (state.modOrigen) return generarModificacion();   // v17-108: la modificación tiene camino propio
     if (state.docMode === "preliminar") return generarPrelim();
     if (state.docMode === "formal" && state.prodMode === "compuesto") return generarCompuesto();
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
@@ -12192,6 +12322,49 @@
     } catch (e) { cerrarProgreso(); alert("Error al generar el PDF:\n" + (e.message || e)); }
   }
 
+  // v17-108: MODIFICACIÓN de un producto vendido — cobra mínimo de taller × horas + granel;
+  // el producto base NO se recotiza. Fila única en el PDF con el detalle completo del origen.
+  async function generarModificacion() {
+    const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
+    { const falta = faltantesRegistro(nombre, apellido); if (falta.length) return alertaFaltantes(falta); }
+    const o = state.modOrigen || {};
+    if (!o.factura || (o.facturaTipo || "factura") !== "factura") return alert("REGLA: una modificación solo puede nacer de un producto vendido CON FACTURA. Este vínculo no la tiene — vuelve al historial, vincula la factura (🧾) y crea la modificación desde 🔧.");
+    const horas = Math.max(0, num("f_tallerHoras", 0));
+    const min9 = minProduccionPesos();
+    const granelLineas = granelLineasPDF();
+    if (!(horas > 0) && !granelLineas.length && !(deltaPlanoMod().total > 0)) return alert("Ingresa las HORAS de taller (CONDICIONES), agrega materiales al carro a granel, o agrega elementos al plano (ojetillos/aletas/straps/cintas): una modificación debe cobrar algo.");
+    if (horas > 0 && !(min9 > 0)) return alert("La UF del día aún no carga (mínimo de taller). Espera un momento y reintenta.");
+    if (!(await prepararVersionHistorial(nombre, apellido))) return;
+    const tallerSub = Math.round(min9 * horas);
+    const dPl = deltaPlanoMod();
+    const extras = extrasCondiciones();
+    const subtotal = tallerSub + dPl.total + granelLineas.reduce((s, g) => s + g.total, 0) + extras.reduce((s, e) => s + e.neto, 0);
+    const iva = Math.round(subtotal * CFG.IVA_PCT / 100);
+    const calc = { subtotal, descuentoPct: 0, descuento: 0, netoConDescuento: subtotal, ivaPct: CFG.IVA_PCT, iva, total: subtotal + iva };
+    const obs = $("f_observaciones").value.trim();
+    const detalle = "Modificación \"" + (o.titulo || "producto") + "\" · " + (o.tela || "s/tela") + " · " + (o.dims || "s/medidas") +
+      " · " + (o.factura ? ((o.facturaTipo === "boleta" ? "Boleta" : "Factura") + " N° " + o.factura) : "sin factura") +
+      (o.odt ? " · ODT " + o.odt : "") + " · " + (o.cliente || (nombre + " " + apellido).trim());
+    const datos = {
+      soloGranel: true,
+      modificacion: { detalle: detalle, obs: obs ? obs.split(/\n+/).map((s) => s.trim()).filter(Boolean) : [], horas: horas, minimo: min9, extrasPlano: dPl.lineas, subtotal: tallerSub + dPl.total, origen: o },
+      cliente: { nombre, apellido, email: $("f_email").value.trim(), dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente"), fonos: [empVal("f_fono1_cliente"), empVal("f_fono2_cliente")].filter(Boolean) }, empresa: empresaDatos(),
+      version: $("f_version").value.trim() || "01", fecha: new Date(),
+      titulo: "Modificación — " + (o.titulo || "producto"),
+      diasEntrega: parseInt(num("f_dias", CFG.DIAS_ENTREGA_DEFAULT), 10),
+      descuentoLabel: null,
+      vendedor: vendedorSel(),
+      observaciones: obs || null,
+      complementos: [], aletas: [], granel: granelLineas, extras: extras, calc: calc,
+      odt: _odtActual,
+    };
+    datos.correlativo = guardarHistorial(nombre, apellido, datos.version);
+    abrirProgreso();
+    try {
+      const { bytes, filename } = await window.PDFCotizacion.generarCotizacion(datos);
+      genListo(new Blob([bytes], { type: "application/pdf" }), filename, null);
+    } catch (e) { cerrarProgreso(); alert("Error al generar el PDF:\n" + (e.message || e)); }
+  }
   // Cotización SOLO de productos a granel (sin carpa): reusa generarCotizacion con flag soloGranel.
   async function generarGranelSolo(nombre, apellido) {
     const granelLineas = granelLineasPDF();

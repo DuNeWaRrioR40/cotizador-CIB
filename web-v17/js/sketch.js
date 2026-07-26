@@ -1377,7 +1377,7 @@
   // Devuelve el nº de barras de detalle (completa + zooms) por cinta única, para dimensionar el lienzo.
   function cintaDetalleN(sk) {
     const seen = new Set(); let n = 0;
-    (sk.cintas || []).forEach((c) => { if (c.L > 0 && !seen.has(c.id)) { seen.add(c.id); n += 1 + ((c.zoomTramos && c.zoomTramos.length) || 0); } });
+    (sk.cintas || []).forEach((c) => { if (c.L > 0 && !seen.has(c.id)) { seen.add(c.id); n += (c.sinDetalle ? 0 : 1) + ((c.zoomTramos && c.zoomTramos.length) || 0); } });
     return n;
   }
   function resumenCintaDetalleSVG(sk, x0, yTop, availW) {
@@ -1408,8 +1408,18 @@
       const seg = c.seg || {}, zt = c.zoomTramos || [];
       const marks = zt.map((z, i) => ({ a: z.a, b: z.b, n: i + 1 }));
       const tit = (nm[c.arista] || c.arista || "") + (c.tipo === "cierre" ? " cierre" : "") + (c.legend && c.legend.trim() ? " · " + c.legend.trim() : "") + " — detalle del patrón (L=" + fmt(c.L) + "m)";
-      s += strip(y, c.L, seg, tit, marks); y += stripH + rowGap;
-      zt.forEach((z, i) => { s += strip(y, z.b - z.a, clipSeg(seg, z.a, z.b), "Zoom " + (i + 1) + " · " + fmt(z.a) + "–" + fmt(z.b) + " m", null, z.a); y += stripH + rowGap; });
+      // v17-111: ✕ roja por VISTA (homóloga a las capturas 3D): la principal se oculta (sinDetalle),
+      // cada zoom se elimina de zoomDetalle. Las maneja activarCintaVistas (app).
+      if (!c.sinDetalle) {
+        s += strip(y, c.L, seg, tit, marks);
+        s += `<text class="cinta-vista-x" data-cdel="${esc(String(c.id))}" x="${f1(x0 + availW)}" y="${f1(y + titH - 1)}" text-anchor="end">✕</text>`;
+        y += stripH + rowGap;
+      }
+      zt.forEach((z, i) => {
+        s += strip(y, z.b - z.a, clipSeg(seg, z.a, z.b), "Zoom " + (i + 1) + " · " + fmt(z.a) + "–" + fmt(z.b) + " m", null, z.a);
+        s += `<text class="cinta-vista-x" data-czdel="${esc(String(c.id))}|${i}" x="${f1(x0 + availW)}" y="${f1(y + titH - 1)}" text-anchor="end">✕</text>`;
+        y += stripH + rowGap;
+      });
     });
     return s;
   }
@@ -1921,7 +1931,7 @@
     const cintaGrp = cintasResumen(sk).length;
     const cintaResH = cintaGrp ? (11 + cintaGrp * 9 + 4) : 0;
     const cintaDetN = cintaDetalleN(sk);   // barras de detalle (completa + zooms) por cinta única
-    const cintaDetH = cintaDetN ? (cintaDetN * 40 + 8) : 0;
+    const cintaDetH = cintaDetN ? (cintaDetN * 48 + 10) : 0;   // v17-111: 48 reales (con nombres de feature) — 40 truncaba
     const resTot = resH + (cintaResH ? (resH ? 6 : 0) + cintaResH : 0);   // straps + cintas apilados
     const bottomH = Math.max(legH, resTot);
     const boundsBot = mTop + bh * scale;

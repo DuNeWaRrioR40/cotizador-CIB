@@ -893,6 +893,15 @@
     if (datos.ojetillosNota) {
       itemRow("", [["Ojetillos — resumen", true], [datos.ojetillosNota, false]], "", "");
     }
+    // v17-108: fila ÚNICA de la MODIFICACIÓN — detalle del origen + observaciones + cobro taller.
+    if (datos.modificacion) {
+      const mo = datos.modificacion;
+      const det = [[mo.detalle, true]];
+      (mo.obs || []).forEach((s9) => det.push([s9, false, 9.5]));
+      if (mo.horas > 0) det.push(["Cobro por mínimo de taller: " + mo.horas + " h × " + money(mo.minimo) + " (0,6 UF c/u)", false, 9]);
+      (mo.extrasPlano || []).forEach((l9) => det.push([l9.lbl + ": " + money(l9.monto), false, 9]));
+      itemRow("1", det, money(mo.subtotal), money(mo.subtotal));
+    }
     // Productos a granel (sin proveedor) — una fila por línea. Si la línea tiene descuento
     // propio, va como línea aparte EN NEGRITA para que el cliente lo vea con su monto.
     (datos.granel || []).forEach((g) => {
@@ -1435,6 +1444,7 @@
   // banda + costura + seguridad + bolsillos/loops + huecos, con POSICIONES reales, NOMBRE del
   // feature bajo los numerales, y barras de zoom (vistas inyectadas) con offset real.
   function detalleCintasPDF(doc, datos, cibsa, font, bold, W, H, M) {
+    const SK = global.SketchCIBSA; if (!SK) return;   // v17-111 BUG: SK no existía en este scope → return silencioso
     if (!datos.sketch || !(datos.sketch.cintas || []).length) return;
     let skC; try { skC = SK.construirSketch(datos.sketch); } catch (e) { return; }
     const seen = new Map(); (skC.cintas || []).forEach((c) => { if (!seen.has(c.id)) seen.set(c.id, c); });
@@ -1504,7 +1514,7 @@
       const seg = c.seg || {}, zt = c.zoomTramos || [];
       const marks = zt.map((z, i) => ({ a: z.a, b: z.b, n: i + 1 }));
       const tit = (nm[c.arista] || c.arista || "") + (c.tipo === "cierre" ? " · cierre" : "") + (c.legend && c.legend.trim() ? " · " + c.legend.trim() : "") + " — detalle del patron (L=" + SK.fmt(c.L) + "m)";
-      strip9(c.L, seg, tit, 0, marks);
+      if (!c.sinDetalle) strip9(c.L, seg, tit, 0, marks);
       zt.forEach((z, i) => {
         const segZ = { material: clip9(seg.material, z.a, z.b), stitch: clip9(seg.stitch, z.a, z.b), safety: clip9(seg.safety, z.a, z.b), opens: clip9(seg.opens, z.a, z.b), gaps: clip9(seg.gaps, z.a, z.b) };
         strip9(z.b - z.a, segZ, "Zoom " + (i + 1) + " · " + SK.fmt(z.a) + "-" + SK.fmt(z.b) + " m", z.a, null);
