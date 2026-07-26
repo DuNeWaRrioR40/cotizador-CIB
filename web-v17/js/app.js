@@ -3081,6 +3081,7 @@
         const ux = (e.bx - e.ax) / e.len, uy = (e.by - e.ay) / e.len;
         const arr = e.outAng * Math.PI / 180, inX = -Math.cos(arr), inY = -Math.sin(arr);
         const r = mk(e.ax + inX * off, e.ay + inY * off, ux, uy, inX, inY, e.len, "Perímetro");
+        if (r) r.offVis = Math.max(0, 0.16 - off);   // v17-112: misma separación visual
         if (r) { r.perim = true; runs.push(r); }
       });
       return runs;   // un solo objeto cinta (mismo id) → una ficha / un rótulo, dibujado en las 4 aristas
@@ -3114,7 +3115,11 @@
     const axp = e.ax + ux * desde + inX * off, ayp = e.ay + uy * desde + inY * off;
     const ang = (c.pivote && ev(c.angulo)) ? (ev(c.angulo) || 0) : 0;
     if (ang) { const g = ang * Math.PI / 180, cs = Math.cos(g), sn = Math.sin(g); const rx = ux * cs - uy * sn, ry = ux * sn + uy * cs; ux = rx; uy = ry; }
-    const r = mk(axp, ayp, ux, uy, inX, inY, Lc, c.arista || "sup"); return r ? [r] : [];
+    const r = mk(axp, ayp, ux, uy, inX, inY, Lc, c.arista || "sup");
+    // v17-112: separación VISUAL de la arista — el offset real (p. ej. 0.02) queda en el diseño y
+    // el costeo; el dibujo empuja la banda hacia adentro como si fuese ≥0.16 para que se aprecie.
+    if (r) r.offVis = Math.max(0, 0.16 - off);
+    return r ? [r] : [];
   }
   function cintasSpec(list, ctx) {
     ctx = ctx || {}; const A = ctx.ancho || 0, Lp = ctx.largo || 0; if (!(A > 0) || !(Lp > 0)) return [];

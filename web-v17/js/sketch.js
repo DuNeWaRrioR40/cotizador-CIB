@@ -987,10 +987,11 @@
       // v17-105: PRESENCIA — el ancho real (2 cm) es invisible a escala de paños grandes; la banda
       // se dibuja con un mínimo VISUAL (~9px) y relleno sutil, como los straps.
       const halfW = Math.max(Math.max(0.006, (c.ancho || 0.02) / 2), 4.5 / (scale || 1)), seg = c.seg || {};
-      const PX = (tm, wm) => f1(px(c.ax + c.ux * tm + c.nx * wm));
-      const PY = (tm, wm) => f1(py(c.ay + c.uy * tm + c.ny * wm));
-      const LX = (tm, d) => f1(px(c.ax + c.ux * tm + c.inX * d)); // etiquetas: hacia adentro del paño
-      const LY = (tm, d) => f1(py(c.ay + c.uy * tm + c.inY * d));
+      const vax = c.ax + c.inX * (c.offVis || 0), vay = c.ay + c.inY * (c.offVis || 0);   // v17-112: corrimiento SOLO visual
+      const PX = (tm, wm) => f1(px(vax + c.ux * tm + c.nx * wm));
+      const PY = (tm, wm) => f1(py(vay + c.uy * tm + c.ny * wm));
+      const LX = (tm, d) => f1(px(vax + c.ux * tm + c.inX * d)); // etiquetas: hacia adentro del paño
+      const LY = (tm, d) => f1(py(vay + c.uy * tm + c.inY * d));
       const seg2 = (t1, w1, t2, w2, cls) => { s += `<line class="${cls}" x1="${PX(t1, w1)}" y1="${PY(t1, w1)}" x2="${PX(t2, w2)}" y2="${PY(t2, w2)}"/>`; };
       const edgeCls = "cinta-edge" + (c.tipo === "cierre" ? " cierre" : "");
       (seg.material || []).forEach((m) => { // banda con RELLENO + bordes + tapas
@@ -1385,7 +1386,7 @@
     (sk.cintas || []).forEach((c) => { if (!seen.has(c.id)) seen.set(c.id, c); });
     const list = Array.from(seen.values()).filter((c) => c.L > 0);
     if (!list.length) return "";
-    const f1 = (n) => n.toFixed(1), titH = 8, bandH = 12, axisH = 15, rowGap = 8, stripH = titH + 4 + bandH + axisH;
+    const f1 = (n) => n.toFixed(1), titH = 8, bandH = 12, axisH = 27, rowGap = 8, stripH = titH + 4 + bandH + axisH;
     const nm = { sup: "Sup", inf: "Inf", izq: "Izq", der: "Der", "patrón": "Patrón" };
     // Recorta los segmentos al rango [za,zb] y los reubica a 0 (para las barras de zoom).
     const clipSeg = (seg, za, zb) => { const cl = (arr) => (arr || []).map((m) => { const a = Math.max(m.a, za), b = Math.min(m.b, zb); return (b > a) ? { a: a - za, b: b - za, dia: m.dia } : null; }).filter(Boolean); return { material: cl(seg.material), stitch: cl(seg.stitch), safety: cl(seg.safety), opens: cl(seg.opens), gaps: cl(seg.gaps) }; };
@@ -1396,10 +1397,21 @@
       o += `<text class="cinta-det-tit" x="${f1(x0)}" y="${f1(yy + titH - 1)}">${esc(tit)}</text>`;
       (seg.material || []).forEach((m) => { o += `<line class="cinta-edge" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/><line class="cinta-edge" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-cap" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.a)}" y2="${f1(yb1)}"/><line class="cinta-cap" x1="${bx(m.b)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/>`; });
       (seg.stitch || []).forEach((m) => { o += `<line class="cinta-stitch" x1="${bx(m.a)}" y1="${f1(yc)}" x2="${bx(m.b)}" y2="${f1(yc)}"/>`; });
-      (seg.safety || []).forEach((m) => { o += `<line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.a)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.b)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/>`; const tsf = (m.a + m.b) / 2; o += `<text class="cinta-dim" x="${bx(tsf)}" y="${f1(yb1 + 6)}" text-anchor="middle">! ${fmt(of9 + m.a)}–${fmt(of9 + m.b)}</text>`; o += `<text class="cinta-dim" x="${bx(tsf)}" y="${f1(yb1 + 11.5)}" text-anchor="middle">c. seguridad</text>`; });
-      (seg.opens || []).forEach((m) => { const tm = (m.a + m.b) / 2; o += `<text class="cinta-omega" x="${bx(tm)}" y="${f1(yc)}" text-anchor="middle" dominant-baseline="central">Ω</text>`; o += `<text class="cinta-dim" x="${bx(tm)}" y="${f1(yb1 + 6)}" text-anchor="middle">${m.dia > 0 ? "Ø" + fmt(m.dia) + " · " : ""}${fmt(of9 + m.a)}–${fmt(of9 + m.b)}</text>`; o += `<text class="cinta-dim" x="${bx(tm)}" y="${f1(yb1 + 11.5)}" text-anchor="middle">${m.dia > 0 ? "loop" : "bolsillo"}</text>`; });
-      (seg.gaps || []).forEach((m) => { o += `<rect class="cinta-gap" x="${bx(m.a)}" y="${f1(yb0)}" width="${f1((m.b - m.a) * sx)}" height="${f1(bandH)}"/><line class="cinta-cap" x1="${bx(m.a)}" y1="${f1(yb0 - 2)}" x2="${bx(m.a)}" y2="${f1(yb1 + 2)}"/><line class="cinta-cap" x1="${bx(m.b)}" y1="${f1(yb0 - 2)}" x2="${bx(m.b)}" y2="${f1(yb1 + 2)}"/>`; const tm = (m.a + m.b) / 2; o += `<text class="cinta-gap-lbl" x="${bx(tm)}" y="${f1(yb1 + 6)}" text-anchor="middle">✕${fmt(m.b - m.a)} · ${fmt(of9 + m.a)}–${fmt(of9 + m.b)}</text>`; o += `<text class="cinta-dim" x="${bx(tm)}" y="${f1(yb1 + 11.5)}" text-anchor="middle">hueco</text>`; });
-      o += `<text class="cinta-det-ax" x="${f1(x0)}" y="${f1(yb1 + axisH)}">${fmt(of9)}</text><text class="cinta-det-ax" x="${f1(x0 + availW)}" y="${f1(yb1 + axisH)}" text-anchor="end">${fmt(of9 + L)}m</text>`;
+      (seg.safety || []).forEach((m) => { o += `<line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.a)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.b)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb0)}" x2="${bx(m.b)}" y2="${f1(yb1)}"/><line class="cinta-safety" x1="${bx(m.a)}" y1="${f1(yb1)}" x2="${bx(m.b)}" y2="${f1(yb0)}"/>`; });
+      // v17-112: etiquetas de features en DOS niveles alternados (por posición) — dejan de acoplarse
+      const feats9 = []
+        .concat((seg.opens || []).map((m) => ({ m: m, l1: (m.dia > 0 ? "Ø" + fmt(m.dia) + " · " : "") + fmt(of9 + m.a) + "–" + fmt(of9 + m.b), l2: m.dia > 0 ? "loop" : "bolsillo", cls: "cinta-dim" })))
+        .concat((seg.safety || []).map((m) => ({ m: m, l1: "! " + fmt(of9 + m.a) + "–" + fmt(of9 + m.b), l2: "c. seguridad", cls: "cinta-dim" })))
+        .concat((seg.gaps || []).map((m) => ({ m: m, l1: "✕" + fmt(m.b - m.a) + " · " + fmt(of9 + m.a) + "–" + fmt(of9 + m.b), l2: "hueco", cls: "cinta-gap-lbl" })))
+        .sort((p9, q9) => (p9.m.a + p9.m.b) - (q9.m.a + q9.m.b));
+      feats9.forEach((ft9, i9) => {
+        const tm9 = (ft9.m.a + ft9.m.b) / 2, nivel9 = (i9 % 2) * 11.5;
+        o += `<text class="${ft9.cls}" x="${bx(tm9)}" y="${f1(yb1 + 6 + nivel9)}" text-anchor="middle">${ft9.l1}</text>`;
+        o += `<text class="${ft9.cls === "cinta-gap-lbl" ? "cinta-gap-lbl" : "cinta-dim"}" x="${bx(tm9)}" y="${f1(yb1 + 11.5 + nivel9)}" text-anchor="middle" opacity="0.85">${ft9.l2}</text>`;
+      });
+      (seg.opens || []).forEach((m) => { const tm = (m.a + m.b) / 2; o += `<text class="cinta-omega" x="${bx(tm)}" y="${f1(yc)}" text-anchor="middle" dominant-baseline="central">Ω</text>`; });
+      (seg.gaps || []).forEach((m) => { o += `<rect class="cinta-gap" x="${bx(m.a)}" y="${f1(yb0)}" width="${f1((m.b - m.a) * sx)}" height="${f1(bandH)}"/><line class="cinta-cap" x1="${bx(m.a)}" y1="${f1(yb0 - 2)}" x2="${bx(m.a)}" y2="${f1(yb1 + 2)}"/><line class="cinta-cap" x1="${bx(m.b)}" y1="${f1(yb0 - 2)}" x2="${bx(m.b)}" y2="${f1(yb1 + 2)}"/>`; });
+      o += `<text class="cinta-det-ax" x="${f1(x0)}" y="${f1(yb1 + axisH - 1)}">${fmt(of9)}</text><text class="cinta-det-ax" x="${f1(x0 + availW)}" y="${f1(yb1 + axisH - 1)}" text-anchor="end">${fmt(of9 + L)}m</text>`;
       (marks || []).forEach((mk) => { const mx = x0 + ((mk.a + mk.b) / 2) * sx; o += `<line class="cinta-zoom-br" x1="${bx(mk.a)}" y1="${f1(yb1 + 1.5)}" x2="${bx(mk.b)}" y2="${f1(yb1 + 1.5)}"/><circle class="cinta-zoom-num-bg" cx="${f1(mx)}" cy="${f1(yb0 - 4)}" r="4"/><text class="cinta-zoom-num" x="${f1(mx)}" y="${f1(yb0 - 4)}" text-anchor="middle" dominant-baseline="central">${mk.n}</text>`; });
       return o;
     };
@@ -1931,7 +1943,7 @@
     const cintaGrp = cintasResumen(sk).length;
     const cintaResH = cintaGrp ? (11 + cintaGrp * 9 + 4) : 0;
     const cintaDetN = cintaDetalleN(sk);   // barras de detalle (completa + zooms) por cinta única
-    const cintaDetH = cintaDetN ? (cintaDetN * 48 + 10) : 0;   // v17-111: 48 reales (con nombres de feature) — 40 truncaba
+    const cintaDetH = cintaDetN ? (cintaDetN * 60 + 10) : 0;   // v17-112: niveles alternados → 60 por barra
     const resTot = resH + (cintaResH ? (resH ? 6 : 0) + cintaResH : 0);   // straps + cintas apilados
     const bottomH = Math.max(legH, resTot);
     const boundsBot = mTop + bh * scale;
