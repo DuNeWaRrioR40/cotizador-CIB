@@ -1167,3 +1167,7 @@ body.drawer-abierto { overflow: hidden; }
 .ced-cota { pointer-events: auto; cursor: pointer; }
 .ced-poslbl { font-size: 11px; font-weight: 700; fill: #34c759; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
 .ced-foot .izq { margin-right: auto; }
+
+/* v17-105: presencia de la cinta en el plano — banda con relleno */
+.sketch-svg .cinta-fill { fill: rgba(184, 150, 62, 0.16); }
+.sketch-svg .cinta-fill.cierre { fill: rgba(70, 110, 180, 0.14); }

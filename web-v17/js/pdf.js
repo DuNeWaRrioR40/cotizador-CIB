@@ -232,12 +232,14 @@
     const CRED = PDFLib.rgb(0.753, 0.224, 0.169), HATCH = PDFLib.rgb(0.541, 0.58, 0.627), OD = String.fromCharCode(216);
     const cintaLblDone = {};
     (sk.cintas || []).forEach((c) => {
-      const halfW = Math.max(0.006, (c.ancho || 0.02) / 2), seg = c.seg || {};
+      // v17-105: presencia — mínimo visual (~3.2pt de media banda) + relleno suave
+      const halfW = Math.max(Math.max(0.006, (c.ancho || 0.02) / 2), 3.2 / (scale || 1)), seg = c.seg || {};
       const PXx = (tm, wm) => px(c.ax + c.ux * tm + c.nx * wm);
       const PYy = (tm, wm) => py(c.ay + c.uy * tm + c.ny * wm);
       const LXx = (tm, dd) => px(c.ax + c.ux * tm + c.inX * dd);
       const LYy = (tm, dd) => py(c.ay + c.uy * tm + c.inY * dd);
       const ln = (t1, w1, t2, w2, col, th) => page.drawLine({ start: { x: PXx(t1, w1), y: PYy(t1, w1) }, end: { x: PXx(t2, w2), y: PYy(t2, w2) }, thickness: th || 0.6, color: col });
+      (seg.material || []).forEach((m) => drawPolyPDF(page, [{ x: PXx(m.a, halfW), y: PYy(m.a, halfW) }, { x: PXx(m.b, halfW), y: PYy(m.b, halfW) }, { x: PXx(m.b, -halfW), y: PYy(m.b, -halfW) }, { x: PXx(m.a, -halfW), y: PYy(m.a, -halfW) }], { color: PDFLib.rgb(0.72, 0.6, 0.28), opacity: 0.14 }));
       const ctr = (lbl, X, Y, size, col) => page.drawText(lbl, { x: X - font.widthOfTextAtSize(lbl, size) / 2, y: Y - size * 0.35, size: size, font: font, color: col });
       (seg.material || []).forEach((m) => { ln(m.a, halfW, m.b, halfW, ACC, 0.7); ln(m.a, -halfW, m.b, -halfW, ACC, 0.7); ln(m.a, halfW, m.a, -halfW, ACC, 0.6); ln(m.b, halfW, m.b, -halfW, ACC, 0.6); });
       (seg.stitch || []).forEach((m) => page.drawLine({ start: { x: PXx(m.a, 0), y: PYy(m.a, 0) }, end: { x: PXx(m.b, 0), y: PYy(m.b, 0) }, thickness: 0.5, color: ACC, dashArray: [2.5, 1.8], opacity: 0.7 }));

@@ -984,14 +984,17 @@
     // cosida (línea central) · ! seguridad (box-X) · Ω bolsillo/sin costura (con Ø) · ✕ hueco (achurado + cota).
     const cintaRotDone = {};
     (sk.cintas || []).forEach((c) => {
-      const halfW = Math.max(0.006, (c.ancho || 0.02) / 2), seg = c.seg || {};
+      // v17-105: PRESENCIA — el ancho real (2 cm) es invisible a escala de paños grandes; la banda
+      // se dibuja con un mínimo VISUAL (~9px) y relleno sutil, como los straps.
+      const halfW = Math.max(Math.max(0.006, (c.ancho || 0.02) / 2), 4.5 / (scale || 1)), seg = c.seg || {};
       const PX = (tm, wm) => f1(px(c.ax + c.ux * tm + c.nx * wm));
       const PY = (tm, wm) => f1(py(c.ay + c.uy * tm + c.ny * wm));
       const LX = (tm, d) => f1(px(c.ax + c.ux * tm + c.inX * d)); // etiquetas: hacia adentro del paño
       const LY = (tm, d) => f1(py(c.ay + c.uy * tm + c.inY * d));
       const seg2 = (t1, w1, t2, w2, cls) => { s += `<line class="${cls}" x1="${PX(t1, w1)}" y1="${PY(t1, w1)}" x2="${PX(t2, w2)}" y2="${PY(t2, w2)}"/>`; };
       const edgeCls = "cinta-edge" + (c.tipo === "cierre" ? " cierre" : "");
-      (seg.material || []).forEach((m) => { // bordes de banda + tapas
+      (seg.material || []).forEach((m) => { // banda con RELLENO + bordes + tapas
+        s += `<polygon class="cinta-fill${c.tipo === "cierre" ? " cierre" : ""}" points="${PX(m.a, halfW)},${PY(m.a, halfW)} ${PX(m.b, halfW)},${PY(m.b, halfW)} ${PX(m.b, -halfW)},${PY(m.b, -halfW)} ${PX(m.a, -halfW)},${PY(m.a, -halfW)}"/>`;
         seg2(m.a, halfW, m.b, halfW, edgeCls); seg2(m.a, -halfW, m.b, -halfW, edgeCls);
         seg2(m.a, halfW, m.a, -halfW, "cinta-cap"); seg2(m.b, halfW, m.b, -halfW, "cinta-cap");
       });
