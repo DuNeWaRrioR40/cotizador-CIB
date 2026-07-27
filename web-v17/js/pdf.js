@@ -1220,8 +1220,16 @@
     center("(válido por 15 días)", 11, font); y -= 16;
     y = stampCorrelativo(page, datos, W, y, bold); y -= 8;
 
-    const titulo = datos.titulo || "Producto compuesto según detalle";
-    txt(`"${titulo}"`, M, y, { f: bold, size: 15 }); y -= 24;
+    // v17-115: piezas NO necesariamente vinculadas (solo comparten cliente) → el documento
+    // cotiza "los siguientes productos", listando el título de cada pieza.
+    if (!datos.titulo && (datos.piezas || []).length) {
+      const lista = datos.piezas.map((pz, i9) => ((pz.etiqueta || "").trim() || ("Pieza " + (i9 + 1)))).join(", ");
+      wrap('Cotización por los siguientes productos: "' + lista + '"', bold, 13, W - 2 * M).forEach((ln9) => { txt(ln9, M, y, { f: bold, size: 13 }); y -= 17; });
+      y -= 7;
+    } else {
+      const titulo = datos.titulo || "Producto compuesto según detalle";
+      txt(`"${titulo}"`, M, y, { f: bold, size: 15 }); y -= 24;
+    }
 
     if (datos.empresa && datos.empresa.razon) {
       const e = datos.empresa, lab = (k) => bold.widthOfTextAtSize(k, 11);
@@ -1310,9 +1318,10 @@
     datos.piezas.forEach((pz) => {
       const etq = (pz.etiqueta || "").trim();
       const orientTxt = pz.orientTxt || "uniones a lo largo";
-      const detail = [[etq || telaCli(pz.tela), true]];
-      if (etq) detail.push([telaCli(pz.tela), false]);
-      (pz.tela.ficha || []).forEach((s) => detail.push([s, false]));
+      // v17-115: título de la pieza = "Título — formato"; la tela va UNA vez (ficha deduplicada)
+      const detail = [[(etq || "Pieza") + " — " + pz.largo + "×" + pz.ancho + " m", true]];
+      detail.push([telaCli(pz.tela), false]);
+      (pz.tela.ficha || []).forEach((s) => { if (String(s).trim() !== String(telaCli(pz.tela)).trim()) detail.push([s, false]); });
       if (!datos.suprimirCotas) {
         detail.push(["", false, 0]);
         detail.push(["Diseño aprobado", true, 11.5]);
