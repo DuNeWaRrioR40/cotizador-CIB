@@ -11677,7 +11677,7 @@
           <label class="field"><span>Ancho (m)</span><input class="pz-ancho" type="text" inputmode="text" /></label>
           <label class="field"><span>Cantidad</span><input class="pz-cant" type="text" inputmode="numeric" /></label>
           <label class="field"><span>Tela</span><select class="pz-tela"></select></label>
-          <label class="field full"><span>Orientación de uniones</span><select class="pz-orient">
+          <label class="field full"><span>Orientación de uniones</span><div class="pz-orient-cmp"></div><select class="pz-orient hidden">
             <option value="largo">Uniones a lo largo</option>
             <option value="ancho">Uniones a lo ancho</option></select></label>
           <label class="field full"><span>Color (opcional)</span><input class="pz-color" type="text" placeholder="N/A · solo para el plano de taller" /></label>
@@ -11738,6 +11738,21 @@
       state.telas.forEach((t) => { const o = document.createElement("option"); o.value = t.nombre; o.textContent = t.nombre; tsel.appendChild(o); }); // el nombre ya incluye Proveedor · Modelo · Formato
       if (pz.telaNombre) tsel.value = pz.telaNombre; else pz.telaNombre = tsel.value;
       q(".pz-orient").value = pz.orient || "largo";
+      // v17-116: comparador de orientaciones POR PIEZA (paridad con el uniforme, compacto):
+      // dos chips con el precio de cada orientación y ✓ en la más económica; clic = elegir.
+      { const cmp9 = q(".pz-orient-cmp");
+        if (cmp9) {
+          const r9 = calcPieza(pz);
+          if (r9 && r9.lote && r9.lote.oLargo && r9.lote.oAncho) {
+            const sL9 = r9.lote.oLargo.subtotalLote, sA9 = r9.lote.oAncho.subtotalLote;
+            const mk9 = (key9, lbl9, val9, otro9) => {
+              const on9 = (pz.orient || "largo") === key9;
+              return '<button type="button" class="pz-orient-op' + (on9 ? " on" : "") + '" data-o="' + key9 + '">' + lbl9 + " <b>" + money(val9) + "</b>" + (val9 <= otro9 ? ' <span class="eco">✓ más económica</span>' : "") + "</button>";
+            };
+            cmp9.innerHTML = mk9("largo", "A lo largo", sL9, sA9) + mk9("ancho", "A lo ancho", sA9, sL9);
+            cmp9.querySelectorAll(".pz-orient-op").forEach((b9) => b9.addEventListener("click", (e9) => { e9.preventDefault(); pz.orient = b9.getAttribute("data-o"); renderPiezas(); recomputeCompuesto(); }));
+          } else { cmp9.innerHTML = '<span class="muted small">Completa tela y medidas para comparar orientaciones.</span>'; }
+        } }
       q(".pz-color").value = pz.color || "";
       q(".pz-color").addEventListener("input", (e) => { pz.color = e.target.value; });
       renderEnsPz(q(".pz-ens"), pz);

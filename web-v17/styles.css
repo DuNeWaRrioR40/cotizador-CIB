@@ -1186,3 +1186,10 @@ body.drawer-abierto { overflow: hidden; }
 .sketch-svg .cinta-vista-x { font-size: 9px; font-weight: 700; fill: #d8443a; cursor: pointer; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
 .sketch-svg .cinta-vista-x:hover { fill: #a02015; }
 .sketch-svg .cinta-zoom-lead { stroke: #b8963e; stroke-width: 0.9; opacity: 0.75; }
+
+/* v17-116: comparador de orientación por pieza */
+.pz-orient-cmp { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 2px; }
+.pz-orient-op { border: 1.5px solid #c8cdd4; background: #fff; border-radius: 10px; padding: 7px 12px; font-size: 12.5px; cursor: pointer; text-align: left; transition: transform 100ms ease-out; }
+.pz-orient-op:active { transform: scale(0.97); }
+.pz-orient-op.on { border-color: #1c1c1e; background: #fffbe8; box-shadow: 0 0 0 1px #1c1c1e inset; }
+.pz-orient-op .eco { color: #1b5e20; font-weight: 700; font-size: 11.5px; margin-left: 4px; }

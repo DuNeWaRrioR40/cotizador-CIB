@@ -64,6 +64,15 @@
     const d = "M " + pts.map((p) => p.x + " " + (Hp - p.y)).join(" L ") + " Z";
     page.drawSvgPath(d, Object.assign({ x: 0, y: Hp }, opts));
   }
+  // v17-117: ficha técnica SIN el eco del nombre de la tela. La BD repite el nombre con
+  // VARIANTES (guiones, dígitos distintos) → la igualdad exacta no sirve. Regla estructural:
+  // las líneas reales son "Clave: valor" (traen ":"); el eco trae "·" y ningún ":". También se
+  // limpian comillas sueltas de apertura/cierre que arrastra la celda de la BD.
+  function fichaTelaLineas(tela) {
+    return ((tela && tela.ficha) || [])
+      .map((s) => String(s).trim().replace(/^["\u201C\u201D]+/, "").replace(/["\u201C\u201D]+$/, ""))
+      .filter((s) => s && !(s.indexOf(":") === -1 && s.indexOf("\u00B7") !== -1));
+  }
   function b64ToBytes(dataURL) {
     const b64 = dataURL.split(",")[1];
     const bin = atob(b64);
@@ -882,7 +891,7 @@
 
     // Filas de la carpa (tela + ojetillos). En cotización SOLO de granel no van.
     if (!datos.soloGranel) {
-      const detTela = [[telaCli(datos.tela), true]].concat((datos.tela.ficha || []).map((s) => [s, false]));
+      const detTela = [[telaCli(datos.tela), true]].concat(fichaTelaLineas(datos.tela).map((s) => [s, false]));
       if (!datos.suprimirCotas) {
         detTela.push(["", false, 0]);
         detTela.push(["Diseño aprobado", true, 11.5]);
@@ -1150,7 +1159,7 @@
       const c = item.calc;
       const lines = [];
       [[telaCli(item.tela), true]]
-        .concat((item.tela.ficha || []).map((s) => [s, false]))
+        .concat(fichaTelaLineas(item.tela).map((s) => [s, false]))
         .concat([[`Incluye material + ${oj}`, false]])
         .forEach(([s, b]) => wrap(s, b ? bold : font, 10.5, colW[0] - 2 * pad)
           .forEach((ln) => lines.push([ln, b])));
@@ -1321,7 +1330,7 @@
       // v17-115: título de la pieza = "Título — formato"; la tela va UNA vez (ficha deduplicada)
       const detail = [[(etq || "Pieza") + " — " + pz.largo + "×" + pz.ancho + " m", true]];
       detail.push([telaCli(pz.tela), false]);
-      (pz.tela.ficha || []).forEach((s) => { if (String(s).trim() !== String(telaCli(pz.tela)).trim()) detail.push([s, false]); });
+      fichaTelaLineas(pz.tela).forEach((s) => detail.push([s, false]));
       if (!datos.suprimirCotas) {
         detail.push(["", false, 0]);
         detail.push(["Diseño aprobado", true, 11.5]);
