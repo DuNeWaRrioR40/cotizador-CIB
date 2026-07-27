@@ -6,7 +6,7 @@
 
   const state = {
     telas: [], telasOpcSel: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
-    ojMode: "total", ojTotal: 8, ojSubstate: "count", ojAristasN: 4,
+    ojMode: "total", ojTotal: 4, ojSubstate: "count", ojAristasN: 4,   // v17-114: defecto = 1 por vértice
     ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, ensambles: [], figImgUnif: null, figura3D: null, anclasUnif: [], notasUnif: [], subVC: false, vis3D: null, cotasOcultas: {}, cotasPos: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1", modOrigen: null,
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
@@ -12124,7 +12124,7 @@
       const d = $("f_despacho"); if (d) d.value = "0"; const dOn = $("f_despachoOn"); if (dOn) dOn.checked = false;
       if (typeof syncExtrasCond === "function") syncExtrasCond(); }
     state.figura3D = null;
-    state.ojMode = "total"; state.ojTotal = 8; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.anclasUnif = []; state.notasUnif = []; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
+    state.ojMode = "total"; state.ojTotal = 4; state.ojAristas = []; state.ojEdges = null; state.ojParejo = false; state.trasUnif = false; state.anclasUnif = []; state.notasUnif = []; state.ojSubstate = "count"; state.ojAristasN = 4; state.ojError = "";
     state.cortesUnif = []; state.backCortesUnif = []; state.backComplementosUnif = []; state.aletasUnif = []; state.backAletasUnif = []; state.strapsUnif = []; state.cintasUnif = []; state.factorUnif = "1";
     { const t = $("f_trasUnif"); if (t) t.checked = false; }
     document.querySelector('input[name="ojmode"][value="total"]').checked = true;

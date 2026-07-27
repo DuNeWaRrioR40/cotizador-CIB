@@ -15,6 +15,9 @@
   function ojetillosPerimetro(n, ancho, largo) {
     const pts = []; n = Math.max(0, Math.round(n || 0));
     if (n <= 0 || !(ancho > 0) || !(largo > 0)) return pts;
+    // v17-114: N=4 = "uno por vértice" — anclado a las ESQUINAS (el equiespaciado desde el origen
+    // las esquivaba en rects no cuadrados: caían torcidos a P/4).
+    if (n === 4) return [{ x: 0, y: 0 }, { x: ancho, y: 0 }, { x: ancho, y: largo }, { x: 0, y: largo }];
     const P = 2 * (ancho + largo);
     for (let k = 0; k < n; k++) {
       let d = (k * P) / n, x, y;
