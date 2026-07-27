@@ -149,6 +149,7 @@
     });
   }
   function elementosPDF(page, sk, T, font) {
+    elementosPDF._czDone = {};   // v17-113: dedup de insignias POR LLAMADA (no entre documentos)
     const px = T.px, py = T.py, scale = T.scale, x0 = T.x0, topRect = T.topRect, wpx = T.wpx, hpx = T.hpx, r = T.r;
     const SK = global.SketchCIBSA;
     const ACC = BLUE(), FUS = PDFLib.rgb(0.82, 0.23, 0.18), TEAL = PDFLib.rgb(0.12, 0.62, 0.54);
@@ -235,6 +236,23 @@
       // v17-105: presencia — mínimo visual (~3.2pt de media banda) + relleno suave
       const halfW = Math.max(Math.max(0.006, (c.ancho || 0.02) / 2), 3.2 / (scale || 1)), seg = c.seg || {};
       const vax = c.ax + c.inX * (c.offVis || 0), vay = c.ay + c.inY * (c.offVis || 0);   // v17-112: solo visual
+      // v17-113: insignias de vistas — mismas posiciones (rotDrag) que el plano vivo
+      if (!elementosPDF._czDone[c.id] && (c.zoomTramos || []).length) {
+        elementosPDF._czDone[c.id] = true;
+        const GOLD9 = PDFLib.rgb(0.72, 0.6, 0.28);
+        (c.zoomTramos || []).forEach((z, iZ) => {
+          const tmZ = (z.a + z.b) / 2;
+          const AxZ = px(vax + c.ux * tmZ), AyZ = py(vay + c.uy * tmZ);
+          const mvZ = ((sk.rotDrag || {})["czv:" + c.id + ":" + iZ]) || null;
+          const offZm = Math.max(0.12, (c.ancho || 0.02) + 0.1);
+          const bxZ = px(vax + c.ux * tmZ + c.inX * offZm) + (mvZ ? (mvZ.dx || 0) * scale : 0);
+          const byZ = py(vay + c.uy * tmZ + c.inY * offZm) - (mvZ ? (mvZ.dy || 0) * scale : 0);
+          page.drawLine({ start: { x: AxZ, y: AyZ }, end: { x: bxZ, y: byZ }, thickness: 0.5, color: GOLD9, opacity: 0.8 });
+          page.drawCircle({ x: bxZ, y: byZ, size: 4, borderColor: GOLD9, borderWidth: 0.9, color: PDFLib.rgb(1, 1, 1) });
+          const nl9 = String(iZ + 1);
+          page.drawText(nl9, { x: bxZ - font.widthOfTextAtSize(nl9, 5.5) / 2, y: byZ - 2, size: 5.5, font: font, color: PDFLib.rgb(0.12, 0.12, 0.12) });
+        });
+      }
       const PXx = (tm, wm) => px(vax + c.ux * tm + c.nx * wm);
       const PYy = (tm, wm) => py(vay + c.uy * tm + c.ny * wm);
       const LXx = (tm, dd) => px(vax + c.ux * tm + c.inX * dd);

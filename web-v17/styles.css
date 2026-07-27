@@ -1185,3 +1185,4 @@ body.drawer-abierto { overflow: hidden; }
 /* v17-111: ✕ de vistas del detalle de cintas */
 .sketch-svg .cinta-vista-x { font-size: 9px; font-weight: 700; fill: #d8443a; cursor: pointer; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
 .sketch-svg .cinta-vista-x:hover { fill: #a02015; }
+.sketch-svg .cinta-zoom-lead { stroke: #b8963e; stroke-width: 0.9; opacity: 0.75; }

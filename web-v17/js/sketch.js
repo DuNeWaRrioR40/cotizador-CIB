@@ -982,12 +982,31 @@
     });
     // ===== Cintas / cierres: banda continua a lo largo de una arista, con 4 estados por tramo =====
     // cosida (línea central) · ! seguridad (box-X) · Ω bolsillo/sin costura (con Ø) · ✕ hueco (achurado + cota).
-    const cintaRotDone = {};
+    const cintaRotDone = {}, cintaZBadgeDone = {};
     (sk.cintas || []).forEach((c) => {
       // v17-105: PRESENCIA — el ancho real (2 cm) es invisible a escala de paños grandes; la banda
       // se dibuja con un mínimo VISUAL (~9px) y relleno sutil, como los straps.
       const halfW = Math.max(Math.max(0.006, (c.ancho || 0.02) / 2), 4.5 / (scale || 1)), seg = c.seg || {};
       const vax = c.ax + c.inX * (c.offVis || 0), vay = c.ay + c.inY * (c.offVis || 0);   // v17-112: corrimiento SOLO visual
+      // v17-113: insignias ①② de las VISTAS del detalle sobre el plano — flecha al tramo real,
+      // ARRASTRABLES (callout-drag, clave czv:<id>:<i>; doble-clic = posición automática).
+      if (!cintaZBadgeDone[c.id] && (c.zoomTramos || []).length) {
+        cintaZBadgeDone[c.id] = true;
+        (c.zoomTramos || []).forEach((z, iZ) => {
+          const tmZ = (z.a + z.b) / 2;
+          const AxZ = px(vax + c.ux * tmZ), AyZ = py(vay + c.uy * tmZ);
+          const rkZ = "czv:" + c.id + ":" + iZ;
+          const mvZ = (sk.rotDrag || {})[rkZ] || null;
+          const offZ = Math.max(16, (c.ancho || 0.02) * scale + 13);
+          const bxZ = AxZ + c.inX * offZ + (mvZ ? (mvZ.dx || 0) * scale : 0);
+          const byZ = AyZ + c.inY * offZ + (mvZ ? (mvZ.dy || 0) * scale : 0);
+          s += `<g class="callout-drag" data-rk="${rkZ}">` +
+            `<line class="cinta-zoom-lead" x1="${f1(AxZ)}" y1="${f1(AyZ)}" x2="${f1(bxZ)}" y2="${f1(byZ)}"/>` +
+            `<circle class="cinta-zoom-num-bg" cx="${f1(bxZ)}" cy="${f1(byZ)}" r="5"/>` +
+            `<text class="cinta-zoom-num" x="${f1(bxZ)}" y="${f1(byZ)}" text-anchor="middle" dominant-baseline="central">${iZ + 1}</text>` +
+            `<rect class="callout-hit" x="${f1(bxZ - 10)}" y="${f1(byZ - 10)}" width="20" height="20" fill="transparent"/></g>`;
+        });
+      }
       const PX = (tm, wm) => f1(px(vax + c.ux * tm + c.nx * wm));
       const PY = (tm, wm) => f1(py(vay + c.uy * tm + c.ny * wm));
       const LX = (tm, d) => f1(px(vax + c.ux * tm + c.inX * d)); // etiquetas: hacia adentro del paño
