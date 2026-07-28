@@ -1358,18 +1358,22 @@ body.chk-lock #btnVistaQR, body.chk-lock #btnVistaQRComp, body.chk-lock #btnVist
 .venta-tbk { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 2px; font-size: 11px; color: #8a8f98; }
 .venta-tbk-nro { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: #21b158; background: rgba(33, 177, 88, .08); border: 1px solid rgba(33, 177, 88, .25); border-radius: 8px; padding: 4px 8px; user-select: all; -webkit-user-select: all; cursor: text; }
 
-/* ---------- Página de agradecimiento (v17-129) ---------- */
+/* ---------- Página de agradecimiento (v17-132: smiley SVG propio aprobado por preview) ----------
+   Cara dibujada, no tipográfica: ojos ovalados centrados por coordenadas; boca aflautada más
+   ancha que los ojos (gruesa al centro, se adelgaza y remata en punta redonda del propio trazo);
+   guiño = párpado fino que reemplaza el ojo derecho con crossfade + blur y micro-squash. */
 .ck-gr { text-align: center; padding: 24px; max-width: 560px; margin: 0 auto; }
-.ck-gr-smiley { display: inline-block; font-size: min(34vw, 40vh); line-height: .92; font-weight: 700; letter-spacing: -0.06em; color: #16171a; transform: rotate(90deg); font-variant-ligatures: none; user-select: none; transition: transform 420ms cubic-bezier(.34, 1.56, .64, 1), opacity 300ms ease; }
-@starting-style { .ck-gr-smiley { transform: rotate(90deg) scale(.82); opacity: 0; } }
-.ck-gr-smiley.wink { transform: rotate(90deg) scaleY(.9) scaleX(1.05); }
-.ck-gr-ojos { display: inline-block; transition: filter 150ms ease, opacity 150ms ease; }
-.ck-gr-ojos.swap { filter: blur(6px); opacity: .35; }
+.ck-gr-smiley { display: inline-block; width: min(37vw, 44vh); color: #16171a; user-select: none; transition: transform 420ms cubic-bezier(.34, 1.56, .64, 1), opacity 300ms ease; }
+.ck-gr-smiley svg { display: block; width: 100%; height: auto; }
+@starting-style { .ck-gr-smiley { transform: scale(.82); opacity: 0; } }
+.ck-gr-smiley.wink { transform: scaleY(.92) scaleX(1.04); }
+#ckOjoD { transition: filter 150ms ease, opacity 150ms ease; }
+#ckOjoD.swap { filter: blur(4px); opacity: .35; }
 .ck-gr h2 { font-size: 24px; letter-spacing: -0.01em; margin: 22px 0 6px; color: #16171a; }
 .ck-gr p { color: #444; font-size: 15px; line-height: 1.55; }
 .ck-gr-logo { height: 44px; margin-top: 20px; }
 @media (prefers-reduced-motion: reduce) {
   .ck-gr-smiley { transition: opacity 200ms ease; }
-  @starting-style { .ck-gr-smiley { transform: rotate(90deg); } }
-  .ck-gr-smiley.wink { transform: rotate(90deg); }
+  @starting-style { .ck-gr-smiley { transform: none; } }
+  .ck-gr-smiley.wink { transform: none; }
 }

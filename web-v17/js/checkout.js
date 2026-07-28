@@ -414,11 +414,13 @@
     }
   }
 
-  // ---------- Página de agradecimiento (v17-129) ----------
-  // Momento raro y celebratorio: aquí el deleite se lo GANA (apple-design). Smiley tipográfico
-  // puro, VERTICAL (":)" de pie vía rotate 90°), que entra con escala suave y hace UN guiño:
-  // el ojo cruza de ":" a ";" con crossfade + blur (emil: el blur enmascara el swap de glifo)
-  // mientras el conjunto hace un micro-squash. Firma del equipo + logo CIBSA, y de vuelta a la App.
+  // ---------- Página de agradecimiento (v17-132) ----------
+  // Momento raro y celebratorio: aquí el deleite se lo GANA (apple-design). Smiley dibujado
+  // en SVG propio (v2, aprobado por preview): ojos ovalados centrados por coordenadas, boca
+  // aflautada — gruesa al centro, se adelgaza hacia los extremos y remata en punta redonda del
+  // mismo trazo (arcos integrados, sin comisuras aparte) — más ancha que los ojos: big smile.
+  // El guiño es un PÁRPADO real (arco fino) que reemplaza el ojo derecho con crossfade + blur
+  // (emil: el blur enmascara el swap) mientras la cara hace un micro-squash. Firma + logo CIBSA.
   function gracias(volver) {
     document.title = "¡Gracias! — CIBSA";
     document.body.className = "ck-res-body";
@@ -426,19 +428,32 @@
       ? '<img class="ck-gr-logo" src="' + global.LOGOS.cibsa + '" alt="CIBSA"/>'
       : '<span class="ck-logo">CIBSA</span>';
     document.body.innerHTML = '<div class="ck-gr">' +
-      '<div class="ck-gr-smiley" id="ckSmiley" aria-hidden="true"><span class="ck-gr-ojos" id="ckOjos">:</span><span class="ck-gr-boca">)</span></div>' +
+      '<div class="ck-gr-smiley" id="ckSmiley" aria-hidden="true">' +
+        '<svg viewBox="0 0 100 100" role="img" aria-label="Sonrisa CIBSA">' +
+          '<ellipse cx="36" cy="38.5" rx="3.6" ry="5" fill="currentColor"/>' +
+          '<g id="ckOjoD">' +
+            '<ellipse id="ckOjoAb" cx="64" cy="38.5" rx="3.6" ry="5" fill="currentColor"/>' +
+            '<path id="ckOjoCe" d="M56 38 Q64 45 72 38" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="display:none"/>' +
+          '</g>' +
+          '<path d="M20 55.9 Q50 86 80 55.9 A 1.4 1.4 0 0 1 80 58.7 Q50 72 20 58.7 A 1.4 1.4 0 0 1 20 55.9 Z" fill="currentColor"/>' +
+        "</svg></div>" +
       "<h2>¡Gracias por tu compra y tu preferencia!</h2>" +
       "<p>Nos pondremos manos a la obra de inmediato.<br/><b>— Todo el equipo CIBSA</b></p>" +
       logo + "</div>";
-    const ojos = document.getElementById("ckOjos"), sm = document.getElementById("ckSmiley");
-    const swap = (ch) => {
-      if (!ojos) return;
-      ojos.classList.add("swap");
-      setTimeout(() => { ojos.textContent = ch; ojos.classList.remove("swap"); }, 150);
+    const sm = document.getElementById("ckSmiley"), ojoD = document.getElementById("ckOjoD");
+    const ab = document.getElementById("ckOjoAb"), ce = document.getElementById("ckOjoCe");
+    const setOjo = (cerrado) => {
+      if (!ojoD) return;
+      ojoD.classList.add("swap");
+      setTimeout(() => {
+        if (ab) ab.style.display = cerrado ? "none" : "";
+        if (ce) ce.style.display = cerrado ? "" : "none";
+        ojoD.classList.remove("swap");
+      }, 150);
     };
-    setTimeout(() => { if (sm) sm.classList.add("wink"); swap(";"); }, 1500);   // guiño
-    setTimeout(() => { if (sm) sm.classList.remove("wink"); swap(":"); }, 2700); // vuelve la sonrisa
-    setTimeout(() => { try { location.href = volver; } catch (_) {} }, 4800);    // y a la App
+    setTimeout(() => { if (sm) sm.classList.add("wink"); setOjo(true); }, 1500);   // guiño
+    setTimeout(() => { if (sm) sm.classList.remove("wink"); setOjo(false); }, 2700); // vuelve la sonrisa
+    setTimeout(() => { try { location.href = volver; } catch (_) {} }, 4800);        // y a la App
   }
 
   global.CheckoutCIBSA = { oferta, abrir, cerrar, resultado, rutValido, rutFormato, rutDV };
