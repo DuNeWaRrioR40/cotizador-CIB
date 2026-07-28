@@ -1358,6 +1358,14 @@ body.chk-lock #btnVistaQR, body.chk-lock #btnVistaQRComp, body.chk-lock #btnVist
 .venta-tbk { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 2px; font-size: 11px; color: #8a8f98; }
 .venta-tbk-nro { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: #21b158; background: rgba(33, 177, 88, .08); border: 1px solid rgba(33, 177, 88, .25); border-radius: 8px; padding: 4px 8px; user-select: all; -webkit-user-select: all; cursor: text; }
 
+/* ---------- Devolución: reversa / Nota de Crédito (v17-135) — el registro queda EN ROJO ---------- */
+.venta-dev { margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(255, 107, 94, .45); display: flex; flex-direction: column; gap: 8px; }
+.venta-dev-tit { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #ff6b5e; }
+.venta-dev.on .venta-dev-cod, .venta-dev .venta-dev-mot { border-color: rgba(255, 107, 94, .55); }
+.hist-chip.devuelta, .hist-chip.devuelta.pagada { border-color: rgba(255, 107, 94, .65); background: rgba(255, 107, 94, .07); }
+.hist-chip.devuelta .hist-fecha, .hist-chip.devuelta .hist-tipo { color: #ff6b5e; }
+.hist-dev { color: #ff6b5e; font-weight: 700; }
+
 /* ---------- Página de agradecimiento (v17-132: smiley SVG propio aprobado por preview) ----------
    Cara dibujada, no tipográfica: ojos ovalados centrados por coordenadas; boca aflautada más
    ancha que los ojos (gruesa al centro, se adelgaza y remata en punta redonda del propio trazo);

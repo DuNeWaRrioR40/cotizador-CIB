@@ -728,6 +728,22 @@
         tw.innerHTML = '<span>Transacción Webpay</span><code class="venta-tbk-nro" title="N° de orden Webpay (solo lectura) — toca para seleccionar y copiar">💳 ' + esc(String(pago9.orden)) + "</code>";
         card.appendChild(tw);
       } }
+    // v17-135: Reversa / Nota de Crédito — la DEVOLUCIÓN de una venta. Si se ingresa un código,
+    // el registro queda EN ROJO en el historial y el MOTIVO se vuelve obligatorio. El campo de
+    // motivo aparece recién cuando hay código (revelación progresiva: nadie tipea motivos por
+    // deporte). Puede registrarse una devolución SIN venta vinculada (p.ej. reversa Webpay
+    // antes de facturar).
+    const dev0 = ent.dev || (ent.snap && ent.snap.dev) || null;
+    const dWrap = document.createElement("div"); dWrap.className = "venta-dev";
+    const dTit = document.createElement("div"); dTit.className = "venta-dev-tit"; dTit.textContent = "↩ Devolución";
+    const inpD = document.createElement("input"); inpD.type = "text"; inpD.className = "anc-dialog-inp venta-dev-cod";
+    inpD.placeholder = "Reversa / N° Nota de Crédito"; inpD.value = (dev0 && dev0.codigo) || "";
+    const inpM = document.createElement("input"); inpM.type = "text"; inpM.className = "anc-dialog-inp venta-dev-mot";
+    inpM.placeholder = "Motivo de la devolución (obligatorio)"; inpM.value = (dev0 && dev0.motivo) || "";
+    dWrap.appendChild(dTit); dWrap.appendChild(inpD); dWrap.appendChild(inpM);
+    const syncDev = () => { const hay = !!inpD.value.trim(); inpM.style.display = hay ? "" : "none"; dWrap.classList.toggle("on", hay); };
+    inpD.addEventListener("input", syncDev); syncDev();
+    card.appendChild(dWrap);
     const acc = document.createElement("div"); acc.className = "qr-acciones";
     const mkB = (t) => { const b = document.createElement("button"); b.type = "button"; b.className = "btn-outline"; b.textContent = t; acc.appendChild(b); return b; };
     const bOk = mkB("Guardar vínculo");
@@ -735,9 +751,15 @@
     const bCa = mkB("Cancelar");
     card.appendChild(acc); ov.appendChild(card); document.body.appendChild(ov);
     const cerrar = () => ov.remove();
-    const persistir = (venta) => {
+    // Lee la devolución de los campos; null si no hay código.
+    const devLeido = () => {
+      const c = inpD.value.trim();
+      return c ? { codigo: c, motivo: inpM.value.trim(), ts: (dev0 && dev0.ts) || Date.now() } : null;
+    };
+    const persistir = (venta, dev) => {
       if (!ent.snap) ent.snap = {};
       if (venta) { ent.snap.venta = venta; ent.venta = venta; } else { delete ent.snap.venta; delete ent.venta; }
+      if (dev) { ent.snap.dev = dev; ent.dev = dev; } else { delete ent.snap.dev; delete ent.dev; }
       // Sello de REVISIÓN: sin esto, la fusión entre dispositivos empataba revs y la copia local
       // VIEJA (sin venta) le ganaba a la remota con venta — la ODT/factura "no llegaba" nunca.
       ent.rev = Date.now(); ent.snap.rev = ent.rev;
@@ -750,11 +772,13 @@
     };
     bOk.addEventListener("click", () => {
       const nro = inp.value.trim();
-      if (!nro) return alert("Ingresa el número de " + (tipoSel === "boleta" ? "boleta" : "factura") + ".");
-      persistir({ tipo: tipoSel, numero: nro, odt: inpO.value.trim() || null, ts: Date.now() });
+      const dev = devLeido();
+      if (dev && !dev.motivo) { alert("Ingresaste una reversa / nota de crédito: el MOTIVO de la devolución es obligatorio."); try { inpM.focus(); } catch (_) {} return; }
+      if (!nro && !dev) return alert("Ingresa el número de " + (tipoSel === "boleta" ? "boleta" : "factura") + " (o una reversa / nota de crédito).");
+      persistir(nro ? { tipo: tipoSel, numero: nro, odt: inpO.value.trim() || null, ts: Date.now() } : null, dev);
       cerrar();
     });
-    if (bQuitar) bQuitar.addEventListener("click", () => { if (confirm("¿Quitar el vínculo de venta de esta ficha?")) { persistir(null); cerrar(); } });
+    if (bQuitar) bQuitar.addEventListener("click", () => { if (confirm("¿Quitar el vínculo de venta de esta ficha?")) { persistir(null, devLeido()); cerrar(); } });
     bCa.addEventListener("click", cerrar);
     ov.addEventListener("click", (e) => { if (e.target === ov) cerrar(); });
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") bOk.click(); if (e.key === "Escape") cerrar(); });
@@ -771,13 +795,14 @@
     const granelPref = entTieneGranel(ent) ? '<span class="hist-granel">Granel/</span>' : "";
     const editado = (ent.editado || (ent.snap && ent.snap.editado) || "");
     const badge = editado ? ' · <span class="hist-badge editado">editado ' + esc(editado) + '</span>' : (esUltima ? ' · <span class="hist-badge">última versión</span>' : '');
-    const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "") + (editado ? " editado" : "") + (ent.borrador ? " borrador" : "") + (ent.tipo === "Modificacion" ? " modificacion" : "") + (pagoDe(ent) ? " pagada" : "");
+    const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "") + (editado ? " editado" : "") + (ent.borrador ? " borrador" : "") + (ent.tipo === "Modificacion" ? " modificacion" : "") + (pagoDe(ent) ? " pagada" : "") + (devDe(ent) ? " devuelta" : "");
     const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = ent.borrador ? "Continuar este borrador (restaura el trabajo tal como quedó)" : "Duplicar para editar (como versión siguiente)";
     const vBadge = (function () { const v = ventaDe(ent); return v ? ' · <span class="hist-venta">' + (v.tipo === "boleta" ? "B" : "F") + " " + esc(String(v.numero)) + (v.odt ? " · ODT " + esc(String(v.odt)) : "") + "</span>" : ""; })();
     const pBadge = (function () { const p = pagoDe(ent); return p ? ' · <span class="hist-pago" title="Pago Webpay ' + esc(String(p.fecha || "")) + '">💳 ' + esc(String(p.orden || "pagada")) + "</span>" : ""; })();
+    const dBadge = (function () { const d9 = devDe(ent); return d9 ? ' · <span class="hist-dev" title="DEVOLUCIÓN — motivo: ' + esc(String(d9.motivo || "")) + '">↩ ' + esc(String(d9.codigo || "devuelta")) + "</span>" : ""; })();
     main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + badge + '</span>' +
       tituloHtml +
-      '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + vBadge + pBadge + '</span>';
+      '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + vBadge + pBadge + dBadge + '</span>';
     if (ent.borrador) {
       main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + ' · <span class="hist-badge borrador">BORRADOR</span></span>' +
         '<span class="hist-nom">' + esc(ent.borrNom || "(sin cliente aún)") + '</span>' +
@@ -6107,6 +6132,7 @@
   // reintenta: al guardarse con Generar, el próximo sondeo la enlaza solo.
   const CHKPEND_KEY = "cibsa_chk_pend", CHKOK_KEY = "cibsa_chk_ok";
   const pagoDe = (ent) => (ent && (ent.pago || (ent.snap && ent.snap.pago))) || null;
+  const devDe = (ent) => (ent && (ent.dev || (ent.snap && ent.snap.dev))) || null;   // v17-135: devolución (reversa / NC)
   const chkLS = (k) => { try { const a = JSON.parse(localStorage.getItem(k) || "[]"); return Array.isArray(a) ? a : []; } catch (_) { return []; } };
   const chkLSset = (k, a) => { try { localStorage.setItem(k, JSON.stringify(a)); } catch (_) {} };
   function chkPendAdd(sid) {
@@ -6133,10 +6159,14 @@
     if (ok.some((o) => o && o.orden === d.orden && o.done)) { quitarPend(sid); return; }
     const cot = d.cot || {};
     const k = (s) => (s || "").trim().toLowerCase();
-    const nom = cot.nombre || (cot.cliente || "").split(" ")[0] || "";
+    // v17-134: candidatos de "nombre" del registro. Las cotizaciones de EMPRESA guardan la
+    // RAZÓN SOCIAL como nombre, pero cot.nombre viaja con f_nombre (vacío en empresas) — sin
+    // este fallback la clave jamás calzaba y el pago quedaba huérfano.
+    const razonComp = (d.comprador && d.comprador.empresa && d.comprador.empresa.razon) || "";
+    const noms = [cot.nombre, (cot.cliente || "").split(" ")[0], razonComp].map(k).filter(Boolean);
     const ape = (cot.apellido != null) ? cot.apellido : (cot.cliente || "").split(" ").slice(1).join(" ");
     const vNum = parseInt(cot.version, 10) || 1;
-    const buscar = (a) => a.findIndex((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === cot.tipo && (parseInt(e.version, 10) || 1) === vNum);
+    const buscar = (a) => a.findIndex((e) => (noms.includes(k(e.nombre)) || noms.includes(k(e.razonSocial))) && k(e.apellido) === k(ape) && e.tipo === cot.tipo && (parseInt(e.version, 10) || 1) === vNum);
     let arr = histLoad();
     let i = buscar(arr);
     if (i < 0) {
@@ -6147,13 +6177,25 @@
       try {
         const curNom = ($("f_nombre").value || "").trim() || ((empresaDatos() || {}).razon || "").trim();
         const curApe = ($("f_apellido").value || "").trim();
-        const curVer = parseInt($("f_version").value.trim() || "01", 10) || 1;
-        if (k(curNom) === k(nom) && k(curApe) === k(ape) && histTipo() === cot.tipo && curVer === vNum) {
-          guardarHistorial(curNom, curApe, $("f_version").value.trim() || "01");
+        const curVerS = $("f_version").value.trim() || "01";
+        const curVer = parseInt(curVerS, 10) || 1;
+        const nomCalza = noms.length ? noms.includes(k(curNom)) : !!curNom;
+        if (nomCalza && k(curApe) === k(ape) && histTipo() === cot.tipo && curVer === vNum) {
+          // v17-134: la VENTA MANDA — banderas heredadas de flujos anteriores (reimpresión,
+          // "sobrescribir", modo edición) hacían que guardarHistorial retornara SIN guardar o
+          // pisara un registro. Aquí se neutralizan: el pago se guarda como registro nuevo,
+          // fiel a la pantalla congelada que el cliente aceptó y pagó.
+          _histSkip = false; _histReplace = false; _editHist = null; _forzarNueva = false;
+          try { ocultarEdicionBanner(); } catch (_) {}
+          guardarHistorial(curNom, curApe, curVerS);
           arr = histLoad();
-          i = buscar(arr);
+          // Reubica por la clave RECIÉN GUARDADA (para empresa difiere de la clave de cot).
+          i = arr.findIndex((e) => k(e.nombre) === k(curNom) && k(e.apellido) === k(curApe) && e.tipo === cot.tipo && (parseInt(e.version, 10) || 1) === curVer);
+          if (i < 0) console.warn("CIBSA: auto-guardado del pago no reencontró el registro", curNom, curApe, cot.tipo, curVer);
+        } else {
+          console.warn("CIBSA: pago web sin calce en pantalla —", JSON.stringify({ noms: noms, curNom: k(curNom), ape: k(ape), curApe: k(curApe), tipoCot: cot.tipo, tipoCur: histTipo(), vNum: vNum, curVer: curVer }));
         }
-      } catch (_) {}
+      } catch (e9) { console.warn("CIBSA: auto-guardado del pago falló —", e9 && e9.message ? e9.message : e9); }
     }
     if (i < 0) {
       if (!ok.some((o) => o && o.orden === d.orden)) {
