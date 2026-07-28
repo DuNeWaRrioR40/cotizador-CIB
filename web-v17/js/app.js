@@ -5928,8 +5928,7 @@
   // Valores BRUTOS (con IVA), que es lo que el cliente paga en Webpay. En compuesto se lee
   // state.compuesto.calcs YA calculado (no se recomputa aquí: recomputar → publicar → recomputar
   // sería un lazo eterno de 600 ms). Sin checkbox o sin cotización válida → null (sin oferta).
-  function checkoutPayload() {
-    if (!state.chkVC) return null;
+  function resumenCotizacion() {
     try {
       if (state.modOrigen || state.docMode !== "formal") return null;
       const IVA = CFG.IVA_PCT || 19, br = (n9) => Math.round((n9 || 0) * (1 + IVA / 100));
@@ -5977,16 +5976,65 @@
         }
       }
       if (!items.length || !(total > 0)) return null;
-      return {
-        items, desc, total, iva: IVA,
+      return { items, desc, total, iva: IVA };
+    } catch (_) { return null; }
+  }
+  function checkoutPayload() {
+    if (!state.chkVC) return null;
+    const r9 = resumenCotizacion(); if (!r9) return null;
+    try {
+      const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
+      return Object.assign({}, r9, {
         pre: {
           nombre, apellido, email: $("f_email").value.trim(), fono: empVal("f_fono1_cliente"),
           dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente"),
           emp: { rut: empVal("f_emp_rut"), razon: empVal("f_emp_razon"), giro: empVal("f_emp_giro"), email: empVal("f_emp_email"), fono: empVal("f_emp_fono1"), dir: empVal("f_emp_dir"), comuna: empVal("f_emp_comuna") },
         },
         cot: { cliente: (nombre + " " + apellido).trim(), tipo: histTipo(), version: $("f_version").value.trim() || "01", titulo: tituloConMedidas() || "" },
-      };
+      });
     } catch (_) { return null; }
+  }
+  // ---------- Confirmación previa a "Generar cotización" (v17-120) ----------
+  // El MISMO resumen del checkout, como modal de confirmación ANTES del documento y el registro.
+  // Modal (no popover): entra desde scale(.96) con origen centro, sale más rápido; Esc/scrim =
+  // volver a editar, Enter = confirmar. Sin resumen calculable → true (la validación existente habla).
+  function confirmarResumen() {
+    try { if (state.prodMode === "compuesto") recomputeCompuesto(); else recomputeUniforme(); } catch (_) {}
+    const r = resumenCotizacion();
+    if (!r) return Promise.resolve(true);
+    const esc9 = (t) => String(t == null ? "" : t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const filas = r.items.map((it) =>
+      '<tr><td class="ck-cant">' + esc9(it.c) + '</td><td>' + esc9(it.d) + '</td><td class="ck-val">' + money(it.t) + "</td></tr>").join("") +
+      (r.desc > 0 ? '<tr class="ck-desc"><td></td><td>Descuentos</td><td class="ck-val">−' + money(r.desc) + "</td></tr>" : "") +
+      '<tr class="ck-total"><td></td><td>TOTAL</td><td class="ck-val">' + money(r.total) + "</td></tr>";
+    const quien = (($("f_nombre").value + " " + $("f_apellido").value).trim() || empVal("f_emp_razon") || "").trim();
+    return new Promise((res) => {
+      const m = document.createElement("div"); m.className = "rc-modal"; m.id = "rcModal";
+      m.innerHTML = '<div class="rc-card">' +
+        "<h3>Resumen de la cotización</h3>" +
+        (quien ? '<p class="rc-quien">' + esc9(quien) + " · versión " + esc9($("f_version").value.trim() || "01") + "</p>" : "") +
+        '<div class="rc-body"><table class="ck-tabla"><thead><tr><th>Cant.</th><th>Detalle</th><th>Valor bruto</th></tr></thead><tbody>' + filas + "</tbody></table>" +
+        '<p class="ck-nota">Valores brutos: incluyen IVA (' + r.iva + "%). Revisa que no falte ni sobre nada: esto es lo que verá el cliente.</p></div>" +
+        '<div class="rc-acciones"><button type="button" class="rc-volver" id="rcVolver">Volver a editar</button>' +
+        '<button type="button" class="rc-confirmar" id="rcOk">Confirmar cotización</button></div></div>';
+      document.body.appendChild(m);
+      let fin9 = false;
+      const fin = (ok) => {
+        if (fin9) return; fin9 = true;
+        document.removeEventListener("keydown", onKey);
+        m.classList.add("ck-out"); setTimeout(() => m.remove(), 170);
+        res(ok);
+      };
+      const onKey = (e) => {
+        if (e.key === "Escape") { e.preventDefault(); fin(false); }
+        else if (e.key === "Enter") { e.preventDefault(); fin(true); }
+      };
+      document.addEventListener("keydown", onKey);
+      m.addEventListener("click", (e) => { if (e.target === m) fin(false); });
+      m.querySelector("#rcVolver").addEventListener("click", () => fin(false));
+      m.querySelector("#rcOk").addEventListener("click", () => fin(true));
+      setTimeout(() => { try { m.querySelector("#rcOk").focus(); } catch (_) {} }, 60);
+    });
   }
   function publicarVistaRemota() {
     if (!_vcRem) return;
@@ -12375,6 +12423,7 @@
   async function generar() {
     if (state.modOrigen) return generarModificacion();   // v17-108: la modificación tiene camino propio
     if (state.docMode === "preliminar") return generarPrelim();
+    if (!(await confirmarResumen())) return;   // v17-120: resumen general antes del documento y el registro
     if (state.docMode === "formal" && state.prodMode === "compuesto") return generarCompuesto();
     const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
     const largo = num("f_largo", null), ancho = num("f_ancho", null), tela = telaActual();

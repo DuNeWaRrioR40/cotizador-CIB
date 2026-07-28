@@ -1296,3 +1296,26 @@ body.ck-abierto { overflow: hidden; }
   @starting-style { .ck-ov, .ck-bar, .ck-modal-card, .ck-ent, .ck-aviso { transform: none; } }
   .ck-ov.ck-out, .ck-modal.ck-out .ck-modal-card { transform: none; }
 }
+
+/* ---------- Resumen de confirmación previo a Generar (v17-120) ---------- */
+.rc-modal { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, .45); display: flex; align-items: center; justify-content: center; padding: 18px; transition: opacity 200ms ease; }
+.rc-card { background: #fff; color: #16171a; border-radius: 16px; max-width: 560px; width: 100%; max-height: 84vh; display: flex; flex-direction: column; gap: 10px; padding: 18px; transform-origin: center; transition: transform 220ms cubic-bezier(.23, 1, .32, 1), opacity 220ms ease; }
+@starting-style { .rc-modal { opacity: 0; } .rc-modal .rc-card { opacity: 0; transform: scale(.96) translateY(8px); } }
+.rc-modal.ck-out { opacity: 0; }
+.rc-modal.ck-out .rc-card { opacity: 0; transform: scale(.98); transition-duration: 150ms; }
+.rc-card h3 { margin: 0; font-size: 16px; }
+.rc-quien { margin: 0; font-size: 12.5px; color: #777; }
+.rc-body { overflow-y: auto; }
+.rc-acciones { display: flex; gap: 10px; justify-content: flex-end; }
+.rc-volver { border: 1px solid #d9d9d9; background: #fff; color: #444; border-radius: 12px; padding: 12px 16px; font-size: 14px; cursor: pointer; transition: transform 140ms cubic-bezier(.23, 1, .32, 1), background-color 150ms ease; }
+.rc-confirmar { border: 0; border-radius: 12px; background: #16171a; color: #fff; font-weight: 700; font-size: 15px; padding: 12px 18px; cursor: pointer; transition: transform 140ms cubic-bezier(.23, 1, .32, 1), background-color 150ms ease; }
+.rc-volver:active, .rc-confirmar:active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) {
+  .rc-confirmar:hover { background: #2a2b30; }
+  .rc-volver:hover { background: #f5f5f5; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rc-modal, .rc-card { transition: opacity 150ms ease; }
+  @starting-style { .rc-modal .rc-card { transform: none; } }
+  .rc-modal.ck-out .rc-card { transform: none; }
+}
