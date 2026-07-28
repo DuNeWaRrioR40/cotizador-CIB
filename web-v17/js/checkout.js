@@ -43,7 +43,16 @@
   const fonoValido = (v) => (String(v || "").replace(/\D/g, "").length >= 8);
 
   // ---------- Estado ----------
-  let _chk = null, _sid = "", _abierto = false;
+  let _chk = null, _sid = "", _abierto = false, _cache = null;
+  // "Perdón" (apple-design): cerrar el checkout NO borra lo escrito — se captura todo y se
+  // restaura al reabrir (incluido el tipo natural/empresa, la entrega y los checkboxes).
+  function capturar() {
+    const ov = document.getElementById("ckOv"); if (!ov) return _cache;
+    const seg = ov.querySelector(".ck-seg .on");
+    const vals = {};
+    ov.querySelectorAll("input[id], select[id]").forEach((el) => { vals[el.id] = (el.type === "checkbox") ? el.checked : el.value; });
+    return { emp: !!(seg && seg.getAttribute("data-t") === "empresa"), vals: vals, ent: (ov.querySelector('input[name="ckEnt"]:checked') || {}).value || "retiro" };
+  }
 
   // ---------- Barra de oferta (vive en la vista cliente, bajo el plano) ----------
   function oferta(chk, sid) {
@@ -56,8 +65,12 @@
       document.body.appendChild(bar);
       bar.addEventListener("click", (e) => { if (e.target.closest("#ckIr")) abrir(); });
     }
-    bar.innerHTML = '<div class="ck-bar-tot"><span>Total de la compra</span><b>' + money(_chk.total) + '</b><span class="ck-iva">IVA incluido</span></div>' +
-      '<button type="button" id="ckIr" class="ck-btn-pagar">Proceder al checkout</button>';
+    if (!bar.firstChild) {
+      bar.innerHTML = '<div class="ck-bar-tot"><span>Total de la compra</span><b></b><span class="ck-iva">IVA incluido</span></div>' +
+        '<button type="button" id="ckIr" class="ck-btn-pagar">Proceder al checkout</button>';
+    }
+    const tot = bar.querySelector(".ck-bar-tot b");
+    if (tot && tot.textContent !== money(_chk.total)) tot.textContent = money(_chk.total);
   }
 
   // ---------- Formularios ----------
@@ -154,6 +167,7 @@
   function abrir() {
     if (!_chk || _abierto) return;
     _abierto = true;
+    const esEmp0 = !!(_cache && _cache.emp);
     const ov = document.createElement("div"); ov.className = "ck-ov"; ov.id = "ckOv";
     ov.innerHTML =
       '<div class="ck-page">' +
@@ -164,9 +178,9 @@
 
       '<section class="ck-sec"><h2>Identificación</h2>' +
       '<div class="ck-seg" role="tablist">' +
-      '<button type="button" class="on" data-t="natural">Persona natural</button>' +
-      '<button type="button" data-t="empresa">Empresa</button></div>' +
-      '<div id="ckForm">' + formNatural(_chk.pre) + "</div></section>" +
+      '<button type="button" class="' + (esEmp0 ? "" : "on") + '" data-t="natural">Persona natural</button>' +
+      '<button type="button" class="' + (esEmp0 ? "on" : "") + '" data-t="empresa">Empresa</button></div>' +
+      '<div id="ckForm">' + (esEmp0 ? formEmpresa(_chk.pre) : formNatural(_chk.pre)) + "</div></section>" +
 
       '<section class="ck-sec"><h2>Entrega</h2>' +
       '<label class="ck-chk"><input type="radio" name="ckEnt" value="retiro" checked /> <span>Retiro en tienda</span></label>' +
@@ -188,10 +202,16 @@
 
     // Selector natural/empresa
     ov.querySelectorAll(".ck-seg button").forEach((b) => b.addEventListener("click", () => {
+      if (b.classList.contains("on")) return;
       ov.querySelectorAll(".ck-seg button").forEach((x) => x.classList.remove("on"));
       b.classList.add("on");
-      document.getElementById("ckForm").innerHTML = b.getAttribute("data-t") === "empresa" ? formEmpresa(_chk.pre) : formNatural(_chk.pre);
-      wireForm(ov);
+      const fm = document.getElementById("ckForm");
+      fm.classList.add("ck-swap");
+      setTimeout(() => {
+        fm.innerHTML = b.getAttribute("data-t") === "empresa" ? formEmpresa(_chk.pre) : formNatural(_chk.pre);
+        wireForm(ov);
+        fm.classList.remove("ck-swap");
+      }, 150);
     }));
     // Entrega
     ov.querySelectorAll('input[name="ckEnt"]').forEach((r) => r.addEventListener("change", () => {
@@ -203,11 +223,34 @@
     ov.querySelector("#ckVerTyc").addEventListener("click", verTyc);
     ov.querySelector("#ckPagar").addEventListener("click", intentarPago);
     wireForm(ov);
+    if (_cache) {
+      Object.keys(_cache.vals || {}).forEach((id) => {
+        const el = document.getElementById(id); if (!el) return;
+        if (el.type === "checkbox") el.checked = !!_cache.vals[id]; else el.value = _cache.vals[id];
+      });
+      const r = ov.querySelector('input[name="ckEnt"][value="' + _cache.ent + '"]');
+      if (r) { r.checked = true; r.dispatchEvent(new Event("change")); }
+      const mm = document.getElementById("ck_mismo"); if (mm) mm.dispatchEvent(new Event("change"));
+      ov.querySelectorAll("#ckForm input").forEach((el) => { if (/_(run|rut)$/.test(el.id)) el.dispatchEvent(new Event("input")); });
+    }
+    const esc9 = (e) => {
+      if (e.key !== "Escape") return;
+      const m = document.getElementById("ckTycModal");
+      if (m) { m.classList.add("ck-out"); setTimeout(() => m.remove(), 160); return; }
+      cerrar();
+    };
+    document.addEventListener("keydown", esc9);
+    ov._esc9 = esc9;
   }
   function cerrar() {
-    const ov = document.getElementById("ckOv"); if (ov) ov.remove();
+    const ov = document.getElementById("ckOv");
+    _cache = capturar();
     document.body.classList.remove("ck-abierto");
     _abierto = false;
+    if (!ov) return;
+    if (ov._esc9) document.removeEventListener("keydown", ov._esc9);
+    ov.classList.add("ck-out");
+    setTimeout(() => ov.remove(), 210);
   }
 
   // Validación en vivo: RUN/RUT (módulo 11 con ✓/✗ mientras escribe) + limpieza de errores.
@@ -243,7 +286,8 @@
     m.innerHTML = '<div class="ck-modal-card"><div class="ck-modal-body">' + tycTexto() + "</div>" +
       '<button type="button" class="ck-btn-pagar" id="ckTycOk">Entendido</button></div>';
     document.body.appendChild(m);
-    m.addEventListener("click", (e) => { if (e.target === m || e.target.id === "ckTycOk") m.remove(); });
+    const cierra = () => { m.classList.add("ck-out"); setTimeout(() => m.remove(), 160); };
+    m.addEventListener("click", (e) => { if (e.target === m || e.target.id === "ckTycOk") cierra(); });
   }
 
   // ---------- Validación + tintineo + pago ----------

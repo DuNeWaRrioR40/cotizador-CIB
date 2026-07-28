@@ -1254,3 +1254,45 @@ body.drawer-abierto { overflow: hidden; }
 body.ck-abierto { overflow: hidden; }
 @media (max-width: 480px) { .ck-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .ck-tint, .ck-flash { animation: none; box-shadow: none; } }
+
+/* ---------- Checkout v17-119: fluidez (emil-design-eng + apple-design) ---------- */
+/* Botones responden al TOQUE (pointer-down), curvas custom, propiedades explícitas (nunca "all"). */
+.ck-btn-pagar, .ck-seg button, .ck-x { transition: transform 140ms cubic-bezier(.23, 1, .32, 1), background-color 150ms ease, color 150ms ease, opacity 150ms ease; }
+.ck-btn-pagar:active:not(:disabled), .ck-x:active { transform: scale(.97); }
+.ck-seg button:active { transform: scale(.98); }
+@media (hover: hover) and (pointer: fine) {
+  .ck-btn-pagar:not(:disabled):hover { background: #2a2b30; }
+  .ck-x:hover { background: #f5f5f5; }
+}
+/* Página: entra deslizando desde abajo (curva de drawer iOS), sale por el MISMO camino y más rápido. */
+.ck-ov { transition: transform 280ms cubic-bezier(.32, .72, 0, 1), opacity 280ms cubic-bezier(.32, .72, 0, 1); }
+@starting-style { .ck-ov { opacity: 0; transform: translateY(4%); } }
+.ck-ov.ck-out { opacity: 0; transform: translateY(4%); transition-duration: 200ms; }
+/* Barra de oferta: emerge desde el borde inferior (de donde "viene"). */
+.ck-bar { transition: transform 260ms cubic-bezier(.32, .72, 0, 1); }
+@starting-style { .ck-bar { transform: translateY(100%); } }
+/* Header translúcido: el contenido pasa por debajo (material, no barra opaca). */
+.ck-head { background: rgba(255, 255, 255, .82); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); border-bottom: 1px solid rgba(0, 0, 0, .06); }
+.ck-bar-tot b { letter-spacing: -0.01em; }
+/* Swap natural/empresa: crossfade con blur sutil que enmascara el intercambio de DOM. */
+#ckForm { transition: opacity 150ms ease, filter 150ms ease; }
+#ckForm.ck-swap { opacity: 0; filter: blur(2px); }
+/* Tarjetas de entrega y aviso: entran suaves al des-ocultarse (salida instantánea, está bien). */
+.ck-ent { transition: opacity 200ms cubic-bezier(.23, 1, .32, 1), transform 200ms cubic-bezier(.23, 1, .32, 1); }
+@starting-style { .ck-ent:not(.hidden) { opacity: 0; transform: translateY(-4px); } }
+.ck-aviso { transition: opacity 200ms ease, transform 200ms cubic-bezier(.23, 1, .32, 1); }
+@starting-style { .ck-aviso:not(.hidden) { opacity: 0; transform: translateY(4px); } }
+.ck-field input { transition: border-color 150ms ease, background-color 150ms ease; }
+.ck-rutchk { transition: color 150ms ease; }
+/* Modal T&C: scrim + tarjeta desde scale(.96) — nunca desde 0; salida más rápida. */
+.ck-modal { transition: opacity 200ms ease; }
+.ck-modal-card { transform-origin: center; transition: transform 220ms cubic-bezier(.23, 1, .32, 1), opacity 220ms ease; }
+@starting-style { .ck-modal { opacity: 0; } .ck-modal-card { opacity: 0; transform: scale(.96) translateY(8px); } }
+.ck-modal.ck-out { opacity: 0; }
+.ck-modal.ck-out .ck-modal-card { opacity: 0; transform: scale(.98); transition-duration: 150ms; }
+/* Movimiento reducido: se conservan los fundidos de opacidad, se elimina el desplazamiento. */
+@media (prefers-reduced-motion: reduce) {
+  .ck-ov, .ck-bar, .ck-modal, .ck-modal-card, .ck-ent, .ck-aviso, #ckForm { transition: opacity 150ms ease; }
+  @starting-style { .ck-ov, .ck-bar, .ck-modal-card, .ck-ent, .ck-aviso { transform: none; } }
+  .ck-ov.ck-out, .ck-modal.ck-out .ck-modal-card { transform: none; }
+}
