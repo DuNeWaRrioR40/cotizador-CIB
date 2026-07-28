@@ -5942,7 +5942,7 @@
         const valPz = (r) => (r.piezaTotal != null ? r.piezaTotal : r.o.subtotalLote);
         calcs.forEach(({ pz, r }, i) => items.push({
           c: String(r.lote.N),
-          d: (((pz.etiqueta || "").trim() || ("Pieza " + (i + 1))) + " — confección a medida · " + r.largo + "×" + r.ancho + " m" + (r.tela && r.tela.nombre ? " · " + r.tela.nombre : "")),
+          d: (((pz.etiqueta || "").trim() || ("Pieza " + (i + 1))) + " — confección a medida · " + r.largo + "×" + r.ancho + " m" + (telaCli(r.tela) ? " · " + telaCli(r.tela) : "")),
           t: br(valPz(r)),
         }));
         const unitNets = []; calcs.forEach(({ r }) => { const nP = Math.max(1, r.lote.N), per = valPz(r) / nP; for (let k = 0; k < nP; k++) unitNets.push(per); });
@@ -5964,7 +5964,7 @@
           const c9 = r.calc, d9 = r.datos;
           const granelT = (d9.granel || []).reduce((s, g) => s + g.total, 0);
           const extrasT = (d9.extras || []).reduce((s, e) => s + (e.neto || 0), 0);
-          items.push({ c: String(c9.cantidad), d: (d9.titulo || "Producto confeccionado a medida") + (d9.tela && d9.tela.nombre ? " · " + d9.tela.nombre : ""), t: br(c9.subtotal - granelT - extrasT) });
+          items.push({ c: String(c9.cantidad), d: (d9.titulo || "Producto confeccionado a medida") + (telaCli(d9.tela) ? " · " + telaCli(d9.tela) : ""), t: br(c9.subtotal - granelT - extrasT) });
           pushGranel(d9.granel); pushExtras(d9.extras);
           desc = br(c9.descuento); total = c9.total;
         } else {
