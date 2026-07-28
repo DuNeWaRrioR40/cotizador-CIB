@@ -5847,7 +5847,7 @@
   function iniciarVCRemota(sid) {
     const base = vcFirebaseUrl();
     const pl = () => document.getElementById("vcPlano");
-    const fin = (msg) => { const p = pl(); if (p) p.innerHTML = '<p class="vc-wait">' + msg + "</p>"; };
+    const fin = (msg) => { const p = pl(); if (p) p.innerHTML = '<p class="vc-wait">' + msg + "</p>"; try { if (window.CheckoutCIBSA) window.CheckoutCIBSA.oferta(null, sid); } catch (_) {} };
     if (!base) { fin("Compartir por QR no está configurado en esta App."); return; }
     const url = base + "/vc/" + encodeURIComponent(sid) + ".json";
     let expTimer = null;
@@ -5862,6 +5862,7 @@
           (x.tit ? '<div class="vc-sub">' + x.tit + "</div>" : "") + sketchDualSVG(x.spec, x.tras, x.bc, x.ba)
         ).join("") + (d.v3d ? '<img class="vc-img3d" alt="Vista 3D" src="' + d.v3d + '"/>' : "")) || '<p class="vc-wait">Esperando el plano…</p>';
       } catch (_) {}
+      try { if (window.CheckoutCIBSA) window.CheckoutCIBSA.oferta(d.chk || null, sid); } catch (_) {}
       clearTimeout(expTimer);
       if (d.exp) expTimer = setTimeout(() => fin("Sesión finalizada. ¡Gracias!"), Math.max(0, d.exp - Date.now()) + 500);
     };
@@ -5895,6 +5896,14 @@
     _vcUlt = ""; _vcRemUlt = "";
     publicarVistaCliente();
   }
+  // v17-118: "Habilitar checkout" — homólogo a setSubVC. Publica el payload de compra (ítems,
+  // totales brutos y prellenado) a la vista cliente remota; allí CheckoutCIBSA pinta la oferta.
+  function setChkVC(v) {
+    state.chkVC = !!v;
+    ["f_chkVC", "f_chkVCc"].forEach((id) => { const el = $(id); if (el) el.checked = state.chkVC; });
+    _vcRemUlt = "";
+    publicarVistaCliente();
+  }
   const VC_QR_MIN = 30;
   function vcFirebaseUrl() { return String(CFG.VC_FIREBASE_URL || "").replace(/\/+$/, ""); }
   function vcSid() {
@@ -5914,6 +5923,71 @@
     if (_vcEspecUnif) return [{ tit: "", spec: _vcEspecUnif, tras: !!state.trasUnif, bc: cortesSpec(state.backCortesUnif), ba: aletasSpec(state.backAletasUnif) }];
     return [];
   }
+  // ---------- Checkout (Webpay): payload que viaja a la vista cliente remota ----------
+  // Ítems y totales = los MISMOS de la cotización (constructores del PDF): cero matemática nueva.
+  // Valores BRUTOS (con IVA), que es lo que el cliente paga en Webpay. En compuesto se lee
+  // state.compuesto.calcs YA calculado (no se recomputa aquí: recomputar → publicar → recomputar
+  // sería un lazo eterno de 600 ms). Sin checkbox o sin cotización válida → null (sin oferta).
+  function checkoutPayload() {
+    if (!state.chkVC) return null;
+    try {
+      if (state.modOrigen || state.docMode !== "formal") return null;
+      const IVA = CFG.IVA_PCT || 19, br = (n9) => Math.round((n9 || 0) * (1 + IVA / 100));
+      const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
+      const items = []; let desc = 0, total = 0;
+      const pushGranel = (gs) => (gs || []).forEach((g) => items.push({ c: String(g.cantidad), d: g.detalle, t: br(g.total) }));
+      const pushExtras = (es) => (es || []).forEach((ex) => items.push({ c: "", d: ex.titulo, t: br(ex.neto) }));
+      if (state.prodMode === "compuesto") {
+        const cc = state.compuesto || {}, calcs = cc.calcs || [];
+        if (!calcs.length) return null;
+        const valPz = (r) => (r.piezaTotal != null ? r.piezaTotal : r.o.subtotalLote);
+        calcs.forEach(({ pz, r }, i) => items.push({
+          c: String(r.lote.N),
+          d: (((pz.etiqueta || "").trim() || ("Pieza " + (i + 1))) + " — confección a medida · " + r.largo + "×" + r.ancho + " m" + (r.tela && r.tela.nombre ? " · " + r.tela.nombre : "")),
+          t: br(valPz(r)),
+        }));
+        const unitNets = []; calcs.forEach(({ r }) => { const nP = Math.max(1, r.lote.N), per = valPz(r) / nP; for (let k = 0; k < nP; k++) unitNets.push(per); });
+        const minProd = minProduccionEscalonado(unitNets);
+        if (minProd > 0) items.push({ c: "", d: "Mínimo de producción", t: br(minProd) });
+        const gs = granelLineasPDF(), extras = extrasCondiciones();
+        pushGranel(gs); pushExtras(extras);
+        const granelT = gs.reduce((s, g) => s + g.total, 0), extrasT = extras.reduce((s, e) => s + (e.neto || 0), 0);
+        const carpaSub = calcs.reduce((s, { r }) => s + valPz(r), 0) + minProd;
+        const dI = descuentoInfo(cc.subtotalGen || 0);
+        const desc0 = dI.esMonto ? Math.min(Math.max(0, dI.monto || 0), carpaSub) : Math.round(carpaSub * (dI.pct || 0) / 100);
+        const neto = carpaSub + granelT + extrasT - desc0;
+        desc = br(desc0);
+        total = neto + Math.round(neto * IVA / 100);
+      } else {
+        const tela = telaActual(), largo = num("f_largo", null), ancho = num("f_ancho", null);
+        if (tela && largo > 0 && ancho > 0 && state.loteUnif) {
+          const r = construirDatosUnif(tela, state.loteUnif, $("f_version").value.trim() || "01");
+          const c9 = r.calc, d9 = r.datos;
+          const granelT = (d9.granel || []).reduce((s, g) => s + g.total, 0);
+          const extrasT = (d9.extras || []).reduce((s, e) => s + (e.neto || 0), 0);
+          items.push({ c: String(c9.cantidad), d: (d9.titulo || "Producto confeccionado a medida") + (d9.tela && d9.tela.nombre ? " · " + d9.tela.nombre : ""), t: br(c9.subtotal - granelT - extrasT) });
+          pushGranel(d9.granel); pushExtras(d9.extras);
+          desc = br(c9.descuento); total = c9.total;
+        } else {
+          const gs = granelLineasPDF(); if (!gs.length) return null;
+          const extras = extrasCondiciones();
+          pushGranel(gs); pushExtras(extras);
+          const neto = gs.reduce((s, g) => s + g.total, 0) + extras.reduce((s, e) => s + (e.neto || 0), 0);
+          total = neto + Math.round(neto * IVA / 100);
+        }
+      }
+      if (!items.length || !(total > 0)) return null;
+      return {
+        items, desc, total, iva: IVA,
+        pre: {
+          nombre, apellido, email: $("f_email").value.trim(), fono: empVal("f_fono1_cliente"),
+          dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente"),
+          emp: { rut: empVal("f_emp_rut"), razon: empVal("f_emp_razon"), giro: empVal("f_emp_giro"), email: empVal("f_emp_email"), fono: empVal("f_emp_fono1"), dir: empVal("f_emp_dir"), comuna: empVal("f_emp_comuna") },
+        },
+        cot: { cliente: (nombre + " " + apellido).trim(), tipo: histTipo(), version: $("f_version").value.trim() || "01", titulo: tituloConMedidas() || "" },
+      };
+    } catch (_) { return null; }
+  }
   function publicarVistaRemota() {
     if (!_vcRem) return;
     if (Date.now() > _vcRem.exp) { terminarVistaQR(); return; }
@@ -5921,7 +5995,7 @@
     _vcRemTimer = setTimeout(() => {
       if (!_vcRem) return;
       let data;
-      try { data = JSON.stringify({ ts: Date.now(), exp: _vcRem.exp, t: tituloConMedidas() || "", sub: vcSubTexto(), planos: vcPlanosRemoto(), v3d: _vc3d || "" }); } catch (_) { return; }
+      try { data = JSON.stringify({ ts: Date.now(), exp: _vcRem.exp, t: tituloConMedidas() || "", sub: vcSubTexto(), planos: vcPlanosRemoto(), v3d: _vc3d || "", chk: checkoutPayload() }); } catch (_) { return; }
       if (data === _vcRemUlt) return; _vcRemUlt = data;
       fetch(vcFirebaseUrl() + "/vc/" + _vcRem.sid + ".json", { method: "PUT", body: data }).catch(() => {});
     }, 600);
@@ -12203,6 +12277,8 @@
   { const b = $("btnVistaQR"); if (b) b.addEventListener("click", toggleVistaQR); }
   { const el = $("f_subVC"); if (el) el.addEventListener("change", () => setSubVC(el.checked)); }
   { const el = $("f_subVCc"); if (el) el.addEventListener("change", () => setSubVC(el.checked)); }
+  { const el = $("f_chkVC"); if (el) el.addEventListener("change", () => setChkVC(el.checked)); }
+  { const el = $("f_chkVCc"); if (el) el.addEventListener("change", () => setChkVC(el.checked)); }
   { const el = $("f_v3dVC"); if (el) el.addEventListener("change", () => setV3dVC(el.checked)); }
   { const el = $("f_v3dVCc"); if (el) el.addEventListener("change", () => setV3dVC(el.checked)); }
   { const b = $("btnVistaQRComp"); if (b) b.addEventListener("click", toggleVistaQR); }

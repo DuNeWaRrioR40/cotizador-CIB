@@ -283,7 +283,7 @@
       <p class="muted small">Planimetría de todas las piezas, ordenada. Pliega cada plano por separado y descárgalo individualmente.</p>
       <p><button id="btnVistaClienteComp" class="btn-outline" type="button">Vista cliente (monitor)</button>
       <button id="btnVistaQRComp" class="btn-outline" type="button">Compartir vista (QR)</button>
-      <label class="chk vc-sub-chk"><input id="f_subVCc" type="checkbox" /> <span>Mostrar subtotal en vista cliente</span></label> <label class="chk vc-sub-chk"><input id="f_v3dVCc" type="checkbox" /> <span>Mostrar vista 3D en vista cliente</span></label></p>
+      <label class="chk vc-sub-chk"><input id="f_subVCc" type="checkbox" /> <span>Mostrar subtotal en vista cliente</span></label> <label class="chk vc-sub-chk"><input id="f_v3dVCc" type="checkbox" /> <span>Mostrar vista 3D en vista cliente</span></label> <label class="chk vc-sub-chk"><input id="f_chkVCc" type="checkbox" /> <span>Habilitar checkout</span></label></p>
       <div id="previewCompuesto"></div>
     </div>
 
@@ -433,6 +433,7 @@
         <input id="mod3DFile" type="file" accept=".stl,.obj" style="display:none">
         <div id="subtotalUnifHint" class="subtotal-hint muted small"></div>
         <label class="chk vc-sub-chk"><input id="f_subVC" type="checkbox" /> <span>Mostrar subtotal en vista cliente</span></label>
+        <label class="chk vc-sub-chk"><input id="f_chkVC" type="checkbox" /> <span>Habilitar checkout</span></label>
         <label class="chk vc-sub-chk"><input id="f_v3dVC" type="checkbox" /> <span>Mostrar vista 3D en vista cliente</span></label>
       </div>
     </div>
@@ -541,6 +542,7 @@
   <script src="js/dte.js"></script>
   <script src="js/factura.js"></script>
   <script src="js/pdf.js"></script>
+  <script src="js/checkout.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
