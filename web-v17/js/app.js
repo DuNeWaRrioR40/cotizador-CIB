@@ -213,7 +213,7 @@
   function histFechaCorta(d) { return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2); }
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
-  const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_visita", "f_despacho", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email", "f_fono1_cliente", "f_fono2_cliente", "f_emp_fono1", "f_emp_fono2", "f_tallerHoras"];
+  const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_apellidoM", "f_run_cliente", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_visita", "f_despacho", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email", "f_fono1_cliente", "f_fono2_cliente", "f_emp_fono1", "f_emp_fono2", "f_tallerHoras"];
   const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "vis3D", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "ensambles", "figImgUnif", "factorUnif", "granelLineas", "modOrigen"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
@@ -6039,7 +6039,7 @@
       const nombre = $("f_nombre").value.trim(), apellido = $("f_apellido").value.trim();
       return Object.assign({}, r9, {
         pre: {
-          nombre, apellido, email: $("f_email").value.trim(), fono: empVal("f_fono1_cliente"),
+          nombre, apellido, apMat: empVal("f_apellidoM"), run: empVal("f_run_cliente"), email: $("f_email").value.trim(), fono: empVal("f_fono1_cliente"),
           dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente"),
           emp: { rut: empVal("f_emp_rut"), razon: empVal("f_emp_razon"), giro: empVal("f_emp_giro"), email: empVal("f_emp_email"), fono: empVal("f_emp_fono1"), dir: empVal("f_emp_dir"), comuna: empVal("f_emp_comuna") },
         },
@@ -12381,7 +12381,7 @@
     _odtActual = null;      // sin venta cargada no hay ODT que mostrar
     ["f_largo", "f_ancho", "f_titulo", "f_observaciones", "f_color"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
     if (!mantenerCliente) {
-      ["f_nombre", "f_apellido", "f_email", "f_dir_cliente", "f_comuna_cliente",
+      ["f_nombre", "f_apellido", "f_apellidoM", "f_run_cliente", "f_email", "f_dir_cliente", "f_comuna_cliente",
        "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
       const eo = $("f_empresaOn"); if (eo) eo.checked = false; if (typeof toggleEmpresa === "function") toggleEmpresa();
     }
@@ -12464,6 +12464,21 @@
   { const el = $("f_subVCc"); if (el) el.addEventListener("change", () => setSubVC(el.checked)); }
   { const el = $("f_chkVC"); if (el) el.addEventListener("change", () => setChkVC(el.checked)); }
   { const el = $("f_chkVCc"); if (el) el.addEventListener("change", () => setChkVC(el.checked)); }
+  // v17-128: homologación con el checkout — RUN/CIE del contacto y RUT de empresa validados
+  // en vivo con el MISMO módulo 11 de CheckoutCIBSA (checkout.js carga antes que app.js).
+  function wireRutVivo(id) {
+    const el = $(id); if (!el) return;
+    el.addEventListener("input", () => {
+      const C = window.CheckoutCIBSA; if (!C) return;
+      el.value = C.rutFormato(el.value);
+      const ok = document.getElementById(id + "_ok"); if (!ok) return;
+      const t = el.value.replace(/[^0-9kK]/g, "");
+      if (t.length < 7) { ok.textContent = ""; ok.className = "run-chk"; }
+      else if (C.rutValido(el.value)) { ok.textContent = "✓ número de identificación válido"; ok.className = "run-chk ok"; }
+      else { ok.textContent = "✗ número de identificación NO válido"; ok.className = "run-chk mal"; }
+    });
+  }
+  wireRutVivo("f_run_cliente"); wireRutVivo("f_emp_rut");
   { const el = $("f_v3dVC"); if (el) el.addEventListener("change", () => setV3dVC(el.checked)); }
   { const el = $("f_v3dVCc"); if (el) el.addEventListener("change", () => setV3dVC(el.checked)); }
   { const b = $("btnVistaQRComp"); if (b) b.addEventListener("click", toggleVistaQR); }

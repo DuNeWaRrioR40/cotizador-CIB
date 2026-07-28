@@ -95,7 +95,9 @@
       <button id="btnLimpiarCotiz" class="btn-outline" type="button">🧹 Limpiar (mantener cliente)</button>
       <p class="muted small">Borra toda la información de esta cotización excepto los datos del cliente. Para borrar todo, usa el botón «Limpiar» al costado de «Generar cotización».</p>
       <label class="field"><span>Nombre</span><input id="f_nombre" type="text" autocomplete="off" /></label>
-      <label class="field"><span>Apellido</span><input id="f_apellido" type="text" autocomplete="off" /></label>
+      <label class="field"><span>Apellido Paterno</span><input id="f_apellido" type="text" autocomplete="off" /></label>
+      <label class="field"><span>Apellido Materno</span><input id="f_apellidoM" type="text" autocomplete="off" /></label>
+      <label class="field"><span>RUN / CIE</span><input id="f_run_cliente" type="text" autocomplete="off" placeholder="12.345.678-9" /><em class="run-chk" id="f_run_cliente_ok"></em></label>
       <label class="field"><span>Dirección</span><input id="f_dir_cliente" type="text" autocomplete="off" /></label>
       <label class="field"><span>Comuna</span><input id="f_comuna_cliente" type="text" autocomplete="off" /></label>
       <label class="field"><span>E-mail</span><input id="f_email" type="email" autocomplete="off" /></label>
@@ -107,7 +109,7 @@
           <button id="btnEscanearQR" class="btn-outline" type="button">📷 Escanear QR (e-RUT)</button>
           <span class="muted small">Apunta la cámara al QR del e-RUT para poblar RUT, Razón Social y Dirección.</span>
         </div>
-        <label class="field"><span>RUT</span><input id="f_emp_rut" type="text" autocomplete="off" placeholder="96.612.980-8" /></label>
+        <label class="field"><span>RUT</span><input id="f_emp_rut" type="text" autocomplete="off" placeholder="96.612.980-8" /><em class="run-chk" id="f_emp_rut_ok"></em></label>
         <label class="field"><span>Razón Social</span><input id="f_emp_razon" type="text" autocomplete="off" /></label>
         <label class="field"><span>Giro</span><input id="f_emp_giro" type="text" autocomplete="off" /></label>
         <label class="field"><span>Dirección</span><input id="f_emp_dir" type="text" autocomplete="off" /></label>

@@ -92,13 +92,13 @@
   }
   function formNatural(pre) {
     const p = pre || {};
-    const v = { nombre: p.nombre, apPat: p.apellido, apMat: "", run: "", email: p.email, fono: p.fono, dir: p.dir, comuna: p.comuna };
+    const v = { nombre: p.nombre, apPat: p.apellido, apMat: p.apMat || "", run: p.run || "", email: p.email, fono: p.fono, dir: p.dir, comuna: p.comuna };
     return '<div class="ck-grid">' + F_CONTACTO.map(([k, l]) => campo("n_", k, l, v[k], k === "email" ? "email" : k === "fono" ? "tel" : "text")).join("") + "</div>" +
       '<input type="hidden" id="ck_n_giro" value="Sin Giro Asociado" />';
   }
   function formEmpresa(pre) {
     const p = pre || {}, e = (p && p.emp) || {};
-    const vc = { nombre: p.nombre, apPat: p.apellido, apMat: "", run: "", email: p.email, fono: p.fono, dir: p.dir, comuna: p.comuna };
+    const vc = { nombre: p.nombre, apPat: p.apellido, apMat: p.apMat || "", run: p.run || "", email: p.email, fono: p.fono, dir: p.dir, comuna: p.comuna };
     return '<h3 class="ck-h3">Persona de contacto</h3><div class="ck-grid">' +
       F_CONTACTO.map(([k, l]) => campo("c_", k, l, vc[k], k === "email" ? "email" : k === "fono" ? "tel" : "text")).join("") + "</div>" +
       '<h3 class="ck-h3">Empresa</h3>' +

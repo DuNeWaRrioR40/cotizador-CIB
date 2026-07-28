@@ -1348,3 +1348,8 @@ body.chk-lock #btnVistaQR, body.chk-lock #btnVistaQRComp, body.chk-lock #btnVist
 .chk-lock-bar button:active { transform: scale(.97); }
 @media (hover: hover) and (pointer: fine) { .chk-lock-bar button:hover { background: rgba(255, 216, 61, .12); } }
 @media (prefers-reduced-motion: reduce) { .chk-lock-bar { transition: none; } }
+
+/* ---------- Homologación de individualización con el checkout (v17-128) ---------- */
+.run-chk { display: block; font-style: normal; font-size: 11px; min-height: 13px; margin-top: 3px; transition: color 150ms ease; }
+.run-chk.ok { color: #21b158; }
+.run-chk.mal { color: #ff6b5e; }
