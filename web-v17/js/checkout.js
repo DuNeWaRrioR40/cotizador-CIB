@@ -375,5 +375,28 @@
       });
   }
 
-  global.CheckoutCIBSA = { oferta, abrir, cerrar, rutValido, rutFormato, rutDV };
+  // ---------- Resultado del pago (?pago=ok|fail|abort|timeout&orden=...&s=SID) ----------
+  // Momento raro y significativo: aquí sí cabe el deleite (entrada del ícono con
+  // @starting-style). "fail/abort/timeout" ofrecen volver al plano para reintentar.
+  function resultado(params) {
+    const p = params || new URLSearchParams(location.search);
+    const est = p.get("pago") || "", orden = p.get("orden") || "", sid = p.get("s") || "";
+    document.title = "CIBSA — Pago";
+    document.body.className = "ck-res-body";
+    const volver = sid ? (location.pathname + "?vista=cliente&s=" + encodeURIComponent(sid)) : "";
+    const M = {
+      ok: ["✓", "¡Pago exitoso!", "Tu compra quedó registrada" + (orden ? " con la orden <b>" + esc(orden) + "</b>" : "") + ". Recibirás el comprobante y los documentos de tu compra por correo. ¡Gracias por preferir CIBSA!"],
+      fail: ["✕", "El pago fue rechazado", "Tu banco o Webpay no autorizó el cargo y <b>no se realizó ningún cobro</b>. Puedes intentarlo nuevamente."],
+      abort: ["✕", "Pago cancelado", "Anulaste el pago en Webpay; <b>no se realizó ningún cobro</b>."],
+      timeout: ["⏱", "Tiempo agotado", "La sesión de pago expiró en Webpay; <b>no se realizó ningún cobro</b>."],
+    };
+    const m = M[est] || M.abort;
+    document.body.innerHTML = '<div class="ck-res">' +
+      '<div class="ck-res-ico ' + (est === "ok" ? "ok" : "mal") + '">' + m[0] + "</div>" +
+      "<h2>" + m[1] + "</h2><p>" + m[2] + "</p>" +
+      (volver && est !== "ok" ? '<a class="ck-btn-pagar ck-res-btn" href="' + volver + '">Volver al plano e intentar de nuevo</a>' : "") +
+      '<p class="ck-nota">CIBSA · Santa Elena 2205, San Joaquín · contacto@cibsa.cl</p></div>';
+  }
+
+  global.CheckoutCIBSA = { oferta, abrir, cerrar, resultado, rutValido, rutFormato, rutDV };
 })(window);

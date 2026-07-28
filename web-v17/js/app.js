@@ -13983,6 +13983,7 @@
 
   // ---------- Inicio ----------
   (function init() {
+    try { const q9 = new URLSearchParams(location.search); if (q9.get("pago") && window.CheckoutCIBSA) { window.CheckoutCIBSA.resultado(q9); return; } } catch (_) {}
     try { if (new URLSearchParams(location.search).get("vista") === "cliente") { iniciarVistaCliente(); return; } } catch (_) {}
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
