@@ -907,7 +907,8 @@
     const dv = g("histFDesde"), hv = g("histFHasta");
     const desde = dv ? new Date(dv + "T00:00:00").getTime() : null;
     const hasta = hv ? new Date(hv + "T23:59:59").getTime() : null;
-    return { nom, correl, odt, tipo, desde, hasta, activo: !!(nom || correl || odt || tipo || desde != null || hasta != null) };
+    const dev = (function () { const el = $("histFDev"); return !!(el && el.checked); })();   // v17-136: solo anulaciones
+    return { nom, correl, odt, tipo, desde, hasta, dev, activo: !!(nom || correl || odt || tipo || dev || desde != null || hasta != null) };
   }
   // Lista filtrada: sin filtros NO muestra nada (ni los de la semana); con filtros muestra todo lo que coincida.
   function renderListaFiltrada() {
@@ -920,6 +921,7 @@
       if (f.nom && !(((e.nombre || "") + " " + (e.apellido || "")).trim().toLowerCase().includes(f.nom))) return false;
       if (f.correl) { const c = correlSnap(e); if (!c || !String(c).includes(f.correl)) return false; }
       if (f.odt) { const v9 = ventaDe(e); const cad = v9 ? ((String(v9.odt || "") + " " + String(v9.numero || "")).toLowerCase()) : ""; if (!cad.includes(f.odt)) return false; }
+      if (f.dev && !devDe(e)) return false;   // v17-136: solo registros con devolución (reversa/NC)
       if (f.tipo && (e.tipo || "") !== f.tipo) return false;
       if (f.desde != null && (e.ts || 0) < f.desde) return false;
       if (f.hasta != null && (e.ts || 0) > f.hasta) return false;
@@ -1408,8 +1410,8 @@
   { const n = $("histGalNext"); if (n) n.addEventListener("click", () => galScroll(1)); }
   { const t = $("histGalTrack"); if (t) t.addEventListener("scroll", () => { if (t._galRaf) return; t._galRaf = requestAnimationFrame(() => { t._galRaf = 0; actualizarFlechasGal(); }); }); }
   // Filtros de la lista: re-renderizan al cambiar (la lista solo aparece con algún filtro activo).
-  ["histFNombre", "histFCorrel", "histFOdt", "histFDesde", "histFHasta", "histFTipo"].forEach((id) => { const el = $(id); if (el) ["input", "change"].forEach((ev) => el.addEventListener(ev, renderListaFiltrada)); });
-  { const b = $("histFLimpiar"); if (b) b.addEventListener("click", () => { ["histFNombre", "histFCorrel", "histFOdt", "histFDesde", "histFHasta"].forEach((id) => { const e = $(id); if (e) e.value = ""; }); const t = $("histFTipo"); if (t) t.value = ""; renderListaFiltrada(); }); }
+  ["histFNombre", "histFCorrel", "histFOdt", "histFDesde", "histFHasta", "histFTipo", "histFDev"].forEach((id) => { const el = $(id); if (el) ["input", "change"].forEach((ev) => el.addEventListener(ev, renderListaFiltrada)); });
+  { const b = $("histFLimpiar"); if (b) b.addEventListener("click", () => { ["histFNombre", "histFCorrel", "histFOdt", "histFDesde", "histFHasta"].forEach((id) => { const e = $(id); if (e) e.value = ""; }); const t = $("histFTipo"); if (t) t.value = ""; const d = $("histFDev"); if (d) d.checked = false; renderListaFiltrada(); }); }
   // ----- Exportar historial a CSV / Excel -----
   function histFechaLarga(ts) { const d = new Date(ts || Date.now()); return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2) + "/" + d.getFullYear(); }
   function histStamp() { const d = new Date(); return "" + d.getFullYear() + ("0" + (d.getMonth() + 1)).slice(-2) + ("0" + d.getDate()).slice(-2); }
@@ -12480,6 +12482,7 @@
     // Filtros del historial de cotizaciones recientes: todos los campos como recién abiertos.
     ["histFNombre", "histFCorrel", "histFDesde", "histFHasta", "histFOdt"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
     { const t = $("histFTipo"); if (t) t.value = ""; }
+    { const d = $("histFDev"); if (d) d.checked = false; }
     if (typeof renderListaFiltrada === "function") renderListaFiltrada();
     // Navegación / filtros de productos a granel: vuelve al inicio (categorías), sin selección ni comparador.
     granelNav = {}; granelCantMem = {}; _vista3D = null;

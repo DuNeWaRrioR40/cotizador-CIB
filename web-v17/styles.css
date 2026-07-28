@@ -1365,6 +1365,9 @@ body.chk-lock #btnVistaQR, body.chk-lock #btnVistaQRComp, body.chk-lock #btnVist
 .hist-chip.devuelta, .hist-chip.devuelta.pagada { border-color: rgba(255, 107, 94, .65); background: rgba(255, 107, 94, .07); }
 .hist-chip.devuelta .hist-fecha, .hist-chip.devuelta .hist-tipo { color: #ff6b5e; }
 .hist-dev { color: #ff6b5e; font-weight: 700; }
+/* Filtro "↩ Anulaciones" en la barra del historial (v17-136) */
+.hist-f-dev { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #ff6b5e; font-weight: 600; cursor: pointer; user-select: none; white-space: nowrap; }
+.hist-f-dev input { accent-color: #ff6b5e; }
 
 /* ---------- Página de agradecimiento (v17-132: smiley SVG propio aprobado por preview) ----------
    Cara dibujada, no tipográfica: ojos ovalados centrados por coordenadas; boca aflautada más
