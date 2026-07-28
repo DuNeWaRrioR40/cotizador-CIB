@@ -154,7 +154,7 @@
     const ts = parseInt(r && r[0], 10) || 0; if (!ts) return null; // descarta encabezado / filas inválidas
     let snap = null; try { snap = r[6] ? JSON.parse(r[6]) : null; } catch (e) {}
     const est = (snap && snap.estado) || {};
-    return { ts: ts, rev: (snap && snap.rev) || 0, borrador: !!(snap && snap.borrador), borrNom: (snap && snap.borrNom) || "", nombre: (r[1] || "").toString().trim(), apellido: (r[2] || "").toString().trim(), tipo: (r[3] || "").toString().trim(), version: parseInt(r[4], 10) || 1, fecha: (r[5] || "").toString().trim(), editado: (snap && snap.editado) || "", venta: (snap && snap.venta) || null, snap: snap, modo: est.docMode || "formal", prod: est.prodMode || "uniforme" };
+    return { ts: ts, rev: (snap && snap.rev) || 0, borrador: !!(snap && snap.borrador), borrNom: (snap && snap.borrNom) || "", nombre: (r[1] || "").toString().trim(), apellido: (r[2] || "").toString().trim(), tipo: (r[3] || "").toString().trim(), version: parseInt(r[4], 10) || 1, fecha: (r[5] || "").toString().trim(), editado: (snap && snap.editado) || "", venta: (snap && snap.venta) || null, pago: (snap && snap.pago) || null, snap: snap, modo: est.docMode || "formal", prod: est.prodMode || "uniforme" };
   }
   // Une historial local + remoto (Sheet), deduplica por cliente+tipo (mayor versión / ts más reciente),
   // sube al Sheet las entradas locales que aún no estén allí (migración), y deja el resultado en localStorage.
@@ -762,12 +762,13 @@
     const granelPref = entTieneGranel(ent) ? '<span class="hist-granel">Granel/</span>' : "";
     const editado = (ent.editado || (ent.snap && ent.snap.editado) || "");
     const badge = editado ? ' · <span class="hist-badge editado">editado ' + esc(editado) + '</span>' : (esUltima ? ' · <span class="hist-badge">última versión</span>' : '');
-    const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "") + (editado ? " editado" : "") + (ent.borrador ? " borrador" : "") + (ent.tipo === "Modificacion" ? " modificacion" : "");
+    const card = document.createElement("div"); card.className = "hist-chip" + (esUltima ? " ultima" : "") + (editado ? " editado" : "") + (ent.borrador ? " borrador" : "") + (ent.tipo === "Modificacion" ? " modificacion" : "") + (pagoDe(ent) ? " pagada" : "");
     const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = ent.borrador ? "Continuar este borrador (restaura el trabajo tal como quedó)" : "Duplicar para editar (como versión siguiente)";
     const vBadge = (function () { const v = ventaDe(ent); return v ? ' · <span class="hist-venta">' + (v.tipo === "boleta" ? "B" : "F") + " " + esc(String(v.numero)) + (v.odt ? " · ODT " + esc(String(v.odt)) : "") + "</span>" : ""; })();
+    const pBadge = (function () { const p = pagoDe(ent); return p ? ' · <span class="hist-pago" title="Pago Webpay ' + esc(String(p.fecha || "")) + '">💳 ' + esc(String(p.orden || "pagada")) + "</span>" : ""; })();
     main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + badge + '</span>' +
       tituloHtml +
-      '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + vBadge + '</span>';
+      '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + vBadge + pBadge + '</span>';
     if (ent.borrador) {
       main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + ' · <span class="hist-badge borrador">BORRADOR</span></span>' +
         '<span class="hist-nom">' + esc(ent.borrNom || "(sin cliente aún)") + '</span>' +
@@ -5898,9 +5899,61 @@
   }
   // v17-118: "Habilitar checkout" — homólogo a setSubVC. Publica el payload de compra (ítems,
   // totales brutos y prellenado) a la vista cliente remota; allí CheckoutCIBSA pinta la oferta.
+  // v17-127: vigía de la venta — mientras el checkout está habilitado, consulta /chkfin/<sid>
+  // cada 5 s. Cancelación o timeout del cliente → el checkbox se DESHABILITA solo (reabrir la
+  // venta es decisión consciente del vendedor). Pago exitoso → también se apaga (venta cerrada,
+  // nadie compra dos veces) y el pago se anexa AL INSTANTE. Rechazo bancario → solo aviso (el
+  // cliente puede reintentar con otro medio).
+  let _chkWatch = null, _chkEvtVisto = "";
+  function vigilarChkfin() {
+    if (!state.chkVC || !_vcRem || !vcFirebaseUrl()) return;
+    const sid = _vcRem.sid;
+    fetch(vcFirebaseUrl() + "/chkfin/" + encodeURIComponent(sid) + ".json").then((r) => r.json()).then((d) => {
+      if (!d || !d.estado) return;
+      const key = sid + "|" + d.estado + "|" + (d.ts || 0);
+      if (key === _chkEvtVisto) return;
+      _chkEvtVisto = key;
+      if (d.estado === "pagado" && d.orden) {
+        setChkVC(false);
+        procesarPagoWeb(d, sid);
+      } else if (d.estado === "abortado" || d.estado === "timeout") {
+        setChkVC(false);
+        alert("🛑 El cliente " + (d.estado === "abortado" ? "CANCELÓ el pago en Webpay" : "dejó vencer el pago en Webpay") + ".\n\nEl checkout quedó DESHABILITADO y la cotización se descongeló. Revisa o actualiza lo que corresponda y vuelve a marcar «Habilitar checkout» cuando quieras reabrir la venta.");
+      } else if (d.estado === "rechazado") {
+        alert("⚠️ El banco RECHAZÓ un intento de pago del cliente. El checkout sigue habilitado por si reintenta con otro medio de pago.");
+      }
+    }).catch(() => {});
+  }
+  let _chkFrozen = null;   // v17-126: la oferta CONGELADA que ve y paga el cliente
   function setChkVC(v) {
     state.chkVC = !!v;
+    _chkFrozen = null;
+    if (state.chkVC) {
+      // Habilitar checkout = ABRIR LA VENTA: la oferta se congela AQUÍ (el cliente compra
+      // exactamente esto aunque algo cambiara después) y la edición de la app se bloquea.
+      const p = checkoutPayload();
+      if (!p) {
+        state.chkVC = false;
+        ["f_chkVC", "f_chkVCc"].forEach((id) => { const el = $(id); if (el) el.checked = false; });
+        alert("Para habilitar el checkout, la cotización debe estar completa (cliente, tela y medidas válidas — o líneas a granel).");
+        return;
+      }
+      _chkFrozen = p;
+    }
     ["f_chkVC", "f_chkVCc"].forEach((id) => { const el = $(id); if (el) el.checked = state.chkVC; });
+    document.body.classList.toggle("chk-lock", state.chkVC);
+    if (_chkWatch) { clearInterval(_chkWatch); _chkWatch = null; }
+    if (state.chkVC) _chkWatch = setInterval(vigilarChkfin, 5000);
+    let b = document.getElementById("chkLockBar");
+    if (state.chkVC) {
+      if (!b) {
+        b = document.createElement("div"); b.id = "chkLockBar"; b.className = "chk-lock-bar";
+        b.innerHTML = '<span>🔒 <b>Checkout habilitado</b> — la cotización quedó congelada: el cliente compra EXACTAMENTE esto.</span>' +
+          '<button type="button" id="chkLockOff">Desactivar y editar</button>';
+        document.body.appendChild(b);
+        b.querySelector("#chkLockOff").addEventListener("click", () => setChkVC(false));
+      }
+    } else if (b) b.remove();
     _vcRemUlt = "";
     publicarVistaCliente();
   }
@@ -5990,7 +6043,7 @@
           dir: empVal("f_dir_cliente"), comuna: empVal("f_comuna_cliente"),
           emp: { rut: empVal("f_emp_rut"), razon: empVal("f_emp_razon"), giro: empVal("f_emp_giro"), email: empVal("f_emp_email"), fono: empVal("f_emp_fono1"), dir: empVal("f_emp_dir"), comuna: empVal("f_emp_comuna") },
         },
-        cot: { cliente: (nombre + " " + apellido).trim(), tipo: histTipo(), version: $("f_version").value.trim() || "01", titulo: tituloConMedidas() || "" },
+        cot: { nombre: nombre, apellido: apellido, cliente: (nombre + " " + apellido).trim(), tipo: histTipo(), version: $("f_version").value.trim() || "01", titulo: tituloConMedidas() || "" },
       });
     } catch (_) { return null; }
   }
@@ -6036,6 +6089,88 @@
       setTimeout(() => { try { m.querySelector("#rcOk").focus(); } catch (_) {} }, 60);
     });
   }
+  // ---------- F3: pagos web → historial (regla de oro del sync respetada) ----------
+  // La app registra cada sesión QR creada (sid). El backend, al PERFECCIONARSE un pago, deja
+  // una copia liviana en /chkfin/<sid>. El sondeo (arranque + cada 90 s + al terminar el QR)
+  // la recoge y ANEXA el pago a la cotización por su clave nombre|apellido|tipo|versión —
+  // el pago vive en ent.pago Y ent.snap.pago (así viaja al Sheet), sube rev (sello) y empuja
+  // con reemplazarHistorial. Si la cotización aún no existe (QR sin Generar), avisa UNA vez y
+  // reintenta: al guardarse con Generar, el próximo sondeo la enlaza solo.
+  const CHKPEND_KEY = "cibsa_chk_pend", CHKOK_KEY = "cibsa_chk_ok";
+  const pagoDe = (ent) => (ent && (ent.pago || (ent.snap && ent.snap.pago))) || null;
+  const chkLS = (k) => { try { const a = JSON.parse(localStorage.getItem(k) || "[]"); return Array.isArray(a) ? a : []; } catch (_) { return []; } };
+  const chkLSset = (k, a) => { try { localStorage.setItem(k, JSON.stringify(a)); } catch (_) {} };
+  function chkPendAdd(sid) {
+    const arr = chkLS(CHKPEND_KEY).filter((p) => p && p.sid !== sid && Date.now() - p.ts < 30 * 86400000);
+    arr.push({ sid: sid, ts: Date.now() });
+    chkLSset(CHKPEND_KEY, arr);
+  }
+  function quitarPend(sid) { chkLSset(CHKPEND_KEY, chkLS(CHKPEND_KEY).filter((p) => p && p.sid !== sid)); }
+  let _chkPollBusy = false;
+  function revisarPagosWeb() {
+    if (_chkPollBusy || !vcFirebaseUrl()) return;
+    const pend = chkLS(CHKPEND_KEY).filter((p) => p && Date.now() - p.ts < 30 * 86400000);
+    chkLSset(CHKPEND_KEY, pend);
+    if (!pend.length) return;
+    _chkPollBusy = true;
+    Promise.allSettled(pend.map((p) =>
+      fetch(vcFirebaseUrl() + "/chkfin/" + encodeURIComponent(p.sid) + ".json").then((r) => r.json()).then((d) => ({ p: p, d: d }))
+    )).then((rs) => {
+      rs.forEach((r) => { if (r.status === "fulfilled" && r.value.d && r.value.d.orden) procesarPagoWeb(r.value.d, r.value.p.sid); });
+    }).finally(() => { _chkPollBusy = false; });
+  }
+  function procesarPagoWeb(d, sid) {
+    const ok = chkLS(CHKOK_KEY);
+    if (ok.some((o) => o && o.orden === d.orden && o.done)) { quitarPend(sid); return; }
+    const cot = d.cot || {};
+    const k = (s) => (s || "").trim().toLowerCase();
+    const nom = cot.nombre || (cot.cliente || "").split(" ")[0] || "";
+    const ape = (cot.apellido != null) ? cot.apellido : (cot.cliente || "").split(" ").slice(1).join(" ");
+    const vNum = parseInt(cot.version, 10) || 1;
+    const buscar = (a) => a.findIndex((e) => k(e.nombre) === k(nom) && k(e.apellido) === k(ape) && e.tipo === cot.tipo && (parseInt(e.version, 10) || 1) === vNum);
+    let arr = histLoad();
+    let i = buscar(arr);
+    if (i < 0) {
+      // v17-125: el cliente YA aceptó y pagó este resumen. Si la cotización pagada sigue EN
+      // PANTALLA (mismo cliente, tipo y versión), se guarda SOLA con su plano completo y se
+      // anexa el pago — sin esperar a que el vendedor apriete Generar. Si el estado actual ya
+      // es otra cosa, NO se inventa un registro (el plano no sería fiel): aviso + reintento.
+      try {
+        const curNom = ($("f_nombre").value || "").trim() || ((empresaDatos() || {}).razon || "").trim();
+        const curApe = ($("f_apellido").value || "").trim();
+        const curVer = parseInt($("f_version").value.trim() || "01", 10) || 1;
+        if (k(curNom) === k(nom) && k(curApe) === k(ape) && histTipo() === cot.tipo && curVer === vNum) {
+          guardarHistorial(curNom, curApe, $("f_version").value.trim() || "01");
+          arr = histLoad();
+          i = buscar(arr);
+        }
+      } catch (_) {}
+    }
+    if (i < 0) {
+      if (!ok.some((o) => o && o.orden === d.orden)) {
+        ok.push({ orden: d.orden, done: false }); chkLSset(CHKOK_KEY, ok.slice(-80));
+        alert("💳 ¡PAGO WEB RECIBIDO!\n\nOrden " + d.orden + " — " + money(d.total || d.monto || 0) + "\nCliente: " + (cot.cliente || "") + " · " + (cot.tipo || "") + " v" + (cot.version || "") + "\n\nNo encontré esa cotización en el historial y ya no está en pantalla. Guárdala con Generar (o restáurala desde un respaldo) y el pago se enlazará solo en el próximo minuto.");
+      }
+      return;
+    }
+    const ent = arr[i];
+    ent.pago = {
+      orden: d.orden, total: d.total || d.monto || 0, fecha: d.fechaTbk || new Date(d.ts || Date.now()).toISOString(),
+      autorizacion: d.autorizacion || null, tarjeta: d.tarjeta || null,
+      comprador: d.comprador || null, entrega: d.entrega || null, items: d.items || null, desc: d.desc || 0,
+      tycFecha: d.tycFecha || null, sid: sid,
+    };
+    if (ent.snap) ent.snap.pago = ent.pago;
+    ent.rev = Date.now(); if (ent.snap) ent.snap.rev = ent.rev;   // sello de REVISIÓN (regla de oro)
+    histStore(arr);
+    renderHistorial();
+    const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
+    if (tok) window.SheetsCIBSA.reemplazarHistorial(tok, HIST_HOJA, ent, entryToRow(ent), HIST_ENC).catch((e) => console.warn("CIBSA: pago sin sincronizar al Sheet —", e && e.message ? e.message : e));
+    const ya = ok.filter((o) => o && o.orden !== d.orden); ya.push({ orden: d.orden, done: true });
+    chkLSset(CHKOK_KEY, ya.slice(-80));
+    quitarPend(sid);
+    alert("💳 ¡PAGO WEB CONFIRMADO!\n\nOrden " + d.orden + " — " + money(ent.pago.total) + "\n" + (cot.cliente || "") + " · " + (cot.tipo || "") + " v" + (cot.version || "") + "\n\nQuedó anexado a la cotización en el historial (chip 💳).");
+  }
   function publicarVistaRemota() {
     if (!_vcRem) return;
     if (Date.now() > _vcRem.exp) { terminarVistaQR(); return; }
@@ -6043,7 +6178,7 @@
     _vcRemTimer = setTimeout(() => {
       if (!_vcRem) return;
       let data;
-      try { data = JSON.stringify({ ts: Date.now(), exp: _vcRem.exp, t: tituloConMedidas() || "", sub: vcSubTexto(), planos: vcPlanosRemoto(), v3d: _vc3d || "", chk: checkoutPayload() }); } catch (_) { return; }
+      try { data = JSON.stringify({ ts: Date.now(), exp: _vcRem.exp, t: tituloConMedidas() || "", sub: vcSubTexto(), planos: vcPlanosRemoto(), v3d: _vc3d || "", chk: (state.chkVC && _chkFrozen) ? _chkFrozen : checkoutPayload() }); } catch (_) { return; }
       if (data === _vcRemUlt) return; _vcRemUlt = data;
       fetch(vcFirebaseUrl() + "/vc/" + _vcRem.sid + ".json", { method: "PUT", body: data }).catch(() => {});
     }, 600);
@@ -6135,6 +6270,7 @@
   }
   function terminarVistaQR() {
     if (!_vcRem) return;
+    setTimeout(revisarPagosWeb, 1500);   // F3: por si el pago llegó durante la sesión
     const url = vcFirebaseUrl() + "/vc/" + _vcRem.sid + ".json";
     clearTimeout(_vcRemTimer); clearInterval(_vcRem.tick);
     _vcRem = null; _vcRemUlt = "";
@@ -6148,6 +6284,7 @@
       return;
     }
     _vcRem = { sid: vcSid(), exp: Date.now() + VC_QR_MIN * 60 * 1000 };
+    chkPendAdd(_vcRem.sid);   // F3: este sid queda vigilado — si nace un pago, aterriza al historial
     await cargarLibQR();
     mostrarModalQR(); refrescarBtnQR();
     publicarVistaRemota();
@@ -13985,6 +14122,7 @@
   (function init() {
     try { const q9 = new URLSearchParams(location.search); if (q9.get("pago") && window.CheckoutCIBSA) { window.CheckoutCIBSA.resultado(q9); return; } } catch (_) {}
     try { if (new URLSearchParams(location.search).get("vista") === "cliente") { iniciarVistaCliente(); return; } } catch (_) {}
+    try { setTimeout(revisarPagosWeb, 4000); setInterval(revisarPagosWeb, 90000); } catch (_) {}
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
     }

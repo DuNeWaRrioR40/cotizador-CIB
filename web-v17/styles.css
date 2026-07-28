@@ -1332,3 +1332,19 @@ body.ck-res-body { background: #fff; color: #16171a; margin: 0; min-height: 100v
 .ck-res-btn { display: inline-block; margin-top: 16px; text-decoration: none; }
 .ck-res .ck-nota { margin-top: 28px; }
 @media (prefers-reduced-motion: reduce) { .ck-res-ico { transition: opacity 200ms ease; } @starting-style { .ck-res-ico { transform: none; } } }
+
+/* ---------- F3: pago web en el historial (v17-124) ---------- */
+.hist-chip.pagada { border-color: #0a7d32; box-shadow: 0 0 0 1px rgba(10, 125, 50, .35); }
+.hist-pago { color: #21b158; font-weight: 700; white-space: nowrap; }
+
+/* ---------- Candado de venta: checkout habilitado = cotización congelada (v17-126) ---------- */
+body.chk-lock { padding-top: 46px; }
+body.chk-lock #formView > * { pointer-events: none; opacity: .55; }
+body.chk-lock .vc-sub-chk { pointer-events: auto; }
+body.chk-lock #btnVistaQR, body.chk-lock #btnVistaQRComp, body.chk-lock #btnVistaQRComp2 { pointer-events: auto; }
+.chk-lock-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 65; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; padding: 10px 14px; background: #16171a; color: #ffd83d; font-size: 13.5px; box-shadow: 0 4px 18px rgba(0, 0, 0, .35); transition: transform 260ms cubic-bezier(.32, .72, 0, 1); }
+@starting-style { .chk-lock-bar { transform: translateY(-100%); } }
+.chk-lock-bar button { border: 1px solid #ffd83d; background: none; color: #ffd83d; border-radius: 10px; padding: 7px 12px; cursor: pointer; font-size: 13px; transition: transform 140ms cubic-bezier(.23, 1, .32, 1), background-color 150ms ease; }
+.chk-lock-bar button:active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) { .chk-lock-bar button:hover { background: rgba(255, 216, 61, .12); } }
+@media (prefers-reduced-motion: reduce) { .chk-lock-bar { transition: none; } }
