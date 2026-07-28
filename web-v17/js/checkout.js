@@ -383,9 +383,9 @@
     const est = p.get("pago") || "", orden = p.get("orden") || "", sid = p.get("s") || "";
     document.title = "CIBSA — Pago";
     document.body.className = "ck-res-body";
-    const volver = sid ? (location.pathname + "?vista=cliente&s=" + encodeURIComponent(sid)) : "";
+    const volver = sid ? (location.pathname + "?vista=cliente&s=" + encodeURIComponent(sid)) : location.pathname;
     const M = {
-      ok: ["✓", "¡Pago exitoso!", "Tu compra quedó registrada" + (orden ? " con la orden <b>" + esc(orden) + "</b>" : "") + ". Recibirás el comprobante y los documentos de tu compra por correo. ¡Gracias por preferir CIBSA!"],
+      ok: ["✓", "¡Pago exitoso!", "Tu compra quedó registrada" + (orden ? " con la orden <b>" + esc(orden) + "</b>" : "") + ". Recibirás el comprobante y los documentos de tu compra por correo."],
       fail: ["✕", "El pago fue rechazado", "Tu banco o Webpay no autorizó el cargo y <b>no se realizó ningún cobro</b>. Puedes intentarlo nuevamente."],
       abort: ["✕", "Pago cancelado", "Anulaste el pago en Webpay; <b>no se realizó ningún cobro</b>."],
       timeout: ["⏱", "Tiempo agotado", "La sesión de pago expiró en Webpay; <b>no se realizó ningún cobro</b>."],
@@ -394,8 +394,51 @@
     document.body.innerHTML = '<div class="ck-res">' +
       '<div class="ck-res-ico ' + (est === "ok" ? "ok" : "mal") + '">' + m[0] + "</div>" +
       "<h2>" + m[1] + "</h2><p>" + m[2] + "</p>" +
-      (volver && est !== "ok" ? '<a class="ck-btn-pagar ck-res-btn" href="' + volver + '">Volver al plano e intentar de nuevo</a>' : "") +
+      (est === "ok"
+        ? '<button type="button" class="ck-btn-pagar ck-res-btn" id="ckResVolver">Volver ahora</button><p class="ck-nota" id="ckResCuenta">Continuamos en 10 s…</p>'
+        : (sid ? '<a class="ck-btn-pagar ck-res-btn" href="' + volver + '">Volver al plano e intentar de nuevo</a>' : "")) +
       '<p class="ck-nota">CIBSA · Santa Elena 2205, San Joaquín · contacto@cibsa.cl</p></div>';
+    if (est === "ok") {
+      // 10 s de reposo (leer la confirmación) con cuenta visible, o "Volver ahora": ambos caminos
+      // pasan por la página de agradecimiento antes de volver a la vista de la App.
+      let s10 = 10, t9 = null;
+      const irse = () => { if (t9) clearInterval(t9); gracias(volver); };
+      t9 = setInterval(() => {
+        s10--;
+        const el = document.getElementById("ckResCuenta");
+        if (el) el.textContent = s10 > 0 ? ("Continuamos en " + s10 + " s…") : "…";
+        if (s10 <= 0) irse();
+      }, 1000);
+      const b = document.getElementById("ckResVolver");
+      if (b) b.addEventListener("click", irse);
+    }
+  }
+
+  // ---------- Página de agradecimiento (v17-129) ----------
+  // Momento raro y celebratorio: aquí el deleite se lo GANA (apple-design). Smiley tipográfico
+  // puro, VERTICAL (":)" de pie vía rotate 90°), que entra con escala suave y hace UN guiño:
+  // el ojo cruza de ":" a ";" con crossfade + blur (emil: el blur enmascara el swap de glifo)
+  // mientras el conjunto hace un micro-squash. Firma del equipo + logo CIBSA, y de vuelta a la App.
+  function gracias(volver) {
+    document.title = "¡Gracias! — CIBSA";
+    document.body.className = "ck-res-body";
+    const logo = (global.LOGOS && global.LOGOS.cibsa)
+      ? '<img class="ck-gr-logo" src="' + global.LOGOS.cibsa + '" alt="CIBSA"/>'
+      : '<span class="ck-logo">CIBSA</span>';
+    document.body.innerHTML = '<div class="ck-gr">' +
+      '<div class="ck-gr-smiley" id="ckSmiley" aria-hidden="true"><span class="ck-gr-ojos" id="ckOjos">:</span><span class="ck-gr-boca">)</span></div>' +
+      "<h2>¡Gracias por tu compra y tu preferencia!</h2>" +
+      "<p>Nos pondremos manos a la obra de inmediato.<br/><b>— Todo el equipo CIBSA</b></p>" +
+      logo + "</div>";
+    const ojos = document.getElementById("ckOjos"), sm = document.getElementById("ckSmiley");
+    const swap = (ch) => {
+      if (!ojos) return;
+      ojos.classList.add("swap");
+      setTimeout(() => { ojos.textContent = ch; ojos.classList.remove("swap"); }, 150);
+    };
+    setTimeout(() => { if (sm) sm.classList.add("wink"); swap(";"); }, 1500);   // guiño
+    setTimeout(() => { if (sm) sm.classList.remove("wink"); swap(":"); }, 2700); // vuelve la sonrisa
+    setTimeout(() => { try { location.href = volver; } catch (_) {} }, 4800);    // y a la App
   }
 
   global.CheckoutCIBSA = { oferta, abrir, cerrar, resultado, rutValido, rutFormato, rutDV };

@@ -719,6 +719,15 @@
     const inpO = document.createElement("input"); inpO.type = "text"; inpO.className = "anc-dialog-inp";
     inpO.placeholder = "ODT (orden de trabajo)"; inpO.value = (v0 && v0.odt) || "";
     card.appendChild(inpO);
+    // v17-129: N° de transacción Webpay — SOLO LECTURA (viene del pago perfeccionado, nadie lo
+    // tipea ni lo edita). user-select:all en CSS = un toque selecciona el número completo para
+    // el copiado nativo del sistema.
+    { const pago9 = pagoDe(ent);
+      if (pago9 && pago9.orden) {
+        const tw = document.createElement("div"); tw.className = "venta-tbk";
+        tw.innerHTML = '<span>Transacción Webpay</span><code class="venta-tbk-nro" title="N° de orden Webpay (solo lectura) — toca para seleccionar y copiar">💳 ' + esc(String(pago9.orden)) + "</code>";
+        card.appendChild(tw);
+      } }
     const acc = document.createElement("div"); acc.className = "qr-acciones";
     const mkB = (t) => { const b = document.createElement("button"); b.type = "button"; b.className = "btn-outline"; b.textContent = t; acc.appendChild(b); return b; };
     const bOk = mkB("Guardar vínculo");
