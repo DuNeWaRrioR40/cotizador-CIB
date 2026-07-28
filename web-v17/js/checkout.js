@@ -75,7 +75,7 @@
 
   // ---------- Formularios ----------
   const F_CONTACTO = [
-    ["nombre", "Nombre"], ["apPat", "Apellido Paterno"], ["apMat", "Apellido Materno"],
+    ["nombre", "Nombre"], ["apPat", "1er Apellido"], ["apMat", "2do Apellido (opcional)"],
     ["run", "RUN / CIE"], ["email", "Correo electrónico"], ["fono", "Teléfono"],
     ["dir", "Dirección"], ["comuna", "Comuna"],
   ];
@@ -307,7 +307,7 @@
     const malos = [];
     const req = (pref, k, cond) => { if (!cond) malos.push(pref + k); };
     const c = d.contacto, pref = d.tipo === "empresa" ? "c_" : "n_";
-    req(pref, "nombre", !!c.nombre); req(pref, "apPat", !!c.apPat); req(pref, "apMat", !!c.apMat);
+    req(pref, "nombre", !!c.nombre); req(pref, "apPat", !!c.apPat);   // 2do apellido OPCIONAL (no todas las nacionalidades lo usan)
     req(pref, "run", rutValido(c.run));
     req(pref, "email", emailValido(c.email)); req(pref, "fono", fonoValido(c.fono));
     req(pref, "dir", !!c.dir); req(pref, "comuna", !!c.comuna);

@@ -5863,7 +5863,7 @@
     let expTimer = null;
     const pinta = (d) => {
       if (!d) return;
-      if (d.fin || (d.exp && Date.now() > d.exp)) { fin("Sesión finalizada. ¡Gracias!"); return; }
+      if (d.fin || (d.exp && Date.now() > d.exp)) { fin("Sesión finalizada — muchas gracias por su preferencia."); return; }
       const t = document.getElementById("vcTit"); if (t) t.textContent = d.t || "";
       const sb = document.getElementById("vcSubT"); if (sb) sb.textContent = d.sub || "";
       const p = pl(); if (!p) return;
@@ -5874,7 +5874,7 @@
       } catch (_) {}
       try { if (window.CheckoutCIBSA) window.CheckoutCIBSA.oferta(d.chk || null, sid); } catch (_) {}
       clearTimeout(expTimer);
-      if (d.exp) expTimer = setTimeout(() => fin("Sesión finalizada. ¡Gracias!"), Math.max(0, d.exp - Date.now()) + 500);
+      if (d.exp) expTimer = setTimeout(() => fin("Sesión finalizada — muchas gracias por su preferencia."), Math.max(0, d.exp - Date.now()) + 500);
     };
     let ok = false, es = null;
     try {
