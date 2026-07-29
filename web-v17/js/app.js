@@ -744,16 +744,21 @@
     // motivo aparece recién cuando hay código (revelación progresiva: nadie tipea motivos por
     // deporte). Puede registrarse una devolución SIN venta vinculada (p.ej. reversa Webpay
     // antes de facturar).
+    // v17-139: reversa y Nota de Crédito en CAMPOS SEPARADOS — son documentos distintos y
+    // pueden coexistir (una NC puede necesitar reversa de respaldo, o viceversa). Los dev
+    // antiguos de campo único (dev.codigo) se muestran en el campo de reversa.
     const dev0 = ent.dev || (ent.snap && ent.snap.dev) || null;
     const dWrap = document.createElement("div"); dWrap.className = "venta-dev";
     const dTit = document.createElement("div"); dTit.className = "venta-dev-tit"; dTit.textContent = "↩ Devolución";
-    const inpD = document.createElement("input"); inpD.type = "text"; inpD.className = "anc-dialog-inp venta-dev-cod";
-    inpD.placeholder = "Reversa / N° Nota de Crédito"; inpD.value = (dev0 && dev0.codigo) || "";
+    const inpR = document.createElement("input"); inpR.type = "text"; inpR.className = "anc-dialog-inp venta-dev-cod";
+    inpR.placeholder = "Código de reversa"; inpR.value = (dev0 && (dev0.reversa || dev0.codigo)) || "";
+    const inpN = document.createElement("input"); inpN.type = "text"; inpN.className = "anc-dialog-inp venta-dev-cod";
+    inpN.placeholder = "N° Nota de Crédito"; inpN.value = (dev0 && dev0.nc) || "";
     const inpM = document.createElement("input"); inpM.type = "text"; inpM.className = "anc-dialog-inp venta-dev-mot";
     inpM.placeholder = "Motivo de la devolución (obligatorio)"; inpM.value = (dev0 && dev0.motivo) || "";
-    dWrap.appendChild(dTit); dWrap.appendChild(inpD); dWrap.appendChild(inpM);
-    const syncDev = () => { const hay = !!inpD.value.trim(); inpM.style.display = hay ? "" : "none"; dWrap.classList.toggle("on", hay); };
-    inpD.addEventListener("input", syncDev); syncDev();
+    dWrap.appendChild(dTit); dWrap.appendChild(inpR); dWrap.appendChild(inpN); dWrap.appendChild(inpM);
+    const syncDev = () => { const hay = !!(inpR.value.trim() || inpN.value.trim()); inpM.style.display = hay ? "" : "none"; dWrap.classList.toggle("on", hay); };
+    inpR.addEventListener("input", syncDev); inpN.addEventListener("input", syncDev); syncDev();
     card.appendChild(dWrap);
     const acc = document.createElement("div"); acc.className = "qr-acciones";
     const mkB = (t) => { const b = document.createElement("button"); b.type = "button"; b.className = "btn-outline"; b.textContent = t; acc.appendChild(b); return b; };
@@ -762,10 +767,11 @@
     const bCa = mkB("Cancelar");
     card.appendChild(acc); ov.appendChild(card); document.body.appendChild(ov);
     const cerrar = () => ov.remove();
-    // Lee la devolución de los campos; null si no hay código.
+    // Lee la devolución de los campos; null si no hay ningún código.
     const devLeido = () => {
-      const c = inpD.value.trim();
-      return c ? { codigo: c, motivo: inpM.value.trim(), ts: (dev0 && dev0.ts) || Date.now() } : null;
+      const rev = inpR.value.trim(), nc = inpN.value.trim();
+      if (!rev && !nc) return null;
+      return { reversa: rev || null, nc: nc || null, motivo: inpM.value.trim(), ts: (dev0 && dev0.ts) || Date.now() };
     };
     const persistir = (venta, dev) => {
       if (!ent.snap) ent.snap = {};
@@ -784,7 +790,7 @@
     bOk.addEventListener("click", () => {
       const nro = inp.value.trim();
       const dev = devLeido();
-      if (dev && !dev.motivo) { alert("Ingresaste una reversa / nota de crédito: el MOTIVO de la devolución es obligatorio."); try { inpM.focus(); } catch (_) {} return; }
+      if (dev && !dev.motivo) { alert("Ingresaste una reversa o nota de crédito: el MOTIVO de la devolución es obligatorio."); try { inpM.focus(); } catch (_) {} return; }
       if (!nro && !dev) return alert("Ingresa el número de " + (tipoSel === "boleta" ? "boleta" : "factura") + " (o una reversa / nota de crédito).");
       persistir(nro ? { tipo: tipoSel, numero: nro, odt: inpO.value.trim() || null, ts: Date.now() } : null, dev);
       cerrar();
@@ -810,7 +816,14 @@
     const main = document.createElement("button"); main.type = "button"; main.className = "hist-main"; main.title = ent.borrador ? "Continuar este borrador (restaura el trabajo tal como quedó)" : "Duplicar para editar (como versión siguiente)";
     const vBadge = (function () { const v = ventaDe(ent); return v ? ' · <span class="hist-venta">' + (v.tipo === "boleta" ? "B" : "F") + " " + esc(String(v.numero)) + (v.odt ? " · ODT " + esc(String(v.odt)) : "") + "</span>" : ""; })();
     const pBadge = (function () { const p = pagoDe(ent); return p ? ' · <span class="hist-pago" title="Pago Webpay ' + esc(String(p.fecha || "")) + '">💳 ' + esc(String(p.orden || "pagada")) + "</span>" : ""; })();
-    const dBadge = (function () { const d9 = devDe(ent); return d9 ? ' · <span class="hist-dev" title="DEVOLUCIÓN — motivo: ' + esc(String(d9.motivo || "")) + '">↩ ' + esc(String(d9.codigo || "devuelta")) + "</span>" : ""; })();
+    const dBadge = (function () {
+      const d9 = devDe(ent); if (!d9) return "";
+      const partes = [];
+      if (d9.reversa) partes.push("REV " + d9.reversa);
+      if (d9.nc) partes.push("NC " + d9.nc);
+      if (!partes.length && d9.codigo) partes.push(String(d9.codigo));   // dev antiguos de campo único
+      return ' · <span class="hist-dev" title="DEVOLUCIÓN — motivo: ' + esc(String(d9.motivo || "")) + '">↩ ' + esc(partes.join(" · ") || "devuelta") + "</span>";
+    })();
     main.innerHTML = '<span class="hist-fecha">' + esc(ent.fecha || "") + badge + '</span>' +
       tituloHtml +
       '<span class="hist-tipo">' + granelPref + esc(ent.tipo || "") + ' · ' + vtxt + vBadge + pBadge + dBadge + '</span>';
