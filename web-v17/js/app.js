@@ -6170,35 +6170,35 @@
     const vNum = parseInt(cot.version, 10) || 1;
     const buscar = (a) => a.findIndex((e) => (noms.includes(k(e.nombre)) || noms.includes(k(e.razonSocial))) && k(e.apellido) === k(ape) && e.tipo === cot.tipo && (parseInt(e.version, 10) || 1) === vNum);
     let arr = histLoad();
-    let i = buscar(arr);
-    if (i < 0) {
-      // v17-125: el cliente YA aceptó y pagó este resumen. Si la cotización pagada sigue EN
-      // PANTALLA (mismo cliente, tipo y versión), se guarda SOLA con su plano completo y se
-      // anexa el pago — sin esperar a que el vendedor apriete Generar. Si el estado actual ya
-      // es otra cosa, NO se inventa un registro (el plano no sería fiel): aviso + reintento.
-      try {
-        const curNom = ($("f_nombre").value || "").trim() || ((empresaDatos() || {}).razon || "").trim();
-        const curApe = ($("f_apellido").value || "").trim();
-        const curVerS = $("f_version").value.trim() || "01";
-        const curVer = parseInt(curVerS, 10) || 1;
-        const nomCalza = noms.length ? noms.includes(k(curNom)) : !!curNom;
-        if (nomCalza && k(curApe) === k(ape) && histTipo() === cot.tipo && curVer === vNum) {
-          // v17-134: la VENTA MANDA — banderas heredadas de flujos anteriores (reimpresión,
-          // "sobrescribir", modo edición) hacían que guardarHistorial retornara SIN guardar o
-          // pisara un registro. Aquí se neutralizan: el pago se guarda como registro nuevo,
-          // fiel a la pantalla congelada que el cliente aceptó y pagó.
-          _histSkip = false; _histReplace = false; _editHist = null; _forzarNueva = false;
-          try { ocultarEdicionBanner(); } catch (_) {}
-          guardarHistorial(curNom, curApe, curVerS);
-          arr = histLoad();
-          // Reubica por la clave RECIÉN GUARDADA (para empresa difiere de la clave de cot).
-          i = arr.findIndex((e) => k(e.nombre) === k(curNom) && k(e.apellido) === k(curApe) && e.tipo === cot.tipo && (parseInt(e.version, 10) || 1) === curVer);
-          if (i < 0) console.warn("CIBSA: auto-guardado del pago no reencontró el registro", curNom, curApe, cot.tipo, curVer);
-        } else {
-          console.warn("CIBSA: pago web sin calce en pantalla —", JSON.stringify({ noms: noms, curNom: k(curNom), ape: k(ape), curApe: k(curApe), tipoCot: cot.tipo, tipoCur: histTipo(), vNum: vNum, curVer: curVer }));
-        }
-      } catch (e9) { console.warn("CIBSA: auto-guardado del pago falló —", e9 && e9.message ? e9.message : e9); }
-    }
+    let i = -1;
+    // v17-137: LA PANTALLA MANDA. Si la cotización pagada sigue EN PANTALLA (mismo cliente,
+    // tipo y versión), se guarda DESDE LA PANTALLA con _histReplace: reemplaza a CUALQUIER
+    // tocayo de clave. (El bug: la sincronización con el Sheet resucitaba un registro VIEJO
+    // de la misma clave — un "zombi" invisible más allá del tope HIST_MAX — y el pago se
+    // anexaba a ÉL en vez de guardarse la v nueva; luego el zombi caía del tope y se llevaba
+    // el pago al fondo del Sheet. Órdenes 59I/5AD/5B4 murieron así.) Solo si la pantalla ya
+    // es otra cosa se busca entre los registros existentes (aviso + reintento si tampoco).
+    try {
+      const curNom = ($("f_nombre").value || "").trim() || ((empresaDatos() || {}).razon || "").trim();
+      const curApe = ($("f_apellido").value || "").trim();
+      const curVerS = $("f_version").value.trim() || "01";
+      const curVer = parseInt(curVerS, 10) || 1;
+      const nomCalza = noms.length ? noms.includes(k(curNom)) : !!curNom;
+      if (nomCalza && k(curApe) === k(ape) && histTipo() === cot.tipo && curVer === vNum) {
+        // La VENTA gana sobre banderas heredadas (reimpresión / "sobrescribir" / edición).
+        _histSkip = false; _histReplace = true; _editHist = null; _forzarNueva = false;
+        try { ocultarEdicionBanner(); } catch (_) {}
+        guardarHistorial(curNom, curApe, curVerS);
+        _histReplace = false;
+        arr = histLoad();
+        // Reubica por la clave RECIÉN GUARDADA (para empresa difiere de la clave de cot).
+        i = arr.findIndex((e) => k(e.nombre) === k(curNom) && k(e.apellido) === k(curApe) && e.tipo === cot.tipo && (parseInt(e.version, 10) || 1) === curVer);
+        if (i < 0) console.warn("CIBSA: auto-guardado del pago no reencontró el registro", curNom, curApe, cot.tipo, curVer);
+      } else {
+        console.warn("CIBSA: pago web sin calce en pantalla —", JSON.stringify({ noms: noms, curNom: k(curNom), ape: k(ape), curApe: k(curApe), tipoCot: cot.tipo, tipoCur: histTipo(), vNum: vNum, curVer: curVer }));
+      }
+    } catch (e9) { console.warn("CIBSA: auto-guardado del pago falló —", e9 && e9.message ? e9.message : e9); }
+    if (i < 0) i = buscar(arr);
     if (i < 0) {
       if (!ok.some((o) => o && o.orden === d.orden)) {
         ok.push({ orden: d.orden, done: false }); chkLSset(CHKOK_KEY, ok.slice(-80));
