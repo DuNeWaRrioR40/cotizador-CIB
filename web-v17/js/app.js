@@ -181,8 +181,19 @@
         || (revDe(e) === revDe(prev) && !!e.editado === !!prev.editado && e.ts >= prev.ts);
       if (gana) porClave[k] = e;
     });
-    const merged = Object.keys(porClave).map((k) => porClave[k]).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, HIST_MAX);
+    const merged = histCap(Object.keys(porClave).map((k) => porClave[k]).sort((a, b) => (b.ts || 0) - (a.ts || 0)));
     histStore(merged);
+  }
+  // v17-138: el tope HIST_MAX NUNCA bota ventas — los registros con pago, venta vinculada o
+  // devolución son VITALICIOS en el navegador; el recorte solo sacrifica cotizaciones
+  // ordinarias (las más antiguas primero). Mantiene el orden original del arreglo.
+  function histCap(arr) {
+    if (!Array.isArray(arr) || arr.length <= HIST_MAX) return arr;
+    const esVital = (e) => !!(e && (e.pago || e.venta || e.dev || (e.snap && (e.snap.pago || e.snap.venta || e.snap.dev))));
+    const vitales = arr.filter(esVital).length;
+    const cupo = Math.max(0, HIST_MAX - vitales);
+    let ord = 0;
+    return arr.filter((e) => esVital(e) || (ord++ < cupo));
   }
   function histLoad() { try { const a = JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
   function histStore(arr) {
@@ -590,7 +601,7 @@
     ent.rev = Date.now(); ent.snap.rev = ent.rev;
     tombRemove(ent);   // por si el slot fue borrado antes: que no lo mate la lápida al sincronizar
     arr.unshift(ent);
-    histStore(arr.slice(0, HIST_MAX));
+    histStore(histCap(arr));
     renderHistorial();
     _borrCargado = slug;
     const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
@@ -638,7 +649,7 @@
     // Si edito pero la versión cambió y no calzó por versión, quita también por ts para no duplicar.
     if (editando) { const j = arr.findIndex((e) => e.ts === _editHist.ts); if (j >= 0) arr.splice(j, 1); }
     arr.unshift(ent);
-    arr = arr.slice(0, HIST_MAX);
+    arr = histCap(arr);
     histStore(arr);
     renderHistorial();
     if (editando) { _editHist = null; ocultarEdicionBanner(); }   // fin del modo edición
