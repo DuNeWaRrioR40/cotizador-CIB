@@ -5901,7 +5901,7 @@
     publicarVistaRemota();
     if (!_vcActivo) return;
     const cont = contenedorPlanoVC(); if (!cont) return;
-    const data = { t: tituloConMedidas() || "", html: cont.innerHTML, sub: vcSubTexto(), v3d: _vc3d || "" };
+    const data = { t: tituloConMedidas() || "", html: cont.innerHTML, sub: vcSubTexto(), subR: vcSubResumen(), v3d: _vc3d || "" };
     const str = JSON.stringify(data); if (str === _vcUlt) return; _vcUlt = str;
     const ch = vcCanal(); if (ch) { try { ch.postMessage(data); } catch (_) {} }
     try { localStorage.setItem("cibsaVC", str); } catch (_) {}
@@ -5918,7 +5918,7 @@
       if (!d) return;
       if (d.fin || (d.exp && Date.now() > d.exp)) { fin("Sesión finalizada — muchas gracias por su preferencia."); return; }
       const t = document.getElementById("vcTit"); if (t) t.textContent = d.t || "";
-      const sb = document.getElementById("vcSubT"); if (sb) sb.textContent = d.sub || "";
+      pintarVcSub(d);
       const p = pl(); if (!p) return;
       try {
         p.innerHTML = ((d.planos || []).map((x) =>
@@ -5949,6 +5949,39 @@
   // Vigencia: 30 min o hasta pinchar de nuevo el botón (se escribe un marcador de fin).
   let _vcEspecUnif = null, _vcRem = null, _vcRemTimer = null, _vcRemUlt = "";
   let _vcSubUnif = "", _vcSubComp = "";   // textos de subtotal listos para la vista cliente
+  // v17-144: resumen ESTRUCTURADO del subtotal (total bruto post-descuento, descuento bruto,
+  // % IVA) para pintarlo apilado como pie de cotización en la vista cliente.
+  function vcSubResumen() {
+    if (!state.subVC) return null;
+    try {
+      const r = resumenCotizacion();
+      if (r && r.total > 0) return { t: Math.round(r.total), d: Math.round(r.desc || 0), p: r.iva || 19 };
+    } catch (_) {}
+    return null;
+  }
+  // v17-144: subtotal APILADO como pie de cotización (la banda amarilla de una línea desbordaba
+  // en iPhone). Subtotal neto → descuento → neto → IVA → TOTAL, números tabulares a la derecha,
+  // el total manda (apple/emil: jerarquía por peso, hairline, material translúcido). Si no llega
+  // el resumen estructurado (payload antiguo), cae al texto plano de siempre.
+  function pintarVcSub(d) {
+    const sb = document.getElementById("vcSubT"); if (!sb) return;
+    const r = d && d.subR;
+    if (!r || !(r.t > 0)) { sb.classList.remove("vc-sub-card"); sb.textContent = (d && d.sub) || ""; return; }
+    const pct = r.p || 19;
+    const desc = r.d || 0;
+    const netoAntes = (r.t + desc) / (1 + pct / 100);
+    const descNeto = desc / (1 + pct / 100);
+    const netoFinal = r.t / (1 + pct / 100);
+    const ivaM = r.t - netoFinal;
+    sb.classList.add("vc-sub-card");
+    sb.classList.toggle("vc-sub-alza", !!document.getElementById("ckBar"));
+    sb.innerHTML =
+      '<div class="vc-sub-l"><span>Subtotal neto</span><b>' + money(netoAntes) + "</b></div>" +
+      (desc > 0 ? '<div class="vc-sub-l vc-sub-desc"><span>Descuento</span><b>−' + money(descNeto) + "</b></div>" : "") +
+      (desc > 0 ? '<div class="vc-sub-l"><span>Neto</span><b>' + money(netoFinal) + "</b></div>" : "") +
+      '<div class="vc-sub-l"><span>IVA (' + pct + "%)</span><b>" + money(ivaM) + "</b></div>" +
+      '<div class="vc-sub-l vc-sub-total"><span>TOTAL</span><b>' + money(r.t) + "</b></div>";
+  }
   function vcSubTexto() {
     if (!state.subVC) return "";
     // v17-143: el subtotal de la vista cliente dice LA VERDAD COMPLETA — mismo motor del
@@ -6210,10 +6243,14 @@
     Promise.allSettled(pend.map((p) =>
       fetch(vcFirebaseUrl() + "/chkfin/" + encodeURIComponent(p.sid) + ".json").then((r) => r.json()).then((d) => ({ p: p, d: d }))
     )).then((rs) => {
-      rs.forEach((r) => { if (r.status === "fulfilled" && r.value.d && r.value.d.orden) procesarPagoWeb(r.value.d, r.value.p.sid); });
+      // v17-145: SOLO estado "pagado" — el chkfin de un RECHAZO también trae orden, y sin este
+      // filtro el sondeo anunciaba "¡PAGO WEB RECIBIDO!" por un intento rechazado (bug del 30/07:
+      // tarjeta de PRUEBA usada en producción → rechazo → falso aviso de pago).
+      rs.forEach((r) => { if (r.status === "fulfilled" && r.value.d && r.value.d.orden && r.value.d.estado === "pagado") procesarPagoWeb(r.value.d, r.value.p.sid); });
     }).finally(() => { _chkPollBusy = false; });
   }
   function procesarPagoWeb(d, sid) {
+    if (!d || d.estado !== "pagado" || !d.orden) return;   // v17-145: cinturón y tirantes — jamás procesar lo no-pagado
     const ok = chkLS(CHKOK_KEY);
     if (ok.some((o) => o && o.orden === d.orden && o.done)) { quitarPend(sid); return; }
     const cot = d.cot || {};
@@ -6294,7 +6331,7 @@
     _vcRemTimer = setTimeout(() => {
       if (!_vcRem) return;
       let data;
-      try { data = JSON.stringify({ ts: Date.now(), exp: _vcRem.exp, t: tituloConMedidas() || "", sub: vcSubTexto(), planos: vcPlanosRemoto(), v3d: _vc3d || "", chk: (state.chkVC && _chkFrozen) ? _chkFrozen : checkoutPayload() }); } catch (_) { return; }
+      try { data = JSON.stringify({ ts: Date.now(), exp: _vcRem.exp, t: tituloConMedidas() || "", sub: vcSubTexto(), subR: vcSubResumen(), planos: vcPlanosRemoto(), v3d: _vc3d || "", chk: (state.chkVC && _chkFrozen) ? _chkFrozen : checkoutPayload() }); } catch (_) { return; }
       if (data === _vcRemUlt) return; _vcRemUlt = data;
       fetch(vcFirebaseUrl() + "/vc/" + _vcRem.sid + ".json", { method: "PUT", body: data }).catch(() => {});
     }, 600);
@@ -6423,7 +6460,7 @@
     const pinta = (d) => {
       if (!d || !d.html) return;
       const t = document.getElementById("vcTit"); if (t) t.textContent = d.t || "";
-      const sb = document.getElementById("vcSubT"); if (sb) sb.textContent = d.sub || "";
+      pintarVcSub(d);
       const pl = document.getElementById("vcPlano"); if (pl) pl.innerHTML = d.html + (d.v3d ? '<img class="vc-img3d" alt="Vista 3D" src="' + d.v3d + '"/>' : "");
     };
     try { const s0 = localStorage.getItem("cibsaVC"); if (s0) pinta(JSON.parse(s0)); } catch (_) {}
