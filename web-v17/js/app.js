@@ -6667,28 +6667,53 @@
     })();
     // Guía convertida en EJE de pliegue del paño (productos planos): parte la lámina en 2 mitades
     // con bisagra en la guía. Elegible: guía horizontal/vertical que cruza el paño completo.
-    const ejeF = (() => {
-      if (fanF) return null;   // el abanico manda
-      if (fig || !(A > 0) || !(L > 0)) return null;
-      // ejeLado === "A": el usuario eligió mover el OTRO lado — se rota el marco 180° (u y nrm
-      // negados) y toda la maquinaria (mitades, paredes, accesorios, espejo) sigue igual.
-      const flipSi = (r9, c9) => {
-        if (c9 && c9.ejeLado === "A") { r9.u = { x: -r9.u.x, y: -r9.u.y }; r9.nrm = { x: -r9.nrm.x, y: -r9.nrm.y }; r9.inv = true; }
-        return r9;
-      };
+    // v17-146: TODOS los candidatos a guía-EJE (antes se tomaba solo el primero). Con UNO rige
+    // el eje clásico; con VARIOS PARALELOS entre sí, la rama nueva de TIRAS ENCADENADAS; con
+    // varios no-paralelos sin punto común, el guardarraíl avisa como siempre.
+    const ejeCands = (() => {
+      const out = [];
+      if (fanF || fig || !(A > 0) || !(L > 0)) return out;
       for (const c of visibles(V.cortes())) {
         if (!c || c.tipo !== "guia" || !c.ejeVis) continue;
         const ln = lineaRawCorte(c); if (!ln) continue;
         const ang = (((parseFloat(c.angulo) || 0) % 180) + 180) % 180;
         const x0 = Math.min(ln.a.x, ln.a.x + ln.u.x * ln.w), x1 = Math.max(ln.a.x, ln.a.x + ln.u.x * ln.w);
         const y0 = Math.min(ln.a.y, ln.a.y + ln.u.y * ln.w), y1 = Math.max(ln.a.y, ln.a.y + ln.u.y * ln.w);
-        if ((ang < 1 || ang > 179) && ln.a.y > 0.01 && ln.a.y < L - 0.01 && x0 <= 0.01 && x1 >= A - 0.01) return flipSi({ horiz: true, pos: ln.a.y, P0: { x: 0, y: ln.a.y }, u: { x: 1, y: 0 }, nrm: { x: 0, y: 1 }, nombre: "Eje · " + (c.legend || "guía"), c: c }, c);
-        if (Math.abs(ang - 90) < 1 && ln.a.x > 0.01 && ln.a.x < A - 0.01 && y0 <= 0.01 && y1 >= L - 0.01) return flipSi({ horiz: false, pos: ln.a.x, P0: { x: ln.a.x, y: 0 }, u: { x: 0, y: 1 }, nrm: { x: 1, y: 0 }, nombre: "Eje · " + (c.legend || "guía"), c: c }, c);
+        if ((ang < 1 || ang > 179) && ln.a.y > 0.01 && ln.a.y < L - 0.01 && x0 <= 0.01 && x1 >= A - 0.01) { out.push({ horiz: true, pos: ln.a.y, P0: { x: 0, y: ln.a.y }, u: { x: 1, y: 0 }, nrm: { x: 0, y: 1 }, nombre: "Eje · " + (c.legend || "guía"), c: c }); continue; }
+        if (Math.abs(ang - 90) < 1 && ln.a.x > 0.01 && ln.a.x < A - 0.01 && y0 <= 0.01 && y1 >= L - 0.01) { out.push({ horiz: false, pos: ln.a.x, P0: { x: ln.a.x, y: 0 }, u: { x: 0, y: 1 }, nrm: { x: 1, y: 0 }, nombre: "Eje · " + (c.legend || "guía"), c: c }); continue; }
         // Eje LIBRE (cualquier ángulo — p.ej. diagonal) en productos PLANOS: parte el paño por
         // la línea de la guía. En volumétricos siguen solo los h/v (las paredes exigen ortogonal).
-        if (!(H > 0)) return flipSi({ libre: true, P0: { x: ln.a.x, y: ln.a.y }, u: { x: ln.u.x, y: ln.u.y }, nrm: { x: -ln.u.y, y: ln.u.x }, nombre: "Eje · " + (c.legend || "guía"), c: c }, c);
+        if (!(H > 0)) out.push({ libre: true, P0: { x: ln.a.x, y: ln.a.y }, u: { x: ln.u.x, y: ln.u.y }, nrm: { x: -ln.u.y, y: ln.u.x }, nombre: "Eje · " + (c.legend || "guía"), c: c });
       }
-      return null;
+      return out;
+    })();
+    // v17-146: EJES PARALELOS → tiras encadenadas. 2+ guías-eje paralelas (±~1°) parten el paño
+    // en tiras tipo persiana; la tira que contiene el CENTRO queda anclada y las bisagras se
+    // encadenan hacia afuera (doblar un eje arrastra a las tiras posteriores, como papel real).
+    // Bisagras PURAS: nadie cierra, mide ni fusiona nada — cada eje con su slider independiente.
+    const ejeParalelos = (() => {
+      if (ejeCands.length < 2) return null;
+      const u0 = ejeCands[0].u;
+      if (!ejeCands.every((g) => Math.abs(g.u.x * u0.y - g.u.y * u0.x) < 0.02)) return null;
+      const n0 = { x: -u0.y, y: u0.x };
+      const ejes = ejeCands.map((g) => Object.assign({}, g, { s: g.P0.x * n0.x + g.P0.y * n0.y })).sort((q, w) => q.s - w.s);
+      for (let i9 = ejes.length - 1; i9 > 0; i9--) if (ejes[i9].s - ejes[i9 - 1].s < 0.05) ejes.splice(i9, 1);   // <5 cm entre ejes = ambiguo: sobrevive uno
+      if (ejes.length < 2) return null;
+      const sC = (A / 2) * n0.x + (L / 2) * n0.y;
+      ejes.forEach((g) => {
+        const dir = (g.s >= sC) ? 1 : -1;   // nrm apunta LEJOS de la tira ancla (su lado móvil)
+        g.nrm = { x: n0.x * dir, y: n0.y * dir };
+        g.u = (dir >= 0) ? { x: u0.x, y: u0.y } : { x: -u0.x, y: -u0.y };
+      });
+      return { n0: n0, ejes: ejes, sC: sC };
+    })();
+    const ejeF = (() => {
+      if (fanF || ejeParalelos || !ejeCands.length) return null;
+      // ejeLado === "A": el usuario eligió mover el OTRO lado — se rota el marco 180° (u y nrm
+      // negados) y toda la maquinaria (mitades, paredes, accesorios, espejo) sigue igual.
+      const r9 = ejeCands[0], c9 = r9.c;
+      if (c9 && c9.ejeLado === "A") { r9.u = { x: -r9.u.x, y: -r9.u.y }; r9.nrm = { x: -r9.nrm.x, y: -r9.nrm.y }; r9.inv = true; }
+      return r9;
     })();
     // GUARDARRAÍL (v17): 2+ guías-EJE que NO pasan por un punto común no están modeladas — ni
     // eje único ni abanico. Antes: la primera "ganaba" y el resto plegaba a la deriva (origami
@@ -7095,6 +7120,40 @@
       // contra-rotación −θ/2 del lado fijo se perdía y el diseño abría ASIMÉTRICO (un lado plano).
       ejeCtl = { inner: innerE, outerE: outerE, bis: innerB, reaplicar: () => setE(ejeUltimo) };
     }
+    // v17-146: TIRAS ENCADENADAS — una bisagra por eje paralelo, anidadas desde la tira ancla
+    // hacia afuera con attach() (a rotación 0 la pose mundial se conserva; al plegar, cada
+    // bisagra arrastra naturalmente a las tiras posteriores). Slider independiente por eje,
+    // nombre único con su coordenada (así el recuerdo de ángulos por diseño no colisiona).
+    // En este modo las ALETAS quedan RÍGIDAS (equivale a "aletas rígidas" del eje único).
+    let parCtl = null;
+    if (ejeParalelos) {
+      const f9p = window.CalcCIBSA.fmtNum;
+      const mkHinge = (g) => {
+        const outer = new T.Group();
+        outer.position.set(g.P0.x - A / 2, H, g.P0.y - L / 2);
+        const ux = new T.Vector3(g.u.x, 0, g.u.y), uz = new T.Vector3(g.nrm.x, 0, g.nrm.y);
+        const uy = new T.Vector3().crossVectors(uz, ux);
+        outer.setRotationFromMatrix(new T.Matrix4().makeBasis(ux, uy, uz));
+        const inner = new T.Group(); outer.add(inner);
+        return { outer: outer, inner: inner, sgn: uy.y > 0 ? 1 : -1 };
+      };
+      const zonas = [];
+      const arriba = ejeParalelos.ejes.filter((g) => g.s >= ejeParalelos.sC).sort((q, w) => q.s - w.s);
+      const abajo = ejeParalelos.ejes.filter((g) => g.s < ejeParalelos.sC).sort((q, w) => w.s - q.s);
+      [arriba, abajo].forEach((cadena) => {
+        let padre = null;   // null = colgar de grp (primer eslabón de la cadena)
+        cadena.forEach((g, i9) => {
+          const h9 = mkHinge(g);
+          grp.add(h9.outer);
+          if (padre) { try { padre.attach(h9.outer); } catch (e9) {} }
+          zonas.push({ g: g, h: h9, gFin: cadena[i9 + 1] || null });
+          const nomP = g.nombre + " · " + (g.horiz === true ? "y=" : g.horiz === false ? "x=" : "s=") + f9p(g.pos != null ? g.pos : g.s);
+          plieguesUI.push({ nombre: nomP, set: (v) => { h9.inner.rotation.x = h9.sgn * v * Math.PI / 180; }, v0: 0 });
+          padre = h9.inner;
+        });
+      });
+      parCtl = { zonas: zonas };
+    }
     if (!fig) {
       if (fanF) {
         // ABANICO en modo COLGADOR ("hanger"): el punto común es el gancho. Cada cara-sector rota
@@ -7147,6 +7206,27 @@
           setTodos(0);
           plieguesUI.push({ nombre: "⛺ Pirámide · elevar (0–90°)", set: setTodos, v0: 0 });
         }
+      }
+      else if (parCtl) {
+        // TIRAS: la lámina completa con máscara de BANDA por tira — la banda entre ejes vecinos
+        // (o hasta el infinito en los extremos). La tira ancla vive en grp; cada tira móvil, en
+        // coordenadas locales de SU bisagra (mismo patrón W4E del eje único).
+        const R9 = (A + L) * 2, n0 = ejeParalelos.n0;
+        const uB = { x: n0.y, y: -n0.x };
+        const banda = (s0, s1) => {
+          const lo = Math.min(s0, s1), hi = Math.max(s0, s1);
+          const Pb = (s9, t9) => ({ x: n0.x * s9 + uB.x * t9, y: n0.y * s9 + uB.y * t9 });
+          return [Pb(lo, -R9), Pb(lo, R9), Pb(hi, R9), Pb(hi, -R9)];
+        };
+        const ss = ejeParalelos.ejes.map((g) => g.s).sort((q, w) => q - w);
+        const sLo = ss.filter((s9) => s9 < ejeParalelos.sC).pop(), sHi = ss.find((s9) => s9 >= ejeParalelos.sC);
+        caraCalada(0, 0, A, L, (mx, my) => new T.Vector3(mx - A / 2, H, my - L / 2), grp, banda(sLo != null ? sLo : -R9, sHi != null ? sHi : R9), undefined, decalBase);
+        parCtl.zonas.forEach((z9) => {
+          const g9 = z9.g;
+          const sFin = z9.gFin ? z9.gFin.s : (g9.s >= ejeParalelos.sC ? R9 : -R9);
+          const W4z = (mx, my) => new T.Vector3((mx - g9.P0.x) * g9.u.x + (my - g9.P0.y) * g9.u.y, 0, (mx - g9.P0.x) * g9.nrm.x + (my - g9.P0.y) * g9.nrm.y);
+          caraCalada(0, 0, A, L, W4z, z9.h.inner, banda(g9.s, sFin), undefined, decalBase);
+        });
       }
       else if (ejeF) {
         // EJE (cualquier ángulo): mitad CERCANA estática; la LEJANA vive en la bisagra (0° = extendida).
@@ -7293,9 +7373,30 @@
       const enTapa3 = (V.ojEn() === "tapa");
       const NOM_OJ3 = { sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" };
       // EJE de pliegue: los elementos de la media TAPA lejana van en coords locales de su bisagra.
+      // v17-146: generalizado a ZONA — con eje único devuelve la media lejana; con tiras
+      // encadenadas, la tira dueña del punto (la del eje MÁS CERCANO hacia el ancla, que es su
+      // bisagra inmediata). {inner, local(off)} o null (tapa/tira ancla).
       const ejeReg = ejeCtl;
-      const enEjeFar = (mx, my) => !!ejeReg && mx >= -1e-9 && mx <= A + 1e-9 && my >= -1e-9 && my <= L + 1e-9 &&
-        ((mx - ejeF.P0.x) * ejeF.nrm.x + (my - ejeF.P0.y) * ejeF.nrm.y) > 1e-9;
+      const zonaEje = (mx, my) => {
+        if (!(mx >= -1e-9 && mx <= A + 1e-9 && my >= -1e-9 && my <= L + 1e-9)) return null;
+        if (parCtl) {
+          let mejor = null;
+          parCtl.zonas.forEach((z9) => {
+            const g9 = z9.g;
+            const f9 = (mx - g9.P0.x) * g9.nrm.x + (my - g9.P0.y) * g9.nrm.y;
+            if (f9 > 1e-9 && (!mejor || f9 < mejor.f9)) mejor = { z: z9, f9: f9 };
+          });
+          if (!mejor) return null;
+          const g9 = mejor.z.g;
+          // loc: conversor de CUALQUIER punto de hoja al marco de ESTA tira (los extremos de un
+          // segmento deben vivir en el mismo marco que decide su punto medio).
+          return { inner: mejor.z.h.inner, loc: (qx, qy, off) => new T.Vector3((qx - g9.P0.x) * g9.u.x + (qy - g9.P0.y) * g9.u.y, off != null ? off : 0.012, (qx - g9.P0.x) * g9.nrm.x + (qy - g9.P0.y) * g9.nrm.y) };
+        }
+        if (ejeReg && ((mx - ejeF.P0.x) * ejeF.nrm.x + (my - ejeF.P0.y) * ejeF.nrm.y) > 1e-9)
+          return { inner: ejeReg.inner, loc: (qx, qy, off) => ejeLocal(qx, qy, off) };
+        return null;
+      };
+      const enEjeFar = (mx, my) => !!zonaEje(mx, my);
       const ejeLocal = (mx, my, off) => new T.Vector3(
         (mx - ejeF.P0.x) * ejeF.u.x + (my - ejeF.P0.y) * ejeF.u.y,
         off != null ? off : 0.012,
@@ -7304,7 +7405,8 @@
       (skOj.ojetillos || []).forEach((p) => {
         const m = mkOje3D();
         if (enTapa3 || !(H > 0)) {
-          if (enEjeFar(p.x, p.y)) { m.position.copy(ejeLocal(p.x, p.y)); ejeReg.inner.add(m); return; }
+          const zn = zonaEje(p.x, p.y);
+          if (zn) { m.position.copy(zn.loc(p.x, p.y)); zn.inner.add(m); return; }
           m.position.set(p.x - A / 2, (H > 0 ? H : 0) + 0.012, p.y - L / 2); grp.add(m); return;
         }
         // Ala del ojetillo: 1º por coords de HOJA (y<0 = sup, y>L = inf, x<0 = izq, x>A = der — el
@@ -7353,11 +7455,13 @@
       const splitPl3 = (pa, pb) => {
         const ts = [0, 1];
         const ejesSp = [["x", 0], ["x", A], ["y", 0], ["y", L]];
-        if (ejeF) {   // quiebre por la LÍNEA del eje (cualquier ángulo)
-          const fa = (pa.x - ejeF.P0.x) * ejeF.nrm.x + (pa.y - ejeF.P0.y) * ejeF.nrm.y;
-          const fb = (pb.x - ejeF.P0.x) * ejeF.nrm.x + (pb.y - ejeF.P0.y) * ejeF.nrm.y;
+        // quiebre por la(s) LÍNEA(s) de eje (cualquier ángulo): eje único o todas las tiras.
+        const lineasEje = parCtl ? parCtl.zonas.map((z9) => z9.g) : (ejeF ? [ejeF] : []);
+        lineasEje.forEach((gE9) => {
+          const fa = (pa.x - gE9.P0.x) * gE9.nrm.x + (pa.y - gE9.P0.y) * gE9.nrm.y;
+          const fb = (pb.x - gE9.P0.x) * gE9.nrm.x + (pb.y - gE9.P0.y) * gE9.nrm.y;
           if ((fa < 0) !== (fb < 0) && Math.abs(fb - fa) > 1e-12) { const t9 = -fa / (fb - fa); if (t9 > 1e-9 && t9 < 1 - 1e-9) ts.push(t9); }
-        }
+        });
         ejesSp.forEach((ev2) => {
           const a1 = pa[ev2[0]], b1 = pb[ev2[0]];
           if (Math.abs(b1 - a1) < 1e-12) return;
@@ -7388,7 +7492,8 @@
       };
       const innerDe = (k, t) => parteDe(NOM_OJ3[k], t);
       const addSeg3 = (pa, pb, mat) => {
-        if (enEjeFar((pa.x + pb.x) / 2, (pa.y + pb.y) / 2)) { ejeReg.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([ejeLocal(pa.x, pa.y), ejeLocal(pb.x, pb.y)]), mat)); return; }
+        const znS = zonaEje((pa.x + pb.x) / 2, (pa.y + pb.y) / 2);
+        if (znS) { znS.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([znS.loc(pa.x, pa.y), znS.loc(pb.x, pb.y)]), mat)); return; }
         const k = regionDe((pa.x + pb.x) / 2, (pa.y + pb.y) / 2);
         const pt3 = k ? innerDe(k, (tDeW(k, pa.x, pa.y) + tDeW(k, pb.x, pb.y)) / 2) : null;
         if (pt3) pt3.inner.add(new T.Line(new T.BufferGeometry().setFromPoints([posEnParte(pt3, k, pa.x, pa.y), posEnParte(pt3, k, pb.x, pb.y)]), mat));
@@ -7396,10 +7501,11 @@
       };
       const addQuad3 = (corn, mat) => {
         const cx4 = corn.reduce((s2, q) => s2 + q.x, 0) / corn.length, cy4 = corn.reduce((s2, q) => s2 + q.y, 0) / corn.length;
-        if (enEjeFar(cx4, cy4)) {
-          const vsE = corn.map((q) => ejeLocal(q.x, q.y, 0.01));
+        const znQ = zonaEje(cx4, cy4);
+        if (znQ) {
+          const vsE = corn.map((q) => znQ.loc(q.x, q.y, 0.01));
           const gE = new T.BufferGeometry().setFromPoints([vsE[0], vsE[1], vsE[2], vsE[0], vsE[2], vsE[3]]);
-          gE.computeVertexNormals(); ejeReg.inner.add(new T.Mesh(gE, mat)); return;
+          gE.computeVertexNormals(); znQ.inner.add(new T.Mesh(gE, mat)); return;
         }
         const k = regionDe(cx4, cy4);
         const pt3 = k ? innerDe(k, tDeW(k, cx4, cy4)) : null;
@@ -7417,7 +7523,8 @@
         });
         (c.ojetillos || []).forEach((p) => {
           const m = mkOje3D();
-          if (enEjeFar(p.x, p.y)) { m.position.copy(ejeLocal(p.x, p.y)); ejeReg.inner.add(m); return; }
+          const znO = zonaEje(p.x, p.y);
+          if (znO) { m.position.copy(znO.loc(p.x, p.y)); znO.inner.add(m); return; }
           const k = regionDe(p.x, p.y);
           const pt3 = k ? innerDe(k, tDeW(k, p.x, p.y)) : null;
           if (pt3) { m.position.copy(posEnParte(pt3, k, p.x, p.y)); pt3.inner.add(m); }
@@ -7592,6 +7699,16 @@
               const t2 = (k2 === "sup" || k2 === "inf") ? midx : midy;
               const pt3 = parteDe({ sup: "Ala superior", inf: "Ala inferior", izq: "Ala izquierda", der: "Ala derecha" }[k2], t2);
               padre = pt3 && pt3.inner;
+            } else if (parCtl && midx >= -1e-6 && midx <= A + 1e-6 && midy >= -1e-6 && midy <= L + 1e-6) {
+              // v17-146: el anexo cuya línea de pliegue cae en una TIRA móvil viaja con ella
+              // (bisagra inmediata = el eje más cercano hacia la tira ancla).
+              let mejor9 = null;
+              parCtl.zonas.forEach((z9) => {
+                const g9 = z9.g;
+                const f9 = (midx - g9.P0.x) * g9.nrm.x + (midy - g9.P0.y) * g9.nrm.y;
+                if (f9 > 1e-6 && (!mejor9 || f9 < mejor9.f9)) mejor9 = { z: z9, f9: f9 };
+              });
+              if (mejor9) padre = mejor9.z.h.inner;
             } else if (ejeCtl && ejeF && !(ejeF.c && ejeF.c.ejeAlasFijas) && ((midx - ejeF.P0.x) * ejeF.nrm.x + (midy - ejeF.P0.y) * ejeF.nrm.y) > 1e-6) {
               // "Aletas rígidas" ahora también aplica a los ANEXOS: con el check activo, el anexo
               // del lado móvil NO viaja con la bisagra del eje (queda en el marco fijo).
