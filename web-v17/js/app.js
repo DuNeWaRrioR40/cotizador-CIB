@@ -5964,10 +5964,18 @@
   // venta es decisión consciente del vendedor). Pago exitoso → también se apaga (venta cerrada,
   // nadie compra dos veces) y el pago se anexa AL INSTANTE. Rechazo bancario → solo aviso (el
   // cliente puede reintentar con otro medio).
-  let _chkWatch = null, _chkEvtVisto = "";
+  let _chkWatch = null, _chkEvtVisto = "", _chkSweepN = 0;
   function vigilarChkfin() {
     if (!state.chkVC || !_vcRem || !vcFirebaseUrl()) return;
     const sid = _vcRem.sid;
+    // v17-141: BARREDOR de respaldo (cada 6 ticks ≈ 30 s) — pide al backend confirmar pagos
+    // autorizados cuyo navegador nunca volvió (cliente cerró la pestaña tras autorizar en su
+    // banco). La venta deja de depender de la pestaña del comprador.
+    _chkSweepN = (_chkSweepN + 1) % 6;
+    if (_chkSweepN === 0) {
+      const fn9 = String((window.CONFIG || {}).WEBPAY_FN_URL || "").replace(/\/+$/, "");
+      if (fn9) fetch(fn9 + "/confirmar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid: sid }) }).catch(() => {});
+    }
     fetch(vcFirebaseUrl() + "/chkfin/" + encodeURIComponent(sid) + ".json").then((r) => r.json()).then((d) => {
       if (!d || !d.estado) return;
       const key = sid + "|" + d.estado + "|" + (d.ts || 0);
@@ -6174,6 +6182,12 @@
     chkLSset(CHKPEND_KEY, pend);
     if (!pend.length) return;
     _chkPollBusy = true;
+    // v17-141: antes de sondear chkfin, pide al backend BARRER pagos sin retorno de estas
+    // sesiones (rescate server-side de ventas cuyo comprador cerró el navegador al pagar).
+    try {
+      const fn9 = String((window.CONFIG || {}).WEBPAY_FN_URL || "").replace(/\/+$/, "");
+      if (fn9) pend.forEach((p) => fetch(fn9 + "/confirmar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid: p.sid }) }).catch(() => {}));
+    } catch (_) {}
     Promise.allSettled(pend.map((p) =>
       fetch(vcFirebaseUrl() + "/chkfin/" + encodeURIComponent(p.sid) + ".json").then((r) => r.json()).then((d) => ({ p: p, d: d }))
     )).then((rs) => {
