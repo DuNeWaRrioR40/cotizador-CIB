@@ -581,7 +581,9 @@
   // ---------- BORRADOR (estado "en trabajo"): 1 slot, ficha azul, sin validación ni PDF ----------
   // Clave fija ("borrador|·|borrador|1") → la fusión por rev lo trata como UN slot entre dispositivos.
   let _borrCargado = null;   // clave (slug de cliente) del borrador del que nació el trabajo actual
-  function guardarBorrador() {
+  // v17-142: "silencioso" = auto-guardado al HABILITAR CHECKOUT — reemplaza el slot del mismo
+  // cliente sin preguntar (re-abrir la venta refresca el borrador, no duplica) y sin animar botón.
+  function guardarBorrador(silencioso) {
     const nom = ($("f_nombre") ? $("f_nombre").value.trim() : ""), ape = ($("f_apellido") ? $("f_apellido").value.trim() : "");
     const emp = empresaDatos(), razon = (emp && emp.razon ? emp.razon : "").trim();
     const quien = ((nom || razon) + " " + ape).trim();
@@ -590,7 +592,7 @@
     const slug = (quien || "(sin cliente)").toLowerCase();
     let arr = histPrune(histLoad());
     const prev = arr.find((e) => e.borrador && (e.apellido || "") === slug);
-    if (prev && _borrCargado !== slug) {
+    if (prev && _borrCargado !== slug && !silencioso) {
       const pn = prev.borrNom || "(sin cliente)";
       if (!confirm("Ya existe un borrador de ESTE cliente (" + pn + " · " + (prev.fecha || "") + ").\n¿Reemplazarlo con el trabajo actual?\n\n(Los borradores de otros clientes no se tocan.)")) return;
     }
@@ -607,7 +609,7 @@
     const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
     if (tok) window.SheetsCIBSA.reemplazarHistorial(tok, HIST_HOJA, ent, entryToRow(ent), HIST_ENC).catch((e) => console.warn("CIBSA: no se pudo subir el borrador —", e && e.message ? e.message : e));
     const b = $("btnBorrador");
-    if (b) { const t0 = b.textContent; b.textContent = "✓ Borrador guardado"; b.disabled = true; setTimeout(() => { b.textContent = t0; b.disabled = false; }, 1600); }
+    if (b && !silencioso) { const t0 = b.textContent; b.textContent = "✓ Borrador guardado"; b.disabled = true; setTimeout(() => { b.textContent = t0; b.disabled = false; }, 1600); }
   }
   // Al GENERAR de verdad, el borrador del que nació este trabajo se descarta (sin confirmaciones).
   function descartarBorradorTrasGenerar() {
@@ -5949,6 +5951,18 @@
   let _vcSubUnif = "", _vcSubComp = "";   // textos de subtotal listos para la vista cliente
   function vcSubTexto() {
     if (!state.subVC) return "";
+    // v17-143: el subtotal de la vista cliente dice LA VERDAD COMPLETA — mismo motor del
+    // checkout (resumenCotizacion): productos + granel, CON los descuentos (condiciones y
+    // granel) ya aplicados. Antes ignoraba ambos y el checkout "corregía" la cifra después:
+    // el cliente veía dos números distintos sin explicación.
+    try {
+      const r = resumenCotizacion();
+      if (r && r.total > 0) {
+        const neto = r.total / (1 + (r.iva || 19) / 100);
+        return "Subtotal: " + money(neto) + " neto, sin IVA · " + money(r.total) + " IVA incluido" +
+          (r.desc > 0 ? " (descuento de −" + money(r.desc) + " ya aplicado)" : "");
+      }
+    } catch (_) {}
     return (state.docMode === "formal" && state.prodMode === "compuesto") ? _vcSubComp : _vcSubUnif;
   }
   function setSubVC(v) {
@@ -6007,6 +6021,11 @@
         return;
       }
       _chkFrozen = p;
+      // v17-142: ABRIR LA VENTA deja HUELLA — la cotización en curso se guarda como BORRADOR
+      // (slot por cliente: re-habilitar el checkout para la misma compra REFRESCA ese borrador,
+      // no duplica). Si el pago se confirma, el flujo lo convierte en registro y lo descarta;
+      // si la venta muere (cliente fantasma), al menos queda registrada la selección de compra.
+      try { guardarBorrador(true); } catch (e9) { console.warn("CIBSA: borrador de checkout —", e9 && e9.message ? e9.message : e9); }
     }
     ["f_chkVC", "f_chkVCc"].forEach((id) => { const el = $(id); if (el) el.checked = state.chkVC; });
     document.body.classList.toggle("chk-lock", state.chkVC);
@@ -6226,6 +6245,9 @@
         // La VENTA gana sobre banderas heredadas (reimpresión / "sobrescribir" / edición).
         _histSkip = false; _histReplace = true; _editHist = null; _forzarNueva = false;
         try { ocultarEdicionBanner(); } catch (_) {}
+        // v17-142: el borrador de checkout de este cliente se convierte en registro pagado —
+        // guardarHistorial lo descarta vía descartarBorradorTrasGenerar (clave = slug cliente).
+        _borrCargado = ((curNom + " " + curApe).trim() || "(sin cliente)").toLowerCase();
         guardarHistorial(curNom, curApe, curVerS);
         _histReplace = false;
         arr = histLoad();
@@ -6257,6 +6279,9 @@
     renderHistorial();
     const tok = (window.AuthCIBSA && window.AuthCIBSA.getToken) ? window.AuthCIBSA.getToken() : null;
     if (tok) window.SheetsCIBSA.reemplazarHistorial(tok, HIST_HOJA, ent, entryToRow(ent), HIST_ENC).catch((e) => console.warn("CIBSA: pago sin sincronizar al Sheet —", e && e.message ? e.message : e));
+    // v17-142: si quedó un borrador de checkout de este cliente (venta abierta), el pago lo
+    // convierte — se descarta el borrador ahora que existe el registro real con chip 💳.
+    try { _borrCargado = ((ent.nombre || "") + " " + (ent.apellido || "")).trim().toLowerCase() || null; if (_borrCargado) descartarBorradorTrasGenerar(); } catch (_) {}
     const ya = ok.filter((o) => o && o.orden !== d.orden); ya.push({ orden: d.orden, done: true });
     chkLSset(CHKOK_KEY, ya.slice(-80));
     quitarPend(sid);
