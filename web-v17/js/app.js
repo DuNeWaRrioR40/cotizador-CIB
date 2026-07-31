@@ -7,7 +7,7 @@
   const state = {
     telas: [], telasOpcSel: [], orientaciones: null, orientacionSel: "mayor", orientUnif: "largo",
     ojMode: "total", ojTotal: 4, ojSubstate: "count", ojAristasN: 4,   // v17-114: defecto = 1 por vértice
-    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, ensambles: [], figImgUnif: null, figura3D: null, anclasUnif: [], notasUnif: [], subVC: false, vis3D: null, cotasOcultas: {}, cotasPos: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
+    ojAristas: [], ojEdges: null, ojParejo: false, ojNumerar: false, volAlas: { sup: true, inf: true, izq: true, der: true }, ensambles: [], figImgUnif: null, figura3D: null, mod3DMeta: null, anclasUnif: [], notasUnif: [], subVC: false, vis3D: null, cotasOcultas: {}, cotasPos: {}, rotDrag: {}, rotColapsar: false, rotReubicar: false, ojError: "", trasUnif: false, ultimoPdf: null, progTimer: null, progVal: 0,
     docMode: "formal", prodMode: "uniforme", prelim: [], vendedores: [], materiales: [], granel: [], granelLineas: [], wikiAyuda: {}, factorUnif: "1", modOrigen: null,
     piezas: [], compuesto: null, closeTimer: null, closeIntv: null, complementosUnif: [], cortesUnif: [],
     backCortesUnif: [], backComplementosUnif: [], aletasUnif: [], backAletasUnif: [], strapsUnif: [], cintasUnif: [],
@@ -225,7 +225,7 @@
 
   // --- Snapshot/restauración COMPLETA del diseño (memoria de la cotización) ---
   const SNAP_CAMPOS = ["f_nombre", "f_apellido", "f_apellidoM", "f_run_cliente", "f_email", "f_largo", "f_ancho", "f_titulo", "f_color", "f_observaciones", "f_cantidad", "f_ojvalor", "f_dias", "f_descuento", "f_visita", "f_despacho", "f_union", "f_altura", "f_altoSup", "f_altoInf", "f_altoIzq", "f_altoDer", "f_version", "f_dir_cliente", "f_comuna_cliente", "f_emp_rut", "f_emp_razon", "f_emp_giro", "f_emp_dir", "f_emp_comuna", "f_emp_email", "f_fono1_cliente", "f_fono2_cliente", "f_emp_fono1", "f_emp_fono2", "f_tallerHoras"];
-  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "vis3D", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "ensambles", "figImgUnif", "factorUnif", "granelLineas", "modOrigen"];
+  const SNAP_STATE = ["orientacionSel", "orientUnif", "ojMode", "ojTotal", "ojSubstate", "ojAristasN", "ojAristas", "ojEdges", "ojParejo", "ojNumerar", "volAlas", "figura3D", "anclasUnif", "notasUnif", "vis3D", "cotasOcultas", "cotasPos", "rotDrag", "trasUnif", "docMode", "prodMode", "complementosUnif", "cortesUnif", "backCortesUnif", "backComplementosUnif", "aletasUnif", "backAletasUnif", "strapsUnif", "cintasUnif", "bordeModo", "bordeValor", "bordeRotUnif", "unionRot", "bordes", "piezas", "ensambles", "figImgUnif", "factorUnif", "granelLineas", "modOrigen", "mod3DMeta"];
   function snapshotCotizacion() {
     const campos = {}; SNAP_CAMPOS.forEach((id) => { const el = $(id); if (el) campos[id] = el.value; });
     const st = {}; SNAP_STATE.forEach((k) => { st[k] = state[k]; });
@@ -283,6 +283,7 @@
     renderPiezas(); renderBordes(); renderComplementosUnif(); renderCortesUnif(); renderAletasUnif(); renderStrapsUnif(); renderCintasUnif(); renderTraseraUnif();
     renderOjetillos(); setFactorUnifUI(); aplicarVis();
     renderGranelLineas();   // carro de productos a granel: visible al instante al CARGAR una cotización
+    if (typeof sincBtnMod3D === "function") sincBtnMod3D();   // v17-147: ficha de trazabilidad del modelo 3D del cliente
     recompute();
     return true;
   }
@@ -11718,6 +11719,18 @@
   // La captura 📸 sí viaja al plano PDF como página "PRODUCTO 3D DEL CLIENTE (referencial)".
   let _mod3D = null;      // { nombre, pos: Float32Array }
   let _mod3DCaps = [];    // v17-86: GALERÍA de capturas (dataURL) — visibles bajo el plano y en el PDF
+  // v17-147: TRAZABILIDAD del modelo del cliente. El STL/OBJ no se persiste (pesa MB) y las
+  // capturas tampoco caben en el registro (una celda del Sheet admite ~50 000 caracteres y una
+  // captura en base64 ronda los 130 000) — pero SÍ se guarda su ficha: nombre del archivo,
+  // tamaño, triángulos, fecha, y los PARÁMETROS DE CÁMARA de cada vista capturada. Con el
+  // archivo a la vista, esas vistas se reconstruyen idénticas a las que aprobó el cliente.
+  function mod3DMeta() { return (state.mod3DMeta = state.mod3DMeta || null); }
+  function fmtBytes(b) {
+    if (!(b > 0)) return "—";
+    if (b < 1024) return b + " B";
+    if (b < 1048576) return (b / 1024).toFixed(1).replace(".", ",") + " KB";
+    return (b / 1048576).toFixed(1).replace(".", ",") + " MB";
+  }
   function parseSTL(buf) {
     const dv = new DataView(buf);
     if (buf.byteLength >= 84) {
@@ -11771,8 +11784,13 @@
         return alert("No se pudo interpretar el " + (esObj ? "OBJ" : "STL") + ". Exporta desde Fusion/Inventor como STL (binario o ASCII) u OBJ de malla (con caras).");
       }
       _mod3D = { nombre: file.name || "modelo", pos: pos };
+      // v17-147: ficha de trazabilidad (liviana) — queda EN EL REGISTRO aunque el modelo no.
+      state.mod3DMeta = {
+        nombre: file.name || "modelo", bytes: file.size || 0, tris: Math.round(pos.length / 9),
+        modif: file.lastModified || null, ts: Date.now(), vistas: [],
+      };
       sincBtnMod3D();
-      alert("Modelo 3D cargado: " + _mod3D.nombre + " · " + Math.round(pos.length / 9) + " triángulos.\n\nOJO: el modelo vive SOLO en esta sesión (no se guarda en respaldos — pesa demasiado). La vista que captures con 📸 sí viaja al plano PDF.");
+      alert("Modelo 3D cargado: " + _mod3D.nombre + " · " + Math.round(pos.length / 9) + " triángulos · " + fmtBytes(file.size) + ".\n\nOJO: el ARCHIVO vive solo en esta sesión (pesa demasiado para el respaldo). Lo que SÍ queda guardado en la cotización es su FICHA — nombre, tamaño, fecha y los ángulos de cada vista que captures —, de modo que con el archivo a mano puedas reproducir después exactamente lo que vio el cliente. Las capturas 📸 viajan al plano PDF.");
       abrirMod3D();
     };
     if (esObj) rd.readAsText(file); else rd.readAsArrayBuffer(file);
@@ -11787,14 +11805,54 @@
       const im9 = document.createElement("img"); im9.src = png9; im9.alt = "Vista 3D " + (i9 + 1);
       const bx9 = document.createElement("button"); bx9.type = "button"; bx9.className = "mod3d-cap-x"; bx9.textContent = "✕";
       bx9.title = "Eliminar esta captura (del plano y del PDF)";
-      bx9.addEventListener("click", () => { _mod3DCaps.splice(i9, 1); renderMod3DCaps(); });
+      bx9.addEventListener("click", () => {
+        _mod3DCaps.splice(i9, 1);
+        try { if (state.mod3DMeta && state.mod3DMeta.vistas) state.mod3DMeta.vistas.splice(i9, 1); } catch (_) {}   // la ficha sigue a la galería
+        renderMod3DCaps();
+      });
       const lb9 = document.createElement("span"); lb9.className = "mod3d-cap-lbl"; lb9.textContent = "Vista 3D · " + (i9 + 1);
       card9.appendChild(im9); card9.appendChild(bx9); card9.appendChild(lb9); cont.appendChild(card9);
     });
   }
+  let _mod3DVer = null;   // v17-147: vista guardada a reproducir en la próxima apertura del visor
   function sincBtnMod3D() {
     const b = $("btnMod3D"); if (b) b.textContent = _mod3D ? "🧊 Ver modelo 3D (" + _mod3D.nombre + ")" : "🧊 Modelo 3D (STL/OBJ)…";
     const q = $("btnMod3DQuitar"); if (q) q.classList.toggle("hidden", !_mod3D);
+    pintarMod3DFicha();
+  }
+  // v17-147: FICHA DE TRAZABILIDAD del modelo del cliente — sobrevive al respaldo aunque el
+  // archivo no. Si el modelo NO está cargado (cotización restaurada), ofrece volver a abrir el
+  // mismo archivo y reproducir cada vista aprobada con su ángulo exacto.
+  function pintarMod3DFicha() {
+    let cont = $("mod3DFicha");
+    const m = state.mod3DMeta;
+    if (!cont) {
+      const anc = $("mod3DCaps") || ($("btnMod3D") && $("btnMod3D").parentNode);
+      if (!anc || !anc.parentNode) return;
+      cont = document.createElement("div"); cont.id = "mod3DFicha"; cont.className = "mod3d-ficha";
+      anc.parentNode.insertBefore(cont, anc);
+    }
+    if (!m || !m.nombre) { cont.innerHTML = ""; cont.classList.add("hidden"); return; }
+    cont.classList.remove("hidden");
+    const f9 = new Date(m.ts || Date.now());
+    const fecha = ("0" + f9.getDate()).slice(-2) + "/" + ("0" + (f9.getMonth() + 1)).slice(-2) + "/" + f9.getFullYear();
+    const nV = (m.vistas || []).length;
+    cont.innerHTML =
+      '<div class="mod3d-fic-cab">🧊 Modelo 3D del cliente <span class="mod3d-fic-est">' + (_mod3D ? "cargado" : "no cargado en esta sesión") + "</span></div>" +
+      '<div class="mod3d-fic-l"><span>Archivo</span><b>' + esc(m.nombre) + "</b></div>" +
+      '<div class="mod3d-fic-l"><span>Tamaño · triángulos</span><b>' + fmtBytes(m.bytes) + " · " + (m.tris || 0).toLocaleString("es-CL") + "</b></div>" +
+      '<div class="mod3d-fic-l"><span>Importado</span><b>' + fecha + "</b></div>" +
+      '<div class="mod3d-fic-l"><span>Vistas capturadas</span><b>' + nV + "</b></div>" +
+      (nV ? '<div class="mod3d-fic-vs" id="mod3DFicVs"></div>' : "") +
+      (!_mod3D ? '<p class="mod3d-fic-nota">El archivo no viaja en el respaldo (pesa demasiado). Vuelve a abrir <b>' + esc(m.nombre) + "</b> y podrás reproducir cada vista tal como la aprobó el cliente.</p>" : "");
+    const vs = $("mod3DFicVs");
+    if (vs) (m.vistas || []).forEach((v9, i9) => {
+      const b9 = document.createElement("button"); b9.type = "button"; b9.className = "mod3d-fic-v";
+      b9.textContent = "Vista " + (i9 + 1);
+      b9.title = _mod3D ? "Reproducir esta vista en el visor 3D" : "Carga el archivo para reproducir esta vista";
+      b9.addEventListener("click", () => { _mod3DVer = v9; if (_mod3D) abrirMod3D(); else { const fi = $("mod3DFile"); if (fi) fi.click(); } });
+      vs.appendChild(b9);
+    });
   }
   async function abrirMod3D() {
     if (!_mod3D) { const fi9 = $("mod3DFile"); if (fi9) fi9.click(); return; }
@@ -11838,6 +11896,8 @@
     grp.add(mesh);
     const cam = new T.PerspectiveCamera(42, 1, diag / 100, diag * 30);
     let dist = diag * 1.7, rotY = 0.6, rotX = 0.45;
+    // v17-147: si se abre para REPRODUCIR una vista guardada, la cámara parte ahí.
+    if (_mod3DVer) { rotY = _mod3DVer.ry; rotX = _mod3DVer.rx; dist = diag * (_mod3DVer.dz || 1.7); _mod3DVer = null; }
     const coloca = () => {
       grp.rotation.y = rotY; grp.rotation.x = rotX;
       cam.position.set(0, 0, dist); cam.lookAt(0, 0, 0);
@@ -11878,6 +11938,14 @@
       e9.stopPropagation();
       renderer.render(scene, cam);
       _mod3DCaps.push(canvas.toDataURL("image/png"));
+      // v17-147: junto a la imagen se anota el ÁNGULO exacto de esta vista (dz normalizado por la
+      // diagonal del modelo, así el zoom es reproducible aunque cambie la escala del archivo).
+      try {
+        if (state.mod3DMeta) {
+          state.mod3DMeta.vistas = state.mod3DMeta.vistas || [];
+          state.mod3DMeta.vistas.push({ ry: +rotY.toFixed(4), rx: +rotX.toFixed(4), dz: +(dist / diag).toFixed(4), ts: Date.now() });
+        }
+      } catch (_) {}
       renderMod3DCaps();
       cap.textContent = "✓ Captura " + _mod3DCaps.length + " agregada (plano + PDF)";
       setTimeout(() => { if (cap.isConnected) cap.textContent = "📸 Incluir esta vista en el plano"; }, 2400);
@@ -12687,8 +12755,8 @@
     const rb = document.querySelector('input[name="bordemodo"][value="uniforme"]'); if (rb) rb.checked = true;
     // Plano del cliente (calcomanía): fuera imagen, fuera modo ajuste
     state.figImgUnif = null; _figBaked = null; _figEditOn = false;
-    // Modelo 3D del cliente (sesión): también se despide
-    _mod3D = null; _mod3DCaps = []; if (typeof sincBtnMod3D === "function") sincBtnMod3D(); if (typeof renderMod3DCaps === "function") renderMod3DCaps();
+    // Modelo 3D del cliente (sesión): también se despide — y su ficha de trazabilidad con él
+    _mod3D = null; _mod3DCaps = []; state.mod3DMeta = null; if (typeof sincBtnMod3D === "function") sincBtnMod3D(); if (typeof renderMod3DCaps === "function") renderMod3DCaps();
     // Modo modificación: fuera (lección v17-60)
     state.modOrigen = null; { const th = $("f_tallerHoras"); if (th) th.value = "1"; } if (typeof sincModUI === "function") sincModUI();
     if (typeof sincBtnFigImg === "function") sincBtnFigImg();

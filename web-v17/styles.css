@@ -1413,3 +1413,19 @@ body.chk-lock #btnVistaQR, body.chk-lock #btnVistaQRComp, body.chk-lock #btnVist
   @starting-style { .ck-gr-smiley { transform: none; } }
   .ck-gr-smiley.wink { transform: none; }
 }
+
+/* ---------- v17-147: ficha de TRAZABILIDAD del modelo 3D del cliente ----------
+   El STL/OBJ no viaja en el respaldo (pesa MB) y las capturas tampoco caben en el registro
+   (una celda del Sheet admite ~50 000 caracteres): lo que sobrevive es esta ficha — archivo,
+   tamaño, triángulos, fecha y los ángulos de cada vista aprobada, reproducibles con un clic. */
+.mod3d-ficha { border: 1px solid #e2e2dc; border-left: 3px solid var(--acento, #ffdf26); border-radius: 12px; background: #fcfcfa; padding: 10px 14px 12px; margin: 10px 0; font-size: 13px; }
+.mod3d-ficha.hidden { display: none; }
+.mod3d-fic-cab { font-weight: 700; font-size: 12.5px; color: #16171a; margin-bottom: 6px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.mod3d-fic-est { font-weight: 500; font-size: 11px; color: #8a8f98; border: 1px solid #e2e2dc; border-radius: 999px; padding: 1px 8px; }
+.mod3d-fic-l { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; color: #666; }
+.mod3d-fic-l b { color: #16171a; font-weight: 600; text-align: right; word-break: break-all; }
+.mod3d-fic-vs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mod3d-fic-v { border: 1px solid #d8d8d2; background: #fff; border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: #16171a; transition: transform 140ms cubic-bezier(.23,1,.32,1), border-color 150ms ease; }
+.mod3d-fic-v:hover { border-color: #16171a; }
+.mod3d-fic-v:active { transform: scale(.97); }
+.mod3d-fic-nota { margin: 8px 0 0; font-size: 11.5px; color: #8a8f98; line-height: 1.5; }
